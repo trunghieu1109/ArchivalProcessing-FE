@@ -27,28 +27,29 @@ export function DropZone({ accept, onFile, label, hint }: DropZoneProps) {
       className={cn(
         "group flex cursor-pointer flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed py-10 transition-all duration-300",
         dragging
-          ? "scale-[1.01] border-[#0052FF] bg-[#0052FF]/5"
-          : "border-[#E2E8F0] hover:border-[#0052FF]/40 hover:bg-[#0052FF]/[0.02]",
+          ? "scale-[1.01] border-primary bg-primary/5"
+          : "border-border hover:border-primary/50 hover:bg-primary/[0.02]",
       )}
     >
-      <input
-        ref={inputRef}
-        type="file"
-        accept={accept}
-        className="hidden"
-        onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f) }}
-      />
+      <input ref={inputRef} type="file" accept={accept} className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f) }} />
+
       <div
-        className="flex size-14 items-center justify-center rounded-xl transition-all duration-300 group-hover:scale-110"
-        style={{ background: "linear-gradient(135deg, #0052FF, #4D7CFF)", boxShadow: dragging ? "0 8px 24px rgba(0,82,255,0.35)" : "0 4px 14px rgba(0,82,255,0.25)" }}
+        className={cn(
+          "flex size-14 items-center justify-center rounded-xl transition-all duration-300 group-hover:scale-110",
+          dragging ? "shadow-[0_8px_24px_rgba(0,82,255,0.35)]" : "shadow-[0_4px_14px_rgba(0,82,255,0.25)]",
+        )}
+        style={{ background: "linear-gradient(135deg, #0052FF, #4D7CFF)" }}
       >
         <CloudUpload className="size-6 text-white" />
       </div>
+
       <div className="text-center">
-        <p className="text-sm font-semibold text-[#0F172A]">{label}</p>
-        <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.15em] text-[#64748B]">{hint}</p>
+        <p className="text-sm font-semibold text-foreground">{label}</p>
+        <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.15em] text-muted-foreground">{hint}</p>
       </div>
-      <span className="font-mono text-[11px] uppercase tracking-[0.15em] text-[#64748B]/60 transition-colors group-hover:text-[#0052FF]/60">
+
+      <span className="font-mono text-[11px] uppercase tracking-[0.15em] text-muted-foreground/60 transition-colors group-hover:text-primary/60">
         Kéo thả hoặc nhấn để chọn
       </span>
     </div>

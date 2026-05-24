@@ -1,4 +1,4 @@
-const BASE_URL = "https://thuy8088.iselab.site"
+// All API types kept for type compatibility — no real network calls are made.
 
 export interface FolderPreviewRequest {
   folder_path: string
@@ -31,36 +31,4 @@ export interface FolderStatusResponse {
   missing_files: string[]
   status_counts: Record<string, number>
   jobs: JobSummary[]
-}
-
-export async function startFolderPreview(req: FolderPreviewRequest): Promise<FolderPreviewResponse> {
-  const res = await fetch(`${BASE_URL}/ocr/preview/folder`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
-  })
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-  return res.json()
-}
-
-export async function getFilePreview(data_path: string): Promise<JobSummary> {
-  const params = new URLSearchParams({ data_path, include_text: "false", include_page_texts: "false" })
-  const res = await fetch(`${BASE_URL}/ocr/preview/by-path?${params}`)
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-  return res.json()
-}
-
-export async function getFolderStatus(
-  folder_path: string,
-  recursive = true,
-  max_files = 100,
-): Promise<FolderStatusResponse> {
-  const params = new URLSearchParams({
-    folder_path,
-    recursive: String(recursive),
-    max_files: String(max_files),
-  })
-  const res = await fetch(`${BASE_URL}/ocr/preview/folder/status?${params}`)
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-  return res.json()
 }

@@ -69,48 +69,55 @@ export const DocxSection = forwardRef<SectionHandle, DocxSectionProps>(
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1], delay: index * 0.08 }}
         className={cn(
-          "relative flex flex-col gap-4 overflow-hidden rounded-2xl border bg-white p-5 transition-all duration-300",
-          isDone ? "border-[#0052FF]/20 shadow-[0_4px_24px_rgba(0,82,255,0.08)]" : "border-[#E2E8F0]",
+          "relative flex flex-col gap-4 overflow-hidden rounded-2xl border bg-card p-5 transition-all duration-300",
+          isDone
+            ? "border-primary/20 shadow-[0_4px_24px_rgba(0,82,255,0.08)]"
+            : "border-border shadow-sm hover:shadow-md",
         )}
       >
+        {/* Subtle gradient overlay when done */}
         {isDone && (
-          <div className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-[#0052FF]/[0.04] to-transparent" />
+          <div className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-primary/[0.04] to-transparent" />
         )}
 
+        {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#64748B]/50">0{index}</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground/50">
+              0{index}
+            </span>
             <div>
-              <p className="text-sm font-semibold leading-none text-[#0F172A]">{label}</p>
-              <p className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.12em] text-[#64748B]">{sublabel}</p>
+              <p className="text-sm font-semibold leading-none text-foreground">{label}</p>
+              <p className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                {sublabel}
+              </p>
             </div>
           </div>
+
           {isDone && (
-            <span className="flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold text-white" style={{ background: "linear-gradient(to right, #0052FF, #4D7CFF)" }}>
+            <span
+              className="flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold text-primary-foreground"
+              style={{ background: "linear-gradient(to right, #0052FF, #4D7CFF)" }}
+            >
               <CheckCircle2 className="size-3" /> Xong
             </span>
           )}
           {isProcessing && (
-            <span className="flex items-center gap-1.5 rounded-full border border-[#0052FF]/20 bg-[#0052FF]/5 px-3 py-1 text-[11px] font-semibold text-[#0052FF]">
+            <span className="flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-[11px] font-semibold text-primary">
               <Loader2 className="size-3 animate-spin" /> Đang xử lý
             </span>
           )}
         </div>
 
         {fileName ? (
-          <FileChip
-            fileName={fileName}
-            loading={loading}
-            processState={processState}
-            onClear={clear}
-            icon={<FileText className="size-4" />}
-          />
+          <FileChip fileName={fileName} loading={loading} processState={processState}
+            onClear={clear} icon={<FileText className="size-4" />} />
         ) : (
           <DropZone accept=".docx" onFile={handleFile} label="Tài liệu Word" hint=".docx" />
         )}
 
         {error && (
-          <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-600">
+          <div className="flex items-center gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
             <AlertCircle className="size-3.5 shrink-0" /> {error}
           </div>
         )}

@@ -12,7 +12,7 @@ const STEPS = [
 
 function assignFilesToFolders(
   tree: FolderNode[],
-  items: PdfMetadata[],
+  items: PdfMetadata[]
 ): Record<string, string[]> {
   const result: Record<string, string[]> = {}
 
@@ -74,25 +74,38 @@ export function ClusteringStep({ tree, items, onDone }: ClusteringStepProps) {
         <div
           className="absolute inset-0 rounded-full"
           style={{
-            background: "conic-gradient(from 0deg, #0052FF, #4D7CFF, transparent)",
+            background:
+              "conic-gradient(from 0deg, #0052FF, #4D7CFF, transparent)",
             animation: done ? "none" : "spin 1.2s linear infinite",
           }}
         />
         <div className="absolute inset-1 rounded-full bg-[#FAFAFA]" />
-        <div className="relative flex size-16 items-center justify-center rounded-full" style={{ background: "linear-gradient(135deg, #0052FF, #4D7CFF)", boxShadow: "0 8px 24px rgba(0,82,255,0.35)" }}>
-          {done
-            ? <CheckCircle2 className="size-8 text-white" />
-            : <Loader2 className="size-8 animate-spin text-white" />
-          }
+        <div
+          className="relative flex size-16 items-center justify-center rounded-full"
+          style={{
+            background: "linear-gradient(135deg, #0052FF, #4D7CFF)",
+            boxShadow: "0 8px 24px rgba(0,82,255,0.35)",
+          }}
+        >
+          {done ? (
+            <CheckCircle2 className="size-8 text-white" />
+          ) : (
+            <Loader2 className="size-8 animate-spin text-white" />
+          )}
         </div>
       </div>
 
       <div className="text-center">
         <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-[#0052FF]/30 bg-[#0052FF]/5 px-3 py-1">
           <span className="size-1.5 animate-pulse rounded-full bg-[#0052FF]" />
-          <span className="font-mono text-[11px] uppercase tracking-[0.15em] text-[#0052FF]">Bước 4 / 5</span>
+          <span className="font-roboto text-[11px] tracking-[0.15em] text-[#0052FF] uppercase">
+            Bước 4 / 5
+          </span>
         </div>
-        <h2 className="mt-2 text-2xl text-[#0F172A]" style={{ fontFamily: "'Calistoga', Georgia, serif" }}>
+        <h2
+          className="mt-2 text-2xl text-[#0F172A]"
+          style={{ fontFamily: "'Calistoga', Georgia, serif" }}
+        >
           Đang phân cụm tài liệu
         </h2>
 
@@ -112,7 +125,11 @@ export function ClusteringStep({ tree, items, onDone }: ClusteringStepProps) {
               ) : (
                 <span className="size-4 rounded-full border border-[#E2E8F0]" />
               )}
-              <span className={i <= stepIndex ? "text-[#0F172A]" : "text-[#64748B]"}>{s}</span>
+              <span
+                className={i <= stepIndex ? "text-[#0F172A]" : "text-[#64748B]"}
+              >
+                {s}
+              </span>
             </motion.div>
           ))}
         </div>

@@ -1,5 +1,6 @@
 import { CheckCircle2, Loader2, X } from "lucide-react"
 import { cn } from "@/shared/lib/utils"
+import { Button } from "@/components/ui/button"
 import type { ProcessState } from "@/features/upload/types"
 
 interface FileChipProps {
@@ -18,39 +19,32 @@ export function FileChip({ fileName, loading, processState, onClear, icon }: Fil
     <div className={cn(
       "flex items-center gap-3 rounded-xl border px-4 py-3 transition-all duration-300",
       done
-        ? "border-[#0052FF]/20 bg-[#0052FF]/5"
-        : "border-[#E2E8F0] bg-white",
+        ? "border-primary/20 bg-primary/[0.03] shadow-[0_4px_14px_rgba(0,82,255,0.08)]"
+        : "border-border bg-card",
     )}>
-      <div className={cn(
-        "flex size-9 shrink-0 items-center justify-center rounded-lg transition-all duration-300",
-        done
-          ? "bg-gradient-to-br from-[#0052FF] to-[#4D7CFF]"
-          : "bg-gradient-to-br from-[#0052FF] to-[#4D7CFF]",
-      )}
-        style={{ boxShadow: "0 4px 14px rgba(0,82,255,0.25)" }}
+      <div
+        className="flex size-9 shrink-0 items-center justify-center rounded-lg shadow-[0_4px_14px_rgba(0,82,255,0.25)]"
+        style={{ background: "linear-gradient(135deg, #0052FF, #4D7CFF)" }}
       >
         {loading
           ? <Loader2 className="size-4 animate-spin text-white" />
           : done
             ? <CheckCircle2 className="size-4 text-white" />
-            : <div className="text-white">{icon}</div>
-        }
+            : <div className="text-white">{icon}</div>}
       </div>
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-[#0F172A] leading-none">{fileName}</p>
-        <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.12em] text-[#64748B]">
-          {loading ? "Reading…" : done ? "Processed" : "Ready"}
+        <p className="truncate text-sm font-semibold leading-none text-foreground">{fileName}</p>
+        <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+          {loading ? "Đang đọc…" : done ? "Đã xử lý" : "Sẵn sàng"}
         </p>
       </div>
 
       {!processing && !loading && (
-        <button
-          onClick={onClear}
-          className="shrink-0 rounded-md p-1 text-[#64748B] transition-all duration-200 hover:bg-[#F1F5F9] hover:text-[#0F172A]"
-        >
+        <Button variant="ghost" size="sm" onClick={onClear}
+          className="size-7 shrink-0 p-0 text-muted-foreground hover:text-foreground">
           <X className="size-3.5" />
-        </button>
+        </Button>
       )}
     </div>
   )

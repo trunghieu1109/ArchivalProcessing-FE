@@ -1,9 +1,5 @@
 import { useState, useRef, useCallback } from "react"
-import { startFolderPreview, getFolderStatus } from "@/features/upload/api/ocrApi"
 import type { FolderStatusResponse } from "@/features/upload/api/ocrApi"
-
-const TERMINAL_STATUSES = new Set(["done", "failed", "final_failed", "cancelled"])
-const POLL_INTERVAL_MS = 3000
 
 export type OcrFolderState = "idle" | "starting" | "polling" | "done" | "error"
 
@@ -15,70 +11,79 @@ export interface UseOcrFolderResult {
   reset: () => void
 }
 
+function mockFolderStatus(folderPath: string, tick: number): FolderStatusResponse {
+  const total = 3
+  const done = Math.min(tick, total)
+  const jobs = Array.from({ length: total }, (_, i) => ({
+    id: i + 1,
+    data_path: `${folderPath}/0${i + 1}/van-ban-${i + 1}.pdf`,
+    status: i < done ? "done" : i === done ? "running" : "pending",
+    light_metadata: i < done ? {
+      loai_van_ban: "Quyết định",
+      so_hieu_tai_lieu: `${29 + i}/QĐ-UBND`,
+      co_quan_ban_hanh: "ỦY BAN NHÂN DÂN QUẬN DƯƠNG KINH",
+      ngay_ban_hanh: "04/01/2021",
+      trich_yeu_tai_lieu: "Về việc bổ nhiệm chức danh nghề nghiệp",
+      mentioned_subjects: ["Bà Ngô Thị Điểm", "Trường THCS Anh Dũng"],
+      direct_target_subject: "Bà Ngô Thị Điểm",
+      "nguoi ky": "Nguyễn Văn A",
+      _warnings: i % 2 === 0 ? { mentioned_subjects: "low confidence" } : {},
+    } : {},
+  }))
+
+  const statusCounts: Record<string, number> = {}
+  jobs.forEach((j) => { statusCounts[j.status] = (statusCounts[j.status] ?? 0) + 1 })
+
+  return {
+    folder_path: folderPath,
+    recursive: true,
+    total_files: total,
+    total_jobs: total,
+    missing_files: [],
+    status_counts: statusCounts,
+    jobs,
+  }
+}
+
 export function useOcrFolder(): UseOcrFolderResult {
   const [state, setState] = useState<OcrFolderState>("idle")
   const [status, setStatus] = useState<FolderStatusResponse | null>(null)
-  const [error, setError] = useState("")
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [error] = useState("")
+  const tickRef = useRef(0)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const stopPolling = () => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current)
-      pollRef.current = null
-    }
+  const stop = () => {
+    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null }
   }
 
   const reset = useCallback(() => {
-    stopPolling()
+    stop()
+    tickRef.current = 0
     setState("idle")
     setStatus(null)
-    setError("")
   }, [])
 
   const start = useCallback(async (folderPath: string) => {
-    stopPolling()
+    stop()
+    tickRef.current = 0
     setState("starting")
-    setError("")
     setStatus(null)
 
-    try {
-      await startFolderPreview({
-        folder_path: folderPath,
-        recursive: true,
-        max_files: 1,
-        metadata_fields: [],
-        force: false,
-      })
-    } catch (err) {
-      // 409 means jobs already exist — still proceed to poll
-      if (!(err instanceof Error && err.message.startsWith("409"))) {
-        setError(err instanceof Error ? err.message : "Failed to start folder processing.")
-        setState("error")
-        return
-      }
-    }
-
+    await new Promise((r) => setTimeout(r, 400))
     setState("polling")
 
-    const poll = async () => {
-      try {
-        const result = await getFolderStatus(folderPath, true, 1)
-        setStatus(result)
-
-        const allTerminal = result.jobs.every((j) => TERMINAL_STATUSES.has(j.status))
-        if (allTerminal && result.jobs.length > 0) {
-          stopPolling()
-          setState("done")
-        }
-      } catch (err) {
-        stopPolling()
-        setError(err instanceof Error ? err.message : "Failed to poll folder status.")
-        setState("error")
+    const tick = () => {
+      tickRef.current += 1
+      const result = mockFolderStatus(folderPath, tickRef.current)
+      setStatus(result)
+      if (tickRef.current >= result.total_files) {
+        stop()
+        setState("done")
       }
     }
 
-    await poll()
-    pollRef.current = setInterval(poll, POLL_INTERVAL_MS)
+    tick()
+    intervalRef.current = setInterval(tick, 1200)
   }, [])
 
   return { state, status, error, start, reset }
