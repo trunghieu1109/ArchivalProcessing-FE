@@ -1,5 +1,13 @@
 import { useState } from "react"
-import { FileText, Edit2, Check, ChevronDown, ChevronUp, AlertTriangle, CheckCircle2 } from "lucide-react"
+import {
+  FileText,
+  Edit2,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  AlertTriangle,
+  CheckCircle2,
+} from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { toast } from "sonner"
 import { cn } from "@/shared/lib/utils"
@@ -73,7 +81,10 @@ export function MetadataCard({ item, onApply }: MetadataCardProps) {
     const updated: Record<string, unknown> = { ...item.light_metadata }
     Object.entries(draft).forEach(([k, v]) => {
       if (k === "mentioned_subjects")
-        updated[k] = v.split(",").map((s) => s.trim()).filter(Boolean)
+        updated[k] = v
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
       else updated[k] = v
     })
     updated["_warnings"] = {}
@@ -83,28 +94,40 @@ export function MetadataCard({ item, onApply }: MetadataCardProps) {
   }
 
   return (
-    <div className={cn(
-      "overflow-hidden rounded-xl border bg-card transition-all duration-200",
-      item.applied
-        ? "border-primary/30 shadow-[0_2px_12px_rgba(0,82,255,0.08)]"
-        : hasWarnings
-        ? "border-amber-300"
-        : "border-border",
-    )}>
+    <div
+      className={cn(
+        "overflow-hidden rounded-xl border bg-card transition-all duration-200",
+        item.applied
+          ? "border-primary/30 shadow-[0_2px_12px_rgba(0,82,255,0.08)]"
+          : hasWarnings
+            ? "border-amber-300"
+            : "border-border"
+      )}
+    >
       {/* Header row */}
       <div className="flex items-center gap-3 px-4 py-3">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg shadow-[0_4px_14px_rgba(0,82,255,0.2)]"
-          style={{ background: "linear-gradient(135deg, #0052FF, #4D7CFF)" }}>
+        <div
+          className="flex size-8 shrink-0 items-center justify-center rounded-lg shadow-[0_4px_14px_rgba(0,82,255,0.2)]"
+          style={{ background: "linear-gradient(135deg, #0052FF, #4D7CFF)" }}
+        >
           <FileText className="size-3.5 text-white" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-semibold text-foreground">{item.data_path.split("/").pop()}</p>
-          <p className="truncate font-mono text-[10px] text-muted-foreground">{item.data_path}</p>
+          <p className="truncate text-xs font-semibold text-foreground">
+            {item.data_path.split("/").pop()}
+          </p>
+          <p className="truncate font-roboto text-[10px] text-muted-foreground">
+            {item.data_path}
+          </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {item.applied ? (
-            <span className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold text-primary-foreground"
-              style={{ background: "linear-gradient(to right, #0052FF, #4D7CFF)" }}>
+            <span
+              className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold text-primary-foreground"
+              style={{
+                background: "linear-gradient(to right, #0052FF, #4D7CFF)",
+              }}
+            >
               <Check className="size-2.5" /> Xác nhận
             </span>
           ) : hasWarnings ? (
@@ -116,31 +139,58 @@ export function MetadataCard({ item, onApply }: MetadataCardProps) {
               <CheckCircle2 className="size-2.5" /> Tin cậy
             </span>
           )}
-          <Button variant="ghost" size="sm" onClick={() => setExpanded((v) => !v)}
-            className="size-7 p-0 text-muted-foreground">
-            {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setExpanded((v) => !v)}
+            className="size-7 p-0 text-muted-foreground"
+          >
+            {expanded ? (
+              <ChevronUp className="size-3.5" />
+            ) : (
+              <ChevronDown className="size-3.5" />
+            )}
           </Button>
         </div>
       </div>
 
       <AnimatePresence initial={false}>
         {expanded && (
-          <motion.div initial={{ height: 0 }} animate={{ height: "auto" }} exit={{ height: 0 }}
-            transition={{ duration: 0.2 }} className="overflow-hidden">
+          <motion.div
+            initial={{ height: 0 }}
+            animate={{ height: "auto" }}
+            exit={{ height: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
             <div className="border-t border-border px-4 py-3">
               {editing ? (
                 <div className="flex flex-col gap-2">
                   {Object.entries(METADATA_LABELS).map(([key, label]) => (
                     <div key={key} className="flex items-start gap-2">
-                      <span className="w-32 shrink-0 pt-2 text-[11px] font-medium text-muted-foreground">{label}</span>
-                      <Input value={draft[key] ?? ""}
-                        onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
-                        className="h-7 flex-1 text-xs" />
+                      <span className="w-32 shrink-0 pt-2 text-[11px] font-medium text-muted-foreground">
+                        {label}
+                      </span>
+                      <Input
+                        value={draft[key] ?? ""}
+                        onChange={(e) =>
+                          setDraft((d) => ({ ...d, [key]: e.target.value }))
+                        }
+                        className="h-7 flex-1 text-xs"
+                      />
                     </div>
                   ))}
                   <div className="flex justify-end gap-2 pt-1">
-                    <Button variant="outline" size="sm" onClick={() => setEditing(false)}>Hủy</Button>
-                    <Button size="sm" onClick={commitEdit}>Lưu & Xác nhận</Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setEditing(false)}
+                    >
+                      Hủy
+                    </Button>
+                    <Button size="sm" onClick={commitEdit}>
+                      Lưu & Xác nhận
+                    </Button>
                   </div>
                 </div>
               ) : (
@@ -148,14 +198,39 @@ export function MetadataCard({ item, onApply }: MetadataCardProps) {
                   {Object.entries(METADATA_LABELS).map(([key, label]) => {
                     const v = item.light_metadata[key]
                     if (!v) return null
-                    const display = Array.isArray(v) ? (v as string[]).join(", ") : String(v)
+                    const display = Array.isArray(v)
+                      ? (v as string[]).join(", ")
+                      : String(v)
                     const isWarning = warningFields.has(key)
                     return (
-                      <div key={key} className={cn("flex gap-2 rounded-md px-2 py-1 text-xs", isWarning && "bg-amber-50")}>
-                        <span className={cn("w-32 shrink-0 font-medium", isWarning ? "text-amber-700" : "text-muted-foreground")}>
-                          {label}{isWarning && <AlertTriangle className="ml-1 inline size-2.5 text-amber-500" />}
+                      <div
+                        key={key}
+                        className={cn(
+                          "flex gap-2 rounded-md px-2 py-1 text-xs",
+                          isWarning && "bg-amber-50"
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "w-32 shrink-0 font-medium",
+                            isWarning
+                              ? "text-amber-700"
+                              : "text-muted-foreground"
+                          )}
+                        >
+                          {label}
+                          {isWarning && (
+                            <AlertTriangle className="ml-1 inline size-2.5 text-amber-500" />
+                          )}
                         </span>
-                        <span className={cn("flex-1", isWarning ? "text-amber-900" : "text-foreground")}>{display}</span>
+                        <span
+                          className={cn(
+                            "flex-1",
+                            isWarning ? "text-amber-900" : "text-foreground"
+                          )}
+                        >
+                          {display}
+                        </span>
                       </div>
                     )
                   })}
@@ -164,7 +239,12 @@ export function MetadataCard({ item, onApply }: MetadataCardProps) {
                       <Edit2 data-icon="inline-start" /> Sửa
                     </Button>
                     {!item.applied && (
-                      <Button size="sm" onClick={() => onApply(item.data_path, item.light_metadata)}>
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          onApply(item.data_path, item.light_metadata)
+                        }
+                      >
                         <Check data-icon="inline-start" /> Xác nhận
                       </Button>
                     )}

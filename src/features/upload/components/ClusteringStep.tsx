@@ -99,15 +99,10 @@ export function ClusteringStep({ tree, items, onDone }: ClusteringStepProps) {
         <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-[#0052FF]/30 bg-[#0052FF]/5 px-3 py-1">
           <span className="size-1.5 animate-pulse rounded-full bg-[#0052FF]" />
           <span className="font-roboto text-[11px] tracking-[0.15em] text-[#0052FF] uppercase">
-            Bước 4 / 5
+            Bước 3/4
           </span>
         </div>
-        <h2
-          className="mt-2 text-2xl text-[#0F172A]"
-          style={{ fontFamily: "'Calistoga', Georgia, serif" }}
-        >
-          Đang phân cụm tài liệu
-        </h2>
+        <h2 className="mt-2 text-2xl text-[#0F172A]">Đang phân cụm tài liệu</h2>
 
         <div className="mt-4 flex flex-col gap-2">
           {STEPS.map((s, i) => (

@@ -63,57 +63,53 @@ export const DocxSection = forwardRef<SectionHandle, DocxSectionProps>(
     const isDone = processState === "done"
     const isProcessing = processState === "processing"
 
+    const iconBg = index === 1 ? "bg-purple-50" : "bg-emerald-50"
+    const iconColor = index === 1 ? "#7C3AED" : "#059669"
+    const buttonColor = index === 1 ? "purple" : "green" as "purple" | "green"
+
     return (
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1], delay: index * 0.08 }}
         className={cn(
-          "relative flex flex-col gap-4 overflow-hidden rounded-2xl border bg-card p-5 transition-all duration-300",
+          "relative flex flex-col gap-4 overflow-hidden rounded-2xl border bg-white p-5 transition-all duration-300",
           isDone
             ? "border-primary/20 shadow-[0_4px_24px_rgba(0,82,255,0.08)]"
-            : "border-border shadow-sm hover:shadow-md",
+            : "border-[#E2E8F0] shadow-sm",
         )}
       >
-        {/* Subtle gradient overlay when done */}
-        {isDone && (
-          <div className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-primary/[0.04] to-transparent" />
-        )}
-
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground/50">
-              0{index}
-            </span>
-            <div>
-              <p className="text-sm font-semibold leading-none text-foreground">{label}</p>
-              <p className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
-                {sublabel}
-              </p>
-            </div>
+        <div className="flex items-start gap-3">
+          <div className={cn("flex size-10 shrink-0 items-center justify-center rounded-xl", iconBg)}>
+            <FileText className="size-5" style={{ color: iconColor }} />
           </div>
-
-          {isDone && (
-            <span
-              className="flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold text-primary-foreground"
-              style={{ background: "linear-gradient(to right, #0052FF, #4D7CFF)" }}
-            >
-              <CheckCircle2 className="size-3" /> Xong
-            </span>
-          )}
-          {isProcessing && (
-            <span className="flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-[11px] font-semibold text-primary">
-              <Loader2 className="size-3 animate-spin" /> Đang xử lý
-            </span>
-          )}
+          <div className="flex-1">
+            <div className="flex items-center justify-between">
+              <p className="text-base font-bold text-[#0F172A]">{label}</p>
+              {isDone && (
+                <span
+                  className="flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold text-white"
+                  style={{ background: "linear-gradient(to right, #0052FF, #4D7CFF)" }}
+                >
+                  <CheckCircle2 className="size-3" /> Xong
+                </span>
+              )}
+              {isProcessing && (
+                <span className="flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-[11px] font-semibold text-primary">
+                  <Loader2 className="size-3 animate-spin" /> Đang xử lý
+                </span>
+              )}
+            </div>
+            <p className="mt-0.5 text-sm text-[#64748B]">{sublabel}</p>
+          </div>
         </div>
 
         {fileName ? (
           <FileChip fileName={fileName} loading={loading} processState={processState}
             onClear={clear} icon={<FileText className="size-4" />} />
         ) : (
-          <DropZone accept=".docx" onFile={handleFile} label="Tài liệu Word" hint=".docx" />
+          <DropZone accept=".docx" onFile={handleFile} label="Kéo thả file .docx vào đây" hint=".docx" maxSize="50MB" buttonColor={buttonColor} />
         )}
 
         {error && (

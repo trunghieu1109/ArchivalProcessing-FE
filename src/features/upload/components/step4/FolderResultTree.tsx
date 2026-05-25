@@ -1,7 +1,15 @@
 import { useState } from "react"
 import {
-  Folder, FolderOpen, FileText, ChevronRight, ChevronDown,
-  GripVertical, Edit2, Check, X, Plus,
+  Folder,
+  FolderOpen,
+  FileText,
+  ChevronRight,
+  ChevronDown,
+  GripVertical,
+  Edit2,
+  Check,
+  X,
+  Plus,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/shared/lib/utils"
@@ -33,13 +41,26 @@ function InlineNameEditor({ name, onSave }: InlineNameEditorProps) {
           autoFocus
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false) }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit()
+            if (e.key === "Escape") setEditing(false)
+          }}
           className="h-7 flex-1 text-sm"
         />
-        <Button variant="ghost" size="sm" onClick={commit} className="size-6 p-0 text-primary">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={commit}
+          className="size-6 p-0 text-primary"
+        >
           <Check className="size-3.5" />
         </Button>
-        <Button variant="ghost" size="sm" onClick={() => setEditing(false)} className="size-6 p-0 text-muted-foreground">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setEditing(false)}
+          className="size-6 p-0 text-muted-foreground"
+        >
           <X className="size-3.5" />
         </Button>
       </div>
@@ -48,11 +69,16 @@ function InlineNameEditor({ name, onSave }: InlineNameEditorProps) {
 
   return (
     <div className="group/name flex min-w-0 flex-1 items-center gap-1.5">
-      <span className="truncate text-sm font-medium text-foreground">{name}</span>
+      <span className="truncate text-sm font-medium text-foreground">
+        {name}
+      </span>
       <Button
         variant="ghost"
         size="sm"
-        onClick={() => { setDraft(name); setEditing(true) }}
+        onClick={() => {
+          setDraft(name)
+          setEditing(true)
+        }}
         className="size-5 shrink-0 p-0 opacity-0 transition-opacity group-hover/name:opacity-100"
       >
         <Edit2 className="size-3 text-muted-foreground" />
@@ -64,23 +90,37 @@ function InlineNameEditor({ name, onSave }: InlineNameEditorProps) {
 // ─── Tree helpers ─────────────────────────────────────────────────────────────
 
 let _nodeCounter = 2000
-function newNodeId() { return `result-${++_nodeCounter}` }
+function newNodeId() {
+  return `result-${++_nodeCounter}`
+}
 
-function addChildToNode(nodes: FolderNode[], parentId: string, child: FolderNode): FolderNode[] {
+function addChildToNode(
+  nodes: FolderNode[],
+  parentId: string,
+  child: FolderNode
+): FolderNode[] {
   return nodes.map((n) => {
     if (n.id === parentId) return { ...n, children: [...n.children, child] }
     return { ...n, children: addChildToNode(n.children, parentId, child) }
   })
 }
 
-function renameNode(nodes: FolderNode[], id: string, name: string): FolderNode[] {
+function renameNode(
+  nodes: FolderNode[],
+  id: string,
+  name: string
+): FolderNode[] {
   return nodes.map((n) => {
     if (n.id === id) return { ...n, name }
     return { ...n, children: renameNode(n.children, id, name) }
   })
 }
 
-function updateNodeInTree(nodes: FolderNode[], id: string, patch: Partial<FolderNode>): FolderNode[] {
+function updateNodeInTree(
+  nodes: FolderNode[],
+  id: string,
+  patch: Partial<FolderNode>
+): FolderNode[] {
   return nodes.map((n) => {
     if (n.id === id) return { ...n, ...patch }
     return { ...n, children: updateNodeInTree(n.children, id, patch) }
@@ -114,40 +154,77 @@ interface FolderResultNodeProps {
 }
 
 function FolderResultNode({
-  node, files, allFiles, depth, draggedFile,
-  onDragStart, onDrop, onSaveFolder, onRenameNode, onAddChild,
+  node,
+  files,
+  allFiles,
+  depth,
+  draggedFile,
+  onDragStart,
+  onDrop,
+  onSaveFolder,
+  onRenameNode,
+  onAddChild,
 }: FolderResultNodeProps) {
   const [open, setOpen] = useState(depth === 0 ? false : true)
   const [dragOver, setDragOver] = useState(false)
 
   const isNhom = depth === 2
   const isMedium = depth === 1
-  const totalFiles = files.length + node.children.reduce((s, c) => s + (allFiles[c.id] ?? []).length, 0)
+  const totalFiles =
+    files.length +
+    node.children.reduce((s, c) => s + (allFiles[c.id] ?? []).length, 0)
 
   return (
     <div>
       <div
         className={cn(
           "flex items-center gap-2 rounded-lg px-2 py-1.5 transition-all",
-          dragOver ? "bg-primary/10 ring-1 ring-primary/30" : "hover:bg-muted",
+          dragOver ? "bg-primary/10 ring-1 ring-primary/30" : "hover:bg-muted"
         )}
         style={{ paddingLeft: `${8 + depth * 20}px` }}
-        onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+        onDragOver={(e) => {
+          e.preventDefault()
+          setDragOver(true)
+        }}
         onDragLeave={() => setDragOver(false)}
-        onDrop={(e) => { e.preventDefault(); setDragOver(false); onDrop(node.id) }}
+        onDrop={(e) => {
+          e.preventDefault()
+          setDragOver(false)
+          onDrop(node.id)
+        }}
       >
-        <Button variant="ghost" size="sm" onClick={() => setOpen((v) => !v)} className="size-5 shrink-0 p-0 text-muted-foreground">
-          {node.children.length > 0 || files.length > 0
-            ? open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />
-            : <span className="size-3.5" />}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setOpen((v) => !v)}
+          className="size-5 shrink-0 p-0 text-muted-foreground"
+        >
+          {node.children.length > 0 || files.length > 0 ? (
+            open ? (
+              <ChevronDown className="size-3.5" />
+            ) : (
+              <ChevronRight className="size-3.5" />
+            )
+          ) : (
+            <span className="size-3.5" />
+          )}
         </Button>
 
-        {open ? <FolderOpen className="size-4 shrink-0 text-primary" /> : <Folder className="size-4 shrink-0 text-primary" />}
+        {open ? (
+          <FolderOpen className="size-4 shrink-0 text-primary" />
+        ) : (
+          <Folder className="size-4 shrink-0 text-primary" />
+        )}
 
         {isNhom ? (
-          <InlineNameEditor name={node.name} onSave={(name) => onRenameNode(node.id, name)} />
+          <InlineNameEditor
+            name={node.name}
+            onSave={(name) => onRenameNode(node.id, name)}
+          />
         ) : (
-          <span className="flex-1 truncate text-sm font-medium text-foreground">{node.name}</span>
+          <span className="flex-1 truncate text-sm font-medium text-foreground">
+            {node.name}
+          </span>
         )}
 
         {isMedium && (
@@ -156,14 +233,14 @@ function FolderResultNode({
             size="sm"
             onClick={() => onAddChild(node.id)}
             title="Thêm nhóm"
-            className="size-6 shrink-0 p-0 opacity-0 transition-opacity hover:text-primary group-hover:opacity-100"
+            className="size-6 shrink-0 p-0 opacity-0 transition-opacity group-hover:opacity-100 hover:text-primary"
           >
             <Plus className="size-3" />
           </Button>
         )}
 
         {totalFiles > 0 && (
-          <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] font-bold text-primary">
+          <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 font-roboto text-[10px] font-bold text-primary">
             {totalFiles}
           </span>
         )}
@@ -194,7 +271,7 @@ function FolderResultNode({
                 <div className="flex size-6 shrink-0 items-center justify-center rounded bg-primary">
                   <FileText className="size-3 text-primary-foreground" />
                 </div>
-                <span className="flex-1 truncate font-mono text-xs text-muted-foreground">
+                <span className="flex-1 truncate font-roboto text-xs text-muted-foreground">
                   {filePath.split("/").pop()}
                 </span>
               </motion.div>
@@ -247,16 +324,27 @@ interface FolderResultTreeProps {
   onRenameGroup: (groupId: string, label: string) => void
 }
 
-export function FolderResultTree({ tree, files, onTreeChange, onFilesChange }: FolderResultTreeProps) {
-  const [draggedFile, setDraggedFile] = useState<{ path: string; fromId: string } | null>(null)
+export function FolderResultTree({
+  tree,
+  files,
+  onTreeChange,
+  onFilesChange,
+}: FolderResultTreeProps) {
+  const [draggedFile, setDraggedFile] = useState<{
+    path: string
+    fromId: string
+  } | null>(null)
 
-  const handleDragStart = (path: string, fromId: string) => setDraggedFile({ path, fromId })
+  const handleDragStart = (path: string, fromId: string) =>
+    setDraggedFile({ path, fromId })
 
   const handleDrop = (toId: string) => {
     if (!draggedFile || draggedFile.fromId === toId) return
     onFilesChange({
       ...files,
-      [draggedFile.fromId]: (files[draggedFile.fromId] ?? []).filter((f) => f !== draggedFile.path),
+      [draggedFile.fromId]: (files[draggedFile.fromId] ?? []).filter(
+        (f) => f !== draggedFile.path
+      ),
       [toId]: [...(files[toId] ?? []), draggedFile.path],
     })
     setDraggedFile(null)
@@ -271,7 +359,12 @@ export function FolderResultTree({ tree, files, onTreeChange, onFilesChange }: F
   }
 
   const handleAddChild = (parentId: string) => {
-    const newNode: FolderNode = { id: newNodeId(), name: "Nhóm mới", children: [], criteria: [] }
+    const newNode: FolderNode = {
+      id: newNodeId(),
+      name: "Nhóm mới",
+      children: [],
+      criteria: [],
+    }
     onTreeChange(addChildToNode(tree, parentId, newNode))
   }
 

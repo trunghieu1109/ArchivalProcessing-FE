@@ -1,5 +1,5 @@
 import { useRef, useState } from "react"
-import { CloudUpload } from "lucide-react"
+import { CloudUpload, FolderOpen } from "lucide-react"
 import { cn } from "@/shared/lib/utils"
 
 interface DropZoneProps {
@@ -7,15 +7,37 @@ interface DropZoneProps {
   onFile: (file: File) => void
   label: string
   hint: string
+  maxSize?: string
+  buttonColor?: "blue" | "purple" | "green"
 }
 
-export function DropZone({ accept, onFile, label, hint }: DropZoneProps) {
+export function DropZone({ accept, onFile, label, hint, maxSize, buttonColor = "blue" }: DropZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
 
+  const buttonStyle =
+    buttonColor === "purple"
+      ? { border: "1.5px solid #7C3AED", color: "#7C3AED" }
+      : buttonColor === "green"
+        ? { border: "1.5px solid #059669", color: "#059669" }
+        : { border: "1.5px solid #0052FF", color: "#0052FF" }
+
+  const iconBg =
+    buttonColor === "purple"
+      ? "bg-purple-50"
+      : buttonColor === "green"
+        ? "bg-emerald-50"
+        : "bg-blue-50"
+
+  const iconColor =
+    buttonColor === "purple"
+      ? "#7C3AED"
+      : buttonColor === "green"
+        ? "#059669"
+        : "#0052FF"
+
   return (
     <div
-      onClick={() => inputRef.current?.click()}
       onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
       onDragLeave={() => setDragging(false)}
       onDrop={(e) => {
@@ -25,33 +47,36 @@ export function DropZone({ accept, onFile, label, hint }: DropZoneProps) {
         if (f) onFile(f)
       }}
       className={cn(
-        "group flex cursor-pointer flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed py-10 transition-all duration-300",
+        "flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed py-8 transition-all duration-300",
         dragging
           ? "scale-[1.01] border-primary bg-primary/5"
-          : "border-border hover:border-primary/50 hover:bg-primary/[0.02]",
+          : "border-[#CBD5E1] bg-[#F8FAFC]",
       )}
     >
       <input ref={inputRef} type="file" accept={accept} className="hidden"
         onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f) }} />
 
-      <div
-        className={cn(
-          "flex size-14 items-center justify-center rounded-xl transition-all duration-300 group-hover:scale-110",
-          dragging ? "shadow-[0_8px_24px_rgba(0,82,255,0.35)]" : "shadow-[0_4px_14px_rgba(0,82,255,0.25)]",
-        )}
-        style={{ background: "linear-gradient(135deg, #0052FF, #4D7CFF)" }}
+      <div className={cn("flex size-12 items-center justify-center rounded-full", iconBg)}>
+        <CloudUpload className="size-6" style={{ color: iconColor }} />
+      </div>
+
+      <p className="text-sm font-semibold text-[#0F172A]">{label}</p>
+      <p className="text-xs text-[#94A3B8]">hoặc</p>
+
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        className="flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold transition-all hover:opacity-80"
+        style={buttonStyle}
       >
-        <CloudUpload className="size-6 text-white" />
-      </div>
+        <FolderOpen className="size-4" />
+        Chọn file
+      </button>
 
-      <div className="text-center">
-        <p className="text-sm font-semibold text-foreground">{label}</p>
-        <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.15em] text-muted-foreground">{hint}</p>
-      </div>
-
-      <span className="font-mono text-[11px] uppercase tracking-[0.15em] text-muted-foreground/60 transition-colors group-hover:text-primary/60">
-        Kéo thả hoặc nhấn để chọn
-      </span>
+      <p className="text-xs text-[#94A3B8]">
+        Định dạng hỗ trợ: {hint}
+        {maxSize && <span> &bull; Dung lượng tối đa: {maxSize}</span>}
+      </p>
     </div>
   )
 }

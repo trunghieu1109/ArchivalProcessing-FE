@@ -236,88 +236,54 @@ export function UploadPage() {
 
   return (
     <div className="min-h-svh bg-[#F0F4F8]">
-      {/* Hero header */}
-      <div className="relative overflow-hidden bg-[#0F172A] px-8 py-12">
+      {/* Hero header — light */}
+      <div className="relative overflow-hidden bg-gradient-to-br from-[#EEF2FF] via-[#F0F4FF] to-[#E8EEFF] px-4 py-5 shadow-sm">
         <div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            backgroundImage:
-              "radial-gradient(circle, white 1px, transparent 1px)",
-            backgroundSize: "32px 32px",
-            opacity: 0.03,
-          }}
-        />
-        <div
-          className="pointer-events-none absolute -top-32 -right-32 size-96 rounded-full"
+          className="pointer-events-none absolute -top-24 -right-24 size-80 rounded-full"
           style={{
             background:
-              "radial-gradient(circle, rgba(0,82,255,0.15) 0%, transparent 70%)",
+              "radial-gradient(circle, rgba(0,82,255,0.08) 0%, transparent 70%)",
           }}
         />
-
         <div className="relative mx-auto max-w-6xl">
-          <div className="flex items-center justify-between gap-8">
+          <div className="flex items-start justify-between gap-8">
+            {/* Left: badge + title + description */}
             <motion.div
-              initial={{ opacity: 0, y: 24 }}
+              initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, ease: easeOut }}
+              transition={{ duration: 0.6, ease: easeOut }}
             >
-              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#0052FF]/30 bg-[#0052FF]/10 px-4 py-1.5">
-                <span className="size-1.5 rounded-full bg-[#0052FF]" />
-                <span className="font-roboto text-[11px] tracking-[0.15em] text-[#4D7CFF] uppercase">
-                  Hệ thống chỉnh lý tài liệu
-                </span>
-              </div>
-              <h1
-                className="font-roboto text-4xl text-white md:text-5xl"
-                style={{
-                  fontFamily: "'Calistoga', Georgia, serif",
-                  letterSpacing: "-0.02em",
-                  lineHeight: 1.05,
-                }}
-              >
-                Xử lý{" "}
-                <span
-                  style={{
-                    background: "linear-gradient(to right, #0052FF, #4D7CFF)",
-                    WebkitBackgroundClip: "text",
-                    backgroundClip: "text",
-                    color: "transparent",
-                  }}
-                >
-                  Tài liệu
-                </span>
-              </h1>
-              <p className="mt-3 max-w-md text-sm leading-relaxed text-white/50">
-                Tải lên tài liệu, xác nhận cấu trúc phông, xem metadata OCR và
-                phân cụm tự động.
-              </p>
+              <img
+                src="/assets/mbfs.png"
+                alt="MBFS Logo"
+                className="h-20 w-auto object-contain"
+              />
             </motion.div>
 
-            {/* Step progress — clickable to navigate back */}
+            {/* Right: step indicators */}
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.7, ease: easeOut, delay: 0.15 }}
-              className="hidden shrink-0 items-center md:flex"
+              transition={{ duration: 0.6, ease: easeOut, delay: 0.15 }}
+              className="hidden shrink-0 items-center pt-2 md:flex"
             >
               {STEP_LABELS.map((label, i) => {
-                const step = (i + 1) as AppStep
-                const isActive = currentStep === step
-                const isDone = currentStep > step
+                const s = (i + 1) as AppStep
+                const isActive = currentStep === s
+                const isDone = currentStep > s
                 const canNav = isDone
                 return (
                   <div key={i} className="flex items-center">
-                    <div className="flex flex-col items-center gap-2">
+                    <div className="flex flex-col items-center gap-1.5">
                       <button
-                        onClick={() => canNav && goTo(step)}
+                        onClick={() => canNav && goTo(s)}
                         className={cn(
-                          "flex size-9 items-center justify-center rounded-xl text-xs font-bold transition-all duration-300",
+                          "flex size-10 items-center justify-center rounded-full text-sm font-bold transition-all duration-300",
                           isDone
                             ? "text-white hover:scale-105"
                             : isActive
-                              ? "border border-[#0052FF]/50 bg-[#0052FF]/15 text-[#4D7CFF]"
-                              : "border border-white/20 bg-white/10 text-white/60",
+                              ? "text-white"
+                              : "border-2 border-[#CBD5E1] bg-white text-[#94A3B8]",
                           canNav ? "cursor-pointer" : "cursor-default"
                         )}
                         style={
@@ -325,28 +291,34 @@ export function UploadPage() {
                             ? {
                                 background:
                                   "linear-gradient(135deg, #0052FF, #4D7CFF)",
-                                boxShadow: "0 4px 14px rgba(0,82,255,0.4)",
+                                boxShadow: "0 4px 12px rgba(0,82,255,0.3)",
                               }
-                            : {}
+                            : isActive
+                              ? {
+                                  background:
+                                    "linear-gradient(135deg, #0052FF, #4D7CFF)",
+                                  boxShadow: "0 4px 12px rgba(0,82,255,0.3)",
+                                }
+                              : {}
                         }
                       >
-                        {isDone ? "✓" : step}
+                        {isDone ? "✓" : s}
                       </button>
                       <span
                         className={cn(
-                          "max-w-20 text-center font-roboto text-[10px] tracking-[0.1em] uppercase",
+                          "text-[11px] font-medium",
                           isActive
-                            ? "text-white/90"
+                            ? "font-semibold text-[#0052FF]"
                             : isDone
-                              ? "text-white/70"
-                              : "text-white/50"
+                              ? "text-[#64748B]"
+                              : "text-[#94A3B8]"
                         )}
                       >
                         {label}
                       </span>
                     </div>
                     {i < STEP_LABELS.length - 1 && (
-                      <div className="mx-3 mb-5 h-px w-6 bg-white/10" />
+                      <div className="mx-2 mb-5 h-px w-8 bg-[#CBD5E1]" />
                     )}
                   </div>
                 )
@@ -380,38 +352,38 @@ export function UploadPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -16 }}
               transition={{ duration: 0.4, ease: easeOut }}
+              className="flex flex-col gap-4"
             >
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
-                <div className="md:col-span-3">
-                  <ZipSection
-                    ref={zipRef}
-                    processState={zipState}
-                    onProcessStateChange={syncZipState}
-                    onHasFileChange={syncZipHas}
-                    onEntriesChange={syncZipEntries}
-                    ocr={ocr}
-                  />
-                </div>
-                <div className="flex flex-col gap-4 md:col-span-2">
-                  <DocxSection
-                    ref={doc1Ref}
-                    index={1}
-                    label="Phương án phân loại"
-                    sublabel=".docx"
-                    processState={doc1State}
-                    onProcessStateChange={syncDoc1State}
-                    onHasFileChange={syncDoc1Has}
-                  />
-                  <DocxSection
-                    ref={doc2Ref}
-                    index={2}
-                    label="Thời hạn bảo quản"
-                    sublabel=".docx"
-                    processState={doc2State}
-                    onProcessStateChange={syncDoc2State}
-                    onHasFileChange={syncDoc2Has}
-                  />
-                </div>
+              {/* Zip — full width */}
+              <ZipSection
+                ref={zipRef}
+                processState={zipState}
+                onProcessStateChange={syncZipState}
+                onHasFileChange={syncZipHas}
+                onEntriesChange={syncZipEntries}
+                ocr={ocr}
+              />
+
+              {/* Docx — side by side */}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <DocxSection
+                  ref={doc1Ref}
+                  index={1}
+                  label="Phương án phân loại"
+                  sublabel="Tải lên file Word chứa phương án phân loại tài liệu."
+                  processState={doc1State}
+                  onProcessStateChange={syncDoc1State}
+                  onHasFileChange={syncDoc1Has}
+                />
+                <DocxSection
+                  ref={doc2Ref}
+                  index={2}
+                  label="Thời hạn bảo quản"
+                  sublabel="Tải lên file Word chứa thời hạn bảo quản."
+                  processState={doc2State}
+                  onProcessStateChange={syncDoc2State}
+                  onHasFileChange={syncDoc2Has}
+                />
               </div>
 
               {/* Action bar */}
@@ -419,7 +391,7 @@ export function UploadPage() {
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, ease: easeOut, delay: 0.3 }}
-                className="mt-4 flex items-center justify-between gap-4 rounded-2xl border border-border bg-card px-6 py-4 shadow-sm"
+                className="flex items-center justify-between gap-4 rounded-2xl border border-border bg-card px-6 py-4 shadow-sm"
               >
                 <div className="flex items-center gap-4">
                   <div className="flex gap-2">
@@ -431,19 +403,32 @@ export function UploadPage() {
                       <div
                         key={i}
                         className={cn(
-                          "flex items-center gap-1.5 rounded-full px-3 py-1 font-mono text-[11px] font-semibold uppercase tracking-[0.1em] transition-all duration-200",
+                          "flex items-center gap-1.5 rounded-full px-3 py-1 font-roboto text-[11px] font-semibold tracking-[0.1em] uppercase transition-all duration-200",
                           s.state === "done"
                             ? "text-primary-foreground"
                             : s.has
                               ? "border border-border bg-muted text-foreground"
                               : "border border-border bg-transparent text-muted-foreground"
                         )}
-                        style={s.state === "done" ? { background: "linear-gradient(to right, #0052FF, #4D7CFF)" } : {}}
+                        style={
+                          s.state === "done"
+                            ? {
+                                background:
+                                  "linear-gradient(to right, #0052FF, #4D7CFF)",
+                              }
+                            : {}
+                        }
                       >
-                        <div className={cn(
-                          "size-1.5 rounded-full",
-                          s.state === "done" ? "bg-white" : s.has ? "bg-primary" : "bg-muted-foreground/40"
-                        )} />
+                        <div
+                          className={cn(
+                            "size-1.5 rounded-full",
+                            s.state === "done"
+                              ? "bg-white"
+                              : s.has
+                                ? "bg-primary"
+                                : "bg-muted-foreground/40"
+                          )}
+                        />
                         {s.label}
                       </div>
                     ))}
@@ -455,14 +440,20 @@ export function UploadPage() {
                       </span>
                     ) : allProcessing ? (
                       <span className="flex items-center gap-1.5 text-muted-foreground">
-                        <Loader2 className="size-3.5 animate-spin text-primary" /> Đang xử lý…
+                        <Loader2 className="size-3.5 animate-spin text-primary" />{" "}
+                        Đang xử lý…
                       </span>
                     ) : hasAnyFile ? (
                       <span className="text-muted-foreground">
-                        <span className="font-bold text-foreground">{readyCount}</span> / 3 file sẵn sàng
+                        <span className="font-bold text-foreground">
+                          {readyCount}
+                        </span>{" "}
+                        / 3 file sẵn sàng
                       </span>
                     ) : (
-                      <span className="text-muted-foreground">Tải lên đủ 3 file để bắt đầu</span>
+                      <span className="text-muted-foreground">
+                        Tải lên đủ 3 file để bắt đầu
+                      </span>
                     )}
                   </div>
                 </div>
@@ -476,15 +467,53 @@ export function UploadPage() {
                       ? "text-primary-foreground hover:-translate-y-0.5 active:scale-[0.98]"
                       : "cursor-not-allowed bg-muted text-muted-foreground"
                   )}
-                  style={!allProcessing ? { background: "linear-gradient(to right, #0052FF, #4D7CFF)", boxShadow: "0 4px 14px rgba(0,82,255,0.25)" } : {}}
+                  style={
+                    !allProcessing
+                      ? {
+                          background:
+                            "linear-gradient(to right, #0052FF, #4D7CFF)",
+                          boxShadow: "0 4px 14px rgba(0,82,255,0.25)",
+                        }
+                      : {}
+                  }
                 >
-                  {allProcessing ? <Loader2 className="size-4 animate-spin" />
-                    : allDone ? <CheckCircle2 className="size-4" />
-                    : <Play className="size-4" />}
-                  <span>{allProcessing ? "Đang xử lý…" : allDone ? "Tiếp tục" : "Bắt đầu xử lý"}</span>
-                  {!allProcessing && <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />}
+                  {allProcessing ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : allDone ? (
+                    <CheckCircle2 className="size-4" />
+                  ) : (
+                    <Play className="size-4" />
+                  )}
+                  <span>
+                    {allProcessing
+                      ? "Đang xử lý…"
+                      : allDone
+                        ? "Tiếp tục"
+                        : "Bắt đầu xử lý"}
+                  </span>
+                  {!allProcessing && (
+                    <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
+                  )}
                 </button>
               </motion.div>
+
+              {/* Footer security note */}
+              <p className="flex items-center justify-center gap-1.5 text-xs text-[#94A3B8]">
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
+                Dữ liệu của bạn được bảo mật và chỉ sử dụng cho mục đích xử lý
+                tài liệu.
+              </p>
             </motion.div>
           )}
 

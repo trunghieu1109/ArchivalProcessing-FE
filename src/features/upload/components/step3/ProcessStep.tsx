@@ -138,10 +138,6 @@ export function ProcessStep({ pdfPaths, onContinue }: ProcessStepProps) {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="section-label mb-3">
-            <span className="pulse-dot size-1.5 rounded-full bg-primary" />
-            Bước 3 / 4
-          </div>
           <h2 className="text-2xl text-foreground">Xử lý & Phân cụm</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Metadata được tải song song với quá trình phân cụm. Xác minh các
@@ -150,7 +146,7 @@ export function ProcessStep({ pdfPaths, onContinue }: ProcessStepProps) {
         </div>
         {warningCount > 0 && (
           <div className="shrink-0 text-right">
-            <p className="font-mono text-[11px] text-amber-600">Cảnh báo</p>
+            <p className="font-roboto text-[11px] text-amber-600">Cảnh báo</p>
             <p className="text-xl font-bold text-amber-600">{warningCount}</p>
           </div>
         )}
@@ -161,7 +157,7 @@ export function ProcessStep({ pdfPaths, onContinue }: ProcessStepProps) {
         {/* LEFT — Metadata list */}
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
-            <span className="font-mono text-[11px] font-semibold tracking-[0.15em] text-muted-foreground uppercase">
+            <span className="font-roboto text-[11px] font-semibold tracking-[0.15em] text-muted-foreground uppercase">
               Metadata tài liệu
             </span>
             {items.length < paths.length && (

@@ -1,7 +1,16 @@
 import { useState } from "react"
 import {
-  ChevronRight, ChevronDown, Folder, FolderOpen,
-  Plus, Trash2, Edit2, Check, X, RefreshCw, Loader2,
+  ChevronRight,
+  ChevronDown,
+  Folder,
+  FolderOpen,
+  Plus,
+  Trash2,
+  Edit2,
+  Check,
+  X,
+  RefreshCw,
+  Loader2,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { toast } from "sonner"
@@ -26,7 +35,11 @@ interface CriteriaEditorProps {
   onLoadingChange: (loading: boolean) => void
 }
 
-function CriteriaEditor({ plan, onReapply, onLoadingChange }: CriteriaEditorProps) {
+function CriteriaEditor({
+  plan,
+  onReapply,
+  onLoadingChange,
+}: CriteriaEditorProps) {
   const [largeRule, setLargeRule] = useState(
     "Chia tài liệu theo năm, mỗi năm là một nhóm lớn."
   )
@@ -35,7 +48,10 @@ function CriteriaEditor({ plan, onReapply, onLoadingChange }: CriteriaEditorProp
   )
   const [loading, setLoading] = useState(false)
 
-  const setLoadingState = (v: boolean) => { setLoading(v); onLoadingChange(v) }
+  const setLoadingState = (v: boolean) => {
+    setLoading(v)
+    onLoadingChange(v)
+  }
 
   const handleReapply = async () => {
     setLoadingState(true)
@@ -109,9 +125,11 @@ function CriteriaEditor({ plan, onReapply, onLoadingChange }: CriteriaEditorProp
         disabled={loading}
         className="self-end"
       >
-        {loading
-          ? <Loader2 data-icon="inline-start" className="animate-spin" />
-          : <RefreshCw data-icon="inline-start" />}
+        {loading ? (
+          <Loader2 data-icon="inline-start" className="animate-spin" />
+        ) : (
+          <RefreshCw data-icon="inline-start" />
+        )}
         {loading ? "Đang áp dụng…" : "Áp dụng lại"}
       </Button>
     </div>
@@ -349,12 +367,6 @@ export function FolderTree({
     >
       {/* Header */}
       <div>
-        <div className="mb-1 inline-flex items-center gap-2 rounded-full border border-[#0052FF]/30 bg-[#0052FF]/5 px-3 py-1">
-          <span className="size-1.5 rounded-full bg-[#0052FF]" />
-          <span className="font-roboto text-[11px] tracking-[0.15em] text-[#0052FF] uppercase">
-            Bước 2 / 4
-          </span>
-        </div>
         <h2
           className="text-2xl text-[#0F172A]"
           style={{ fontFamily: "'Calistoga', Georgia, serif" }}

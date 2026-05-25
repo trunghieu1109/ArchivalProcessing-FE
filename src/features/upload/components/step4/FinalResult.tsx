@@ -79,12 +79,6 @@ export function FinalResult({
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="mb-1 inline-flex items-center gap-2 rounded-full border border-[#0052FF]/30 bg-[#0052FF]/5 px-3 py-1">
-            <span className="size-1.5 rounded-full bg-[#0052FF]" />
-            <span className="font-roboto text-[11px] tracking-[0.15em] text-[#0052FF] uppercase">
-              Bước 4 / 4
-            </span>
-          </div>
           <h2
             className="text-2xl text-[#0F172A]"
             style={{ fontFamily: "'Calistoga', Georgia, serif" }}

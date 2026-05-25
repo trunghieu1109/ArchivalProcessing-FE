@@ -2,21 +2,44 @@ import { forwardRef, useState, useImperativeHandle } from "react"
 import * as React from "react"
 import JSZip from "jszip"
 import {
-  FileArchive, CheckCircle2, Loader2, AlertCircle,
-  Folder, File, ArrowUpDown, ChevronLeft, ChevronRight,
+  FileArchive,
+  CheckCircle2,
+  Loader2,
+  AlertCircle,
+  Folder,
+  File,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react"
 import { motion } from "framer-motion"
 import {
-  type ColumnDef, type SortingState, flexRender,
-  getCoreRowModel, getPaginationRowModel, getSortedRowModel, useReactTable,
+  type ColumnDef,
+  type SortingState,
+  flexRender,
+  getCoreRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  useReactTable,
 } from "@tanstack/react-table"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/shared/lib/utils"
 import { DropZone } from "./DropZone"
 import { FileChip } from "./FileChip"
 import type { UseOcrFolderResult } from "@/features/upload/hooks/useOcrFolder"
-import type { ProcessState, SectionHandle, ArchiveEntry } from "@/features/upload/types"
+import type {
+  ProcessState,
+  SectionHandle,
+  ArchiveEntry,
+} from "@/features/upload/types"
 
 const HARDCODED_FOLDER_PATH = "HC/UBND/PNV"
 
@@ -31,26 +54,36 @@ function formatBytes(bytes: number) {
 const columns: ColumnDef<ArchiveEntry>[] = [
   {
     id: "icon",
-    cell: ({ row }) => row.original.isDir
-      ? <Folder className="size-3.5 text-primary" />
-      : <File className="size-3.5 text-muted-foreground" />,
+    cell: ({ row }) =>
+      row.original.isDir ? (
+        <Folder className="size-3.5 text-primary" />
+      ) : (
+        <File className="size-3.5 text-muted-foreground" />
+      ),
     enableSorting: false,
     size: 32,
   },
   {
     accessorKey: "name",
     header: ({ column }) => (
-      <Button variant="ghost" size="sm"
-        className="-ml-2 h-7 gap-1 px-2 font-mono text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground"
-        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="-ml-2 h-7 gap-1 px-2 font-roboto text-[11px] font-semibold tracking-[0.1em] text-muted-foreground uppercase"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+      >
         Tên <ArrowUpDown className="size-3" />
       </Button>
     ),
     cell: ({ row }) => (
-      <span className={cn(
-        "block truncate font-mono text-[12px]",
-        row.original.isDir ? "font-semibold text-foreground" : "text-muted-foreground",
-      )}>
+      <span
+        className={cn(
+          "block truncate font-roboto text-[12px]",
+          row.original.isDir
+            ? "font-semibold text-foreground"
+            : "text-muted-foreground"
+        )}
+      >
         {row.original.name}
       </span>
     ),
@@ -58,14 +91,17 @@ const columns: ColumnDef<ArchiveEntry>[] = [
   {
     accessorKey: "size",
     header: ({ column }) => (
-      <Button variant="ghost" size="sm"
-        className="-mr-2 ml-auto flex h-7 gap-1 px-2 font-mono text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground"
-        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="-mr-2 ml-auto flex h-7 gap-1 px-2 font-roboto text-[11px] font-semibold tracking-[0.1em] text-muted-foreground uppercase"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+      >
         Kích thước <ArrowUpDown className="size-3" />
       </Button>
     ),
     cell: ({ row }) => (
-      <span className="block text-right font-mono text-[11px] text-muted-foreground/60">
+      <span className="block text-right font-roboto text-[11px] text-muted-foreground/60">
         {row.original.isDir ? "" : formatBytes(row.original.size)}
       </span>
     ),
@@ -82,7 +118,16 @@ interface ZipSectionProps {
 }
 
 export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
-  ({ processState, onProcessStateChange, onHasFileChange, onEntriesChange, ocr }, ref) => {
+  (
+    {
+      processState,
+      onProcessStateChange,
+      onHasFileChange,
+      onEntriesChange,
+      ocr,
+    },
+    ref
+  ) => {
     const [fileName, setFileName] = useState("")
     const [entries, setEntries] = useState<ArchiveEntry[]>([])
     const [error, setError] = useState("")
@@ -119,13 +164,17 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
       try {
         const zip = await JSZip.loadAsync(file)
         const list: ArchiveEntry[] = []
-        zip.forEach((path, entry) => list.push({ name: path, size: 0, isDir: entry.dir }))
-        await Promise.all(list.map(async (entry, i) => {
-          if (!entry.isDir) {
-            const data = await zip.file(entry.name)?.async("uint8array")
-            list[i].size = data?.length ?? 0
-          }
-        }))
+        zip.forEach((path, entry) =>
+          list.push({ name: path, size: 0, isDir: entry.dir })
+        )
+        await Promise.all(
+          list.map(async (entry, i) => {
+            if (!entry.isDir) {
+              const data = await zip.file(entry.name)?.async("uint8array")
+              list[i].size = data?.length ?? 0
+            }
+          })
+        )
         list.sort((a, b) => {
           if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
           return a.name.localeCompare(b.name)
@@ -163,43 +212,70 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1], delay: 0.24 }}
         className={cn(
-          "relative flex h-full flex-col gap-4 overflow-hidden rounded-2xl border bg-card p-5 transition-all duration-300",
+          "relative flex h-full flex-col gap-4 overflow-hidden rounded-2xl border bg-white p-5 transition-all duration-300",
           isDone
             ? "border-primary/20 shadow-[0_4px_24px_rgba(0,82,255,0.08)]"
-            : "border-border shadow-sm hover:shadow-md",
+            : "border-[#E2E8F0] shadow-sm"
         )}
       >
-        {isDone && (
-          <div className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-primary/[0.04] to-transparent" />
-        )}
-
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground/50">03</span>
-            <div>
-              <p className="text-sm font-semibold leading-none text-foreground">Kho lưu trữ</p>
-              <p className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">.zip / .rar</p>
-            </div>
+        <div className="flex items-start gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-blue-50">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#0052FF"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+            </svg>
           </div>
-          {isDone && (
-            <span className="flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold text-primary-foreground"
-              style={{ background: "linear-gradient(to right, #0052FF, #4D7CFF)" }}>
-              <CheckCircle2 className="size-3" /> Xong
-            </span>
-          )}
-          {isProcessing && (
-            <span className="flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-[11px] font-semibold text-primary">
-              <Loader2 className="size-3 animate-spin" /> Đang xử lý
-            </span>
-          )}
+          <div className="flex-1">
+            <div className="flex items-center justify-between">
+              <p className="text-base font-bold text-[#0F172A]">Kho lưu trữ</p>
+              {isDone && (
+                <span
+                  className="flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold text-white"
+                  style={{
+                    background: "linear-gradient(to right, #0052FF, #4D7CFF)",
+                  }}
+                >
+                  <CheckCircle2 className="size-3" /> Xong
+                </span>
+              )}
+              {isProcessing && (
+                <span className="flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-[11px] font-semibold text-primary">
+                  <Loader2 className="size-3 animate-spin" /> Đang xử lý
+                </span>
+              )}
+            </div>
+            <p className="mt-0.5 text-sm text-[#64748B]">
+              Tải lên file nén chứa toàn bộ tài liệu cần xử lý.
+            </p>
+          </div>
         </div>
 
         {fileName ? (
-          <FileChip fileName={fileName} loading={loading} processState={processState}
-            onClear={clear} icon={<FileArchive className="size-4" />} />
+          <FileChip
+            fileName={fileName}
+            loading={loading}
+            processState={processState}
+            onClear={clear}
+            icon={<FileArchive className="size-4" />}
+          />
         ) : (
-          <DropZone accept=".zip,.rar" onFile={handleFile} label="File nén ZIP / RAR" hint=".zip, .rar" />
+          <DropZone
+            accept=".zip,.rar"
+            onFile={handleFile}
+            label="Kéo thả file .zip hoặc .rar vào đây"
+            hint=".zip, .rar"
+            maxSize="2GB"
+            buttonColor="blue"
+          />
         )}
 
         {error && (
@@ -211,10 +287,10 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
         {entries.length > 0 && (
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
-              <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              <span className="font-roboto text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
                 Nội dung
               </span>
-              <span className="rounded-full border border-border bg-muted px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
+              <span className="rounded-full border border-border bg-muted px-2 py-0.5 font-roboto text-[10px] text-muted-foreground">
                 {fileCount} file{dirCount > 0 ? `, ${dirCount} thư mục` : ""}
               </span>
             </div>
@@ -223,12 +299,25 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
               <Table>
                 <TableHeader>
                   {table.getHeaderGroups().map((hg) => (
-                    <TableRow key={hg.id} className="bg-muted/50 hover:bg-muted/50">
+                    <TableRow
+                      key={hg.id}
+                      className="bg-muted/50 hover:bg-muted/50"
+                    >
                       {hg.headers.map((header) => (
-                        <TableHead key={header.id}
-                          style={{ width: header.getSize() !== 150 ? header.getSize() : undefined }}
-                          className="py-2">
-                          {flexRender(header.column.columnDef.header, header.getContext())}
+                        <TableHead
+                          key={header.id}
+                          style={{
+                            width:
+                              header.getSize() !== 150
+                                ? header.getSize()
+                                : undefined,
+                          }}
+                          className="py-2"
+                        >
+                          {flexRender(
+                            header.column.columnDef.header,
+                            header.getContext()
+                          )}
                         </TableHead>
                       ))}
                     </TableRow>
@@ -239,7 +328,10 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
                     <TableRow key={row.id} className="hover:bg-muted/30">
                       {row.getVisibleCells().map((cell) => (
                         <TableCell key={cell.id} className="py-2">
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext()
+                          )}
                         </TableCell>
                       ))}
                     </TableRow>
@@ -249,16 +341,27 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
             </div>
 
             <div className="flex items-center justify-between">
-              <span className="font-mono text-[11px] text-muted-foreground/60">
-                Trang {table.getState().pagination.pageIndex + 1} / {table.getPageCount()}
+              <span className="font-roboto text-[11px] text-muted-foreground/60">
+                Trang {table.getState().pagination.pageIndex + 1} /{" "}
+                {table.getPageCount()}
               </span>
               <div className="flex items-center gap-1">
-                <Button variant="outline" size="sm" className="h-7 px-2"
-                  onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2"
+                  onClick={() => table.previousPage()}
+                  disabled={!table.getCanPreviousPage()}
+                >
                   <ChevronLeft className="size-3.5" />
                 </Button>
-                <Button variant="outline" size="sm" className="h-7 px-2"
-                  onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2"
+                  onClick={() => table.nextPage()}
+                  disabled={!table.getCanNextPage()}
+                >
                   <ChevronRight className="size-3.5" />
                 </Button>
               </div>
