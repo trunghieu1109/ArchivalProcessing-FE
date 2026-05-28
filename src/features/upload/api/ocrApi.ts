@@ -1,4 +1,4 @@
-// All API types kept for type compatibility — no real network calls are made.
+// Shared digitization response types used by the session-backed OCR flow.
 
 export interface FolderPreviewRequest {
   folder_path: string
@@ -10,9 +10,15 @@ export interface FolderPreviewRequest {
 
 export interface JobSummary {
   id: number
+  document_id: string
   data_path: string
   status: string
+  review_status: string
+  metadata_ready: boolean
+  metadata_final: boolean
   light_metadata?: Record<string, unknown>
+  normalized_metadata?: Record<string, unknown>
+  raw_metadata?: Record<string, unknown>
 }
 
 export interface FolderPreviewResponse {

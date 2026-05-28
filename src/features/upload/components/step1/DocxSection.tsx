@@ -1,4 +1,4 @@
-import { forwardRef, useState, useImperativeHandle } from "react"
+﻿import { forwardRef, useState, useImperativeHandle } from "react"
 import mammoth from "mammoth"
 import { FileText, CheckCircle2, Loader2, AlertCircle } from "lucide-react"
 import { motion } from "framer-motion"
@@ -14,10 +14,11 @@ interface DocxSectionProps {
   processState: ProcessState
   onProcessStateChange: (s: ProcessState) => void
   onHasFileChange: (v: boolean) => void
+  onUploadFile: (file: File) => Promise<void>
 }
 
 export const DocxSection = forwardRef<SectionHandle, DocxSectionProps>(
-  ({ index, label, sublabel, processState, onProcessStateChange, onHasFileChange }, ref) => {
+  ({ index, label, sublabel, processState, onProcessStateChange, onHasFileChange, onUploadFile }, ref) => {
     const [fileName, setFileName] = useState("")
     const [hasContent, setHasContent] = useState(false)
     const [error, setError] = useState("")
@@ -41,11 +42,12 @@ export const DocxSection = forwardRef<SectionHandle, DocxSectionProps>(
       try {
         const arrayBuffer = await file.arrayBuffer()
         await mammoth.convertToHtml({ arrayBuffer })
+        await onUploadFile(file)
         setHasContent(true)
         onHasFileChange(true)
-      } catch {
-        setError("Không thể đọc file DOCX này.")
+      } catch (err) {
         setFileName("")
+        setError(err instanceof Error ? err.message : "Không thể đọc hoặc tải lên file DOCX này.")
         onHasFileChange(false)
       } finally {
         setLoading(false)

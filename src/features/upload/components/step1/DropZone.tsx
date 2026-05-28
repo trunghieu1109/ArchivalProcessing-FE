@@ -11,7 +11,14 @@ interface DropZoneProps {
   buttonColor?: "blue" | "purple" | "green"
 }
 
-export function DropZone({ accept, onFile, label, hint, maxSize, buttonColor = "blue" }: DropZoneProps) {
+export function DropZone({
+  accept,
+  onFile,
+  label,
+  hint,
+  maxSize,
+  buttonColor = "blue",
+}: DropZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
 
@@ -38,23 +45,32 @@ export function DropZone({ accept, onFile, label, hint, maxSize, buttonColor = "
 
   return (
     <div
-      onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+      onDragOver={(event) => {
+        event.preventDefault()
+        setDragging(true)
+      }}
       onDragLeave={() => setDragging(false)}
-      onDrop={(e) => {
-        e.preventDefault()
+      onDrop={(event) => {
+        event.preventDefault()
         setDragging(false)
-        const f = e.dataTransfer.files[0]
-        if (f) onFile(f)
+        const file = event.dataTransfer.files[0]
+        if (file) onFile(file)
       }}
       className={cn(
         "flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed py-8 transition-all duration-300",
-        dragging
-          ? "scale-[1.01] border-primary bg-primary/5"
-          : "border-[#CBD5E1] bg-[#F8FAFC]",
+        dragging ? "scale-[1.01] border-primary bg-primary/5" : "border-[#CBD5E1] bg-[#F8FAFC]"
       )}
     >
-      <input ref={inputRef} type="file" accept={accept} className="hidden"
-        onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f) }} />
+      <input
+        ref={inputRef}
+        type="file"
+        accept={accept}
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          if (file) onFile(file)
+        }}
+      />
 
       <div className={cn("flex size-12 items-center justify-center rounded-full", iconBg)}>
         <CloudUpload className="size-6" style={{ color: iconColor }} />

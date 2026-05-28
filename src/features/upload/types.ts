@@ -22,21 +22,29 @@ export interface ClassificationCriterion {
 export interface PlanGroup {
   id: string
   name: string
-  type: "level-1" | "level-2"
+  type: string
   definition: string
   children: PlanGroup[]
+}
+
+export interface PlanCriterionSet {
+  group_level: string
+  criteria: string[]
 }
 
 export interface ParsedPlan {
   summary: string
   fonds_name: string
   groups: PlanGroup[]
+  criterias: PlanCriterionSet[]
 }
 
 export interface FolderNode {
   id: string
   name: string
   children: FolderNode[]
+  type?: string
+  definition?: string
   criteria?: ClassificationCriterion[]
   hoSoName?: string
   soHoSo?: string
@@ -44,8 +52,13 @@ export interface FolderNode {
 }
 
 export interface PdfMetadata {
+  id: number
+  document_id: string
   data_path: string
   status: string
+  review_status: string
+  metadata_ready: boolean
+  metadata_final: boolean
   light_metadata: Record<string, unknown>
   applied: boolean
 }

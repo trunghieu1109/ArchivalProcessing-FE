@@ -1,4 +1,4 @@
-import { useRef, useState } from "react"
+﻿import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import {
   CheckCircle2,
@@ -6,6 +6,7 @@ import {
   Play,
   ArrowRight,
   ArrowLeft,
+  Home,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { toast } from "sonner"
@@ -16,79 +17,39 @@ import { FolderTree } from "@/features/upload/components/step2/FolderTree"
 import { ProcessStep } from "@/features/upload/components/step3/ProcessStep"
 import { FinalResult } from "@/features/upload/components/step4/FinalResult"
 import { useOcrFolder } from "@/features/upload/hooks/useOcrFolder"
+import {
+  createSession,
+  enqueuePlanAnalysis,
+  getActivePlan,
+  getSession,
+  patchActivePlan,
+  registerSessionInput,
+  uploadSessionInput,
+  waitForActivePlan,
+  type ActivePlanResponse,
+  type SessionInputFileType,
+  type SessionInputUploadResponse,
+} from "@/features/upload/api/sessionApi"
 import type {
   ProcessState,
   SectionHandle,
   ArchiveEntry,
   FolderNode,
+  PlanGroup,
+  PlanCriterionSet,
   ParsedPlan,
+  PdfMetadata,
   AppStep,
 } from "@/features/upload/types"
-import type { ClusterGroup } from "@/features/upload/components/step3/ClusterPanel"
+import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
 
 const easeOut = [0.16, 1, 0.3, 1] as const
 
-// Mock parsed plan — mirrors the real API response shape from parsed_plan.json
-const MOCK_PARSED_PLAN: ParsedPlan = {
-  summary:
-    "Phân loại tài liệu theo năm, sau đó theo mặt hoạt động (lĩnh vực) của phòng.",
-  fonds_name: "PHÔNG PHÒNG KINH TẾ HẠ TẦNG",
-  groups: Array.from({ length: 27 }, (_, i) => ({
-    id: String(i + 1),
-    name: `Năm ${2000 + i}`,
-    type: "level-1" as const,
-    definition: "",
-    children: [
-      {
-        id: "c1",
-        name: "Hành chính, Tổng hợp, Tổ chức",
-        type: "level-2" as const,
-        definition:
-          "Hồ sơ, văn bản về tổ chức hành chính, tổng hợp các quy trình, quyết định, báo cáo, kế hoạch và tài liệu liên quan đến quản lý, điều hành và cấu trúc của các cơ quan, tổ chức công.",
-        children: [],
-      },
-      {
-        id: "c2",
-        name: "Lĩnh vực Công thương",
-        type: "level-2" as const,
-        definition:
-          "Hồ sơ, văn bản về ngành Công Thương là tài liệu liên quan đến chính sách, chương trình, kế hoạch, đề án, quy định, phê duyệt danh mục quản lý hoạt động.",
-        children: [],
-      },
-      {
-        id: "c3",
-        name: "Lĩnh vực Giao thông",
-        type: "level-2" as const,
-        definition:
-          "Hồ sơ, văn bản về lĩnh vực giao thông là tài liệu liên quan đến quản lý, điều tiết, thực thi và phát triển các hoạt động giao thông trên mọi phương tiện và tuyến đường.",
-        children: [],
-      },
-      {
-        id: "c4",
-        name: "Lĩnh vực Khoa học Công nghệ",
-        type: "level-2" as const,
-        definition:
-          "Hồ sơ, văn bản về lĩnh vực khoa học công nghệ là tài liệu liên quan đến nghiên cứu, phát triển, ứng dụng và quản lý khoa học tự nhiên, công nghệ thông tin.",
-        children: [],
-      },
-      {
-        id: "c5",
-        name: "Lĩnh vực Xây dựng",
-        type: "level-2" as const,
-        definition:
-          "Hồ sơ, văn bản về lĩnh vực xây dựng là tài liệu liên quan đến mọi giai đoạn của hoạt động xây dựng, bao gồm lập kế hoạch, thiết kế, khảo sát, giám sát thi công.",
-        children: [],
-      },
-      {
-        id: "c6",
-        name: "Tổ chức Đảng, Đoàn thể",
-        type: "level-2" as const,
-        definition:
-          "Hồ sơ, văn bản về tổ chức Đảng, Đoàn thể là các tài liệu liên quan đến cơ cấu, hoạt động, quyết định, quy định, báo cáo, nghị quyết của các tổ chức chính trị, xã hội.",
-        children: [],
-      },
-    ],
-  })),
+const EMPTY_PARSED_PLAN: ParsedPlan = {
+  summary: "",
+  fonds_name: "",
+  groups: [],
+  criterias: [],
 }
 
 let _nodeId = 1000
@@ -97,42 +58,203 @@ function nid() {
 }
 
 function planToTree(plan: ParsedPlan): FolderNode[] {
-  return plan.groups.map((g) => ({
-    id: nid(),
-    name: g.name,
-    children: g.children.map((c) => ({
-      id: nid(),
-      name: c.name,
-      children: [],
-      criteria: [],
-    })),
+  return plan.groups.map(groupToTreeNode)
+}
+
+function groupToTreeNode(group: PlanGroup): FolderNode {
+  return {
+    id: group.id || nid(),
+    name: group.name,
+    type: group.type,
+    definition: group.definition,
+    children: group.children.map(groupToTreeNode),
     criteria: [],
+  }
+}
+
+function treeToPlanGroups(nodes: FolderNode[], depth = 1): PlanGroup[] {
+  return nodes.map((node) => ({
+    id: node.id || nid(),
+    name: node.name,
+    type: node.type || `level-${depth}`,
+    definition: node.definition ?? "",
+    children: treeToPlanGroups(node.children, depth + 1),
   }))
 }
 
+function treeToFlatGroups(
+  nodes: FolderNode[],
+  depth = 1,
+  parentId: string | null = null
+): Array<{ id: string; name: string; type: string; parent: Array<string | number>; definition: string }> {
+  return nodes.flatMap((node) => {
+    const type = node.type || `level-${depth}`
+    const current = {
+      id: node.id || nid(),
+      name: node.name,
+      type,
+      parent: parentId ? [`level-${depth - 1}-${parentId}`] : [-1],
+      definition: node.definition ?? "",
+    }
+    return [current, ...treeToFlatGroups(node.children, depth + 1, current.id)]
+  })
+}
+
+function activePlanToParsedPlan(plan: ActivePlanResponse): ParsedPlan {
+  const nestedGroups = normalizePlanGroups(plan.groups)
+  const flatPlanGroups = flatGroupsToNested(plan.flat_groups)
+  const classificationGroups = flatGroupsToNested(plan.classification_groups)
+  const flatGroups =
+    nestedGroups.length > 0
+      ? nestedGroups
+      : flatPlanGroups.length > 0
+        ? flatPlanGroups
+        : classificationGroups
+  return {
+    summary: plan.summary || "Phương án phân loại đã được phân tích.",
+    fonds_name: plan.fonds_name || "",
+    groups: flatGroups,
+    criterias: normalizePlanCriterias(plan.criterias),
+  }
+}
+
+function normalizePlanCriterias(values: unknown[] | undefined): ParsedPlan["criterias"] {
+  if (!Array.isArray(values)) return []
+  return values
+    .map((value) => {
+      const record = asRecord(value)
+      if (!record) return null
+      const groupLevel = stringValue(record.group_level || record.level || record.type)
+      const criteria = arrayValue(record.criteria).map(stringValue).filter(Boolean)
+      return groupLevel || criteria.length > 0
+        ? { group_level: groupLevel, criteria }
+        : null
+    })
+    .filter((item): item is ParsedPlan["criterias"][number] => Boolean(item))
+}
+
+function normalizePlanGroups(values: unknown[] | undefined): PlanGroup[] {
+  if (!Array.isArray(values)) return []
+  return values
+    .map((value) => {
+      const record = asRecord(value)
+      if (!record) return null
+      return {
+        id: stringValue(record.id),
+        name: stringValue(record.name),
+        type: stringValue(record.type) || "level-1",
+        definition: stringValue(record.definition),
+        children: normalizePlanGroups(arrayValue(record.children)),
+      }
+    })
+    .filter((group): group is PlanGroup => Boolean(group?.name))
+}
+
+function flatGroupsToNested(values: unknown[] | undefined): PlanGroup[] {
+  if (!Array.isArray(values)) return []
+  const records = values.map(asRecord).filter((item): item is Record<string, unknown> => Boolean(item))
+  const groups = records
+    .map((record) => ({
+      id: stringValue(record.group_id || record.id),
+      name: stringValue(record.name || record.group_name),
+      type: stringValue(record.type) || "level-1",
+      definition: stringValue(record.definition),
+      children: [] as PlanGroup[],
+      parentRefs: arrayValue(record.parent || record.parent_refs).map(stringValue),
+    }))
+    .filter((group) => group.name)
+  const byId = new Map(groups.map((group) => [group.id, group]))
+  const roots: typeof groups = []
+  groups.forEach((group) => {
+    const parentId = group.parentRefs.find((item) => item && item !== "-1")
+    const parent = parentId ? byId.get(parentId) : undefined
+    if (parent) parent.children.push(group)
+    else roots.push(group)
+  })
+  return roots.map((group) => ({
+    id: group.id,
+    name: group.name,
+    type: group.type,
+    definition: group.definition,
+    children: group.children,
+  }))
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null ? value as Record<string, unknown> : null
+}
+
+function arrayValue(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : []
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" || typeof value === "number" ? String(value).trim() : ""
+}
+
+function stageInput(fileType: SessionInputFileType, file: File): SessionInputUploadResponse {
+  if (fileType === "arrangement_plan") _draftArrangementPlanFile = file
+  if (fileType === "retention_schedule") _draftRetentionFile = file
+  if (fileType === "raw_zip") _draftZipFile = file
+  const folderPath = fileType === "raw_zip" ? folderPathFromZipName(file.name) : undefined
+  return {
+    id: 0,
+    session_id: "draft",
+    file_type: fileType,
+    file_name: file.name,
+    local_cached_path: null,
+    data_path: folderPath,
+    checksum: null,
+    folder_path: folderPath,
+  }
+}
+
+function folderPathFromZipName(fileName: string): string {
+  const stem = fileName.replace(/\.zip$/i, "").trim()
+  return stem
+    .split("_")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join("/")
+}
+
 const STEP_LABELS = ["Tải lên", "Cấu trúc", "Xử lý", "Kết quả"]
+const PLAN_ANALYSIS_TIMEOUT_MS = 10 * 60 * 1000
+const LAST_SESSION_KEY = "archival-processing:last-session-id"
 
 let _doc1Has = false
 let _doc2Has = false
 let _zipHas = false
 let _zipEntries: ArchiveEntry[] = []
-let _folderTree: FolderNode[] = planToTree(MOCK_PARSED_PLAN)
-let _parsedPlan: ParsedPlan = MOCK_PARSED_PLAN
-let _clusterAssignment: Record<string, string[]> = {}
+let _folderTree: FolderNode[] = planToTree(EMPTY_PARSED_PLAN)
+let _parsedPlan: ParsedPlan = EMPTY_PARSED_PLAN
 let _clusterGroups: ClusterGroup[] = []
 let _doc1State: ProcessState = "idle"
 let _doc2State: ProcessState = "idle"
 let _zipState: ProcessState = "idle"
+let _planAnalysisState: ProcessState = "idle"
+let _sessionId: string | null = null
+let _zipUpload: SessionInputUploadResponse | null = null
+let _zipFolderPath = ""
+let _zipMaxFiles = ""
+let _activePlanVersionId = ""
+let _draftArrangementPlanFile: File | null = null
+let _draftRetentionFile: File | null = null
+let _draftZipFile: File | null = null
 
 export function UploadPage() {
   const navigate = useNavigate()
-  const { step } = useParams<{ step: string }>()
+  const { step, sessionId: routeSessionId } = useParams<{ step: string; sessionId?: string }>()
+  const existingSessionMode = Boolean(routeSessionId)
   const currentStep = Math.min(
     Math.max(parseInt(step ?? "1", 10), 1),
     4
   ) as AppStep
 
-  const goTo = (s: AppStep) => navigate(`/step/${s}`)
+  const goTo = (s: AppStep, targetSessionId = routeSessionId ?? _sessionId) => {
+    if (targetSessionId) navigate(`/sessions/${encodeURIComponent(targetSessionId)}/step/${s}`)
+    else navigate(`/sessions/new/step/${s}`)
+  }
 
   const doc1Ref = useRef<SectionHandle>(null)
   const doc2Ref = useRef<SectionHandle>(null)
@@ -141,32 +263,225 @@ export function UploadPage() {
   const [doc1State, setDoc1State] = useState<ProcessState>(_doc1State)
   const [doc2State, setDoc2State] = useState<ProcessState>(_doc2State)
   const [zipState, setZipState] = useState<ProcessState>(_zipState)
+  const [planAnalysisState, setPlanAnalysisState] =
+    useState<ProcessState>(_planAnalysisState)
 
   const [doc1Has, setDoc1Has] = useState(_doc1Has)
   const [doc2Has, setDoc2Has] = useState(_doc2Has)
   const [zipHas, setZipHas] = useState(_zipHas)
 
-  const [zipEntries, setZipEntries] = useState<ArchiveEntry[]>(_zipEntries)
+  const [, setZipEntries] = useState<ArchiveEntry[]>(_zipEntries)
   const [folderTree, setFolderTree] = useState<FolderNode[]>(_folderTree)
   const [parsedPlan, setParsedPlan] = useState<ParsedPlan>(_parsedPlan)
-  const [clusterAssignment, setClusterAssignment] =
-    useState<Record<string, string[]>>(_clusterAssignment)
   const [clusterGroups, setClusterGroups] =
     useState<ClusterGroup[]>(_clusterGroups)
+  const [sessionId, setSessionId] = useState<string | null>(_sessionId)
+  const [zipFolderPath, setZipFolderPath] = useState(_zipFolderPath)
+  const [zipMaxFiles, setZipMaxFiles] = useState(_zipMaxFiles)
+  const [sessionLoading, setSessionLoading] = useState(false)
 
-  const ocr = useOcrFolder()
+  const applyWorkflowState = (nextSessionId: string | null) => {
+    setDoc1State(_doc1State)
+    setDoc2State(_doc2State)
+    setZipState(_zipState)
+    setPlanAnalysisState(_planAnalysisState)
+    setDoc1Has(_doc1Has)
+    setDoc2Has(_doc2Has)
+    setZipHas(_zipHas)
+    setZipEntries(_zipEntries)
+    setFolderTree(_folderTree)
+    setParsedPlan(_parsedPlan)
+    setClusterGroups(_clusterGroups)
+    setSessionId(nextSessionId)
+    setZipFolderPath(_zipFolderPath)
+    setZipMaxFiles(_zipMaxFiles)
+  }
+
+  const resetWorkflowState = (nextSessionId: string | null) => {
+    _doc1Has = false
+    _doc2Has = false
+    _zipHas = false
+    _zipEntries = []
+    _folderTree = planToTree(EMPTY_PARSED_PLAN)
+    _parsedPlan = EMPTY_PARSED_PLAN
+    _clusterGroups = []
+    _doc1State = "idle"
+    _doc2State = "idle"
+    _zipState = "idle"
+    _planAnalysisState = "idle"
+    _sessionId = nextSessionId
+    _zipUpload = null
+    _zipFolderPath = ""
+    _zipMaxFiles = ""
+    _activePlanVersionId = ""
+    _draftArrangementPlanFile = null
+    _draftRetentionFile = null
+    _draftZipFile = null
+    applyWorkflowState(nextSessionId)
+  }
+
+  const ocr = useOcrFolder(sessionId)
+  const ocrMetadataItems = useMemo<PdfMetadata[]>(
+    () =>
+      ocr.status?.jobs.map((job) => ({
+        id: job.id,
+        document_id: job.document_id,
+        data_path: job.data_path,
+        status: job.status,
+        review_status: job.review_status,
+        metadata_ready: job.metadata_ready,
+        metadata_final: job.metadata_final,
+        light_metadata: job.light_metadata ?? job.normalized_metadata ?? job.raw_metadata ?? {},
+        applied: job.review_status === "verified",
+      })) ?? [],
+    [ocr.status]
+  )
+  const ocrPdfPaths = useMemo(
+    () => ocrMetadataItems.map((item) => item.data_path),
+    [ocrMetadataItems]
+  )
+  const ocrMessage =
+    ocr.state === "error"
+      ? ocr.error || "Không thể lấy kết quả số hóa."
+      : ocr.state === "done"
+        ? ocrMetadataItems.length > 0
+          ? `Đã nhận ${ocrMetadataItems.length} tài liệu từ backend.`
+          : "Backend chưa trả về tài liệu số hóa."
+        : "Đang chờ kết quả số hóa từ remote folder..."
+  const ocrLoading = ocr.state === "starting" || ocr.state === "polling"
+
+  useEffect(() => {
+    const isCurrentDraftSession = Boolean(routeSessionId && _sessionId === routeSessionId)
+    if (!isCurrentDraftSession) {
+      resetWorkflowState(routeSessionId ?? null)
+    } else {
+      setSessionId(routeSessionId ?? null)
+    }
+    if (!routeSessionId) return
+
+    let cancelled = false
+    const loadExistingSession = async () => {
+      setSessionLoading(true)
+      try {
+        const [sessionDetail, activePlan] = await Promise.all([
+          getSession(routeSessionId),
+          getActivePlan(routeSessionId),
+        ])
+        if (cancelled) return
+
+        const files = sessionDetail.files ?? []
+        const arrangementPlanFile = files.find((file) => file.file_type === "arrangement_plan")
+        const retentionFile = files.find((file) => file.file_type === "retention_schedule")
+        const zipFile = files.find((file) => file.file_type === "raw_zip")
+        _doc1Has = Boolean(arrangementPlanFile)
+        _doc2Has = Boolean(retentionFile)
+        _zipHas = Boolean(zipFile)
+        _doc1State = arrangementPlanFile ? "done" : "idle"
+        _doc2State = retentionFile ? "done" : "idle"
+        _zipState = zipFile ? "done" : "idle"
+        _zipUpload = zipFile ?? null
+        _zipFolderPath = zipFile?.folder_path ?? zipFile?.data_path ?? ""
+        setDoc1Has(_doc1Has)
+        setDoc2Has(_doc2Has)
+        setZipHas(_zipHas)
+        setDoc1State(_doc1State)
+        setDoc2State(_doc2State)
+        setZipState(_zipState)
+        setZipFolderPath(_zipFolderPath)
+
+        if (activePlan) {
+          const plan = activePlanToParsedPlan(activePlan)
+          _activePlanVersionId = activePlan.id ?? ""
+          _parsedPlan = plan
+          _folderTree = planToTree(plan)
+          _planAnalysisState = "done"
+          setParsedPlan(plan)
+          setFolderTree(_folderTree)
+          setPlanAnalysisState("done")
+        }
+        window.localStorage.setItem(LAST_SESSION_KEY, routeSessionId)
+      } catch (err) {
+        if (!cancelled) {
+          toast.error(err instanceof Error ? err.message : "Không thể tải session đã chọn.")
+        }
+      } finally {
+        if (!cancelled) setSessionLoading(false)
+      }
+    }
+    void loadExistingSession()
+    return () => {
+      cancelled = true
+    }
+  }, [routeSessionId])
+
+  const ensureSession = async () => {
+    if (_sessionId) return _sessionId
+    const created = await createSession()
+    _sessionId = created.session_id
+    setSessionId(created.session_id)
+    window.localStorage.setItem(LAST_SESSION_KEY, created.session_id)
+    return created.session_id
+  }
+
+  const uploadInput = async (fileType: SessionInputFileType, file: File) => {
+    if (!_sessionId) {
+      const staged = stageInput(fileType, file)
+      if (fileType === "arrangement_plan" || fileType === "retention_schedule") {
+        _planAnalysisState = "idle"
+        setPlanAnalysisState("idle")
+      }
+      return staged
+    }
+    const currentSessionId = _sessionId
+    const uploaded =
+      fileType === "raw_zip"
+        ? await registerSessionInput(currentSessionId, fileType, file.name)
+        : await uploadSessionInput(currentSessionId, fileType, file)
+    if (fileType === "raw_zip") _zipUpload = uploaded
+    if (fileType === "arrangement_plan" || fileType === "retention_schedule") {
+      _planAnalysisState = "idle"
+      setPlanAnalysisState("idle")
+    }
+    return uploaded
+  }
 
   // Sync module-level state so it survives navigation
+  const syncZipFolderPath = (value: string) => {
+    _zipFolderPath = value
+    setZipFolderPath(value)
+  }
+  const syncZipMaxFiles = (value: string) => {
+    _zipMaxFiles = value
+    setZipMaxFiles(value)
+  }
+  const syncPlanAnalysisState = (s: ProcessState) => {
+    _planAnalysisState = s
+    setPlanAnalysisState(s)
+  }
   const syncDoc1Has = (v: boolean) => {
     _doc1Has = v
+    if (!v) {
+      _draftArrangementPlanFile = null
+      syncPlanAnalysisState("idle")
+    }
     setDoc1Has(v)
   }
   const syncDoc2Has = (v: boolean) => {
     _doc2Has = v
+    if (!v) {
+      _draftRetentionFile = null
+      syncPlanAnalysisState("idle")
+    }
     setDoc2Has(v)
   }
   const syncZipHas = (v: boolean) => {
     _zipHas = v
+    if (!v) {
+      _zipUpload = null
+      _draftZipFile = null
+      syncZipFolderPath("")
+      syncZipMaxFiles("")
+    }
     setZipHas(v)
   }
   const syncZipEntries = (e: ArchiveEntry[]) => {
@@ -176,6 +491,44 @@ export function UploadPage() {
   const syncFolderTree = (t: FolderNode[]) => {
     _folderTree = t
     setFolderTree(t)
+  }
+  const savePlanChanges = async (
+    nextTree = _folderTree,
+    nextCriterias = _parsedPlan.criterias
+  ) => {
+    if (!_sessionId) {
+      _folderTree = nextTree
+      _parsedPlan = { ..._parsedPlan, criterias: nextCriterias }
+      setFolderTree(nextTree)
+      setParsedPlan(_parsedPlan)
+      toast.success("Đã lưu thay đổi trên màn hình.")
+      return
+    }
+
+    const planResponse = await patchActivePlan(_sessionId, {
+      groups: treeToPlanGroups(nextTree),
+      flat_groups: treeToFlatGroups(nextTree),
+      criterias: nextCriterias,
+    })
+    const updatedPlan = activePlanToParsedPlan(planResponse)
+    _activePlanVersionId = planResponse.id ?? ""
+    _parsedPlan = updatedPlan
+    _folderTree = planToTree(updatedPlan)
+    setParsedPlan(updatedPlan)
+    setFolderTree(_folderTree)
+    toast.success("Đã lưu phương án chỉnh lý vào session.")
+  }
+
+  const savePlanCriterias = async (criterias: PlanCriterionSet[]) => {
+    _parsedPlan = { ..._parsedPlan, criterias }
+    setParsedPlan(_parsedPlan)
+    await savePlanChanges(_folderTree, criterias)
+  }
+
+  const saveFolderTree = async (tree: FolderNode[]) => {
+    _folderTree = tree
+    setFolderTree(tree)
+    await savePlanChanges(tree, _parsedPlan.criterias)
   }
   const syncDoc1State = (s: ProcessState) => {
     _doc1State = s
@@ -190,53 +543,173 @@ export function UploadPage() {
     setZipState(s)
   }
 
+  const parseZipMaxFiles = () => {
+    const value = zipMaxFiles.trim()
+    if (!value) return undefined
+    const parsed = Number(value)
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      throw new Error("Số lượng tài liệu cần số hóa phải là số nguyên dương.")
+    }
+    return parsed
+  }
+
   const hasAnyFile = doc1Has || doc2Has || zipHas
-  const readyCount = [doc1Has, doc2Has, zipHas].filter(Boolean).length
+  const readyCount = (existingSessionMode ? [zipHas] : [doc1Has, doc2Has, zipHas]).filter(Boolean).length
+  const requiredFileCount = existingSessionMode ? 1 : 3
+  const statusItems = existingSessionMode
+    ? [
+        { label: "Phương án", has: planAnalysisState === "done", state: planAnalysisState },
+        { label: "Tệp phương án", has: doc1Has, state: doc1State },
+        { label: "Thời hạn", has: doc2Has, state: doc2State },
+        { label: "Kho lưu trữ", has: zipHas, state: zipState },
+      ]
+    : [
+        { label: "Phương án", has: doc1Has, state: doc1State },
+        { label: "Thời hạn", has: doc2Has, state: doc2State },
+        { label: "Kho lưu trữ", has: zipHas, state: zipState },
+      ]
+  const planAnalyzing = planAnalysisState === "processing"
   const allProcessing =
+    planAnalyzing ||
     doc1State === "processing" ||
     doc2State === "processing" ||
     zipState === "processing"
-  const allDone =
-    [doc1State, doc2State, zipState].every(
-      (s) => s === "done" || s === "idle"
-    ) && [doc1State, doc2State, zipState].some((s) => s === "done")
+  const allDone = planAnalysisState === "done"
 
   const handleStartAll = async () => {
-    if (!doc1Has) {
-      toast.error("Vui lòng tải lên Tài liệu 1 (Thời hạn bảo quản)")
+    if (allDone) {
+      goTo(2)
       return
     }
-    if (!doc2Has) {
-      toast.error("Vui lòng tải lên Tài liệu 2 (Phương án phân loại)")
+    if (existingSessionMode) {
+      goTo(2)
       return
     }
-    if (!zipHas) {
-      toast.error("Vui lòng tải lên Kho lưu trữ (.zip/.rar)")
+
+    if (!doc1Has || !_draftArrangementPlanFile) {
+      toast.error("Vui lòng tải lên phương án phân loại.")
       return
     }
-    const tasks = [
-      doc1Ref.current?.hasFile() ? doc1Ref.current.process() : null,
-      doc2Ref.current?.hasFile() ? doc2Ref.current.process() : null,
-      zipRef.current?.hasFile() ? zipRef.current.process() : null,
-    ].filter(Boolean) as Promise<void>[]
-    await Promise.all(tasks)
-    toast.success("Xử lý hoàn tất! Chuyển sang bước tiếp theo.")
-    // Mock: API returns parsed plan from doc2
-    const plan = MOCK_PARSED_PLAN
-    _parsedPlan = plan
-    _folderTree = planToTree(plan)
-    setParsedPlan(plan)
-    setFolderTree(_folderTree)
-    goTo(2)
+    if (!doc2Has || !_draftRetentionFile) {
+      toast.error("Vui lòng tải lên thông tư thời hạn bảo quản.")
+      return
+    }
+    if (!zipHas || !_draftZipFile) {
+      toast.error("Vui lòng chọn file ZIP dữ liệu.")
+      return
+    }
+    try {
+      syncPlanAnalysisState("processing")
+      const currentSessionId = await ensureSession()
+      const [arrangementPlan, retentionPlan, zipInput] = await Promise.all([
+        uploadSessionInput(currentSessionId, "arrangement_plan", _draftArrangementPlanFile),
+        uploadSessionInput(currentSessionId, "retention_schedule", _draftRetentionFile),
+        registerSessionInput(currentSessionId, "raw_zip", _draftZipFile.name),
+      ])
+      _zipUpload = zipInput
+      syncZipFolderPath(zipInput.folder_path ?? zipInput.data_path ?? "")
+
+      const planFile = arrangementPlan.local_cached_path
+      const retentionFile = retentionPlan.local_cached_path
+      if (!planFile || !retentionFile) {
+        throw new Error("Backend chưa trả về đường dẫn local cho hồ sơ phương án.")
+      }
+
+      const documentTasks = [
+        doc1Ref.current?.hasFile() ? doc1Ref.current.process() : null,
+        doc2Ref.current?.hasFile() ? doc2Ref.current.process() : null,
+      ].filter(Boolean) as Promise<void>[]
+      const planJob = enqueuePlanAnalysis(currentSessionId, {
+        plan_file: planFile,
+        retention_file: retentionFile,
+      })
+      await Promise.all([...documentTasks, planJob])
+      const planResponse = await waitForActivePlan(currentSessionId, PLAN_ANALYSIS_TIMEOUT_MS, 2_000, {
+        previousPlanId: undefined,
+        afterVersionNumber: undefined,
+      })
+      const plan = activePlanToParsedPlan(planResponse)
+      _activePlanVersionId = planResponse.id ?? ""
+      _parsedPlan = plan
+      _folderTree = planToTree(plan)
+      setParsedPlan(plan)
+      setFolderTree(_folderTree)
+      syncPlanAnalysisState("done")
+      toast.success("Đã tạo session và phân tích phương án chỉnh lý.")
+      navigate(`/sessions/${encodeURIComponent(currentSessionId)}/step/2`)
+    } catch (err) {
+      syncPlanAnalysisState("idle")
+      toast.error(err instanceof Error ? err.message : "Không thể bắt đầu phân tích phương án.")
+    }
   }
 
-  const pdfPaths = zipEntries
-    .filter((e) => !e.isDir && e.name.toLowerCase().endsWith(".pdf"))
-    .map((e) => e.name)
+  const handleConfirmPlan = async () => {
+    if (!_sessionId) {
+      toast.error("Chưa có session xử lý.")
+      return
+    }
+    if (planAnalysisState !== "done") {
+      toast.error("Phải phân tích xong phương án chỉnh lý trước khi lấy metadata.")
+      return
+    }
+    if (_folderTree.length === 0) {
+      toast.error("Chưa có phương án chỉnh lý để xác nhận.")
+      return
+    }
+    const confirmedPlanVersionId = _activePlanVersionId.trim()
+    if (!confirmedPlanVersionId) {
+      toast.error("Chưa có phiên bản phương án đã xác nhận.")
+      return
+    }
+    const folderPath = zipFolderPath || _zipUpload?.folder_path || _zipUpload?.data_path || ""
+    if (!folderPath) {
+      if (existingSessionMode) {
+        toast.info("Session này chưa có dữ liệu ZIP mới. Bạn có thể tiếp tục xem lại phương án chỉnh lý.")
+        return
+      }
+      toast.error("Chưa có folder_path để bắt đầu lấy metadata.")
+      return
+    }
+
+    let maxFilesToProcess: number | undefined
+    try {
+      maxFilesToProcess = parseZipMaxFiles()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Số lượng tài liệu không hợp lệ.")
+      return
+    }
+
+    try {
+      const existingStatus = ocr.status ?? await ocr.refresh()
+      if ((existingStatus?.jobs.length ?? 0) > 0) {
+        const hasReadyMetadata = existingStatus?.jobs.some((job) => job.metadata_ready)
+        syncZipState(hasReadyMetadata ? "done" : "processing")
+        toast.info("Session đã có dữ liệu metadata. Không gọi lại bước lấy metadata.")
+        goTo(3)
+        return
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Không thể kiểm tra metadata hiện có.")
+      return
+    }
+
+    syncZipState("processing")
+    toast.success("Đã xác nhận phương án. Bắt đầu lấy metadata.")
+    void ocr.start(folderPath, { maxFiles: maxFilesToProcess, confirmedPlanVersionId })
+      .then(() => {
+        syncZipState("done")
+        toast.success("Đã hoàn tất lấy metadata từ remote folder.")
+      })
+      .catch((err) => {
+        syncZipState("idle")
+        toast.error(err instanceof Error ? err.message : "Không thể bắt đầu OCR.")
+      })
+    goTo(3)
+  }
 
   return (
     <div className="min-h-svh bg-[#F0F4F8]">
-      {/* Hero header — light */}
+      {/* Header */}
       <div className="relative overflow-hidden bg-gradient-to-br from-[#EEF2FF] via-[#F0F4FF] to-[#E8EEFF] px-4 py-5 shadow-sm">
         <div
           className="pointer-events-none absolute -top-24 -right-24 size-80 rounded-full"
@@ -330,21 +803,31 @@ export function UploadPage() {
 
       {/* Main content */}
       <div className="mx-auto max-w-6xl px-8 py-8">
-        {/* Back button for steps 2+ */}
+        <div className="mb-5 flex items-center gap-2">
+          <motion.button
+            initial={{ opacity: 0, x: -8 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.3 }}
+            onClick={() => navigate("/sessions")}
+            className="flex items-center gap-2 rounded-xl border border-[#CBD5E1] bg-white px-4 py-2 text-sm font-medium text-[#475569] shadow-sm transition-all hover:border-[#0052FF]/30 hover:text-[#0052FF]"
+          >
+            <Home className="size-4" /> Danh sách session
+          </motion.button>
         {currentStep > 1 && (
           <motion.button
             initial={{ opacity: 0, x: -8 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.3 }}
             onClick={() => goTo((currentStep - 1) as AppStep)}
-            className="mb-5 flex items-center gap-2 rounded-xl border border-[#CBD5E1] bg-white px-4 py-2 text-sm font-medium text-[#475569] shadow-sm transition-all hover:border-[#0052FF]/30 hover:text-[#0052FF]"
+            className="flex items-center gap-2 rounded-xl border border-[#CBD5E1] bg-white px-4 py-2 text-sm font-medium text-[#475569] shadow-sm transition-all hover:border-[#0052FF]/30 hover:text-[#0052FF]"
           >
             <ArrowLeft className="size-4" /> Quay lại
           </motion.button>
         )}
+        </div>
 
         <AnimatePresence mode="wait">
-          {/* BƯỚC 1 — Upload */}
+          {/* Bước 1: Tải lên */}
           {currentStep === 1 && (
             <motion.div
               key="step1"
@@ -354,17 +837,33 @@ export function UploadPage() {
               transition={{ duration: 0.4, ease: easeOut }}
               className="flex flex-col gap-4"
             >
-              {/* Zip — full width */}
+              <div className="rounded-2xl border border-[#D8E1EC] bg-white px-5 py-4 shadow-sm">
+                <p className="text-sm font-semibold text-[#0F172A]">
+                  {existingSessionMode ? "Bổ sung dữ liệu cho session" : "Tạo session mới"}
+                </p>
+                <p className="mt-1 text-sm text-[#64748B]">
+                  {existingSessionMode
+                    ? "Bạn có thể tải thêm file ZIP hoặc tiếp tục xem và chỉnh sửa phương án đã phân tích."
+                    : "Chọn đủ phương án chỉnh lý, thông tư thời hạn bảo quản và file ZIP. Session chỉ được tạo khi bạn bấm bắt đầu phân tích."}
+                </p>
+              </div>
+
+              {/* ZIP */}
               <ZipSection
                 ref={zipRef}
                 processState={zipState}
                 onProcessStateChange={syncZipState}
                 onHasFileChange={syncZipHas}
                 onEntriesChange={syncZipEntries}
+                onFolderPathChange={syncZipFolderPath}
+                maxFiles={zipMaxFiles}
+                onMaxFilesChange={syncZipMaxFiles}
+                onUploadFile={(file) => uploadInput("raw_zip", file)}
                 ocr={ocr}
               />
 
-              {/* Docx — side by side */}
+              {/* DOCX */}
+              {!existingSessionMode && (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <DocxSection
                   ref={doc1Ref}
@@ -374,6 +873,7 @@ export function UploadPage() {
                   processState={doc1State}
                   onProcessStateChange={syncDoc1State}
                   onHasFileChange={syncDoc1Has}
+                  onUploadFile={(file) => uploadInput("arrangement_plan", file).then(() => undefined)}
                 />
                 <DocxSection
                   ref={doc2Ref}
@@ -383,8 +883,10 @@ export function UploadPage() {
                   processState={doc2State}
                   onProcessStateChange={syncDoc2State}
                   onHasFileChange={syncDoc2Has}
+                  onUploadFile={(file) => uploadInput("retention_schedule", file).then(() => undefined)}
                 />
               </div>
+              )}
 
               {/* Action bar */}
               <motion.div
@@ -395,11 +897,7 @@ export function UploadPage() {
               >
                 <div className="flex items-center gap-4">
                   <div className="flex gap-2">
-                    {[
-                      { label: "Tài liệu 1", has: doc1Has, state: doc1State },
-                      { label: "Tài liệu 2", has: doc2Has, state: doc2State },
-                      { label: "Kho lưu trữ", has: zipHas, state: zipState },
-                    ].map((s, i) => (
+                    {statusItems.map((s, i) => (
                       <div
                         key={i}
                         className={cn(
@@ -434,41 +932,51 @@ export function UploadPage() {
                     ))}
                   </div>
                   <div className="text-sm font-medium">
-                    {allDone ? (
+                    {sessionLoading ? (
+                      <span className="flex items-center gap-1.5 text-muted-foreground">
+                        <Loader2 className="size-3.5 animate-spin text-primary" />{" "}
+                        Đang tải lại trạng thái session...
+                      </span>
+                    ) : allDone ? (
                       <span className="flex items-center gap-1.5 text-primary">
-                        <CheckCircle2 className="size-4" /> Tất cả đã xử lý
+                        <CheckCircle2 className="size-4" /> Phương án đã sẵn sàng
+                      </span>
+                    ) : planAnalyzing ? (
+                      <span className="flex items-center gap-1.5 text-muted-foreground">
+                        <Loader2 className="size-3.5 animate-spin text-primary" />{" "}
+                        Đang phân tích phương án...
                       </span>
                     ) : allProcessing ? (
                       <span className="flex items-center gap-1.5 text-muted-foreground">
                         <Loader2 className="size-3.5 animate-spin text-primary" />{" "}
-                        Đang xử lý…
+                        Đang xử lý tệp...
                       </span>
                     ) : hasAnyFile ? (
                       <span className="text-muted-foreground">
                         <span className="font-bold text-foreground">
                           {readyCount}
                         </span>{" "}
-                        / 3 file sẵn sàng
+                        / {requiredFileCount} mục sẵn sàng
                       </span>
                     ) : (
                       <span className="text-muted-foreground">
-                        Tải lên đủ 3 file để bắt đầu
+                        {existingSessionMode ? "Có thể bỏ qua bước tải ZIP để xem phương án" : "Tải lên đủ 3 file để bắt đầu"}
                       </span>
                     )}
                   </div>
                 </div>
 
                 <button
-                  disabled={allProcessing}
+                  disabled={allProcessing || sessionLoading}
                   onClick={handleStartAll}
                   className={cn(
                     "group flex min-w-44 items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold transition-all duration-200",
-                    !allProcessing
+                    !allProcessing && !sessionLoading
                       ? "text-primary-foreground hover:-translate-y-0.5 active:scale-[0.98]"
                       : "cursor-not-allowed bg-muted text-muted-foreground"
                   )}
                   style={
-                    !allProcessing
+                    !allProcessing && !sessionLoading
                       ? {
                           background:
                             "linear-gradient(to right, #0052FF, #4D7CFF)",
@@ -477,7 +985,7 @@ export function UploadPage() {
                       : {}
                   }
                 >
-                  {allProcessing ? (
+                  {allProcessing || sessionLoading ? (
                     <Loader2 className="size-4 animate-spin" />
                   ) : allDone ? (
                     <CheckCircle2 className="size-4" />
@@ -485,11 +993,17 @@ export function UploadPage() {
                     <Play className="size-4" />
                   )}
                   <span>
-                    {allProcessing
-                      ? "Đang xử lý…"
+                    {sessionLoading
+                      ? "Đang tải..."
+                      : planAnalyzing
+                      ? "Đang phân tích..."
+                      : allProcessing
+                        ? "Đang xử lý..."
                       : allDone
                         ? "Tiếp tục"
-                        : "Bắt đầu xử lý"}
+                        : existingSessionMode
+                          ? "Tiếp tục"
+                          : "Bắt đầu phân tích"}
                   </span>
                   {!allProcessing && (
                     <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
@@ -511,13 +1025,12 @@ export function UploadPage() {
                 >
                   <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                 </svg>
-                Dữ liệu của bạn được bảo mật và chỉ sử dụng cho mục đích xử lý
-                tài liệu.
+                Dữ liệu của bạn được bảo mật và chỉ sử dụng cho mục đích xử lý tài liệu.
               </p>
             </motion.div>
           )}
 
-          {/* BƯỚC 2 — Cây thư mục */}
+          {/* Bước 2: Cây thư mục */}
           {currentStep === 2 && (
             <motion.div
               key="step2"
@@ -529,19 +1042,16 @@ export function UploadPage() {
               <FolderTree
                 tree={folderTree}
                 parsedPlan={parsedPlan}
+                readOnly={false}
                 onChange={syncFolderTree}
-                onReapply={(plan) => {
-                  _parsedPlan = plan
-                  _folderTree = planToTree(plan)
-                  setParsedPlan(plan)
-                  setFolderTree(_folderTree)
-                }}
-                onConfirm={() => goTo(3)}
+                onSaveTree={saveFolderTree}
+                onCriteriaChange={savePlanCriterias}
+                onConfirm={handleConfirmPlan}
               />
             </motion.div>
           )}
 
-          {/* BƯỚC 3 — Xử lý */}
+          {/* Bước 3: Xử lý */}
           {currentStep === 3 && (
             <motion.div
               key="step3"
@@ -551,20 +1061,21 @@ export function UploadPage() {
               transition={{ duration: 0.4, ease: easeOut }}
             >
               <ProcessStep
-                pdfPaths={pdfPaths}
-                tree={folderTree}
-                onContinue={(_items, assignment, grps) => {
-                  _clusterAssignment = assignment
-                  _clusterGroups = grps
-                  setClusterAssignment(assignment)
-                  setClusterGroups(grps)
+                sessionId={sessionId}
+                pdfPaths={ocrPdfPaths}
+                metadataItems={ocrMetadataItems}
+                metadataLoading={ocrLoading}
+                metadataMessage={ocrMessage}
+                onContinue={(groups) => {
+                  _clusterGroups = groups
+                  setClusterGroups(groups)
                   goTo(4)
                 }}
               />
             </motion.div>
           )}
 
-          {/* BƯỚC 4 — Kết quả */}
+          {/* Bước 4: Kết quả */}
           {currentStep === 4 && (
             <motion.div
               key="step4"
@@ -574,9 +1085,9 @@ export function UploadPage() {
               transition={{ duration: 0.4, ease: easeOut }}
             >
               <FinalResult
-                tree={folderTree}
-                assignment={clusterAssignment}
+                sessionId={sessionId}
                 groups={clusterGroups}
+                metadataItems={ocrMetadataItems}
                 onFinish={() => {
                   toast.success("Hoàn tất!")
                   goTo(1)

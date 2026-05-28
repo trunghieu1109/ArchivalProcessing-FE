@@ -1,6 +1,5 @@
-import { forwardRef, useState, useImperativeHandle } from "react"
+﻿import { forwardRef, useState, useImperativeHandle } from "react"
 import * as React from "react"
-import JSZip from "jszip"
 import {
   FileArchive,
   CheckCircle2,
@@ -31,9 +30,11 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { cn } from "@/shared/lib/utils"
 import { DropZone } from "./DropZone"
 import { FileChip } from "./FileChip"
+import type { SessionInputUploadResponse } from "@/features/upload/api/sessionApi"
 import type { UseOcrFolderResult } from "@/features/upload/hooks/useOcrFolder"
 import type {
   ProcessState,
@@ -41,7 +42,7 @@ import type {
   ArchiveEntry,
 } from "@/features/upload/types"
 
-const HARDCODED_FOLDER_PATH = "HC/UBND/PNV"
+const MAX_FILES_ERROR = "Số lượng tài liệu cần số hóa phải là số nguyên dương."
 
 function formatBytes(bytes: number) {
   if (bytes === 0) return "0 B"
@@ -114,6 +115,10 @@ interface ZipSectionProps {
   onProcessStateChange: (s: ProcessState) => void
   onHasFileChange: (v: boolean) => void
   onEntriesChange: (entries: ArchiveEntry[]) => void
+  onFolderPathChange: (folderPath: string) => void
+  maxFiles: string
+  onMaxFilesChange: (value: string) => void
+  onUploadFile: (file: File) => Promise<SessionInputUploadResponse>
   ocr: UseOcrFolderResult
 }
 
@@ -124,12 +129,17 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
       onProcessStateChange,
       onHasFileChange,
       onEntriesChange,
+      onFolderPathChange,
+      maxFiles,
+      onMaxFilesChange,
+      onUploadFile,
       ocr,
     },
     ref
   ) => {
     const [fileName, setFileName] = useState("")
     const [entries, setEntries] = useState<ArchiveEntry[]>([])
+    const [folderPath, setFolderPath] = useState("")
     const [error, setError] = useState("")
     const [loading, setLoading] = useState(false)
     const [sorting, setSorting] = React.useState<SortingState>([])
@@ -148,9 +158,10 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
     useImperativeHandle(ref, () => ({
       hasFile: () => entries.length > 0,
       process: async () => {
-        onProcessStateChange("processing")
-        await ocr.start(HARDCODED_FOLDER_PATH)
-        onProcessStateChange("done")
+        if (!folderPath) {
+          setError("Chưa có folder_path từ file ZIP.")
+          throw new Error("Chưa có folder_path từ file ZIP.")
+        }
       },
     }))
 
@@ -162,28 +173,23 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
       ocr.reset()
       setLoading(true)
       try {
-        const zip = await JSZip.loadAsync(file)
-        const list: ArchiveEntry[] = []
-        zip.forEach((path, entry) =>
-          list.push({ name: path, size: 0, isDir: entry.dir })
-        )
-        await Promise.all(
-          list.map(async (entry, i) => {
-            if (!entry.isDir) {
-              const data = await zip.file(entry.name)?.async("uint8array")
-              list[i].size = data?.length ?? 0
-            }
-          })
-        )
-        list.sort((a, b) => {
-          if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
-          return a.name.localeCompare(b.name)
-        })
+        const upload = await onUploadFile(file)
+        const remoteFolderPath = upload.folder_path ?? upload.data_path ?? ""
+        if (!remoteFolderPath) {
+          throw new Error("Backend không trả về folder_path cho file ZIP.")
+        }
+        const list: ArchiveEntry[] = [
+          { name: remoteFolderPath, size: file.size, isDir: true },
+        ]
+        setFolderPath(remoteFolderPath)
+        onFolderPathChange(remoteFolderPath)
         setEntries(list)
         onHasFileChange(true)
         onEntriesChange(list)
-      } catch {
-        setError("Không thể đọc file nén.")
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Không thể đọc hoặc tải lên file nén.")
+        setFolderPath("")
+        onFolderPathChange("")
         setFileName("")
         onHasFileChange(false)
       } finally {
@@ -193,7 +199,10 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
 
     const clear = () => {
       setEntries([])
+      setFolderPath("")
+      onFolderPathChange("")
       setFileName("")
+      onMaxFilesChange("")
       setError("")
       onProcessStateChange("idle")
       onHasFileChange(false)
@@ -269,13 +278,40 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
           />
         ) : (
           <DropZone
-            accept=".zip,.rar"
+            accept=".zip"
             onFile={handleFile}
-            label="Kéo thả file .zip hoặc .rar vào đây"
-            hint=".zip, .rar"
+            label="Kéo thả file .zip vào đây"
+            hint=".zip"
             maxSize="2GB"
             buttonColor="blue"
           />
+        )}
+
+        {fileName && (
+          <div className="grid gap-2 rounded-xl border border-border bg-muted/30 p-3 sm:grid-cols-[minmax(0,1fr)_9rem] sm:items-center">
+            <label
+              htmlFor="zip-max-files"
+              className="font-roboto text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase"
+            >
+              Số tài liệu cần số hóa
+            </label>
+            <Input
+              id="zip-max-files"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              step={1}
+              value={maxFiles}
+              placeholder="Tất cả"
+              disabled={loading || isProcessing}
+              aria-invalid={error === MAX_FILES_ERROR}
+              className="h-8 text-right font-roboto text-sm"
+              onChange={(event) => {
+                onMaxFilesChange(event.target.value)
+                if (error === MAX_FILES_ERROR) setError("")
+              }}
+            />
+          </div>
         )}
 
         {error && (
