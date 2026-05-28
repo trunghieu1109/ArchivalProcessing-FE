@@ -87,9 +87,15 @@ export interface DigitizationStatusResponse {
 
 export interface SessionArtifact {
   id: number
+  session_id?: string
   artifact_type: string
   file_name: string
+  local_path?: string
   status: string
+  related_plan_version_id?: string | null
+  related_cluster_version_id?: string | null
+  manifest?: Record<string, unknown>
+  generated_at?: string
 }
 
 export interface ArtifactListResponse {
@@ -344,6 +350,23 @@ export async function getActiveClusters(
   )
 }
 
+export async function enqueueClusterBuild(
+  sessionId: string,
+  payload: { source?: string; batch_size?: number } = {}
+): Promise<Record<string, unknown>> {
+  return requestJson<Record<string, unknown>>(
+    `/sessions/${encodeURIComponent(sessionId)}/clustering/build`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source: "user_feedback",
+        ...payload,
+      }),
+    }
+  )
+}
+
 export async function moveDocumentBetweenClusters(
   sessionId: string,
   payload: {
@@ -410,17 +433,21 @@ export function isDigitizationComplete(response: DigitizationStatusResponse | nu
 export async function enqueueFinalizeArtifacts(
   sessionId: string,
   payload: { created_by?: string } = {}
-): Promise<void> {
-  await requestJson<unknown>(`/sessions/${encodeURIComponent(sessionId)}/artifacts/finalize`, {
+): Promise<Record<string, unknown>> {
+  return requestJson<Record<string, unknown>>(`/sessions/${encodeURIComponent(sessionId)}/artifacts/finalize`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   })
 }
 
-export async function listArtifacts(sessionId: string): Promise<ArtifactListResponse> {
+export async function listArtifacts(
+  sessionId: string,
+  status?: string
+): Promise<ArtifactListResponse> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : ""
   return requestJson<ArtifactListResponse>(
-    `/sessions/${encodeURIComponent(sessionId)}/artifacts`
+    `/sessions/${encodeURIComponent(sessionId)}/artifacts${query}`
   )
 }
 
@@ -444,6 +471,16 @@ export function artifactDownloadUrl(sessionId: string, artifactId: number): stri
   return apiUrl(
     `/sessions/${encodeURIComponent(sessionId)}/artifacts/${artifactId}/download`
   )
+}
+
+export function artifactPreviewUrl(sessionId: string, artifactId: number): string {
+  return apiUrl(
+    `/sessions/${encodeURIComponent(sessionId)}/artifacts/${artifactId}/preview`
+  )
+}
+
+export function artifactDownloadAllUrl(sessionId: string): string {
+  return apiUrl(`/sessions/${encodeURIComponent(sessionId)}/artifacts/download-all`)
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {

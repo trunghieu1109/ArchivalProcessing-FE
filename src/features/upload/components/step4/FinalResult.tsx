@@ -11,6 +11,7 @@ import {
   GripVertical,
   Loader2,
   MoveRight,
+  RefreshCw,
   Signature,
 } from "lucide-react"
 import { motion } from "framer-motion"
@@ -19,6 +20,7 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/shared/lib/utils"
 import {
+  enqueueClusterBuild,
   getActiveClusters,
   moveDocumentBetweenClusters,
 } from "@/features/upload/api/sessionApi"
@@ -31,6 +33,7 @@ import type { PdfMetadata } from "@/features/upload/types"
 
 const CLUSTER_POLL_INTERVAL_MS = 3_000
 const CLUSTER_POLL_TIMEOUT_MS = 10 * 60 * 1_000
+const NO_CLUSTER_VERSION = "__none__"
 
 interface FinalResultProps {
   sessionId: string | null
@@ -66,6 +69,11 @@ export function FinalResult({
   const [draggedDocument, setDraggedDocument] = useState<DraggedDocument | null>(null)
   const [dropTargetId, setDropTargetId] = useState<string | null>(null)
   const [openNodeIds, setOpenNodeIds] = useState<Set<string>>(() => new Set())
+  const [activeClusterVersionId, setActiveClusterVersionId] = useState<string | null>(null)
+  const [rebuildBaselineVersionId, setRebuildBaselineVersionId] = useState<string | null>(null)
+  const [rebuildPollKey, setRebuildPollKey] = useState(0)
+  const [rebuildSubmitting, setRebuildSubmitting] = useState(false)
+  const [pendingFeedbackCount, setPendingFeedbackCount] = useState(0)
 
   const verifiedItems = useMemo(
     () => metadataItems.filter((item) => item.review_status === "verified"),
@@ -106,6 +114,21 @@ export function FinalResult({
       try {
         const version = await getActiveClusters(sessionId)
         if (cancelled) return
+
+        const nextVersionId = version?.id ?? null
+        const nextVersionMarker = nextVersionId ?? NO_CLUSTER_VERSION
+        setActiveClusterVersionId(nextVersionId)
+        if (rebuildBaselineVersionId && nextVersionMarker === rebuildBaselineVersionId) {
+          setLoading(true)
+          setStatus("Đang chờ backend tạo phiên bản cụm mới từ feedback đã lưu.")
+          schedule()
+          return
+        }
+        if (rebuildBaselineVersionId) {
+          setRebuildBaselineVersionId(null)
+          setPendingFeedbackCount(0)
+          toast.success("Đã cập nhật cụm từ feedback đã lưu.")
+        }
 
         const nextGroups = versionToGroups(version, metadataItems)
         setGroups(nextGroups)
@@ -150,7 +173,7 @@ export function FinalResult({
       cancelled = true
       if (timeoutId !== undefined) window.clearTimeout(timeoutId)
     }
-  }, [metadataItems, sessionId, verifiedItems])
+  }, [metadataItems, rebuildBaselineVersionId, rebuildPollKey, sessionId, verifiedItems])
 
   const toggleNode = (nodeId: string) => {
     setOpenNodeIds((previous) => {
@@ -182,7 +205,7 @@ export function FinalResult({
     setDraggedDocument(null)
     setDropTargetId(null)
     setGroups((previous) => moveDocumentLocally(previous, moving, targetClusterId))
-    setStatus("Đã ghi feedback manual-move. Backend sẽ cập nhật lại kết quả lập hồ sơ.")
+    setStatus("Đang lưu feedback manual-move...")
 
     try {
       await moveDocumentBetweenClusters(sessionId, {
@@ -197,9 +220,39 @@ export function FinalResult({
           target_cluster_id: targetClusterId,
         },
       })
-      toast.success("Đã gửi feedback chuyển tài liệu.")
+      setPendingFeedbackCount((count) => count + 1)
+      setStatus("Đã lưu feedback manual-move. Bấm Cập nhật cụm khi bạn muốn phân cụm lại.")
+      toast.success("Đã lưu feedback chuyển tài liệu.")
     } catch (err) {
+      setStatus("Không lưu được feedback manual-move. Vui lòng thử lại.")
       toast.error(err instanceof Error ? err.message : "Không gửi được feedback manual-move.")
+    }
+  }
+
+  const handleRebuildClusters = async () => {
+    if (!sessionId) {
+      toast.error("Chưa có session để cập nhật cụm.")
+      return
+    }
+    setRebuildSubmitting(true)
+    try {
+      const currentVersion = await getActiveClusters(sessionId)
+      const baselineVersionId = currentVersion?.id ?? activeClusterVersionId ?? NO_CLUSTER_VERSION
+      setActiveClusterVersionId(currentVersion?.id ?? activeClusterVersionId ?? null)
+      const response = await enqueueClusterBuild(sessionId, { source: "user_feedback" })
+      setRebuildBaselineVersionId(baselineVersionId)
+      setRebuildPollKey((key) => key + 1)
+      setLoading(true)
+      setStatus("Đã gửi job cập nhật cụm. Đang chờ backend tạo phiên bản mới.")
+      toast.success(
+        response.status === "already_queued_or_running"
+          ? "Đã có job cập nhật cụm đang chạy."
+          : "Đã gửi job cập nhật cụm."
+      )
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Không gửi được job cập nhật cụm.")
+    } finally {
+      setRebuildSubmitting(false)
     }
   }
 
@@ -269,11 +322,30 @@ export function FinalResult({
         </ScrollArea>
       </div>
 
-      <div className="flex justify-end">
-        <Button onClick={onFinish} disabled={groups.length === 0}>
-          <CheckCircle2 data-icon="inline-start" />
-          Hoàn tất
-        </Button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-[#64748B]">
+          {pendingFeedbackCount > 0
+            ? `Có ${pendingFeedbackCount} feedback đã lưu và đang chờ cập nhật cụm.`
+            : "Feedback manual-move sẽ được lưu lại và chỉ áp dụng khi cập nhật cụm."}
+        </p>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            variant="outline"
+            onClick={() => void handleRebuildClusters()}
+            disabled={rebuildSubmitting || loading || !sessionId || groups.length === 0}
+          >
+            {rebuildSubmitting ? (
+              <Loader2 data-icon="inline-start" className="animate-spin" />
+            ) : (
+              <RefreshCw data-icon="inline-start" />
+            )}
+            Cập nhật cụm
+          </Button>
+          <Button onClick={onFinish} disabled={groups.length === 0}>
+            <CheckCircle2 data-icon="inline-start" />
+            Tạo mục lục
+          </Button>
+        </div>
       </div>
     </motion.div>
   )

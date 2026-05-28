@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import type { ReactNode } from "react"
 import { useNavigate } from "react-router-dom"
-import { ArrowRight, CalendarDays, FileStack, Loader2, Plus, RefreshCw } from "lucide-react"
+import { Archive, ArrowRight, CalendarDays, FileStack, Loader2, Plus, RefreshCw } from "lucide-react"
 import { motion } from "framer-motion"
 import { toast } from "sonner"
 import { cn } from "@/shared/lib/utils"
@@ -42,6 +42,11 @@ export function SessionsPage() {
   const openSession = (sessionId: string) => {
     window.localStorage.setItem(LAST_SESSION_KEY, sessionId)
     navigate(`/sessions/${encodeURIComponent(sessionId)}/step/1`)
+  }
+
+  const openArtifacts = (sessionId: string) => {
+    window.localStorage.setItem(LAST_SESSION_KEY, sessionId)
+    navigate(`/sessions/${encodeURIComponent(sessionId)}/step/5`)
   }
 
   return (
@@ -112,6 +117,7 @@ export function SessionsPage() {
                 session={session}
                 index={index}
                 onOpen={() => openSession(session.session_id)}
+                onArtifacts={() => openArtifacts(session.session_id)}
               />
             ))}
           </div>
@@ -141,20 +147,21 @@ function SessionCard({
   session,
   index,
   onOpen,
+  onArtifacts,
 }: {
   session: SessionSummary
   index: number
   onOpen: () => void
+  onArtifacts: () => void
 }) {
   const hasPlan = Boolean(session.active_plan_version_id)
   const hasClusters = Boolean(session.active_cluster_version_id)
   const statusText = hasClusters ? "Đã lập hồ sơ" : hasPlan ? "Có phương án" : statusLabel(session.status)
   return (
-    <motion.button
+    <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.28, delay: index * 0.035 }}
-      onClick={onOpen}
       className="group flex min-h-48 flex-col justify-between rounded-2xl border border-[#D8E1EC] bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-1 hover:border-[#0052FF]/35 hover:shadow-[0_18px_42px_rgba(15,23,42,0.12)]"
     >
       <div>
@@ -181,11 +188,27 @@ function SessionCard({
           <Metric icon={<CalendarDays className="size-3.5" />} label="Ngày tạo" value={shortDate(session.created_at)} />
         </div>
       </div>
-      <div className="mt-5 flex items-center justify-between border-t border-[#EEF2F7] pt-4">
-        <span className="text-sm font-semibold text-[#0052FF]">Mở session</span>
-        <ArrowRight className="size-4 text-[#0052FF] transition-transform group-hover:translate-x-1" />
+      <div className="mt-5 flex items-center justify-between gap-2 border-t border-[#EEF2F7] pt-4">
+        <button
+          type="button"
+          onClick={onOpen}
+          className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-semibold text-[#0052FF] transition-colors hover:bg-[#EAF1FF]"
+        >
+          Mở session
+          <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
+        </button>
+        {hasClusters && (
+          <button
+            type="button"
+            onClick={onArtifacts}
+            className="flex items-center gap-1.5 rounded-lg border border-[#CBD5E1] px-2.5 py-1 text-xs font-semibold text-[#475569] transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF]"
+          >
+            <Archive className="size-3.5" />
+            Tạo mục lục
+          </button>
+        )}
       </div>
-    </motion.button>
+    </motion.div>
   )
 }
 

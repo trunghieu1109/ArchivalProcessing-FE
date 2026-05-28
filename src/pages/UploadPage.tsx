@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react"
-import { useNavigate, useParams } from "react-router-dom"
+import { useCallback } from "react"
+import { useNavigate, useParams, useSearchParams } from "react-router-dom"
 import {
   CheckCircle2,
   Loader2,
@@ -16,6 +17,7 @@ import { ZipSection } from "@/features/upload/components/step1/ZipSection"
 import { FolderTree } from "@/features/upload/components/step2/FolderTree"
 import { ProcessStep } from "@/features/upload/components/step3/ProcessStep"
 import { FinalResult } from "@/features/upload/components/step4/FinalResult"
+import { FinalizeArtifactsStep } from "@/pages/FinalizeArtifactsPage"
 import { useOcrFolder } from "@/features/upload/hooks/useOcrFolder"
 import {
   createSession,
@@ -218,7 +220,7 @@ function folderPathFromZipName(fileName: string): string {
     .join("/")
 }
 
-const STEP_LABELS = ["Tải lên", "Cấu trúc", "Xử lý", "Kết quả"]
+const STEP_LABELS = ["Tải lên", "Cấu trúc", "Xử lý", "Kết quả", "Tạo mục lục"]
 const PLAN_ANALYSIS_TIMEOUT_MS = 10 * 60 * 1000
 const LAST_SESSION_KEY = "archival-processing:last-session-id"
 
@@ -245,16 +247,23 @@ let _draftZipFile: File | null = null
 export function UploadPage() {
   const navigate = useNavigate()
   const { step, sessionId: routeSessionId } = useParams<{ step: string; sessionId?: string }>()
+  const [searchParams, setSearchParams] = useSearchParams()
   const existingSessionMode = Boolean(routeSessionId)
   const currentStep = Math.min(
     Math.max(parseInt(step ?? "1", 10), 1),
-    4
+    5
   ) as AppStep
 
   const goTo = (s: AppStep, targetSessionId = routeSessionId ?? _sessionId) => {
     if (targetSessionId) navigate(`/sessions/${encodeURIComponent(targetSessionId)}/step/${s}`)
     else navigate(`/sessions/new/step/${s}`)
   }
+
+  const handleFinalizeAutoStartHandled = useCallback(() => {
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete("start")
+    setSearchParams(nextParams, { replace: true })
+  }, [searchParams, setSearchParams])
 
   const doc1Ref = useRef<SectionHandle>(null)
   const doc2Ref = useRef<SectionHandle>(null)
@@ -1089,9 +1098,31 @@ export function UploadPage() {
                 groups={clusterGroups}
                 metadataItems={ocrMetadataItems}
                 onFinish={() => {
-                  toast.success("Hoàn tất!")
-                  goTo(1)
+                  const currentSessionId = sessionId ?? routeSessionId
+                  if (!currentSessionId) {
+                    toast.error("Chưa có session để tạo mục lục.")
+                    return
+                  }
+                  navigate(`/sessions/${encodeURIComponent(currentSessionId)}/step/5?start=1`)
                 }}
+              />
+            </motion.div>
+          )}
+
+          {/* Bước 5: Tạo mục lục */}
+          {currentStep === 5 && (
+            <motion.div
+              key="step5"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -16 }}
+              transition={{ duration: 0.4, ease: easeOut }}
+            >
+              <FinalizeArtifactsStep
+                sessionId={sessionId ?? routeSessionId ?? null}
+                autoStart={searchParams.get("start") === "1"}
+                onAutoStartHandled={handleFinalizeAutoStartHandled}
+                embedded
               />
             </motion.div>
           )}
