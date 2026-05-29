@@ -34,7 +34,7 @@ import { Input } from "@/components/ui/input"
 import { cn } from "@/shared/lib/utils"
 import { DropZone } from "./DropZone"
 import { FileChip } from "./FileChip"
-import type { SessionInputUploadResponse } from "@/features/upload/api/sessionApi"
+import type { SessionInputUploadResponse, UploadProgressSnapshot } from "@/features/upload/api/sessionApi"
 import type { UseOcrFolderResult } from "@/features/upload/hooks/useOcrFolder"
 import type {
   ProcessState,
@@ -119,6 +119,7 @@ interface ZipSectionProps {
   maxFiles: string
   onMaxFilesChange: (value: string) => void
   onUploadFile: (file: File) => Promise<SessionInputUploadResponse>
+  uploadProgress: UploadProgressSnapshot | null
   ocr: UseOcrFolderResult
 }
 
@@ -133,6 +134,7 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
       maxFiles,
       onMaxFilesChange,
       onUploadFile,
+      uploadProgress,
       ocr,
     },
     ref
@@ -285,6 +287,33 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
             maxSize="2GB"
             buttonColor="blue"
           />
+        )}
+
+        {fileName && uploadProgress && uploadProgress.phase !== "done" && (
+          <div className="rounded-xl border border-primary/15 bg-primary/[0.03] p-3">
+            <div className="flex items-center justify-between gap-3 text-xs font-semibold text-[#0F172A]">
+              <span className="truncate">
+                {uploadProgress.phase === "error"
+                  ? "Upload ZIP thất bại"
+                  : uploadProgress.phase === "processing"
+                    ? "Đang xác nhận upload"
+                    : "Đang upload ZIP"}
+              </span>
+              <span className="shrink-0 font-roboto text-[11px] text-[#0052FF]">
+                {uploadProgress.percent !== null ? `${uploadProgress.percent}%` : `${uploadProgress.loadedMb.toFixed(2)} MB`}
+              </span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#D8E1EC]">
+              <div
+                className="h-full rounded-full bg-[#0052FF] transition-[width] duration-200"
+                style={{ width: `${uploadProgress.percent ?? 100}%` }}
+              />
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-3 font-roboto text-[11px] text-[#64748B]">
+              <span>{uploadProgress.loadedMb.toFixed(2)} MB</span>
+              <span>{uploadProgress.totalMb > 0 ? `${uploadProgress.totalMb.toFixed(2)} MB` : "Đang tính dung lượng"}</span>
+            </div>
+          </div>
         )}
 
         {fileName && (

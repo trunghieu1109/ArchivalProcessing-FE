@@ -35,7 +35,7 @@ export function FileChip({
         className="flex size-9 shrink-0 items-center justify-center rounded-lg shadow-[0_4px_14px_rgba(0,82,255,0.25)]"
         style={{ background: "linear-gradient(135deg, #0052FF, #4D7CFF)" }}
       >
-        {loading ? (
+        {loading || processing ? (
           <Loader2 className="size-4 animate-spin text-white" />
         ) : done ? (
           <CheckCircle2 className="size-4 text-white" />

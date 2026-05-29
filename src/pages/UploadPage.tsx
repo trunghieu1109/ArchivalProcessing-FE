@@ -25,12 +25,12 @@ import {
   getActivePlan,
   getSession,
   patchActivePlan,
-  registerSessionInput,
   uploadSessionInput,
   waitForActivePlan,
   type ActivePlanResponse,
   type SessionInputFileType,
   type SessionInputUploadResponse,
+  type UploadProgressSnapshot,
 } from "@/features/upload/api/sessionApi"
 import type {
   ProcessState,
@@ -243,6 +243,7 @@ let _activePlanVersionId = ""
 let _draftArrangementPlanFile: File | null = null
 let _draftRetentionFile: File | null = null
 let _draftZipFile: File | null = null
+let _zipUploadProgress: UploadProgressSnapshot | null = null
 
 export function UploadPage() {
   const navigate = useNavigate()
@@ -287,6 +288,7 @@ export function UploadPage() {
   const [sessionId, setSessionId] = useState<string | null>(_sessionId)
   const [zipFolderPath, setZipFolderPath] = useState(_zipFolderPath)
   const [zipMaxFiles, setZipMaxFiles] = useState(_zipMaxFiles)
+  const [zipUploadProgress, setZipUploadProgress] = useState<UploadProgressSnapshot | null>(_zipUploadProgress)
   const [sessionLoading, setSessionLoading] = useState(false)
 
   const applyWorkflowState = (nextSessionId: string | null) => {
@@ -304,6 +306,7 @@ export function UploadPage() {
     setSessionId(nextSessionId)
     setZipFolderPath(_zipFolderPath)
     setZipMaxFiles(_zipMaxFiles)
+    setZipUploadProgress(_zipUploadProgress)
   }
 
   const resetWorkflowState = (nextSessionId: string | null) => {
@@ -326,6 +329,7 @@ export function UploadPage() {
     _draftArrangementPlanFile = null
     _draftRetentionFile = null
     _draftZipFile = null
+    _zipUploadProgress = null
     applyWorkflowState(nextSessionId)
   }
 
@@ -442,10 +446,28 @@ export function UploadPage() {
       return staged
     }
     const currentSessionId = _sessionId
-    const uploaded =
-      fileType === "raw_zip"
-        ? await registerSessionInput(currentSessionId, fileType, file.name)
-        : await uploadSessionInput(currentSessionId, fileType, file)
+    if (fileType === "raw_zip") {
+      syncZipUploadProgress(zipUploadProgressForFile(file, "uploading"))
+    }
+    let uploaded: SessionInputUploadResponse
+    try {
+      uploaded = await uploadSessionInput(
+        currentSessionId,
+        fileType,
+        file,
+        {
+          onProgress: fileType === "raw_zip" ? syncZipUploadProgress : undefined,
+        }
+      )
+    } catch (err) {
+      if (fileType === "raw_zip") {
+        syncZipUploadProgress(zipUploadProgressForFile(file, "error", _zipUploadProgress?.loadedBytes ?? 0))
+      }
+      throw err
+    }
+    if (fileType === "raw_zip") {
+      syncZipUploadProgress(zipUploadProgressForFile(file, "done", file.size))
+    }
     if (fileType === "raw_zip") _zipUpload = uploaded
     if (fileType === "arrangement_plan" || fileType === "retention_schedule") {
       _planAnalysisState = "idle"
@@ -463,6 +485,22 @@ export function UploadPage() {
     _zipMaxFiles = value
     setZipMaxFiles(value)
   }
+  const syncZipUploadProgress = (progress: UploadProgressSnapshot | null) => {
+    _zipUploadProgress = progress
+    setZipUploadProgress(progress)
+  }
+  const zipUploadProgressForFile = (
+    file: File,
+    phase: UploadProgressSnapshot["phase"],
+    loadedBytes = 0
+  ): UploadProgressSnapshot => ({
+    phase,
+    loadedBytes,
+    totalBytes: file.size,
+    loadedMb: Math.round((loadedBytes / (1024 * 1024)) * 100) / 100,
+    totalMb: Math.round((file.size / (1024 * 1024)) * 100) / 100,
+    percent: file.size > 0 ? Math.min(100, Math.round((loadedBytes / file.size) * 1000) / 10) : null,
+  })
   const syncPlanAnalysisState = (s: ProcessState) => {
     _planAnalysisState = s
     setPlanAnalysisState(s)
@@ -488,6 +526,7 @@ export function UploadPage() {
     if (!v) {
       _zipUpload = null
       _draftZipFile = null
+      syncZipUploadProgress(null)
       syncZipFolderPath("")
       syncZipMaxFiles("")
     }
@@ -610,11 +649,17 @@ export function UploadPage() {
     try {
       syncPlanAnalysisState("processing")
       const currentSessionId = await ensureSession()
-      const [arrangementPlan, retentionPlan, zipInput] = await Promise.all([
-        uploadSessionInput(currentSessionId, "arrangement_plan", _draftArrangementPlanFile),
+      syncZipState("processing")
+      syncZipUploadProgress(zipUploadProgressForFile(_draftZipFile, "uploading"))
+      const arrangementPlan = await uploadSessionInput(currentSessionId, "arrangement_plan", _draftArrangementPlanFile)
+      const [retentionPlan, zipInput] = await Promise.all([
         uploadSessionInput(currentSessionId, "retention_schedule", _draftRetentionFile),
-        registerSessionInput(currentSessionId, "raw_zip", _draftZipFile.name),
+        uploadSessionInput(currentSessionId, "raw_zip", _draftZipFile, {
+          onProgress: syncZipUploadProgress,
+        }),
       ])
+      syncZipUploadProgress(zipUploadProgressForFile(_draftZipFile, "done", _draftZipFile.size))
+      syncZipState("done")
       _zipUpload = zipInput
       syncZipFolderPath(zipInput.folder_path ?? zipInput.data_path ?? "")
 
@@ -648,6 +693,10 @@ export function UploadPage() {
       navigate(`/sessions/${encodeURIComponent(currentSessionId)}/step/2`)
     } catch (err) {
       syncPlanAnalysisState("idle")
+      syncZipState("idle")
+      if (_draftZipFile) {
+        syncZipUploadProgress(zipUploadProgressForFile(_draftZipFile, "error", _zipUploadProgress?.loadedBytes ?? 0))
+      }
       toast.error(err instanceof Error ? err.message : "Không thể bắt đầu phân tích phương án.")
     }
   }
@@ -677,6 +726,10 @@ export function UploadPage() {
         return
       }
       toast.error("Chưa có folder_path để bắt đầu lấy metadata.")
+      return
+    }
+    if (_zipUpload && !_zipUpload.remote_batch_id) {
+      toast.error("File ZIP chưa được upload lên Chỉnh Lý/MinIO. Vui lòng tải lại file ZIP.")
       return
     }
 
@@ -868,6 +921,7 @@ export function UploadPage() {
                 maxFiles={zipMaxFiles}
                 onMaxFilesChange={syncZipMaxFiles}
                 onUploadFile={(file) => uploadInput("raw_zip", file)}
+                uploadProgress={zipUploadProgress}
                 ocr={ocr}
               />
 

@@ -37,7 +37,50 @@ export interface SessionInputUploadResponse {
   local_cached_path: string | null
   data_path?: string | null
   checksum: string | null
-  folder_path?: string
+  folder_path?: string | null
+  remote_batch_id?: string | null
+  remote_file_id?: string | null
+  remote_kind?: string | null
+  remote_object_name?: string | null
+  remote_status?: string | null
+  size_bytes?: number | null
+  content_type?: string | null
+}
+
+interface SessionInputRemoteUploadPresignResponse {
+  session_id: string
+  file_type: SessionInputFileType
+  file_name: string
+  folder_path?: string | null
+  data_path?: string | null
+  upload_url: string
+  remote_batch_id: string
+  remote_file_id?: string | null
+  remote_kind: string
+  content_type: string
+  size_bytes?: number | null
+}
+
+export interface UploadProgressSnapshot {
+  phase: "uploading" | "processing" | "done" | "error"
+  loadedBytes: number
+  totalBytes: number
+  loadedMb: number
+  totalMb: number
+  percent: number | null
+}
+
+interface SessionEventResponse {
+  events: Array<{
+    id: number
+    event_type: string
+    payload?: Record<string, unknown>
+  }>
+}
+
+interface UploadSessionInputOptions {
+  createdBy?: string
+  onProgress?: (progress: UploadProgressSnapshot) => void
 }
 
 export interface ActivePlanResponse {
@@ -184,6 +227,7 @@ export interface ClusterVersionResponse {
 }
 
 const API_BASE = (import.meta.env.VITE_ARCHIVAL_API_BASE_URL ?? "/api").replace(/\/+$/, "")
+const PRESIGNED_UPLOAD_STALL_MS = 12_000
 
 export async function listSessions(limit = 100): Promise<SessionListResponse> {
   return requestJson<SessionListResponse>(`/sessions?limit=${encodeURIComponent(String(limit))}`)
@@ -205,18 +249,104 @@ export async function uploadSessionInput(
   sessionId: string,
   fileType: SessionInputFileType,
   file: File,
-  createdBy = "ui"
+  options: string | UploadSessionInputOptions = "ui"
 ): Promise<SessionInputUploadResponse> {
+  const uploadOptions = typeof options === "string" ? { createdBy: options } : options
+  if (fileType === "raw_zip") {
+    return uploadRawZipSessionInputDirect(sessionId, file, uploadOptions)
+  }
   const form = new FormData()
   form.append("file_type", fileType)
-  form.append("created_by", createdBy)
+  form.append("created_by", uploadOptions.createdBy ?? "ui")
   form.append("file", file)
-  return requestJson<SessionInputUploadResponse>(
+  return requestJsonWithUploadProgress<SessionInputUploadResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/inputs/upload`,
+    form,
+    uploadOptions.onProgress
+  )
+}
+
+async function uploadRawZipSessionInputDirect(
+  sessionId: string,
+  file: File,
+  options: UploadSessionInputOptions
+): Promise<SessionInputUploadResponse> {
+  const contentType = file.type || defaultContentType(file.name)
+  const presign = await requestJson<SessionInputRemoteUploadPresignResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/inputs/remote-upload/presign`,
     {
       method: "POST",
-      body: form,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        file_type: "raw_zip",
+        file_name: file.name,
+        content_type: contentType,
+        size_bytes: file.size,
+        created_by: options.createdBy ?? "ui",
+      }),
     }
+  )
+  if (!presign.remote_file_id) {
+    throw new Error("Chỉnh Lý chưa trả về remote_file_id cho file ZIP.")
+  }
+  options.onProgress?.(uploadProgressSnapshot("uploading", 0, file.size))
+  try {
+    await putPresignedFile(presign.upload_url, file, contentType, options.onProgress)
+  } catch (error) {
+    if (!(error instanceof PresignedUploadNetworkError)) throw error
+    return proxyPresignedRawZipUpload(sessionId, file, contentType, presign, options)
+  }
+  options.onProgress?.(uploadProgressSnapshot("processing", file.size, file.size))
+  const completed = await requestJson<SessionInputUploadResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/inputs/remote-upload/complete`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        file_type: "raw_zip",
+        file_name: file.name,
+        content_type: contentType,
+        size_bytes: file.size,
+        remote_batch_id: presign.remote_batch_id,
+        remote_file_id: presign.remote_file_id,
+        upload_url: presign.upload_url,
+        created_by: options.createdBy ?? "ui",
+      }),
+    }
+  )
+  options.onProgress?.(uploadProgressSnapshot("done", file.size, file.size))
+  return completed
+}
+
+async function proxyPresignedRawZipUpload(
+  sessionId: string,
+  file: File,
+  contentType: string,
+  presign: SessionInputRemoteUploadPresignResponse,
+  options: UploadSessionInputOptions
+): Promise<SessionInputUploadResponse> {
+  const query = new URLSearchParams({
+    file_type: "raw_zip",
+    file_name: file.name,
+    content_type: contentType,
+    size_bytes: String(file.size),
+    created_by: options.createdBy ?? "ui",
+    remote_batch_id: presign.remote_batch_id,
+    remote_file_id: presign.remote_file_id ?? "",
+  })
+  const proxyUpload = requestJsonWithBinaryUploadProgress<SessionInputUploadResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/inputs/remote-upload/proxy?${query.toString()}`,
+    file,
+    contentType,
+    options.onProgress
+  )
+  return withSessionUploadEventProgress(
+    sessionId,
+    "raw_zip",
+    file.name,
+    presign.remote_file_id ?? null,
+    proxyUpload,
+    options.onProgress
   )
 }
 
@@ -491,6 +621,256 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>
 }
 
+async function withSessionUploadEventProgress<T>(
+  sessionId: string,
+  fileType: SessionInputFileType,
+  fileName: string,
+  remoteFileId: string | null,
+  pending: Promise<T>,
+  onProgress?: (progress: UploadProgressSnapshot) => void
+): Promise<T> {
+  if (!onProgress) return pending
+  let stopped = false
+  let afterId = 0
+  const poll = async () => {
+    while (!stopped) {
+      try {
+        const response = await requestJson<SessionEventResponse>(
+          `/sessions/${encodeURIComponent(sessionId)}/events?after_id=${encodeURIComponent(String(afterId))}&limit=50`
+        )
+        for (const event of response.events) {
+          afterId = Math.max(afterId, event.id)
+          const progress = uploadProgressFromEvent(event.event_type, event.payload, fileType, fileName, remoteFileId)
+          if (progress) onProgress(progress)
+        }
+      } catch {
+        // Upload itself owns the user-facing error; event polling is best-effort progress only.
+      }
+      await delay(1_000)
+    }
+  }
+  const pollPromise = poll()
+  try {
+    return await pending
+  } finally {
+    stopped = true
+    await pollPromise.catch(() => undefined)
+  }
+}
+
+function uploadProgressFromEvent(
+  eventType: string,
+  payload: Record<string, unknown> | undefined,
+  fileType: SessionInputFileType,
+  fileName: string,
+  remoteFileId: string | null
+): UploadProgressSnapshot | null {
+  if (!payload) return null
+  if (payload.file_type !== fileType || payload.file_name !== fileName) return null
+  if (remoteFileId && payload.remote_file_id !== remoteFileId) return null
+  const loadedBytes = Number(payload.uploaded_bytes ?? 0)
+  const totalBytes = Number(payload.total_bytes ?? 0)
+  if (!Number.isFinite(loadedBytes) || !Number.isFinite(totalBytes)) return null
+  if (eventType.endsWith(".failed")) {
+    return uploadProgressSnapshot("error", loadedBytes, totalBytes)
+  }
+  if (eventType.endsWith(".completed")) {
+    return uploadProgressSnapshot("done", totalBytes || loadedBytes, totalBytes || loadedBytes)
+  }
+  if (
+    eventType.includes(".progress") ||
+    eventType.endsWith(".started") ||
+    eventType.endsWith(".received")
+  ) {
+    return uploadProgressSnapshot("uploading", loadedBytes, totalBytes)
+  }
+  return null
+}
+
+function requestJsonWithUploadProgress<T>(
+  path: string,
+  body: FormData,
+  onProgress?: (progress: UploadProgressSnapshot) => void
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    let lastProgress: UploadProgressSnapshot | null = null
+    xhr.open("POST", apiUrl(path), true)
+
+    xhr.upload.onprogress = (event) => {
+      const totalBytes = event.lengthComputable ? event.total : 0
+      const loadedBytes = event.loaded
+      lastProgress = uploadProgressSnapshot("uploading", loadedBytes, totalBytes)
+      onProgress?.(lastProgress)
+    }
+
+    xhr.upload.onload = () => {
+      if (lastProgress) {
+        onProgress?.(uploadProgressSnapshot("processing", lastProgress.totalBytes, lastProgress.totalBytes))
+      }
+    }
+
+    xhr.onload = () => {
+      const ok = xhr.status >= 200 && xhr.status < 300
+      if (!ok) {
+        if (lastProgress) {
+          onProgress?.(uploadProgressSnapshot("error", lastProgress.loadedBytes, lastProgress.totalBytes))
+        }
+        reject(new Error(responseTextErrorMessage(xhr.status, xhr.responseText)))
+        return
+      }
+      try {
+        if (lastProgress) {
+          onProgress?.(uploadProgressSnapshot("done", lastProgress.totalBytes, lastProgress.totalBytes))
+        }
+        resolve(JSON.parse(xhr.responseText || "{}") as T)
+      } catch {
+        reject(new Error("Backend trả về JSON không hợp lệ."))
+      }
+    }
+
+    xhr.onerror = () => {
+      if (lastProgress) {
+        onProgress?.(uploadProgressSnapshot("error", lastProgress.loadedBytes, lastProgress.totalBytes))
+      }
+      reject(new Error("Không thể kết nối backend để upload."))
+    }
+    xhr.onabort = () => {
+      if (lastProgress) {
+        onProgress?.(uploadProgressSnapshot("error", lastProgress.loadedBytes, lastProgress.totalBytes))
+      }
+      reject(new Error("Upload đã bị hủy."))
+    }
+    xhr.send(body)
+  })
+}
+
+function requestJsonWithBinaryUploadProgress<T>(
+  path: string,
+  file: File,
+  contentType: string,
+  onProgress?: (progress: UploadProgressSnapshot) => void
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    let lastProgress: UploadProgressSnapshot | null = uploadProgressSnapshot("uploading", 0, file.size)
+    xhr.open("POST", apiUrl(path), true)
+    xhr.setRequestHeader("Accept", "application/json")
+    if (contentType) xhr.setRequestHeader("Content-Type", contentType)
+
+    xhr.upload.onprogress = (event) => {
+      const totalBytes = event.lengthComputable ? event.total : file.size
+      const loadedBytes = event.loaded
+      lastProgress = uploadProgressSnapshot("uploading", loadedBytes, totalBytes)
+      onProgress?.(lastProgress)
+    }
+
+    xhr.upload.onload = () => {
+      onProgress?.(uploadProgressSnapshot("processing", file.size, file.size))
+    }
+
+    xhr.onload = () => {
+      const ok = xhr.status >= 200 && xhr.status < 300
+      if (!ok) {
+        onProgress?.(uploadProgressSnapshot("error", lastProgress?.loadedBytes ?? 0, lastProgress?.totalBytes ?? file.size))
+        reject(new Error(responseTextErrorMessage(xhr.status, xhr.responseText)))
+        return
+      }
+      try {
+        onProgress?.(uploadProgressSnapshot("done", file.size, file.size))
+        resolve(JSON.parse(xhr.responseText || "{}") as T)
+      } catch {
+        reject(new Error("Backend trả về JSON không hợp lệ."))
+      }
+    }
+
+    xhr.onerror = () => {
+      onProgress?.(uploadProgressSnapshot("error", lastProgress?.loadedBytes ?? 0, lastProgress?.totalBytes ?? file.size))
+      reject(new Error("Không thể kết nối backend để upload ZIP."))
+    }
+    xhr.onabort = () => {
+      onProgress?.(uploadProgressSnapshot("error", lastProgress?.loadedBytes ?? 0, lastProgress?.totalBytes ?? file.size))
+      reject(new Error("Upload ZIP đã bị hủy."))
+    }
+    xhr.send(file)
+  })
+}
+
+class PresignedUploadNetworkError extends Error {}
+
+function putPresignedFile(
+  uploadUrl: string,
+  file: File,
+  contentType: string,
+  onProgress?: (progress: UploadProgressSnapshot) => void
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    let lastProgress: UploadProgressSnapshot | null = uploadProgressSnapshot("uploading", 0, file.size)
+    let settled = false
+    let fallbackAbort = false
+    let stallTimer: number | null = null
+
+    const clearStallTimer = () => {
+      if (stallTimer !== null) {
+        window.clearTimeout(stallTimer)
+        stallTimer = null
+      }
+    }
+    const finish = (callback: () => void) => {
+      if (settled) return
+      settled = true
+      clearStallTimer()
+      callback()
+    }
+    const rejectForFallback = () => {
+      if (settled) return
+      fallbackAbort = true
+      xhr.abort()
+      finish(() => reject(new PresignedUploadNetworkError("Direct presigned upload did not respond.")))
+    }
+    const armStallTimer = () => {
+      clearStallTimer()
+      stallTimer = window.setTimeout(rejectForFallback, PRESIGNED_UPLOAD_STALL_MS)
+    }
+    xhr.open("PUT", uploadUrl, true)
+    if (contentType) xhr.setRequestHeader("Content-Type", contentType)
+
+    xhr.upload.onprogress = (event) => {
+      armStallTimer()
+      const totalBytes = event.lengthComputable ? event.total : file.size
+      const loadedBytes = event.loaded
+      lastProgress = uploadProgressSnapshot("uploading", loadedBytes, totalBytes)
+      onProgress?.(lastProgress)
+    }
+
+    xhr.onload = () => {
+      const ok = xhr.status >= 200 && xhr.status < 300
+      if (!ok) {
+        if (xhr.status === 0) {
+          finish(() => reject(new PresignedUploadNetworkError("Direct presigned upload did not respond.")))
+          return
+        }
+        onProgress?.(uploadProgressSnapshot("error", lastProgress?.loadedBytes ?? 0, lastProgress?.totalBytes ?? file.size))
+        finish(() => reject(new Error(presignedUploadErrorMessage(xhr.status, xhr.responseText))))
+        return
+      }
+      finish(resolve)
+    }
+
+    xhr.onerror = () => {
+      finish(() => reject(new PresignedUploadNetworkError("Direct presigned upload did not respond.")))
+    }
+    xhr.onabort = () => {
+      if (fallbackAbort) return
+      onProgress?.(uploadProgressSnapshot("error", lastProgress?.loadedBytes ?? 0, lastProgress?.totalBytes ?? file.size))
+      reject(new Error("Upload ZIP lên Chỉnh Lý đã bị hủy."))
+    }
+    armStallTimer()
+    xhr.send(file)
+  })
+}
+
 async function requestJsonOrNull<T>(path: string, init?: RequestInit): Promise<T | null> {
   const response = await fetch(apiUrl(path), init)
   if (response.status === 404) return null
@@ -502,7 +882,11 @@ async function requestJsonOrNull<T>(path: string, init?: RequestInit): Promise<T
 
 async function responseErrorMessage(response: Response): Promise<string> {
   const text = await response.text()
-  if (!text) return `API error ${response.status}`
+  return responseTextErrorMessage(response.status, text)
+}
+
+function responseTextErrorMessage(status: number, text: string): string {
+  if (!text) return `API error ${status}`
   try {
     const payload = JSON.parse(text) as { detail?: unknown }
     if (typeof payload.detail === "string") return payload.detail
@@ -511,6 +895,39 @@ async function responseErrorMessage(response: Response): Promise<string> {
     return text
   }
   return text
+}
+
+function presignedUploadErrorMessage(status: number, text: string): string {
+  if (status === 413) {
+    return "Chỉnh Lý gateway từ chối file ZIP vì quá lớn (HTTP 413 Payload Too Large). Cần tăng giới hạn upload gateway hoặc dùng ZIP nhỏ hơn."
+  }
+  if (!text) return `Upload ZIP lên Chỉnh Lý lỗi ${status}`
+  return responseTextErrorMessage(status, text)
+}
+
+function uploadProgressSnapshot(
+  phase: UploadProgressSnapshot["phase"],
+  loadedBytes: number,
+  totalBytes: number
+): UploadProgressSnapshot {
+  const safeLoaded = Math.max(0, loadedBytes)
+  const safeTotal = Math.max(0, totalBytes)
+  return {
+    phase,
+    loadedBytes: safeLoaded,
+    totalBytes: safeTotal,
+    loadedMb: bytesToMb(safeLoaded),
+    totalMb: bytesToMb(safeTotal),
+    percent: safeTotal > 0 ? Math.min(100, Math.round((safeLoaded / safeTotal) * 1000) / 10) : null,
+  }
+}
+
+function bytesToMb(value: number): number {
+  return Math.round((value / (1024 * 1024)) * 100) / 100
+}
+
+function defaultContentType(fileName: string): string {
+  return fileName.toLowerCase().endsWith(".zip") ? "application/zip" : "application/octet-stream"
 }
 
 function apiUrl(path: string): string {
