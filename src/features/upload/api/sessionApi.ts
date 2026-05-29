@@ -1,4 +1,7 @@
-import type { FolderStatusResponse, JobSummary } from "@/features/upload/api/ocrApi"
+import type {
+  FolderStatusResponse,
+  JobSummary,
+} from "@/features/upload/api/ocrApi"
 
 export type SessionInputFileType =
   | "arrangement_plan"
@@ -161,6 +164,15 @@ export interface SessionDocumentResponse {
   raw_metadata?: Record<string, unknown>
 }
 
+export interface DocumentPreviewUrlResponse {
+  session_id: string
+  document_id: number
+  data_path: string
+  download_url?: string | null
+  expires_in?: number | null
+  expires_at?: string | null
+}
+
 export interface ClusterPlacement {
   id: number
   session_document_id: number
@@ -226,18 +238,29 @@ export interface ClusterVersionResponse {
   clusters: SessionClusterSummary[]
 }
 
-const API_BASE = (import.meta.env.VITE_ARCHIVAL_API_BASE_URL ?? "/api").replace(/\/+$/, "")
+const API_BASE = (import.meta.env.VITE_ARCHIVAL_API_BASE_URL ?? "/api").replace(
+  /\/+$/,
+  ""
+)
 const PRESIGNED_UPLOAD_STALL_MS = 12_000
 
 export async function listSessions(limit = 100): Promise<SessionListResponse> {
-  return requestJson<SessionListResponse>(`/sessions?limit=${encodeURIComponent(String(limit))}`)
+  return requestJson<SessionListResponse>(
+    `/sessions?limit=${encodeURIComponent(String(limit))}`
+  )
 }
 
-export async function getSession(sessionId: string): Promise<SessionDetailResponse> {
-  return requestJson<SessionDetailResponse>(`/sessions/${encodeURIComponent(sessionId)}`)
+export async function getSession(
+  sessionId: string
+): Promise<SessionDetailResponse> {
+  return requestJson<SessionDetailResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}`
+  )
 }
 
-export async function createSession(createdBy = "ui"): Promise<CreateSessionResponse> {
+export async function createSession(
+  createdBy = "ui"
+): Promise<CreateSessionResponse> {
   return requestJson<CreateSessionResponse>("/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -251,7 +274,8 @@ export async function uploadSessionInput(
   file: File,
   options: string | UploadSessionInputOptions = "ui"
 ): Promise<SessionInputUploadResponse> {
-  const uploadOptions = typeof options === "string" ? { createdBy: options } : options
+  const uploadOptions =
+    typeof options === "string" ? { createdBy: options } : options
   if (fileType === "raw_zip") {
     return uploadRawZipSessionInputDirect(sessionId, file, uploadOptions)
   }
@@ -291,12 +315,25 @@ async function uploadRawZipSessionInputDirect(
   }
   options.onProgress?.(uploadProgressSnapshot("uploading", 0, file.size))
   try {
-    await putPresignedFile(presign.upload_url, file, contentType, options.onProgress)
+    await putPresignedFile(
+      presign.upload_url,
+      file,
+      contentType,
+      options.onProgress
+    )
   } catch (error) {
     if (!(error instanceof PresignedUploadNetworkError)) throw error
-    return proxyPresignedRawZipUpload(sessionId, file, contentType, presign, options)
+    return proxyPresignedRawZipUpload(
+      sessionId,
+      file,
+      contentType,
+      presign,
+      options
+    )
   }
-  options.onProgress?.(uploadProgressSnapshot("processing", file.size, file.size))
+  options.onProgress?.(
+    uploadProgressSnapshot("processing", file.size, file.size)
+  )
   const completed = await requestJson<SessionInputUploadResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/inputs/remote-upload/complete`,
     {
@@ -334,12 +371,13 @@ async function proxyPresignedRawZipUpload(
     remote_batch_id: presign.remote_batch_id,
     remote_file_id: presign.remote_file_id ?? "",
   })
-  const proxyUpload = requestJsonWithBinaryUploadProgress<SessionInputUploadResponse>(
-    `/sessions/${encodeURIComponent(sessionId)}/inputs/remote-upload/proxy?${query.toString()}`,
-    file,
-    contentType,
-    options.onProgress
-  )
+  const proxyUpload =
+    requestJsonWithBinaryUploadProgress<SessionInputUploadResponse>(
+      `/sessions/${encodeURIComponent(sessionId)}/inputs/remote-upload/proxy?${query.toString()}`,
+      file,
+      contentType,
+      options.onProgress
+    )
   return withSessionUploadEventProgress(
     sessionId,
     "raw_zip",
@@ -374,14 +412,19 @@ export async function enqueuePlanAnalysis(
   sessionId: string,
   payload: { plan_file: string; retention_file?: string }
 ): Promise<void> {
-  await requestJson<unknown>(`/sessions/${encodeURIComponent(sessionId)}/plan/analyze`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
+  await requestJson<unknown>(
+    `/sessions/${encodeURIComponent(sessionId)}/plan/analyze`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
 }
 
-export async function getActivePlan(sessionId: string): Promise<ActivePlanResponse | null> {
+export async function getActivePlan(
+  sessionId: string
+): Promise<ActivePlanResponse | null> {
   return requestJsonOrNull<ActivePlanResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/plan`
   )
@@ -391,11 +434,14 @@ export async function patchActivePlan(
   sessionId: string,
   payload: Record<string, unknown>
 ): Promise<ActivePlanResponse> {
-  return requestJson<ActivePlanResponse>(`/sessions/${encodeURIComponent(sessionId)}/plan`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
+  return requestJson<ActivePlanResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/plan`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
 }
 
 export async function waitForActivePlan(
@@ -410,7 +456,9 @@ export async function waitForActivePlan(
     if (plan && isExpectedPlan(plan, options)) return plan
     await delay(intervalMs)
   }
-  throw new Error("Quá thời gian chờ phân tích phương án. Hãy kiểm tra backend worker.")
+  throw new Error(
+    "Quá thời gian chờ phân tích phương án. Hãy kiểm tra backend worker."
+  )
 }
 
 function isExpectedPlan(
@@ -438,15 +486,18 @@ export async function startDigitization(
     confirmed_plan_version_id: string
   }
 ): Promise<void> {
-  await requestJson<unknown>(`/sessions/${encodeURIComponent(sessionId)}/digitization/start`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      recursive: true,
-      force: false,
-      ...payload,
-    }),
-  })
+  await requestJson<unknown>(
+    `/sessions/${encodeURIComponent(sessionId)}/digitization/start`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        recursive: true,
+        force: false,
+        ...payload,
+      }),
+    }
+  )
 }
 
 export async function getDigitizationStatus(
@@ -469,6 +520,15 @@ export async function verifyDocumentMetadata(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ metadata, created_by: "ui" }),
     }
+  )
+}
+
+export async function getDocumentPreviewUrl(
+  sessionId: string,
+  documentId: number
+): Promise<DocumentPreviewUrlResponse> {
+  return requestJson<DocumentPreviewUrlResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/documents/${encodeURIComponent(String(documentId))}/preview-url`
   )
 }
 
@@ -550,25 +610,33 @@ export function digitizationToFolderStatus(
     total_files: batch?.total_files ?? documents.length,
     total_jobs: batch?.total_jobs ?? documents.length,
     missing_files: batch?.missing_files ?? [],
-    status_counts: batch?.status_counts ?? response?.summary.status_counts ?? {},
+    status_counts:
+      batch?.status_counts ?? response?.summary.status_counts ?? {},
     jobs,
   }
 }
 
-export function isDigitizationComplete(response: DigitizationStatusResponse | null): boolean {
+export function isDigitizationComplete(
+  response: DigitizationStatusResponse | null
+): boolean {
   const batch = response?.batches[0]
-  return Boolean(batch && ["done", "completed_with_errors", "failed"].includes(batch.status))
+  return Boolean(
+    batch && ["done", "completed_with_errors", "failed"].includes(batch.status)
+  )
 }
 
 export async function enqueueFinalizeArtifacts(
   sessionId: string,
   payload: { created_by?: string } = {}
 ): Promise<Record<string, unknown>> {
-  return requestJson<Record<string, unknown>>(`/sessions/${encodeURIComponent(sessionId)}/artifacts/finalize`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
+  return requestJson<Record<string, unknown>>(
+    `/sessions/${encodeURIComponent(sessionId)}/artifacts/finalize`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
 }
 
 export async function listArtifacts(
@@ -594,23 +662,33 @@ export async function waitForArtifacts(
     }
     await delay(intervalMs)
   }
-  throw new Error("Quá thời gian chờ tạo artifact. Hãy kiểm tra backend worker.")
+  throw new Error(
+    "Quá thời gian chờ tạo artifact. Hãy kiểm tra backend worker."
+  )
 }
 
-export function artifactDownloadUrl(sessionId: string, artifactId: number): string {
+export function artifactDownloadUrl(
+  sessionId: string,
+  artifactId: number
+): string {
   return apiUrl(
     `/sessions/${encodeURIComponent(sessionId)}/artifacts/${artifactId}/download`
   )
 }
 
-export function artifactPreviewUrl(sessionId: string, artifactId: number): string {
+export function artifactPreviewUrl(
+  sessionId: string,
+  artifactId: number
+): string {
   return apiUrl(
     `/sessions/${encodeURIComponent(sessionId)}/artifacts/${artifactId}/preview`
   )
 }
 
 export function artifactDownloadAllUrl(sessionId: string): string {
-  return apiUrl(`/sessions/${encodeURIComponent(sessionId)}/artifacts/download-all`)
+  return apiUrl(
+    `/sessions/${encodeURIComponent(sessionId)}/artifacts/download-all`
+  )
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -640,7 +718,13 @@ async function withSessionUploadEventProgress<T>(
         )
         for (const event of response.events) {
           afterId = Math.max(afterId, event.id)
-          const progress = uploadProgressFromEvent(event.event_type, event.payload, fileType, fileName, remoteFileId)
+          const progress = uploadProgressFromEvent(
+            event.event_type,
+            event.payload,
+            fileType,
+            fileName,
+            remoteFileId
+          )
           if (progress) onProgress(progress)
         }
       } catch {
@@ -666,7 +750,8 @@ function uploadProgressFromEvent(
   remoteFileId: string | null
 ): UploadProgressSnapshot | null {
   if (!payload) return null
-  if (payload.file_type !== fileType || payload.file_name !== fileName) return null
+  if (payload.file_type !== fileType || payload.file_name !== fileName)
+    return null
   if (remoteFileId && payload.remote_file_id !== remoteFileId) return null
   const loadedBytes = Number(payload.uploaded_bytes ?? 0)
   const totalBytes = Number(payload.total_bytes ?? 0)
@@ -675,7 +760,11 @@ function uploadProgressFromEvent(
     return uploadProgressSnapshot("error", loadedBytes, totalBytes)
   }
   if (eventType.endsWith(".completed")) {
-    return uploadProgressSnapshot("done", totalBytes || loadedBytes, totalBytes || loadedBytes)
+    return uploadProgressSnapshot(
+      "done",
+      totalBytes || loadedBytes,
+      totalBytes || loadedBytes
+    )
   }
   if (
     eventType.includes(".progress") ||
@@ -700,13 +789,23 @@ function requestJsonWithUploadProgress<T>(
     xhr.upload.onprogress = (event) => {
       const totalBytes = event.lengthComputable ? event.total : 0
       const loadedBytes = event.loaded
-      lastProgress = uploadProgressSnapshot("uploading", loadedBytes, totalBytes)
+      lastProgress = uploadProgressSnapshot(
+        "uploading",
+        loadedBytes,
+        totalBytes
+      )
       onProgress?.(lastProgress)
     }
 
     xhr.upload.onload = () => {
       if (lastProgress) {
-        onProgress?.(uploadProgressSnapshot("processing", lastProgress.totalBytes, lastProgress.totalBytes))
+        onProgress?.(
+          uploadProgressSnapshot(
+            "processing",
+            lastProgress.totalBytes,
+            lastProgress.totalBytes
+          )
+        )
       }
     }
 
@@ -714,14 +813,28 @@ function requestJsonWithUploadProgress<T>(
       const ok = xhr.status >= 200 && xhr.status < 300
       if (!ok) {
         if (lastProgress) {
-          onProgress?.(uploadProgressSnapshot("error", lastProgress.loadedBytes, lastProgress.totalBytes))
+          onProgress?.(
+            uploadProgressSnapshot(
+              "error",
+              lastProgress.loadedBytes,
+              lastProgress.totalBytes
+            )
+          )
         }
-        reject(new Error(responseTextErrorMessage(xhr.status, xhr.responseText)))
+        reject(
+          new Error(responseTextErrorMessage(xhr.status, xhr.responseText))
+        )
         return
       }
       try {
         if (lastProgress) {
-          onProgress?.(uploadProgressSnapshot("done", lastProgress.totalBytes, lastProgress.totalBytes))
+          onProgress?.(
+            uploadProgressSnapshot(
+              "done",
+              lastProgress.totalBytes,
+              lastProgress.totalBytes
+            )
+          )
         }
         resolve(JSON.parse(xhr.responseText || "{}") as T)
       } catch {
@@ -731,13 +844,25 @@ function requestJsonWithUploadProgress<T>(
 
     xhr.onerror = () => {
       if (lastProgress) {
-        onProgress?.(uploadProgressSnapshot("error", lastProgress.loadedBytes, lastProgress.totalBytes))
+        onProgress?.(
+          uploadProgressSnapshot(
+            "error",
+            lastProgress.loadedBytes,
+            lastProgress.totalBytes
+          )
+        )
       }
       reject(new Error("Không thể kết nối backend để upload."))
     }
     xhr.onabort = () => {
       if (lastProgress) {
-        onProgress?.(uploadProgressSnapshot("error", lastProgress.loadedBytes, lastProgress.totalBytes))
+        onProgress?.(
+          uploadProgressSnapshot(
+            "error",
+            lastProgress.loadedBytes,
+            lastProgress.totalBytes
+          )
+        )
       }
       reject(new Error("Upload đã bị hủy."))
     }
@@ -753,7 +878,11 @@ function requestJsonWithBinaryUploadProgress<T>(
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
-    let lastProgress: UploadProgressSnapshot | null = uploadProgressSnapshot("uploading", 0, file.size)
+    let lastProgress: UploadProgressSnapshot | null = uploadProgressSnapshot(
+      "uploading",
+      0,
+      file.size
+    )
     xhr.open("POST", apiUrl(path), true)
     xhr.setRequestHeader("Accept", "application/json")
     if (contentType) xhr.setRequestHeader("Content-Type", contentType)
@@ -761,7 +890,11 @@ function requestJsonWithBinaryUploadProgress<T>(
     xhr.upload.onprogress = (event) => {
       const totalBytes = event.lengthComputable ? event.total : file.size
       const loadedBytes = event.loaded
-      lastProgress = uploadProgressSnapshot("uploading", loadedBytes, totalBytes)
+      lastProgress = uploadProgressSnapshot(
+        "uploading",
+        loadedBytes,
+        totalBytes
+      )
       onProgress?.(lastProgress)
     }
 
@@ -772,8 +905,16 @@ function requestJsonWithBinaryUploadProgress<T>(
     xhr.onload = () => {
       const ok = xhr.status >= 200 && xhr.status < 300
       if (!ok) {
-        onProgress?.(uploadProgressSnapshot("error", lastProgress?.loadedBytes ?? 0, lastProgress?.totalBytes ?? file.size))
-        reject(new Error(responseTextErrorMessage(xhr.status, xhr.responseText)))
+        onProgress?.(
+          uploadProgressSnapshot(
+            "error",
+            lastProgress?.loadedBytes ?? 0,
+            lastProgress?.totalBytes ?? file.size
+          )
+        )
+        reject(
+          new Error(responseTextErrorMessage(xhr.status, xhr.responseText))
+        )
         return
       }
       try {
@@ -785,11 +926,23 @@ function requestJsonWithBinaryUploadProgress<T>(
     }
 
     xhr.onerror = () => {
-      onProgress?.(uploadProgressSnapshot("error", lastProgress?.loadedBytes ?? 0, lastProgress?.totalBytes ?? file.size))
+      onProgress?.(
+        uploadProgressSnapshot(
+          "error",
+          lastProgress?.loadedBytes ?? 0,
+          lastProgress?.totalBytes ?? file.size
+        )
+      )
       reject(new Error("Không thể kết nối backend để upload ZIP."))
     }
     xhr.onabort = () => {
-      onProgress?.(uploadProgressSnapshot("error", lastProgress?.loadedBytes ?? 0, lastProgress?.totalBytes ?? file.size))
+      onProgress?.(
+        uploadProgressSnapshot(
+          "error",
+          lastProgress?.loadedBytes ?? 0,
+          lastProgress?.totalBytes ?? file.size
+        )
+      )
       reject(new Error("Upload ZIP đã bị hủy."))
     }
     xhr.send(file)
@@ -806,7 +959,11 @@ function putPresignedFile(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
-    let lastProgress: UploadProgressSnapshot | null = uploadProgressSnapshot("uploading", 0, file.size)
+    let lastProgress: UploadProgressSnapshot | null = uploadProgressSnapshot(
+      "uploading",
+      0,
+      file.size
+    )
     let settled = false
     let fallbackAbort = false
     let stallTimer: number | null = null
@@ -827,11 +984,20 @@ function putPresignedFile(
       if (settled) return
       fallbackAbort = true
       xhr.abort()
-      finish(() => reject(new PresignedUploadNetworkError("Direct presigned upload did not respond.")))
+      finish(() =>
+        reject(
+          new PresignedUploadNetworkError(
+            "Direct presigned upload did not respond."
+          )
+        )
+      )
     }
     const armStallTimer = () => {
       clearStallTimer()
-      stallTimer = window.setTimeout(rejectForFallback, PRESIGNED_UPLOAD_STALL_MS)
+      stallTimer = window.setTimeout(
+        rejectForFallback,
+        PRESIGNED_UPLOAD_STALL_MS
+      )
     }
     xhr.open("PUT", uploadUrl, true)
     if (contentType) xhr.setRequestHeader("Content-Type", contentType)
@@ -840,7 +1006,11 @@ function putPresignedFile(
       armStallTimer()
       const totalBytes = event.lengthComputable ? event.total : file.size
       const loadedBytes = event.loaded
-      lastProgress = uploadProgressSnapshot("uploading", loadedBytes, totalBytes)
+      lastProgress = uploadProgressSnapshot(
+        "uploading",
+        loadedBytes,
+        totalBytes
+      )
       onProgress?.(lastProgress)
     }
 
@@ -848,22 +1018,50 @@ function putPresignedFile(
       const ok = xhr.status >= 200 && xhr.status < 300
       if (!ok) {
         if (xhr.status === 0) {
-          finish(() => reject(new PresignedUploadNetworkError("Direct presigned upload did not respond.")))
+          finish(() =>
+            reject(
+              new PresignedUploadNetworkError(
+                "Direct presigned upload did not respond."
+              )
+            )
+          )
           return
         }
-        onProgress?.(uploadProgressSnapshot("error", lastProgress?.loadedBytes ?? 0, lastProgress?.totalBytes ?? file.size))
-        finish(() => reject(new Error(presignedUploadErrorMessage(xhr.status, xhr.responseText))))
+        onProgress?.(
+          uploadProgressSnapshot(
+            "error",
+            lastProgress?.loadedBytes ?? 0,
+            lastProgress?.totalBytes ?? file.size
+          )
+        )
+        finish(() =>
+          reject(
+            new Error(presignedUploadErrorMessage(xhr.status, xhr.responseText))
+          )
+        )
         return
       }
       finish(resolve)
     }
 
     xhr.onerror = () => {
-      finish(() => reject(new PresignedUploadNetworkError("Direct presigned upload did not respond.")))
+      finish(() =>
+        reject(
+          new PresignedUploadNetworkError(
+            "Direct presigned upload did not respond."
+          )
+        )
+      )
     }
     xhr.onabort = () => {
       if (fallbackAbort) return
-      onProgress?.(uploadProgressSnapshot("error", lastProgress?.loadedBytes ?? 0, lastProgress?.totalBytes ?? file.size))
+      onProgress?.(
+        uploadProgressSnapshot(
+          "error",
+          lastProgress?.loadedBytes ?? 0,
+          lastProgress?.totalBytes ?? file.size
+        )
+      )
       reject(new Error("Upload ZIP lên Chỉnh Lý đã bị hủy."))
     }
     armStallTimer()
@@ -871,7 +1069,10 @@ function putPresignedFile(
   })
 }
 
-async function requestJsonOrNull<T>(path: string, init?: RequestInit): Promise<T | null> {
+async function requestJsonOrNull<T>(
+  path: string,
+  init?: RequestInit
+): Promise<T | null> {
   const response = await fetch(apiUrl(path), init)
   if (response.status === 404) return null
   if (!response.ok) {
@@ -918,7 +1119,10 @@ function uploadProgressSnapshot(
     totalBytes: safeTotal,
     loadedMb: bytesToMb(safeLoaded),
     totalMb: bytesToMb(safeTotal),
-    percent: safeTotal > 0 ? Math.min(100, Math.round((safeLoaded / safeTotal) * 1000) / 10) : null,
+    percent:
+      safeTotal > 0
+        ? Math.min(100, Math.round((safeLoaded / safeTotal) * 1000) / 10)
+        : null,
   }
 }
 
@@ -927,7 +1131,9 @@ function bytesToMb(value: number): number {
 }
 
 function defaultContentType(fileName: string): string {
-  return fileName.toLowerCase().endsWith(".zip") ? "application/zip" : "application/octet-stream"
+  return fileName.toLowerCase().endsWith(".zip")
+    ? "application/zip"
+    : "application/octet-stream"
 }
 
 function apiUrl(path: string): string {

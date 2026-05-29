@@ -9,6 +9,10 @@ import {
   verifyDocumentMetadata,
   type SessionDocumentResponse,
 } from "@/features/upload/api/sessionApi"
+import {
+  DocumentPdfPreview,
+  type DocumentPreviewTarget,
+} from "@/features/upload/components/DocumentPdfPreview"
 import { MetadataCard, getWarningFields } from "./MetadataCard"
 import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
 import type { PdfMetadata } from "@/features/upload/types"
@@ -33,6 +37,9 @@ export function ProcessStep({
   const [items, setItems] = useState<PdfMetadata[]>([])
   const [verifyingIds, setVerifyingIds] = useState<Set<number>>(() => new Set())
   const [bulkVerifying, setBulkVerifying] = useState(false)
+  const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(
+    null
+  )
 
   const metadataKey = useMemo(
     () =>
@@ -50,7 +57,10 @@ export function ProcessStep({
   }, [metadataItems, metadataKey])
 
   const paths = useMemo(
-    () => (metadataItems.length > 0 ? metadataItems.map((item) => item.data_path) : pdfPaths),
+    () =>
+      metadataItems.length > 0
+        ? metadataItems.map((item) => item.data_path)
+        : pdfPaths,
     [metadataItems, pdfPaths]
   )
 
@@ -62,8 +72,51 @@ export function ProcessStep({
     () => readyItems.filter((item) => item.review_status !== "verified"),
     [readyItems]
   )
+  const sortedItems = useMemo(
+    () =>
+      [...items].sort((a, b) => metadataSortScore(a) - metadataSortScore(b)),
+    [items]
+  )
+  const selectedItem = useMemo(
+    () => sortedItems.find((item) => item.id === selectedDocumentId) ?? null,
+    [selectedDocumentId, sortedItems]
+  )
+  const previewDocument = useMemo<DocumentPreviewTarget | null>(
+    () =>
+      selectedItem
+        ? {
+            id: selectedItem.id,
+            fileName: fileNameFromPath(selectedItem.data_path),
+            dataPath: selectedItem.data_path,
+          }
+        : null,
+    [selectedItem]
+  )
 
-  const handleApply = async (dataPath: string, meta: Record<string, unknown>) => {
+  useEffect(() => {
+    if (sortedItems.length === 0) {
+      setSelectedDocumentId(null)
+      return
+    }
+    if (
+      selectedDocumentId !== null &&
+      sortedItems.some((item) => item.id === selectedDocumentId)
+    ) {
+      return
+    }
+    const firstWarning =
+      sortedItems.find(
+        (item) =>
+          item.review_status !== "verified" &&
+          getWarningFields(item.light_metadata).size > 0
+      ) ?? sortedItems[0]
+    setSelectedDocumentId(firstWarning.id)
+  }, [selectedDocumentId, sortedItems])
+
+  const handleApply = async (
+    dataPath: string,
+    meta: Record<string, unknown>
+  ) => {
     const item = items.find((candidate) => candidate.data_path === dataPath)
     if (!item) throw new Error("Không tìm thấy tài liệu trong session.")
     if (!sessionId) throw new Error("Chưa có session để xác nhận metadata.")
@@ -104,8 +157,9 @@ export function ProcessStep({
         )
       )
       const verified = results
-        .filter((result): result is PromiseFulfilledResult<SessionDocumentResponse> =>
-          result.status === "fulfilled"
+        .filter(
+          (result): result is PromiseFulfilledResult<SessionDocumentResponse> =>
+            result.status === "fulfilled"
         )
         .map((result) => result.value)
       if (verified.length > 0) {
@@ -118,7 +172,9 @@ export function ProcessStep({
 
       const failedCount = results.length - verified.length
       if (failedCount > 0) {
-        toast.error(`${failedCount} tài liệu chưa xác nhận được. Vui lòng kiểm tra lại.`)
+        toast.error(
+          `${failedCount} tài liệu chưa xác nhận được. Vui lòng kiểm tra lại.`
+        )
       }
       if (verified.length > 0) {
         toast.success(`Đã xác nhận ${verified.length} tài liệu.`)
@@ -155,72 +211,82 @@ export function ProcessStep({
         <div>
           <h2 className="text-2xl text-foreground">Xử lý & lập hồ sơ</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Metadata được lấy từ backend. Sau khi metadata được xác nhận, màn hình sẽ chuyển sang kết quả lập hồ sơ.
+            Metadata được lấy từ backend. Sau khi metadata được xác nhận, màn
+            hình sẽ chuyển sang kết quả lập hồ sơ.
           </p>
         </div>
         {warningCount > 0 && (
           <div className="shrink-0 text-right">
-            <p className="font-roboto text-[11px] text-amber-600">Cần kiểm tra</p>
+            <p className="font-roboto text-[11px] text-amber-600">
+              Cần kiểm tra
+            </p>
             <p className="text-xl font-bold text-amber-600">{warningCount}</p>
           </div>
         )}
       </div>
 
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-3">
-          <span className="font-roboto text-[11px] font-semibold tracking-[0.15em] text-muted-foreground uppercase">
-            Metadata tài liệu
-          </span>
-          <div className="flex shrink-0 items-center gap-2">
-            {metadataLoading && (
-              <span className="flex items-center gap-1.5 text-xs text-[#64748B]">
-                <Loader2 className="size-3 animate-spin text-[#0052FF]" />
-                Đang tải {items.length}/{Math.max(paths.length, items.length)}
-              </span>
-            )}
-            {pendingReadyItems.length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void handleVerifyAllReady()}
-                disabled={bulkVerifying}
-                className="h-8 gap-1.5 text-xs"
-              >
-                {bulkVerifying ? (
-                  <Loader2 className="size-3 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="size-3" />
-                )}
-                Xác nhận tất cả
-              </Button>
-            )}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(380px,1.05fr)]">
+        <div className="flex min-w-0 flex-col gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <span className="font-roboto text-[11px] font-semibold tracking-[0.15em] text-muted-foreground uppercase">
+              Metadata tài liệu
+            </span>
+            <div className="flex shrink-0 items-center gap-2">
+              {metadataLoading && (
+                <span className="flex items-center gap-1.5 text-xs text-[#64748B]">
+                  <Loader2 className="size-3 animate-spin text-[#0052FF]" />
+                  Đang tải {items.length}/{Math.max(paths.length, items.length)}
+                </span>
+              )}
+              {pendingReadyItems.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void handleVerifyAllReady()}
+                  disabled={bulkVerifying}
+                  className="h-8 gap-1.5 text-xs"
+                >
+                  {bulkVerifying ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="size-3" />
+                  )}
+                  Xác nhận tất cả
+                </Button>
+              )}
+            </div>
           </div>
-        </div>
-        <ScrollArea className="h-[520px]">
-          <div className="flex flex-col gap-2 pr-1">
-            {[...items]
-              .sort((a, b) => metadataSortScore(a) - metadataSortScore(b))
-              .map((item) => (
+          <ScrollArea className="h-[640px]">
+            <div className="flex flex-col gap-2 pr-1">
+              {sortedItems.map((item) => (
                 <MetadataCard
                   key={item.id}
                   item={item}
+                  selected={item.id === selectedDocumentId}
                   submitting={verifyingIds.has(item.id)}
+                  onSelect={() => setSelectedDocumentId(item.id)}
                   onApply={handleApply}
                 />
               ))}
-            {Array.from({ length: loadingPlaceholderCount }).map((_, i) => (
-              <div
-                key={`skel-${i}`}
-                className="h-14 animate-pulse rounded-xl border border-[#E2E8F0] bg-[#F8FAFC]"
-              />
-            ))}
-            {!metadataLoading && items.length === 0 && (
-              <div className="rounded-xl border border-dashed border-[#CBD5E1] bg-white p-6 text-center text-sm text-muted-foreground">
-                Chưa có metadata từ backend.
-              </div>
-            )}
-          </div>
-        </ScrollArea>
+              {Array.from({ length: loadingPlaceholderCount }).map((_, i) => (
+                <div
+                  key={`skel-${i}`}
+                  className="h-14 animate-pulse rounded-xl border border-[#E2E8F0] bg-[#F8FAFC]"
+                />
+              ))}
+              {!metadataLoading && items.length === 0 && (
+                <div className="rounded-xl border border-dashed border-[#CBD5E1] bg-white p-6 text-center text-sm text-muted-foreground">
+                  Chưa có metadata từ backend.
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        </div>
+        <DocumentPdfPreview
+          sessionId={sessionId}
+          document={previewDocument}
+          className="h-[678px]"
+        />
       </div>
 
       <div className="flex items-center justify-between rounded-2xl border border-[#CBD5E1] bg-white px-6 py-4 shadow-sm">
@@ -273,7 +339,10 @@ function mergeIncomingMetadata(
   const previousById = new Map(previous.map((item) => [item.id, item]))
   return incoming.map((item) => {
     const local = previousById.get(item.id)
-    if (local?.review_status === "verified" && item.review_status !== "verified") {
+    if (
+      local?.review_status === "verified" &&
+      item.review_status !== "verified"
+    ) {
       return local
     }
     return item
@@ -301,7 +370,9 @@ function replaceVerifiedDocuments(
   return items.map((item) => byId.get(item.id) ?? item)
 }
 
-function documentResponseToPdfMetadata(document: SessionDocumentResponse): PdfMetadata {
+function documentResponseToPdfMetadata(
+  document: SessionDocumentResponse
+): PdfMetadata {
   return {
     id: document.id,
     document_id: document.document_id,
@@ -311,7 +382,10 @@ function documentResponseToPdfMetadata(document: SessionDocumentResponse): PdfMe
     metadata_ready: document.metadata_ready,
     metadata_final: document.metadata_final,
     light_metadata:
-      document.normalized_metadata ?? document.metadata ?? document.raw_metadata ?? {},
+      document.normalized_metadata ??
+      document.metadata ??
+      document.raw_metadata ??
+      {},
     applied: document.review_status === "verified",
   }
 }
@@ -337,5 +411,12 @@ function removeId(values: Set<number>, id: number): Set<number> {
 
 function allReadyItemsVerified(items: PdfMetadata[]): boolean {
   const readyItems = items.filter((item) => item.metadata_ready)
-  return readyItems.length > 0 && readyItems.every((item) => item.review_status === "verified")
+  return (
+    readyItems.length > 0 &&
+    readyItems.every((item) => item.review_status === "verified")
+  )
+}
+
+function fileNameFromPath(path: string): string {
+  return path.split(/[\\/]/).pop() || path
 }

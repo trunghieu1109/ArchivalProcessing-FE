@@ -88,7 +88,13 @@ function treeToFlatGroups(
   nodes: FolderNode[],
   depth = 1,
   parentId: string | null = null
-): Array<{ id: string; name: string; type: string; parent: Array<string | number>; definition: string }> {
+): Array<{
+  id: string
+  name: string
+  type: string
+  parent: Array<string | number>
+  definition: string
+}> {
   return nodes.flatMap((node) => {
     const type = node.type || `level-${depth}`
     const current = {
@@ -120,14 +126,20 @@ function activePlanToParsedPlan(plan: ActivePlanResponse): ParsedPlan {
   }
 }
 
-function normalizePlanCriterias(values: unknown[] | undefined): ParsedPlan["criterias"] {
+function normalizePlanCriterias(
+  values: unknown[] | undefined
+): ParsedPlan["criterias"] {
   if (!Array.isArray(values)) return []
   return values
     .map((value) => {
       const record = asRecord(value)
       if (!record) return null
-      const groupLevel = stringValue(record.group_level || record.level || record.type)
-      const criteria = arrayValue(record.criteria).map(stringValue).filter(Boolean)
+      const groupLevel = stringValue(
+        record.group_level || record.level || record.type
+      )
+      const criteria = arrayValue(record.criteria)
+        .map(stringValue)
+        .filter(Boolean)
       return groupLevel || criteria.length > 0
         ? { group_level: groupLevel, criteria }
         : null
@@ -154,7 +166,9 @@ function normalizePlanGroups(values: unknown[] | undefined): PlanGroup[] {
 
 function flatGroupsToNested(values: unknown[] | undefined): PlanGroup[] {
   if (!Array.isArray(values)) return []
-  const records = values.map(asRecord).filter((item): item is Record<string, unknown> => Boolean(item))
+  const records = values
+    .map(asRecord)
+    .filter((item): item is Record<string, unknown> => Boolean(item))
   const groups = records
     .map((record) => ({
       id: stringValue(record.group_id || record.id),
@@ -162,7 +176,9 @@ function flatGroupsToNested(values: unknown[] | undefined): PlanGroup[] {
       type: stringValue(record.type) || "level-1",
       definition: stringValue(record.definition),
       children: [] as PlanGroup[],
-      parentRefs: arrayValue(record.parent || record.parent_refs).map(stringValue),
+      parentRefs: arrayValue(record.parent || record.parent_refs).map(
+        stringValue
+      ),
     }))
     .filter((group) => group.name)
   const byId = new Map(groups.map((group) => [group.id, group]))
@@ -183,7 +199,9 @@ function flatGroupsToNested(values: unknown[] | undefined): PlanGroup[] {
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null ? value as Record<string, unknown> : null
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : null
 }
 
 function arrayValue(value: unknown): unknown[] {
@@ -191,14 +209,20 @@ function arrayValue(value: unknown): unknown[] {
 }
 
 function stringValue(value: unknown): string {
-  return typeof value === "string" || typeof value === "number" ? String(value).trim() : ""
+  return typeof value === "string" || typeof value === "number"
+    ? String(value).trim()
+    : ""
 }
 
-function stageInput(fileType: SessionInputFileType, file: File): SessionInputUploadResponse {
+function stageInput(
+  fileType: SessionInputFileType,
+  file: File
+): SessionInputUploadResponse {
   if (fileType === "arrangement_plan") _draftArrangementPlanFile = file
   if (fileType === "retention_schedule") _draftRetentionFile = file
   if (fileType === "raw_zip") _draftZipFile = file
-  const folderPath = fileType === "raw_zip" ? folderPathFromZipName(file.name) : undefined
+  const folderPath =
+    fileType === "raw_zip" ? folderPathFromZipName(file.name) : undefined
   return {
     id: 0,
     session_id: "draft",
@@ -247,7 +271,10 @@ let _zipUploadProgress: UploadProgressSnapshot | null = null
 
 export function UploadPage() {
   const navigate = useNavigate()
-  const { step, sessionId: routeSessionId } = useParams<{ step: string; sessionId?: string }>()
+  const { step, sessionId: routeSessionId } = useParams<{
+    step: string
+    sessionId?: string
+  }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const existingSessionMode = Boolean(routeSessionId)
   const currentStep = Math.min(
@@ -256,7 +283,8 @@ export function UploadPage() {
   ) as AppStep
 
   const goTo = (s: AppStep, targetSessionId = routeSessionId ?? _sessionId) => {
-    if (targetSessionId) navigate(`/sessions/${encodeURIComponent(targetSessionId)}/step/${s}`)
+    if (targetSessionId)
+      navigate(`/sessions/${encodeURIComponent(targetSessionId)}/step/${s}`)
     else navigate(`/sessions/new/step/${s}`)
   }
 
@@ -288,7 +316,8 @@ export function UploadPage() {
   const [sessionId, setSessionId] = useState<string | null>(_sessionId)
   const [zipFolderPath, setZipFolderPath] = useState(_zipFolderPath)
   const [zipMaxFiles, setZipMaxFiles] = useState(_zipMaxFiles)
-  const [zipUploadProgress, setZipUploadProgress] = useState<UploadProgressSnapshot | null>(_zipUploadProgress)
+  const [zipUploadProgress, setZipUploadProgress] =
+    useState<UploadProgressSnapshot | null>(_zipUploadProgress)
   const [sessionLoading, setSessionLoading] = useState(false)
 
   const applyWorkflowState = (nextSessionId: string | null) => {
@@ -344,7 +373,11 @@ export function UploadPage() {
         review_status: job.review_status,
         metadata_ready: job.metadata_ready,
         metadata_final: job.metadata_final,
-        light_metadata: job.light_metadata ?? job.normalized_metadata ?? job.raw_metadata ?? {},
+        light_metadata:
+          job.light_metadata ??
+          job.normalized_metadata ??
+          job.raw_metadata ??
+          {},
         applied: job.review_status === "verified",
       })) ?? [],
     [ocr.status]
@@ -364,7 +397,9 @@ export function UploadPage() {
   const ocrLoading = ocr.state === "starting" || ocr.state === "polling"
 
   useEffect(() => {
-    const isCurrentDraftSession = Boolean(routeSessionId && _sessionId === routeSessionId)
+    const isCurrentDraftSession = Boolean(
+      routeSessionId && _sessionId === routeSessionId
+    )
     if (!isCurrentDraftSession) {
       resetWorkflowState(routeSessionId ?? null)
     } else {
@@ -383,8 +418,12 @@ export function UploadPage() {
         if (cancelled) return
 
         const files = sessionDetail.files ?? []
-        const arrangementPlanFile = files.find((file) => file.file_type === "arrangement_plan")
-        const retentionFile = files.find((file) => file.file_type === "retention_schedule")
+        const arrangementPlanFile = files.find(
+          (file) => file.file_type === "arrangement_plan"
+        )
+        const retentionFile = files.find(
+          (file) => file.file_type === "retention_schedule"
+        )
         const zipFile = files.find((file) => file.file_type === "raw_zip")
         _doc1Has = Boolean(arrangementPlanFile)
         _doc2Has = Boolean(retentionFile)
@@ -415,7 +454,11 @@ export function UploadPage() {
         window.localStorage.setItem(LAST_SESSION_KEY, routeSessionId)
       } catch (err) {
         if (!cancelled) {
-          toast.error(err instanceof Error ? err.message : "Không thể tải session đã chọn.")
+          toast.error(
+            err instanceof Error
+              ? err.message
+              : "Không thể tải session đã chọn."
+          )
         }
       } finally {
         if (!cancelled) setSessionLoading(false)
@@ -439,7 +482,10 @@ export function UploadPage() {
   const uploadInput = async (fileType: SessionInputFileType, file: File) => {
     if (!_sessionId) {
       const staged = stageInput(fileType, file)
-      if (fileType === "arrangement_plan" || fileType === "retention_schedule") {
+      if (
+        fileType === "arrangement_plan" ||
+        fileType === "retention_schedule"
+      ) {
         _planAnalysisState = "idle"
         setPlanAnalysisState("idle")
       }
@@ -451,17 +497,18 @@ export function UploadPage() {
     }
     let uploaded: SessionInputUploadResponse
     try {
-      uploaded = await uploadSessionInput(
-        currentSessionId,
-        fileType,
-        file,
-        {
-          onProgress: fileType === "raw_zip" ? syncZipUploadProgress : undefined,
-        }
-      )
+      uploaded = await uploadSessionInput(currentSessionId, fileType, file, {
+        onProgress: fileType === "raw_zip" ? syncZipUploadProgress : undefined,
+      })
     } catch (err) {
       if (fileType === "raw_zip") {
-        syncZipUploadProgress(zipUploadProgressForFile(file, "error", _zipUploadProgress?.loadedBytes ?? 0))
+        syncZipUploadProgress(
+          zipUploadProgressForFile(
+            file,
+            "error",
+            _zipUploadProgress?.loadedBytes ?? 0
+          )
+        )
       }
       throw err
     }
@@ -499,7 +546,10 @@ export function UploadPage() {
     totalBytes: file.size,
     loadedMb: Math.round((loadedBytes / (1024 * 1024)) * 100) / 100,
     totalMb: Math.round((file.size / (1024 * 1024)) * 100) / 100,
-    percent: file.size > 0 ? Math.min(100, Math.round((loadedBytes / file.size) * 1000) / 10) : null,
+    percent:
+      file.size > 0
+        ? Math.min(100, Math.round((loadedBytes / file.size) * 1000) / 10)
+        : null,
   })
   const syncPlanAnalysisState = (s: ProcessState) => {
     _planAnalysisState = s
@@ -602,11 +652,17 @@ export function UploadPage() {
   }
 
   const hasAnyFile = doc1Has || doc2Has || zipHas
-  const readyCount = (existingSessionMode ? [zipHas] : [doc1Has, doc2Has, zipHas]).filter(Boolean).length
+  const readyCount = (
+    existingSessionMode ? [zipHas] : [doc1Has, doc2Has, zipHas]
+  ).filter(Boolean).length
   const requiredFileCount = existingSessionMode ? 1 : 3
   const statusItems = existingSessionMode
     ? [
-        { label: "Phương án", has: planAnalysisState === "done", state: planAnalysisState },
+        {
+          label: "Phương án",
+          has: planAnalysisState === "done",
+          state: planAnalysisState,
+        },
         { label: "Tệp phương án", has: doc1Has, state: doc1State },
         { label: "Thời hạn", has: doc2Has, state: doc2State },
         { label: "Kho lưu trữ", has: zipHas, state: zipState },
@@ -650,15 +706,27 @@ export function UploadPage() {
       syncPlanAnalysisState("processing")
       const currentSessionId = await ensureSession()
       syncZipState("processing")
-      syncZipUploadProgress(zipUploadProgressForFile(_draftZipFile, "uploading"))
-      const arrangementPlan = await uploadSessionInput(currentSessionId, "arrangement_plan", _draftArrangementPlanFile)
+      syncZipUploadProgress(
+        zipUploadProgressForFile(_draftZipFile, "uploading")
+      )
+      const arrangementPlan = await uploadSessionInput(
+        currentSessionId,
+        "arrangement_plan",
+        _draftArrangementPlanFile
+      )
       const [retentionPlan, zipInput] = await Promise.all([
-        uploadSessionInput(currentSessionId, "retention_schedule", _draftRetentionFile),
+        uploadSessionInput(
+          currentSessionId,
+          "retention_schedule",
+          _draftRetentionFile
+        ),
         uploadSessionInput(currentSessionId, "raw_zip", _draftZipFile, {
           onProgress: syncZipUploadProgress,
         }),
       ])
-      syncZipUploadProgress(zipUploadProgressForFile(_draftZipFile, "done", _draftZipFile.size))
+      syncZipUploadProgress(
+        zipUploadProgressForFile(_draftZipFile, "done", _draftZipFile.size)
+      )
       syncZipState("done")
       _zipUpload = zipInput
       syncZipFolderPath(zipInput.folder_path ?? zipInput.data_path ?? "")
@@ -666,7 +734,9 @@ export function UploadPage() {
       const planFile = arrangementPlan.local_cached_path
       const retentionFile = retentionPlan.local_cached_path
       if (!planFile || !retentionFile) {
-        throw new Error("Backend chưa trả về đường dẫn local cho hồ sơ phương án.")
+        throw new Error(
+          "Backend chưa trả về đường dẫn local cho hồ sơ phương án."
+        )
       }
 
       const documentTasks = [
@@ -678,10 +748,15 @@ export function UploadPage() {
         retention_file: retentionFile,
       })
       await Promise.all([...documentTasks, planJob])
-      const planResponse = await waitForActivePlan(currentSessionId, PLAN_ANALYSIS_TIMEOUT_MS, 2_000, {
-        previousPlanId: undefined,
-        afterVersionNumber: undefined,
-      })
+      const planResponse = await waitForActivePlan(
+        currentSessionId,
+        PLAN_ANALYSIS_TIMEOUT_MS,
+        2_000,
+        {
+          previousPlanId: undefined,
+          afterVersionNumber: undefined,
+        }
+      )
       const plan = activePlanToParsedPlan(planResponse)
       _activePlanVersionId = planResponse.id ?? ""
       _parsedPlan = plan
@@ -695,9 +770,19 @@ export function UploadPage() {
       syncPlanAnalysisState("idle")
       syncZipState("idle")
       if (_draftZipFile) {
-        syncZipUploadProgress(zipUploadProgressForFile(_draftZipFile, "error", _zipUploadProgress?.loadedBytes ?? 0))
+        syncZipUploadProgress(
+          zipUploadProgressForFile(
+            _draftZipFile,
+            "error",
+            _zipUploadProgress?.loadedBytes ?? 0
+          )
+        )
       }
-      toast.error(err instanceof Error ? err.message : "Không thể bắt đầu phân tích phương án.")
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Không thể bắt đầu phân tích phương án."
+      )
     }
   }
 
@@ -707,7 +792,9 @@ export function UploadPage() {
       return
     }
     if (planAnalysisState !== "done") {
-      toast.error("Phải phân tích xong phương án chỉnh lý trước khi lấy metadata.")
+      toast.error(
+        "Phải phân tích xong phương án chỉnh lý trước khi lấy metadata."
+      )
       return
     }
     if (_folderTree.length === 0) {
@@ -719,17 +806,22 @@ export function UploadPage() {
       toast.error("Chưa có phiên bản phương án đã xác nhận.")
       return
     }
-    const folderPath = zipFolderPath || _zipUpload?.folder_path || _zipUpload?.data_path || ""
+    const folderPath =
+      zipFolderPath || _zipUpload?.folder_path || _zipUpload?.data_path || ""
     if (!folderPath) {
       if (existingSessionMode) {
-        toast.info("Session này chưa có dữ liệu ZIP mới. Bạn có thể tiếp tục xem lại phương án chỉnh lý.")
+        toast.info(
+          "Session này chưa có dữ liệu ZIP mới. Bạn có thể tiếp tục xem lại phương án chỉnh lý."
+        )
         return
       }
       toast.error("Chưa có folder_path để bắt đầu lấy metadata.")
       return
     }
     if (_zipUpload && !_zipUpload.remote_batch_id) {
-      toast.error("File ZIP chưa được upload lên Chỉnh Lý/MinIO. Vui lòng tải lại file ZIP.")
+      toast.error(
+        "File ZIP chưa được upload lên Chỉnh Lý/MinIO. Vui lòng tải lại file ZIP."
+      )
       return
     }
 
@@ -737,34 +829,50 @@ export function UploadPage() {
     try {
       maxFilesToProcess = parseZipMaxFiles()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Số lượng tài liệu không hợp lệ.")
+      toast.error(
+        err instanceof Error ? err.message : "Số lượng tài liệu không hợp lệ."
+      )
       return
     }
 
     try {
-      const existingStatus = ocr.status ?? await ocr.refresh()
+      const existingStatus = ocr.status ?? (await ocr.refresh())
       if ((existingStatus?.jobs.length ?? 0) > 0) {
-        const hasReadyMetadata = existingStatus?.jobs.some((job) => job.metadata_ready)
+        const hasReadyMetadata = existingStatus?.jobs.some(
+          (job) => job.metadata_ready
+        )
         syncZipState(hasReadyMetadata ? "done" : "processing")
-        toast.info("Session đã có dữ liệu metadata. Không gọi lại bước lấy metadata.")
+        toast.info(
+          "Session đã có dữ liệu metadata. Không gọi lại bước lấy metadata."
+        )
         goTo(3)
         return
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Không thể kiểm tra metadata hiện có.")
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Không thể kiểm tra metadata hiện có."
+      )
       return
     }
 
     syncZipState("processing")
     toast.success("Đã xác nhận phương án. Bắt đầu lấy metadata.")
-    void ocr.start(folderPath, { maxFiles: maxFilesToProcess, confirmedPlanVersionId })
+    void ocr
+      .start(folderPath, {
+        maxFiles: maxFilesToProcess,
+        confirmedPlanVersionId,
+      })
       .then(() => {
         syncZipState("done")
         toast.success("Đã hoàn tất lấy metadata từ remote folder.")
       })
       .catch((err) => {
         syncZipState("idle")
-        toast.error(err instanceof Error ? err.message : "Không thể bắt đầu OCR.")
+        toast.error(
+          err instanceof Error ? err.message : "Không thể bắt đầu OCR."
+        )
       })
     goTo(3)
   }
@@ -864,7 +972,12 @@ export function UploadPage() {
       </div>
 
       {/* Main content */}
-      <div className="mx-auto max-w-6xl px-8 py-8">
+      <div
+        className={cn(
+          "mx-auto px-4 py-8 sm:px-6 lg:px-8",
+          currentStep === 4 ? "max-w-[1560px]" : "max-w-6xl"
+        )}
+      >
         <div className="mb-5 flex items-center gap-2">
           <motion.button
             initial={{ opacity: 0, x: -8 }}
@@ -875,17 +988,17 @@ export function UploadPage() {
           >
             <Home className="size-4" /> Danh sách session
           </motion.button>
-        {currentStep > 1 && (
-          <motion.button
-            initial={{ opacity: 0, x: -8 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.3 }}
-            onClick={() => goTo((currentStep - 1) as AppStep)}
-            className="flex items-center gap-2 rounded-xl border border-[#CBD5E1] bg-white px-4 py-2 text-sm font-medium text-[#475569] shadow-sm transition-all hover:border-[#0052FF]/30 hover:text-[#0052FF]"
-          >
-            <ArrowLeft className="size-4" /> Quay lại
-          </motion.button>
-        )}
+          {currentStep > 1 && (
+            <motion.button
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.3 }}
+              onClick={() => goTo((currentStep - 1) as AppStep)}
+              className="flex items-center gap-2 rounded-xl border border-[#CBD5E1] bg-white px-4 py-2 text-sm font-medium text-[#475569] shadow-sm transition-all hover:border-[#0052FF]/30 hover:text-[#0052FF]"
+            >
+              <ArrowLeft className="size-4" /> Quay lại
+            </motion.button>
+          )}
         </div>
 
         <AnimatePresence mode="wait">
@@ -901,7 +1014,9 @@ export function UploadPage() {
             >
               <div className="rounded-2xl border border-[#D8E1EC] bg-white px-5 py-4 shadow-sm">
                 <p className="text-sm font-semibold text-[#0F172A]">
-                  {existingSessionMode ? "Bổ sung dữ liệu cho session" : "Tạo session mới"}
+                  {existingSessionMode
+                    ? "Bổ sung dữ liệu cho session"
+                    : "Tạo session mới"}
                 </p>
                 <p className="mt-1 text-sm text-[#64748B]">
                   {existingSessionMode
@@ -927,28 +1042,36 @@ export function UploadPage() {
 
               {/* DOCX */}
               {!existingSessionMode && (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <DocxSection
-                  ref={doc1Ref}
-                  index={1}
-                  label="Phương án phân loại"
-                  sublabel="Tải lên file Word chứa phương án phân loại tài liệu."
-                  processState={doc1State}
-                  onProcessStateChange={syncDoc1State}
-                  onHasFileChange={syncDoc1Has}
-                  onUploadFile={(file) => uploadInput("arrangement_plan", file).then(() => undefined)}
-                />
-                <DocxSection
-                  ref={doc2Ref}
-                  index={2}
-                  label="Thời hạn bảo quản"
-                  sublabel="Tải lên file Word chứa thời hạn bảo quản."
-                  processState={doc2State}
-                  onProcessStateChange={syncDoc2State}
-                  onHasFileChange={syncDoc2Has}
-                  onUploadFile={(file) => uploadInput("retention_schedule", file).then(() => undefined)}
-                />
-              </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <DocxSection
+                    ref={doc1Ref}
+                    index={1}
+                    label="Phương án phân loại"
+                    sublabel="Tải lên file Word chứa phương án phân loại tài liệu."
+                    processState={doc1State}
+                    onProcessStateChange={syncDoc1State}
+                    onHasFileChange={syncDoc1Has}
+                    onUploadFile={(file) =>
+                      uploadInput("arrangement_plan", file).then(
+                        () => undefined
+                      )
+                    }
+                  />
+                  <DocxSection
+                    ref={doc2Ref}
+                    index={2}
+                    label="Thời hạn bảo quản"
+                    sublabel="Tải lên file Word chứa thời hạn bảo quản."
+                    processState={doc2State}
+                    onProcessStateChange={syncDoc2State}
+                    onHasFileChange={syncDoc2Has}
+                    onUploadFile={(file) =>
+                      uploadInput("retention_schedule", file).then(
+                        () => undefined
+                      )
+                    }
+                  />
+                </div>
               )}
 
               {/* Action bar */}
@@ -1002,7 +1125,8 @@ export function UploadPage() {
                       </span>
                     ) : allDone ? (
                       <span className="flex items-center gap-1.5 text-primary">
-                        <CheckCircle2 className="size-4" /> Phương án đã sẵn sàng
+                        <CheckCircle2 className="size-4" /> Phương án đã sẵn
+                        sàng
                       </span>
                     ) : planAnalyzing ? (
                       <span className="flex items-center gap-1.5 text-muted-foreground">
@@ -1023,7 +1147,9 @@ export function UploadPage() {
                       </span>
                     ) : (
                       <span className="text-muted-foreground">
-                        {existingSessionMode ? "Có thể bỏ qua bước tải ZIP để xem phương án" : "Tải lên đủ 3 file để bắt đầu"}
+                        {existingSessionMode
+                          ? "Có thể bỏ qua bước tải ZIP để xem phương án"
+                          : "Tải lên đủ 3 file để bắt đầu"}
                       </span>
                     )}
                   </div>
@@ -1059,14 +1185,14 @@ export function UploadPage() {
                     {sessionLoading
                       ? "Đang tải..."
                       : planAnalyzing
-                      ? "Đang phân tích..."
-                      : allProcessing
-                        ? "Đang xử lý..."
-                      : allDone
-                        ? "Tiếp tục"
-                        : existingSessionMode
-                          ? "Tiếp tục"
-                          : "Bắt đầu phân tích"}
+                        ? "Đang phân tích..."
+                        : allProcessing
+                          ? "Đang xử lý..."
+                          : allDone
+                            ? "Tiếp tục"
+                            : existingSessionMode
+                              ? "Tiếp tục"
+                              : "Bắt đầu phân tích"}
                   </span>
                   {!allProcessing && (
                     <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
@@ -1088,7 +1214,8 @@ export function UploadPage() {
                 >
                   <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                 </svg>
-                Dữ liệu của bạn được bảo mật và chỉ sử dụng cho mục đích xử lý tài liệu.
+                Dữ liệu của bạn được bảo mật và chỉ sử dụng cho mục đích xử lý
+                tài liệu.
               </p>
             </motion.div>
           )}
@@ -1157,7 +1284,9 @@ export function UploadPage() {
                     toast.error("Chưa có session để tạo mục lục.")
                     return
                   }
-                  navigate(`/sessions/${encodeURIComponent(currentSessionId)}/step/5?start=1`)
+                  navigate(
+                    `/sessions/${encodeURIComponent(currentSessionId)}/step/5?start=1`
+                  )
                 }}
               />
             </motion.div>

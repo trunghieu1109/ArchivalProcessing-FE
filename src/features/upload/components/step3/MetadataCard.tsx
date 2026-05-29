@@ -43,12 +43,19 @@ export function getWarningFields(meta: Record<string, unknown>): Set<string> {
 interface MetadataCardProps {
   item: PdfMetadata
   submitting?: boolean
-  onApply: (dataPath: string, meta: Record<string, unknown>) => Promise<void> | void
+  selected?: boolean
+  onSelect?: () => void
+  onApply: (
+    dataPath: string,
+    meta: Record<string, unknown>
+  ) => Promise<void> | void
 }
 
 export function MetadataCard({
   item,
   submitting = false,
+  selected = false,
+  onSelect,
   onApply,
 }: MetadataCardProps) {
   const [expanded, setExpanded] = useState(false)
@@ -62,7 +69,9 @@ export function MetadataCard({
     const nextDraft: Record<string, string> = {}
     Object.keys(METADATA_LABELS).forEach((key) => {
       const value = item.light_metadata[key]
-      nextDraft[key] = Array.isArray(value) ? value.map(String).join(", ") : String(value ?? "")
+      nextDraft[key] = Array.isArray(value)
+        ? value.map(String).join(", ")
+        : String(value ?? "")
     })
     setDraft(nextDraft)
     setEditing(true)
@@ -91,7 +100,9 @@ export function MetadataCard({
       await onApply(item.data_path, metadata)
       toast.success("Metadata đã được xác nhận.")
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Không thể xác nhận metadata.")
+      toast.error(
+        err instanceof Error ? err.message : "Không thể xác nhận metadata."
+      )
     }
   }
 
@@ -99,14 +110,29 @@ export function MetadataCard({
     <div
       className={cn(
         "overflow-hidden rounded-xl border bg-card transition-all duration-200",
-        verified
-          ? "border-primary/30 shadow-[0_2px_12px_rgba(0,82,255,0.08)]"
-          : hasWarnings
-            ? "border-amber-300"
-            : "border-border"
+        selected
+          ? "border-[#0052FF] shadow-[0_6px_18px_rgba(0,82,255,0.14)]"
+          : verified
+            ? "border-primary/30 shadow-[0_2px_12px_rgba(0,82,255,0.08)]"
+            : hasWarnings
+              ? "border-amber-300"
+              : "border-border"
       )}
     >
-      <div className="flex items-center gap-3 px-4 py-3">
+      <div
+        className={cn(
+          "flex items-center gap-3 px-4 py-3",
+          onSelect && "cursor-pointer"
+        )}
+        onClick={onSelect}
+        onKeyDown={(event) => {
+          if (!onSelect || (event.key !== "Enter" && event.key !== " ")) return
+          event.preventDefault()
+          onSelect()
+        }}
+        role={onSelect ? "button" : undefined}
+        tabIndex={onSelect ? 0 : undefined}
+      >
         <div
           className="flex size-8 shrink-0 items-center justify-center rounded-lg shadow-[0_4px_14px_rgba(0,82,255,0.2)]"
           style={{ background: "linear-gradient(135deg, #0052FF, #4D7CFF)" }}
@@ -125,7 +151,9 @@ export function MetadataCard({
           {verified ? (
             <span
               className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold text-primary-foreground"
-              style={{ background: "linear-gradient(to right, #0052FF, #4D7CFF)" }}
+              style={{
+                background: "linear-gradient(to right, #0052FF, #4D7CFF)",
+              }}
             >
               <Check className="size-2.5" /> Xác nhận
             </span>
@@ -148,7 +176,11 @@ export function MetadataCard({
             onClick={() => setExpanded((value) => !value)}
             className="size-7 p-0 text-muted-foreground"
           >
-            {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+            {expanded ? (
+              <ChevronUp className="size-3.5" />
+            ) : (
+              <ChevronDown className="size-3.5" />
+            )}
           </Button>
         </div>
       </div>
@@ -173,7 +205,10 @@ export function MetadataCard({
                       <Input
                         value={draft[key] ?? ""}
                         onChange={(event) =>
-                          setDraft((current) => ({ ...current, [key]: event.target.value }))
+                          setDraft((current) => ({
+                            ...current,
+                            [key]: event.target.value,
+                          }))
                         }
                         className="h-7 flex-1 text-xs"
                       />
@@ -188,8 +223,17 @@ export function MetadataCard({
                     >
                       Hủy
                     </Button>
-                    <Button size="sm" onClick={() => void commitEdit()} disabled={submitting}>
-                      {submitting && <Loader2 data-icon="inline-start" className="animate-spin" />}
+                    <Button
+                      size="sm"
+                      onClick={() => void commitEdit()}
+                      disabled={submitting}
+                    >
+                      {submitting && (
+                        <Loader2
+                          data-icon="inline-start"
+                          className="animate-spin"
+                        />
+                      )}
                       Lưu & xác nhận
                     </Button>
                   </div>
@@ -199,30 +243,49 @@ export function MetadataCard({
                   {Object.entries(METADATA_LABELS).map(([key, label]) => {
                     const value = item.light_metadata[key]
                     if (!value) return null
-                    const display = Array.isArray(value) ? value.map(String).join(", ") : String(value)
+                    const display = Array.isArray(value)
+                      ? value.map(String).join(", ")
+                      : String(value)
                     const isWarning = warningFields.has(key)
                     return (
                       <div
                         key={key}
-                        className={cn("flex gap-2 rounded-md px-2 py-1 text-xs", isWarning && "bg-amber-50")}
+                        className={cn(
+                          "flex gap-2 rounded-md px-2 py-1 text-xs",
+                          isWarning && "bg-amber-50"
+                        )}
                       >
                         <span
                           className={cn(
                             "w-32 shrink-0 font-medium",
-                            isWarning ? "text-amber-700" : "text-muted-foreground"
+                            isWarning
+                              ? "text-amber-700"
+                              : "text-muted-foreground"
                           )}
                         >
                           {label}
-                          {isWarning && <AlertTriangle className="ml-1 inline size-2.5 text-amber-500" />}
+                          {isWarning && (
+                            <AlertTriangle className="ml-1 inline size-2.5 text-amber-500" />
+                          )}
                         </span>
-                        <span className={cn("flex-1", isWarning ? "text-amber-900" : "text-foreground")}>
+                        <span
+                          className={cn(
+                            "flex-1",
+                            isWarning ? "text-amber-900" : "text-foreground"
+                          )}
+                        >
                           {display}
                         </span>
                       </div>
                     )
                   })}
                   <div className="flex justify-end gap-2 pt-1">
-                    <Button variant="outline" size="sm" onClick={startEdit} disabled={submitting}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={startEdit}
+                      disabled={submitting}
+                    >
                       <Edit2 data-icon="inline-start" /> Sửa
                     </Button>
                     {!verified && (
@@ -232,7 +295,10 @@ export function MetadataCard({
                         onClick={() => void applyMetadata(item.light_metadata)}
                       >
                         {submitting ? (
-                          <Loader2 data-icon="inline-start" className="animate-spin" />
+                          <Loader2
+                            data-icon="inline-start"
+                            className="animate-spin"
+                          />
                         ) : (
                           <Check data-icon="inline-start" />
                         )}
