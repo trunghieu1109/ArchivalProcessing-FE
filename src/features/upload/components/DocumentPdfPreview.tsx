@@ -254,5 +254,5 @@ function PreviewEmptyState({
 
 function pdfEmbedUrl(url: string): string {
   if (!url || url.includes("#")) return url
-  return `${url}#toolbar=1&navpanes=0`
+  return `${url}#toolbar=1&navpanes=0&view=FitH&zoom=page-fit`
 }

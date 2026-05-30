@@ -1,0 +1,16 @@
+services:
+  frontend:
+    build:
+      context: .
+      args:
+        VITE_ARCHIVAL_API_BASE_URL: ${VITE_ARCHIVAL_API_BASE_URL:-/api}
+        VITE_ARCHIVAL_DIRECT_PRESIGNED_UPLOAD: ${VITE_ARCHIVAL_DIRECT_PRESIGNED_UPLOAD:-false}
+    image: archival-processing-frontend:local
+    ports:
+      - "${FE_HTTP_PORT:-5173}:80"
+    environment:
+      ARCHIVAL_API_PROXY_PASS: ${ARCHIVAL_API_PROXY_PASS:-http://host.docker.internal:8000}
+      NGINX_CLIENT_MAX_BODY_SIZE: ${NGINX_CLIENT_MAX_BODY_SIZE:-1g}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

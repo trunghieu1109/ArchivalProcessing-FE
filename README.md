@@ -30,6 +30,22 @@ npm run dev
 
 Open the local URL printed by Vite.
 
+## Docker
+
+Copy the sample environment file and adjust the backend target when needed:
+
+```bash
+cp .env.sample .env
+```
+
+Build and run the production frontend container:
+
+```bash
+docker compose up --build
+```
+
+By default the app is exposed at `http://127.0.0.1:5173` and Nginx proxies browser calls from `/api/*` to `ARCHIVAL_API_PROXY_PASS`. Keep `VITE_ARCHIVAL_API_BASE_URL=/api` when using the bundled Nginx reverse proxy.
+
 ## Scripts
 
 ```bash

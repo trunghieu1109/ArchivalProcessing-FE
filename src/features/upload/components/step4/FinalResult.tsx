@@ -31,6 +31,7 @@ import {
   getClusterBuildStatus,
   listSessionEvents,
   moveDocumentBetweenClusters,
+  type ClusterVersionResponse,
 } from "@/features/upload/api/sessionApi"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import {
@@ -114,6 +115,11 @@ export function FinalResult({
   const [activeClusterVersionId, setActiveClusterVersionId] = useState<
     string | null
   >(null)
+  const [displayedClusterVersionId, setDisplayedClusterVersionId] = useState<
+    string | null
+  >(null)
+  const [pendingClusterVersion, setPendingClusterVersion] =
+    useState<ClusterVersionResponse | null>(null)
   const [rebuildBaselineVersionId, setRebuildBaselineVersionId] = useState<
     string | null
   >(null)
@@ -179,6 +185,14 @@ export function FinalResult({
         : null,
     [selectedPreviewEntry]
   )
+  const pendingClusterGroups = useMemo(
+    () => versionToGroups(pendingClusterVersion, metadataItems),
+    [metadataItems, pendingClusterVersion]
+  )
+  const pendingClusterDocumentCount = pendingClusterGroups.reduce(
+    (sum, group) => sum + group.documents.length,
+    0
+  )
 
   useEffect(() => {
     setOpenNodeIds(
@@ -216,7 +230,11 @@ export function FinalResult({
         setStatus("Chưa có session để lấy kết quả lập hồ sơ.")
         return
       }
-      if (Date.now() - startedAt > CLUSTER_POLL_TIMEOUT_MS) {
+      if (
+        Date.now() - startedAt > CLUSTER_POLL_TIMEOUT_MS &&
+        groups.length === 0 &&
+        !displayedClusterVersionId
+      ) {
         setLoading(false)
         setCheckingClusters(false)
         setStatus(
@@ -242,7 +260,21 @@ export function FinalResult({
         const nextVersionMarker = nextVersionId ?? NO_CLUSTER_VERSION
         setActiveClusterVersionId(nextVersionId)
         const nextGroups = versionToGroups(version, metadataItems)
-        setGroups(nextGroups)
+        const shouldDisplayInitialVersion =
+          Boolean(version && nextVersionId) &&
+          (!displayedClusterVersionId || groups.length === 0)
+        const effectiveDisplayedVersionId = shouldDisplayInitialVersion
+          ? nextVersionId
+          : displayedClusterVersionId
+        const displayedGroupsForStatus = shouldDisplayInitialVersion
+          ? nextGroups
+          : groups
+
+        if (shouldDisplayInitialVersion && nextVersionId) {
+          setGroups(nextGroups)
+          setDisplayedClusterVersionId(nextVersionId)
+          setPendingClusterVersion(null)
+        }
 
         if (hasActiveBuildJob) {
           setCheckingClusters(false)
@@ -293,12 +325,39 @@ export function FinalResult({
           setStatus(
             "Chưa ghi nhận phiên bản hồ sơ mới. Feedback đã lưu sẽ được áp dụng ở lần cập nhật hồ sơ tiếp theo."
           )
+          schedule()
           return
         }
+
+        if (
+          version &&
+          nextVersionId &&
+          effectiveDisplayedVersionId &&
+          nextVersionId !== effectiveDisplayedVersionId
+        ) {
+          if (rebuildBaselineVersionId) {
+            setRebuildBaselineVersionId(null)
+          }
+          setPendingClusterVersion(version)
+          setClusterJobMode(
+            version.source === "user_feedback" ? "update" : "new"
+          )
+          setClusterProgressPhase(null)
+          setClusterCompletedPhases(completedClusterPhaseSet())
+          setClusterProgressMessage(
+            "Đã có phiên bản hồ sơ mới. Bấm áp dụng để cập nhật giao diện."
+          )
+          setStatus(
+            `Đã có cập nhật hồ sơ mới: phiên bản ${version.version_number} với ${nextGroups.length} hồ sơ.`
+          )
+          schedule()
+          return
+        }
+
+        setPendingClusterVersion(null)
         if (rebuildBaselineVersionId) {
           setRebuildBaselineVersionId(null)
-          setPendingFeedbackCount(0)
-          toast.success("Đã cập nhật hồ sơ từ feedback đã lưu.")
+          toast.success("Đã có phiên bản hồ sơ mới từ feedback đã lưu.")
         }
 
         const clusteredIds = clusteredDocumentIds(version)
@@ -306,7 +365,7 @@ export function FinalResult({
           (item) => !clusteredIds.has(item.document_id)
         )
         const allVerifiedClustered =
-          nextGroups.length > 0 &&
+          displayedGroupsForStatus.length > 0 &&
           (verifiedItems.length === 0 || missingVerified.length === 0)
 
         if (allVerifiedClustered) {
@@ -314,18 +373,20 @@ export function FinalResult({
           setClusterCompletedPhases(completedClusterPhaseSet())
           setClusterProgressMessage("Đã lập hồ sơ xong.")
           setStatus(
-            `Đã lập ${nextGroups.length} hồ sơ từ ${verifiedItems.length} tài liệu đã xác nhận.`
+            `Đã lập ${displayedGroupsForStatus.length} hồ sơ từ ${verifiedItems.length} tài liệu đã xác nhận.`
           )
+          schedule()
           return
         }
 
-        if (nextGroups.length > 0 && missingVerified.length > 0) {
+        if (displayedGroupsForStatus.length > 0 && missingVerified.length > 0) {
           setClusterProgressPhase(null)
           setClusterCompletedPhases(completedClusterPhaseSet())
           setClusterProgressMessage("Đã lập hồ sơ xong.")
           setStatus(
-            `Đã có ${nextGroups.length} hồ sơ. Có ${missingVerified.length} tài liệu đã xác nhận chưa được cập nhật vào hồ sơ.`
+            `Đã có ${displayedGroupsForStatus.length} hồ sơ. Có ${missingVerified.length} tài liệu đã xác nhận chưa được cập nhật vào hồ sơ.`
           )
+          schedule()
         } else {
           setClusterProgressPhase(null)
           setClusterProgressMessage("")
@@ -351,6 +412,8 @@ export function FinalResult({
       if (timeoutId !== undefined) window.clearTimeout(timeoutId)
     }
   }, [
+    displayedClusterVersionId,
+    groups,
     metadataItems,
     rebuildBaselineVersionId,
     rebuildPollKey,
@@ -511,6 +574,12 @@ export function FinalResult({
       toast.error("Chưa có session để cập nhật hồ sơ.")
       return
     }
+    if (pendingClusterVersion) {
+      toast.error(
+        "Đang có phiên bản hồ sơ mới chờ áp dụng. Hãy áp dụng trước khi gửi job cập nhật khác."
+      )
+      return
+    }
     setRebuildSubmitting(true)
     try {
       const currentVersion = await getActiveClusters(sessionId)
@@ -554,6 +623,38 @@ export function FinalResult({
     }
   }
 
+  const handleApplyPendingClusterVersion = () => {
+    if (!pendingClusterVersion) return
+
+    const nextGroups = versionToGroups(pendingClusterVersion, metadataItems)
+    const clusteredIds = clusteredDocumentIds(pendingClusterVersion)
+    const missingVerified = verifiedItems.filter(
+      (item) => !clusteredIds.has(item.document_id)
+    )
+    setGroups(nextGroups)
+    setDisplayedClusterVersionId(pendingClusterVersion.id)
+    setActiveClusterVersionId(pendingClusterVersion.id)
+    setPendingClusterVersion(null)
+    if (pendingClusterVersion.source === "user_feedback") {
+      setPendingFeedbackCount(0)
+    }
+    setClusterJobMode(
+      pendingClusterVersion.source === "user_feedback" ? "update" : "new"
+    )
+    setClusterProgressPhase(null)
+    setClusterCompletedPhases(completedClusterPhaseSet())
+    setClusterProgressMessage("Đã áp dụng phiên bản hồ sơ mới.")
+    setStatus(
+      nextGroups.length > 0 &&
+        (verifiedItems.length === 0 || missingVerified.length === 0)
+        ? `Đã lập ${nextGroups.length} hồ sơ từ ${verifiedItems.length} tài liệu đã xác nhận.`
+        : nextGroups.length > 0 && missingVerified.length > 0
+          ? `Đã có ${nextGroups.length} hồ sơ. Có ${missingVerified.length} tài liệu đã xác nhận chưa được cập nhật vào hồ sơ.`
+          : "Chưa có kết quả lập hồ sơ từ backend."
+    )
+    toast.success("Đã áp dụng phiên bản hồ sơ mới.")
+  }
+
   const handleSelectPreviewDocument = (document: ClusterDocument) => {
     if (document.sessionDocumentId === null) {
       toast.error("Tài liệu này chưa có mã trong session để lấy preview.")
@@ -563,6 +664,10 @@ export function FinalResult({
   }
 
   const handleFinish = () => {
+    if (pendingClusterVersion) {
+      toast.error("Có phiên bản hồ sơ mới. Hãy áp dụng trước khi tạo mục lục.")
+      return
+    }
     if (loading || rebuildSubmitting || rebuildBaselineVersionId) {
       toast.error("Đang cập nhật hồ sơ. Vui lòng chờ xong rồi tạo mục lục.")
       return
@@ -615,7 +720,11 @@ export function FinalResult({
           variant="outline"
           onClick={() => void handleRebuildClusters()}
           disabled={
-            rebuildSubmitting || loading || !sessionId || groups.length === 0
+            rebuildSubmitting ||
+            loading ||
+            !sessionId ||
+            groups.length === 0 ||
+            Boolean(pendingClusterVersion)
           }
         >
           {rebuildSubmitting ? (
@@ -631,7 +740,8 @@ export function FinalResult({
             groups.length === 0 ||
             loading ||
             rebuildSubmitting ||
-            Boolean(rebuildBaselineVersionId)
+            Boolean(rebuildBaselineVersionId) ||
+            Boolean(pendingClusterVersion)
           }
         >
           <CheckCircle2 data-icon="inline-start" />
@@ -691,6 +801,26 @@ export function FinalResult({
             "Backend đang lập hồ sơ từ các tài liệu đã xác nhận."
           }
         />
+      )}
+
+      {pendingClusterVersion && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#BFD3FF] bg-[#F8FAFF] px-4 py-3 shadow-sm">
+          <div className="min-w-[260px] flex-1">
+            <p className="text-sm font-semibold text-[#0F172A]">
+              Đã có cập nhật hồ sơ mới
+            </p>
+            <p className="mt-1 text-sm text-[#475569]">
+              Phiên bản {pendingClusterVersion.version_number} có{" "}
+              {pendingClusterGroups.length} hồ sơ và{" "}
+              {pendingClusterDocumentCount} tài liệu. Bấm áp dụng để chuyển
+              giao diện sang phiên bản mới.
+            </p>
+          </div>
+          <Button onClick={handleApplyPendingClusterVersion}>
+            <RefreshCw data-icon="inline-start" />
+            Áp dụng phiên bản mới
+          </Button>
+        </div>
       )}
 
       <div

@@ -17,6 +17,8 @@ import { Input } from "@/components/ui/input"
 import type { PdfMetadata } from "@/features/upload/types"
 
 export const METADATA_LABELS: Record<string, string> = {
+  document_summary: "Trích yếu",
+  trich_yeu_tai_lieu: "Trích yếu",
   document_type: "Loại văn bản",
   loai_van_ban: "Loại văn bản",
   document_number: "Số hiệu",
@@ -25,12 +27,8 @@ export const METADATA_LABELS: Record<string, string> = {
   co_quan_ban_hanh: "Cơ quan ban hành",
   issued_date: "Ngày ban hành",
   ngay_ban_hanh: "Ngày ban hành",
-  title: "Tiêu đề",
-  document_summary: "Trích yếu",
-  trich_yeu_tai_lieu: "Trích yếu",
-  mentioned_subjects: "Đối tượng đề cập",
-  direct_target_subject: "Đối tượng hướng tới",
   signer: "Người ký",
+  nguoi_ky: "Người ký",
   "nguoi ky": "Người ký",
 }
 
@@ -81,14 +79,7 @@ export function MetadataCard({
   const commitEdit = async () => {
     const updated: Record<string, unknown> = { ...item.light_metadata }
     Object.entries(draft).forEach(([key, value]) => {
-      if (key === "mentioned_subjects") {
-        updated[key] = value
-          .split(",")
-          .map((part) => part.trim())
-          .filter(Boolean)
-      } else {
-        updated[key] = value
-      }
+      updated[key] = value
     })
     updated["_warnings"] = {}
     await applyMetadata(updated)

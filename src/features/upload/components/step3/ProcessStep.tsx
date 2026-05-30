@@ -23,6 +23,7 @@ interface ProcessStepProps {
   metadataItems?: PdfMetadata[]
   metadataLoading?: boolean
   metadataMessage?: string
+  onDocumentsVerified?: (documents: SessionDocumentResponse[]) => void
   onContinue: (groups: ClusterGroup[]) => void
 }
 
@@ -32,6 +33,7 @@ export function ProcessStep({
   metadataItems = [],
   metadataLoading = false,
   metadataMessage = "Đang chờ kết quả số hóa từ backend...",
+  onDocumentsVerified,
   onContinue,
 }: ProcessStepProps) {
   const [items, setItems] = useState<PdfMetadata[]>([])
@@ -133,9 +135,7 @@ export function ProcessStep({
       const verified = await verifyDocumentMetadata(sessionId, item.id, meta)
       const nextItems = replaceVerifiedDocument(items, verified)
       setItems(nextItems)
-      if (allReadyItemsVerified(nextItems)) {
-        onContinue([])
-      }
+      onDocumentsVerified?.([verified])
     } finally {
       setVerifyingIds((previous) => removeId(previous, item.id))
     }
@@ -169,9 +169,7 @@ export function ProcessStep({
       if (verified.length > 0) {
         const nextItems = replaceVerifiedDocuments(items, verified)
         setItems(nextItems)
-        if (allReadyItemsVerified(nextItems)) {
-          onContinue([])
-        }
+        onDocumentsVerified?.(verified)
       }
 
       const failedCount = results.length - verified.length
@@ -476,14 +474,6 @@ function removeId(values: Set<number>, id: number): Set<number> {
   const next = new Set(values)
   next.delete(id)
   return next
-}
-
-function allReadyItemsVerified(items: PdfMetadata[]): boolean {
-  const readyItems = items.filter((item) => item.metadata_ready)
-  return (
-    readyItems.length > 0 &&
-    readyItems.every((item) => item.review_status === "verified")
-  )
 }
 
 function fileNameFromPath(path: string): string {

@@ -1382,6 +1382,7 @@ export function UploadPage() {
                 metadataItems={ocrMetadataItems}
                 metadataLoading={ocrLoading}
                 metadataMessage={ocrMessage}
+                onDocumentsVerified={ocr.mergeVerifiedDocuments}
                 onContinue={(groups) => {
                   _clusterGroups = groups
                   setClusterGroups(groups)

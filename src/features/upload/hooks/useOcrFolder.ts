@@ -1,10 +1,14 @@
 import { useState, useRef, useCallback, useEffect } from "react"
-import type { FolderStatusResponse } from "@/features/upload/api/ocrApi"
+import type {
+  FolderStatusResponse,
+  JobSummary,
+} from "@/features/upload/api/ocrApi"
 import {
   digitizationToFolderStatus,
   getDigitizationStatus,
   isDigitizationComplete,
   startDigitization,
+  type SessionDocumentResponse,
 } from "@/features/upload/api/sessionApi"
 
 export type OcrFolderState = "idle" | "starting" | "polling" | "done" | "error"
@@ -17,6 +21,7 @@ export interface UseOcrFolderResult {
   error: string
   start: (folderPath: string, options: { maxFiles?: number; confirmedPlanVersionId: string }) => Promise<void>
   refresh: () => Promise<FolderStatusResponse | null>
+  mergeVerifiedDocuments: (documents: SessionDocumentResponse[]) => void
   reset: () => void
 }
 
@@ -71,6 +76,44 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
     setState(isDigitizationComplete(result) ? "done" : "polling")
     return nextStatus
   }, [sessionId])
+
+  const mergeVerifiedDocuments = useCallback(
+    (documents: SessionDocumentResponse[]) => {
+      if (documents.length === 0) return
+
+      setStatus((current) => {
+        if (!current) return current
+
+        const documentsById = new Map(
+          documents.map((document) => [document.id, document])
+        )
+        const seenIds = new Set<number>()
+        let changed = false
+        const jobs = current.jobs.map((job) => {
+          const document = documentsById.get(job.id)
+          if (!document) return job
+          seenIds.add(document.id)
+          changed = true
+          return sessionDocumentToJobSummary(document)
+        })
+
+        for (const document of documents) {
+          if (seenIds.has(document.id)) continue
+          changed = true
+          jobs.push(sessionDocumentToJobSummary(document))
+        }
+
+        if (!changed) return current
+        return {
+          ...current,
+          total_files: Math.max(current.total_files, jobs.length),
+          total_jobs: Math.max(current.total_jobs, jobs.length),
+          jobs,
+        }
+      })
+    },
+    []
+  )
 
   useEffect(() => {
     stop()
@@ -196,5 +239,26 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
     [sessionId]
   )
 
-  return { state, status, error, start, refresh, reset }
+  return { state, status, error, start, refresh, mergeVerifiedDocuments, reset }
+}
+
+function sessionDocumentToJobSummary(
+  document: SessionDocumentResponse
+): JobSummary {
+  return {
+    id: document.id,
+    document_id: document.document_id,
+    data_path: document.data_path,
+    status: document.ocr_status,
+    review_status: document.review_status,
+    metadata_ready: document.metadata_ready,
+    metadata_final: document.metadata_final,
+    light_metadata:
+      document.normalized_metadata ??
+      document.metadata ??
+      document.raw_metadata ??
+      {},
+    normalized_metadata: document.normalized_metadata,
+    raw_metadata: document.raw_metadata,
+  }
 }
