@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
   ExternalLink,
   FileSearch,
@@ -37,11 +37,17 @@ export function DocumentPdfPreview({
   onClose,
 }: DocumentPdfPreviewProps) {
   const [refreshKey, setRefreshKey] = useState(0)
+  const previewUrlCacheRef = useRef<Map<string, string>>(new Map())
   const [state, setState] = useState<PreviewState>({
     status: "idle",
     url: "",
     error: "",
   })
+  const documentId = document?.id ?? null
+  const documentKey = useMemo(() => {
+    if (!sessionId || documentId === null) return ""
+    return `${sessionId}:${documentId}`
+  }, [documentId, sessionId])
 
   useEffect(() => {
     let cancelled = false
@@ -62,7 +68,6 @@ export function DocumentPdfPreview({
         cancelled = true
       }
     }
-    const documentId = document.id
     if (documentId === null) {
       setState({
         status: "error",
@@ -75,20 +80,35 @@ export function DocumentPdfPreview({
     }
 
     const load = async () => {
-      setState({ status: "loading", url: "", error: "" })
+      const cachedUrl = previewUrlCacheRef.current.get(documentKey)
+      if (cachedUrl) {
+        setState((current) =>
+          current.url === cachedUrl
+            ? current
+            : { status: "ready", url: cachedUrl, error: "" }
+        )
+        return
+      }
+
+      setState((current) => ({
+        status: "loading",
+        url: current.url,
+        error: "",
+      }))
       try {
         const response = await getDocumentPreviewUrl(sessionId, documentId)
         const url = String(response.download_url ?? "").trim()
         if (!url) throw new Error("Backend chưa trả về URL preview PDF.")
+        previewUrlCacheRef.current.set(documentKey, url)
         if (!cancelled) setState({ status: "ready", url, error: "" })
       } catch (err) {
         if (!cancelled) {
-          setState({
+          setState((current) => ({
             status: "error",
-            url: "",
+            url: current.url,
             error:
               err instanceof Error ? err.message : "Không thể tải preview PDF.",
-          })
+          }))
         }
       }
     }
@@ -97,10 +117,14 @@ export function DocumentPdfPreview({
     return () => {
       cancelled = true
     }
-  }, [document, refreshKey, sessionId])
+  }, [documentId, documentKey, refreshKey, sessionId])
 
   const canRefresh = Boolean(document && sessionId && document.id !== null)
   const iframeUrl = state.url ? pdfEmbedUrl(state.url) : ""
+  const refreshPreview = () => {
+    if (documentKey) previewUrlCacheRef.current.delete(documentKey)
+    setRefreshKey((key) => key + 1)
+  }
 
   return (
     <div
@@ -130,7 +154,7 @@ export function DocumentPdfPreview({
             size="icon-sm"
             title="Làm mới preview"
             disabled={!canRefresh || state.status === "loading"}
-            onClick={() => setRefreshKey((key) => key + 1)}
+            onClick={refreshPreview}
           >
             {state.status === "loading" ? (
               <Loader2 className="size-3.5 animate-spin" />
