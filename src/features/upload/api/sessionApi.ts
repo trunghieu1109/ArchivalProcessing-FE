@@ -64,6 +64,44 @@ interface SessionInputRemoteUploadPresignResponse {
   size_bytes?: number | null
 }
 
+interface SessionInputRemoteChunkedCreateResponse {
+  session_id: string
+  file_type: SessionInputFileType
+  file_name: string
+  folder_path?: string | null
+  data_path?: string | null
+  upload_id: string
+  remote_upload_id?: string | null
+  remote_batch_id: string
+  remote_file_id?: string | null
+  remote_kind: string
+  content_type: string
+  size_bytes?: number | null
+  chunk_size_bytes?: number | null
+  part_count?: number | null
+  remote_object_name?: string | null
+  remote_status?: string | null
+}
+
+interface SessionInputRemoteChunkedPart {
+  part_number: number
+  object_name: string
+  upload_url: string
+  byte_start: number
+  byte_end: number
+  size_bytes: number
+}
+
+interface SessionInputRemoteChunkedPartsPresignResponse {
+  upload_id: string
+  batch_id: number | string
+  file_id: number | string
+  chunk_size_bytes: number
+  total_size_bytes: number
+  total_part_count: number
+  parts: SessionInputRemoteChunkedPart[]
+}
+
 export interface UploadProgressSnapshot {
   phase: "uploading" | "processing" | "done" | "error"
   loadedBytes: number
@@ -242,6 +280,11 @@ const API_BASE = (import.meta.env.VITE_ARCHIVAL_API_BASE_URL ?? "/api").replace(
   /\/+$/,
   ""
 )
+const RAW_ZIP_CHUNKED_UPLOAD_THRESHOLD_BYTES = 50 * 1024 * 1024
+const CHUNKED_UPLOAD_CHUNK_SIZE_BYTES = 16 * 1024 * 1024
+const CHUNKED_UPLOAD_PART_PRESIGN_BATCH_SIZE = 32
+const CHUNKED_UPLOAD_MAX_CONCURRENCY = 4
+const CHUNKED_UPLOAD_PART_MAX_ATTEMPTS = 3
 const PRESIGNED_UPLOAD_STALL_MS = 12_000
 
 export async function listSessions(limit = 100): Promise<SessionListResponse> {
@@ -295,6 +338,9 @@ async function uploadRawZipSessionInputDirect(
   file: File,
   options: UploadSessionInputOptions
 ): Promise<SessionInputUploadResponse> {
+  if (file.size > RAW_ZIP_CHUNKED_UPLOAD_THRESHOLD_BYTES) {
+    return uploadRawZipSessionInputChunked(sessionId, file, options)
+  }
   const contentType = file.type || defaultContentType(file.name)
   const presign = await requestJson<SessionInputRemoteUploadPresignResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/inputs/remote-upload/presign`,
@@ -353,6 +399,177 @@ async function uploadRawZipSessionInputDirect(
   )
   options.onProgress?.(uploadProgressSnapshot("done", file.size, file.size))
   return completed
+}
+
+async function uploadRawZipSessionInputChunked(
+  sessionId: string,
+  file: File,
+  options: UploadSessionInputOptions
+): Promise<SessionInputUploadResponse> {
+  const contentType = file.type || defaultContentType(file.name)
+  const chunked = await requestJson<SessionInputRemoteChunkedCreateResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/inputs/remote-upload/chunked/create`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        file_type: "raw_zip",
+        file_name: file.name,
+        content_type: contentType,
+        size_bytes: file.size,
+        chunk_size_bytes: CHUNKED_UPLOAD_CHUNK_SIZE_BYTES,
+        created_by: options.createdBy ?? "ui",
+      }),
+    }
+  )
+  if (!chunked.remote_file_id) {
+    throw new Error("Chỉnh Lý chưa trả về remote_file_id cho chunked ZIP upload.")
+  }
+  const uploadId = chunked.upload_id || chunked.remote_upload_id
+  if (!uploadId) {
+    throw new Error("Chỉnh Lý chưa trả về upload_id cho chunked ZIP upload.")
+  }
+
+  const totalParts =
+    chunked.part_count ||
+    Math.ceil(file.size / (chunked.chunk_size_bytes || CHUNKED_UPLOAD_CHUNK_SIZE_BYTES))
+  let completedBytes = 0
+  const activePartBytes = new Map<number, number>()
+  const emitProgress = () => {
+    const activeBytes = Array.from(activePartBytes.values()).reduce(
+      (sum, value) => sum + value,
+      0
+    )
+    options.onProgress?.(
+      uploadProgressSnapshot(
+        "uploading",
+        Math.min(file.size, completedBytes + activeBytes),
+        file.size
+      )
+    )
+  }
+  options.onProgress?.(uploadProgressSnapshot("uploading", 0, file.size))
+
+  for (
+    let startPart = 1;
+    startPart <= totalParts;
+    startPart += CHUNKED_UPLOAD_PART_PRESIGN_BATCH_SIZE
+  ) {
+    const partCount = Math.min(
+      CHUNKED_UPLOAD_PART_PRESIGN_BATCH_SIZE,
+      totalParts - startPart + 1
+    )
+    const presignedParts =
+      await requestJson<SessionInputRemoteChunkedPartsPresignResponse>(
+        `/sessions/${encodeURIComponent(sessionId)}/inputs/remote-upload/chunked/${encodeURIComponent(uploadId)}/parts/presign`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            remote_batch_id: chunked.remote_batch_id,
+            start_part: startPart,
+            part_count: partCount,
+          }),
+        }
+      )
+    await uploadChunkedParts(file, presignedParts.parts, {
+      activePartBytes,
+      onPartComplete: (part) => {
+        activePartBytes.delete(part.part_number)
+        completedBytes += chunkedPartSize(part)
+        emitProgress()
+      },
+      onPartProgress: emitProgress,
+    })
+  }
+
+  options.onProgress?.(
+    uploadProgressSnapshot("processing", file.size, file.size)
+  )
+  const completed = await requestJson<SessionInputUploadResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/inputs/remote-upload/chunked/${encodeURIComponent(uploadId)}/complete`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        file_type: "raw_zip",
+        file_name: file.name,
+        content_type: contentType,
+        size_bytes: file.size,
+        remote_batch_id: chunked.remote_batch_id,
+        remote_file_id: chunked.remote_file_id,
+        delete_parts: true,
+        created_by: options.createdBy ?? "ui",
+      }),
+    }
+  )
+  options.onProgress?.(uploadProgressSnapshot("done", file.size, file.size))
+  return completed
+}
+
+async function uploadChunkedParts(
+  file: File,
+  parts: SessionInputRemoteChunkedPart[],
+  progress: {
+    activePartBytes: Map<number, number>
+    onPartProgress: () => void
+    onPartComplete: (part: SessionInputRemoteChunkedPart) => void
+  }
+): Promise<void> {
+  let nextIndex = 0
+  const workerCount = Math.min(CHUNKED_UPLOAD_MAX_CONCURRENCY, parts.length)
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (nextIndex < parts.length) {
+      const part = parts[nextIndex++]
+      await uploadChunkedPartWithRetry(file, part, progress)
+      progress.onPartComplete(part)
+    }
+  })
+  await Promise.all(workers)
+}
+
+async function uploadChunkedPartWithRetry(
+  file: File,
+  part: SessionInputRemoteChunkedPart,
+  progress: {
+    activePartBytes: Map<number, number>
+    onPartProgress: () => void
+  }
+): Promise<void> {
+  let lastError: unknown = null
+  for (let attempt = 1; attempt <= CHUNKED_UPLOAD_PART_MAX_ATTEMPTS; attempt++) {
+    try {
+      progress.activePartBytes.set(part.part_number, 0)
+      progress.onPartProgress()
+      await putPresignedBlob(
+        part.upload_url,
+        file.slice(part.byte_start, part.byte_end + 1),
+        "application/octet-stream",
+        (loadedBytes) => {
+          progress.activePartBytes.set(part.part_number, loadedBytes)
+          progress.onPartProgress()
+        }
+      )
+      return
+    } catch (error) {
+      lastError = error
+      progress.activePartBytes.delete(part.part_number)
+      progress.onPartProgress()
+      if (attempt < CHUNKED_UPLOAD_PART_MAX_ATTEMPTS) {
+        await delay(500 * attempt)
+      }
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`Không thể upload chunk ${part.part_number}.`)
+}
+
+function chunkedPartSize(part: SessionInputRemoteChunkedPart): number {
+  if (Number.isFinite(part.size_bytes) && part.size_bytes > 0) {
+    return part.size_bytes
+  }
+  return Math.max(0, part.byte_end - part.byte_start + 1)
 }
 
 async function proxyPresignedRawZipUpload(
@@ -1066,6 +1283,42 @@ function putPresignedFile(
     }
     armStallTimer()
     xhr.send(file)
+  })
+}
+
+function putPresignedBlob(
+  uploadUrl: string,
+  blob: Blob,
+  contentType: string,
+  onProgress?: (loadedBytes: number) => void
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open("PUT", uploadUrl, true)
+    if (contentType) xhr.setRequestHeader("Content-Type", contentType)
+
+    xhr.upload.onprogress = (event) => {
+      onProgress?.(event.loaded)
+    }
+
+    xhr.onload = () => {
+      const ok = xhr.status >= 200 && xhr.status < 300
+      if (!ok) {
+        reject(
+          new Error(presignedUploadErrorMessage(xhr.status, xhr.responseText))
+        )
+        return
+      }
+      resolve()
+    }
+
+    xhr.onerror = () => {
+      reject(new Error("Không thể upload chunk lên Chỉnh Lý."))
+    }
+    xhr.onabort = () => {
+      reject(new Error("Upload chunk lên Chỉnh Lý đã bị hủy."))
+    }
+    xhr.send(blob)
   })
 }
 
