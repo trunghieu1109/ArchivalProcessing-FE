@@ -68,6 +68,10 @@ export function ProcessStep({
     () => items.filter((item) => item.metadata_ready),
     [items]
   )
+  const verifiedItems = useMemo(
+    () => items.filter((item) => item.review_status === "verified"),
+    [items]
+  )
   const pendingReadyItems = useMemo(
     () => readyItems.filter((item) => item.review_status !== "verified"),
     [readyItems]
@@ -198,7 +202,16 @@ export function ProcessStep({
     metadataLoading && items.length === 0 ? 1 : 0,
     Math.max(paths.length - items.length, 0)
   )
-  const canContinue = readyItems.length > 0 && pendingReadyItems.length === 0
+  const expectedCount = Math.max(paths.length, items.length)
+  const readyPercent =
+    expectedCount > 0
+      ? Math.min(100, (readyItems.length / expectedCount) * 100)
+      : 0
+  const verifiedPercent =
+    expectedCount > 0
+      ? Math.min(100, (verifiedItems.length / expectedCount) * 100)
+      : 0
+  const canContinue = verifiedItems.length > 0
 
   return (
     <motion.div
@@ -225,6 +238,42 @@ export function ProcessStep({
         )}
       </div>
 
+      <div className="overflow-hidden rounded-2xl border border-[#D8E1EC] bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold tracking-[0.16em] text-[#64748B] uppercase">
+              Tiến độ metadata
+            </p>
+            <p className="mt-1 text-sm text-[#0F172A]">
+              {metadataLoading
+                ? `Đang trích xuất metadata: đã extract ${readyItems.length}/${expectedCount || "..."} tài liệu.`
+                : readyItems.length > 0
+                  ? `Có ${readyItems.length} tài liệu sẵn sàng, ${verifiedItems.length} đã xác nhận.`
+                  : metadataMessage}
+            </p>
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <ProgressMetric label="Tài liệu" value={expectedCount} />
+            <ProgressMetric label="Đã extract" value={readyItems.length} />
+            <ProgressMetric label="Đã xác nhận" value={verifiedItems.length} />
+          </div>
+        </div>
+        <div className="mt-4 h-2 overflow-hidden rounded-full bg-[#E2E8F0]">
+          <motion.div
+            className="h-full rounded-full bg-[#BFD3FF]"
+            initial={false}
+            animate={{ width: `${readyPercent}%` }}
+            transition={{ duration: 0.35 }}
+          />
+          <motion.div
+            className="-mt-2 h-full rounded-full bg-[#0052FF]"
+            initial={false}
+            animate={{ width: `${verifiedPercent}%` }}
+            transition={{ duration: 0.35 }}
+          />
+        </div>
+      </div>
+
       <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(380px,1.05fr)]">
         <div className="flex min-w-0 flex-col gap-3">
           <div className="flex items-center justify-between gap-3">
@@ -235,7 +284,7 @@ export function ProcessStep({
               {metadataLoading && (
                 <span className="flex items-center gap-1.5 text-xs text-[#64748B]">
                   <Loader2 className="size-3 animate-spin text-[#0052FF]" />
-                  Đang tải {items.length}/{Math.max(paths.length, items.length)}
+                  Đã extract {readyItems.length}/{expectedCount || "..."}
                 </span>
               )}
               {pendingReadyItems.length > 0 && (
@@ -291,10 +340,17 @@ export function ProcessStep({
 
       <div className="flex items-center justify-between rounded-2xl border border-[#CBD5E1] bg-white px-6 py-4 shadow-sm">
         <div className="text-sm text-[#475569]">
-          {pendingReadyItems.length > 0 ? (
+          {pendingReadyItems.length > 0 && verifiedItems.length === 0 ? (
             <span className="flex items-center gap-2 text-amber-700">
               <AlertTriangle className="size-4" />
               Còn {pendingReadyItems.length} tài liệu cần xác nhận metadata.
+            </span>
+          ) : pendingReadyItems.length > 0 ? (
+            <span className="flex items-center gap-2 text-[#475569]">
+              <CheckCircle2 className="size-4 text-emerald-600" />
+              Có thể lập hồ sơ với {verifiedItems.length} tài liệu đã xác nhận;
+              {` ${pendingReadyItems.length}`} tài liệu còn lại có thể cập nhật
+              hồ sơ sau.
             </span>
           ) : readyItems.length > 0 ? (
             <span className="flex items-center gap-2 text-emerald-700">
@@ -325,10 +381,23 @@ export function ProcessStep({
               : {}
           }
         >
-          Xem kết quả
+          {canContinue
+            ? `Xem kết quả (${verifiedItems.length} tài liệu)`
+            : "Xem kết quả"}
         </button>
       </div>
     </motion.div>
+  )
+}
+
+function ProgressMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="min-w-20 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2">
+      <p className="text-[10px] font-semibold tracking-[0.12em] text-[#94A3B8] uppercase">
+        {label}
+      </p>
+      <p className="text-base font-bold text-[#0F172A]">{value}</p>
+    </div>
   )
 }
 

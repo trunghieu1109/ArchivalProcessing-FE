@@ -28,8 +28,11 @@ import {
 import {
   enqueueClusterBuild,
   getActiveClusters,
+  getClusterBuildStatus,
+  listSessionEvents,
   moveDocumentBetweenClusters,
 } from "@/features/upload/api/sessionApi"
+import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import {
   versionToGroups,
   type ClusterDocument,
@@ -39,7 +42,26 @@ import type { PdfMetadata } from "@/features/upload/types"
 
 const CLUSTER_POLL_INTERVAL_MS = 3_000
 const CLUSTER_POLL_TIMEOUT_MS = 10 * 60 * 1_000
+const CLUSTER_PROGRESS_TICK_MS = 4_500
 const NO_CLUSTER_VERSION = "__none__"
+const CLUSTER_PROGRESS_PHASES = [
+  { id: "updating_dossiers", label: "Đang cập nhật hồ sơ" },
+  { id: "naming_dossiers", label: "Đặt tiêu đề hồ sơ" },
+  { id: "classifying_dossiers", label: "Phân loại hồ sơ" },
+  { id: "finding_retention", label: "Tìm thời hạn bảo quản" },
+  { id: "reviewing_dossiers", label: "Rà soát hồ sơ" },
+]
+const CLUSTER_ALL_PHASE_IDS = CLUSTER_PROGRESS_PHASES.map((phase) => phase.id)
+const FIRST_CLUSTER_PROGRESS_PHASE_ID = CLUSTER_PROGRESS_PHASES[0].id
+const CLUSTER_PROGRESS_PHASE_ALIASES: Record<string, string> = {
+  loading_verified_documents: "updating_dossiers",
+  building_dossiers: "updating_dossiers",
+  naming_dossiers: "naming_dossiers",
+  classifying_retention: "finding_retention",
+  persisting_clusters: "reviewing_dossiers",
+}
+
+type ClusterJobMode = "new" | "update"
 
 interface FinalResultProps {
   sessionId: string | null
@@ -76,8 +98,15 @@ export function FinalResult({
   onFinish,
 }: FinalResultProps) {
   const [groups, setGroups] = useState<ClusterGroup[]>(initialGroups)
-  const [status, setStatus] = useState("Đang chờ backend lập hồ sơ...")
-  const [loading, setLoading] = useState(initialGroups.length === 0)
+  const [status, setStatus] = useState(
+    initialGroups.length > 0
+      ? `Đã lập ${initialGroups.length} hồ sơ.`
+      : "Đang kiểm tra kết quả lập hồ sơ..."
+  )
+  const [loading, setLoading] = useState(false)
+  const [checkingClusters, setCheckingClusters] = useState(
+    initialGroups.length === 0
+  )
   const [draggedDocument, setDraggedDocument] =
     useState<DraggedDocument | null>(null)
   const [dropTargetId, setDropTargetId] = useState<string | null>(null)
@@ -95,6 +124,16 @@ export function FinalResult({
     number | null
   >(null)
   const [previewWidthPercent, setPreviewWidthPercent] = useState(38)
+  const [clusterJobMode, setClusterJobMode] = useState<ClusterJobMode>("new")
+  const [clusterProgressPhase, setClusterProgressPhase] = useState<
+    string | null
+  >(null)
+  const [clusterProgressMessage, setClusterProgressMessage] = useState(
+    initialGroups.length > 0 ? "Đã lập hồ sơ xong." : ""
+  )
+  const [clusterCompletedPhases, setClusterCompletedPhases] = useState<
+    Set<string>
+  >(() => (initialGroups.length > 0 ? completedClusterPhaseSet() : new Set()))
 
   const verifiedItems = useMemo(
     () => metadataItems.filter((item) => item.review_status === "verified"),
@@ -173,11 +212,13 @@ export function FinalResult({
       if (cancelled) return
       if (!sessionId) {
         setLoading(false)
+        setCheckingClusters(false)
         setStatus("Chưa có session để lấy kết quả lập hồ sơ.")
         return
       }
       if (Date.now() - startedAt > CLUSTER_POLL_TIMEOUT_MS) {
         setLoading(false)
+        setCheckingClusters(false)
         setStatus(
           "Quá thời gian chờ lập hồ sơ. Hãy kiểm tra worker/dispatcher backend."
         )
@@ -185,31 +226,80 @@ export function FinalResult({
       }
 
       try {
-        const version = await getActiveClusters(sessionId)
+        const [version, buildStatus] = await Promise.all([
+          getActiveClusters(sessionId),
+          getClusterBuildStatus(sessionId).catch(() => null),
+        ])
         if (cancelled) return
 
+        const hasActiveBuildJob = Boolean(buildStatus?.active)
+        const activeJobMode = hasActiveBuildJob
+          ? clusterJobModeFromPayload(buildStatus?.job?.payload)
+          : rebuildBaselineVersionId
+            ? "update"
+            : "new"
         const nextVersionId = version?.id ?? null
         const nextVersionMarker = nextVersionId ?? NO_CLUSTER_VERSION
         setActiveClusterVersionId(nextVersionId)
+        const nextGroups = versionToGroups(version, metadataItems)
+        setGroups(nextGroups)
+
+        if (hasActiveBuildJob) {
+          setCheckingClusters(false)
+          setLoading(true)
+          setClusterJobMode(activeJobMode)
+          setClusterProgressPhase(
+            (phase) =>
+              normalizeClusterProgressPhase(phase) ??
+              FIRST_CLUSTER_PROGRESS_PHASE_ID
+          )
+          setClusterCompletedPhases((previous) =>
+            previous.size === CLUSTER_ALL_PHASE_IDS.length
+              ? new Set()
+              : previous
+          )
+          setClusterProgressMessage((message) =>
+            isTerminalClusterProgressMessage(message)
+              ? clusterProgressMessageForPhase(
+                  FIRST_CLUSTER_PROGRESS_PHASE_ID,
+                  activeJobMode
+                )
+              : message ||
+                clusterProgressMessageForPhase(
+                  FIRST_CLUSTER_PROGRESS_PHASE_ID,
+                  activeJobMode
+                )
+          )
+          setStatus(
+            activeJobMode === "update"
+              ? "Đang chờ backend tạo phiên bản hồ sơ mới từ feedback đã lưu."
+              : "Đang chờ backend lập hồ sơ từ tài liệu đã xác nhận."
+          )
+          schedule()
+          return
+        }
+
+        setLoading(false)
+        setCheckingClusters(false)
         if (
           rebuildBaselineVersionId &&
           nextVersionMarker === rebuildBaselineVersionId
         ) {
-          setLoading(true)
+          setRebuildBaselineVersionId(null)
+          setClusterJobMode("update")
+          setClusterProgressPhase(null)
+          setClusterCompletedPhases(completedClusterPhaseSet())
+          setClusterProgressMessage("Không có job cập nhật hồ sơ đang chạy.")
           setStatus(
-            "Đang chờ backend tạo phiên bản cụm mới từ feedback đã lưu."
+            "Chưa ghi nhận phiên bản hồ sơ mới. Feedback đã lưu sẽ được áp dụng ở lần cập nhật hồ sơ tiếp theo."
           )
-          schedule()
           return
         }
         if (rebuildBaselineVersionId) {
           setRebuildBaselineVersionId(null)
           setPendingFeedbackCount(0)
-          toast.success("Đã cập nhật cụm từ feedback đã lưu.")
+          toast.success("Đã cập nhật hồ sơ từ feedback đã lưu.")
         }
-
-        const nextGroups = versionToGroups(version, metadataItems)
-        setGroups(nextGroups)
 
         const clusteredIds = clusteredDocumentIds(version)
         const missingVerified = verifiedItems.filter(
@@ -220,25 +310,32 @@ export function FinalResult({
           (verifiedItems.length === 0 || missingVerified.length === 0)
 
         if (allVerifiedClustered) {
-          setLoading(false)
+          setClusterProgressPhase(null)
+          setClusterCompletedPhases(completedClusterPhaseSet())
+          setClusterProgressMessage("Đã lập hồ sơ xong.")
           setStatus(
             `Đã lập ${nextGroups.length} hồ sơ từ ${verifiedItems.length} tài liệu đã xác nhận.`
           )
           return
         }
 
-        setLoading(true)
         if (nextGroups.length > 0 && missingVerified.length > 0) {
+          setClusterProgressPhase(null)
+          setClusterCompletedPhases(completedClusterPhaseSet())
+          setClusterProgressMessage("Đã lập hồ sơ xong.")
           setStatus(
-            `Đã có ${nextGroups.length} hồ sơ. Đang chờ dispatcher cập nhật ${missingVerified.length} tài liệu mới.`
+            `Đã có ${nextGroups.length} hồ sơ. Có ${missingVerified.length} tài liệu đã xác nhận chưa được cập nhật vào hồ sơ.`
           )
         } else {
-          setStatus("Đang chờ backend lập hồ sơ...")
+          setClusterProgressPhase(null)
+          setClusterProgressMessage("")
+          setStatus("Chưa có kết quả lập hồ sơ từ backend.")
+          schedule()
         }
-        schedule()
       } catch (err) {
         if (cancelled) return
-        setLoading(true)
+        setLoading(false)
+        setCheckingClusters(false)
         setStatus(
           err instanceof Error
             ? `Chưa lấy được kết quả lập hồ sơ: ${err.message}`
@@ -260,6 +357,90 @@ export function FinalResult({
     sessionId,
     verifiedItems,
   ])
+
+  useEffect(() => {
+    if (!sessionId || (!loading && !rebuildBaselineVersionId)) return
+
+    let cancelled = false
+    let afterId = 0
+    let timeoutId: number | undefined
+
+    const pollEvents = async () => {
+      try {
+        const response = await listSessionEvents(sessionId, {
+          afterId,
+          limit: 100,
+        })
+        if (cancelled) return
+        for (const event of response.events) {
+          afterId = Math.max(afterId, event.id)
+          if (event.event_type === "clustering.progress") {
+            const phase = String(event.payload?.phase ?? "")
+            if (phase) {
+              const normalizedPhase = normalizeClusterProgressPhase(phase)
+              setClusterProgressPhase(normalizedPhase)
+              setClusterCompletedPhases((previous) => {
+                if (phase === "completed") {
+                  return completedClusterPhaseSet()
+                }
+                if (!normalizedPhase) return previous
+                return completedClusterPhaseSetBefore(normalizedPhase)
+              })
+            }
+            if (event.message) {
+              setClusterProgressMessage(dossierUiMessage(event.message))
+            }
+          }
+          if (event.event_type === "clustering.version.created") {
+            setClusterProgressPhase(null)
+            setClusterCompletedPhases(
+              new Set(CLUSTER_PROGRESS_PHASES.map((phase) => phase.id))
+            )
+            setClusterProgressMessage("Đã tạo phiên bản hồ sơ mới.")
+          }
+        }
+      } catch {
+        // The cluster polling loop owns user-facing errors.
+      }
+      if (!cancelled) timeoutId = window.setTimeout(pollEvents, 1_500)
+    }
+
+    void pollEvents()
+    return () => {
+      cancelled = true
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId)
+    }
+  }, [loading, rebuildBaselineVersionId, sessionId])
+
+  useEffect(() => {
+    if (!loading && !checkingClusters && !rebuildBaselineVersionId) return
+
+    setClusterProgressPhase(
+      (phase) =>
+        normalizeClusterProgressPhase(phase) ?? FIRST_CLUSTER_PROGRESS_PHASE_ID
+    )
+    setClusterProgressMessage((message) =>
+      isTerminalClusterProgressMessage(message)
+        ? clusterProgressMessageForPhase(
+            FIRST_CLUSTER_PROGRESS_PHASE_ID,
+            clusterJobMode
+          )
+        : message
+    )
+
+    const intervalId = window.setInterval(() => {
+      setClusterProgressPhase((phase) => {
+        const nextPhase = nextClusterProgressPhase(phase)
+        setClusterCompletedPhases(completedClusterPhaseSetBefore(nextPhase))
+        setClusterProgressMessage(
+          clusterProgressMessageForPhase(nextPhase, clusterJobMode)
+        )
+        return nextPhase
+      })
+    }, CLUSTER_PROGRESS_TICK_MS)
+
+    return () => window.clearInterval(intervalId)
+  }, [checkingClusters, clusterJobMode, loading, rebuildBaselineVersionId])
 
   const toggleNode = (nodeId: string) => {
     setOpenNodeIds((previous) => {
@@ -283,7 +464,7 @@ export function FinalResult({
     }
     if (!draggedDocument.document.sessionDocumentId) {
       toast.error(
-        "Tài liệu này chưa có session_document_id để ghi manual-move."
+        "Tài liệu này chưa có mã trong session để ghi nhận di chuyển."
       )
       return
     }
@@ -295,7 +476,7 @@ export function FinalResult({
     setGroups((previous) =>
       moveDocumentLocally(previous, moving, targetClusterId)
     )
-    setStatus("Đang lưu feedback manual-move...")
+    setStatus("Đang lưu feedback di chuyển tài liệu...")
 
     try {
       await moveDocumentBetweenClusters(sessionId, {
@@ -312,22 +493,22 @@ export function FinalResult({
       })
       setPendingFeedbackCount((count) => count + 1)
       setStatus(
-        "Đã lưu feedback manual-move. Bấm Cập nhật cụm khi bạn muốn phân cụm lại."
+        "Đã lưu feedback di chuyển tài liệu. Bấm Cập nhật hồ sơ khi bạn muốn lập hồ sơ lại."
       )
       toast.success("Đã lưu feedback chuyển tài liệu.")
     } catch (err) {
-      setStatus("Không lưu được feedback manual-move. Vui lòng thử lại.")
+      setStatus("Không lưu được feedback di chuyển tài liệu. Vui lòng thử lại.")
       toast.error(
         err instanceof Error
           ? err.message
-          : "Không gửi được feedback manual-move."
+          : "Không gửi được feedback di chuyển tài liệu."
       )
     }
   }
 
   const handleRebuildClusters = async () => {
     if (!sessionId) {
-      toast.error("Chưa có session để cập nhật cụm.")
+      toast.error("Chưa có session để cập nhật hồ sơ.")
       return
     }
     setRebuildSubmitting(true)
@@ -344,15 +525,29 @@ export function FinalResult({
       setRebuildBaselineVersionId(baselineVersionId)
       setRebuildPollKey((key) => key + 1)
       setLoading(true)
-      setStatus("Đã gửi job cập nhật cụm. Đang chờ backend tạo phiên bản mới.")
+      setCheckingClusters(false)
+      setClusterJobMode("update")
+      setClusterProgressPhase(FIRST_CLUSTER_PROGRESS_PHASE_ID)
+      setClusterProgressMessage(
+        clusterProgressMessageForPhase(
+          FIRST_CLUSTER_PROGRESS_PHASE_ID,
+          "update"
+        )
+      )
+      setClusterCompletedPhases(new Set())
+      setStatus(
+        "Đã gửi job cập nhật hồ sơ. Đang chờ backend tạo phiên bản mới."
+      )
       toast.success(
         response.status === "already_queued_or_running"
-          ? "Đã có job cập nhật cụm đang chạy."
-          : "Đã gửi job cập nhật cụm."
+          ? "Đã có job cập nhật hồ sơ đang chạy."
+          : "Đã gửi job cập nhật hồ sơ."
       )
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Không gửi được job cập nhật cụm."
+        err instanceof Error
+          ? err.message
+          : "Không gửi được job cập nhật hồ sơ."
       )
     } finally {
       setRebuildSubmitting(false)
@@ -366,6 +561,85 @@ export function FinalResult({
     }
     setSelectedPreviewDocumentId(document.sessionDocumentId)
   }
+
+  const handleFinish = () => {
+    if (loading || rebuildSubmitting || rebuildBaselineVersionId) {
+      toast.error("Đang cập nhật hồ sơ. Vui lòng chờ xong rồi tạo mục lục.")
+      return
+    }
+    onFinish()
+  }
+
+  const activeClusterProgressLabel = clusterProgressPhase
+    ? clusterProgressLabel(clusterProgressPhase)
+    : ""
+  const resultStatusText =
+    loading || checkingClusters
+      ? activeClusterProgressLabel
+        ? `${activeClusterProgressLabel}. ${status}`
+        : clusterJobMode === "update"
+          ? `Đang cập nhật hồ sơ. ${status}`
+          : `Đang lập hồ sơ mới. ${status}`
+      : status
+  const showClusterProgress =
+    loading ||
+    checkingClusters ||
+    Boolean(clusterProgressMessage) ||
+    groups.length > 0
+  const feedbackActionsPanel = (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#D8E1EC] bg-white px-4 py-3 shadow-sm">
+      <p className="min-w-[260px] flex-1 text-sm text-[#64748B]">
+        {pendingFeedbackCount > 0
+          ? `Có ${pendingFeedbackCount} feedback đã lưu và đang chờ cập nhật hồ sơ.`
+          : "Feedback di chuyển tài liệu sẽ được lưu lại và chỉ áp dụng khi cập nhật hồ sơ."}
+      </p>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {previewDocument && (
+          <label className="flex items-center gap-2 rounded-lg border border-[#CBD5E1] bg-[#F8FAFC] px-2 py-1 text-[11px] font-medium text-[#475569]">
+            <PanelRight className="size-3.5 text-[#0052FF]" />
+            <span className="whitespace-nowrap">Preview</span>
+            <input
+              type="range"
+              min={28}
+              max={55}
+              value={previewWidthPercent}
+              onChange={(event) =>
+                setPreviewWidthPercent(Number(event.target.value))
+              }
+              className="h-1.5 w-24 accent-[#0052FF] sm:w-32"
+              aria-label="Điều chỉnh kích thước preview"
+            />
+          </label>
+        )}
+        <Button
+          variant="outline"
+          onClick={() => void handleRebuildClusters()}
+          disabled={
+            rebuildSubmitting || loading || !sessionId || groups.length === 0
+          }
+        >
+          {rebuildSubmitting ? (
+            <Loader2 data-icon="inline-start" className="animate-spin" />
+          ) : (
+            <RefreshCw data-icon="inline-start" />
+          )}
+          Cập nhật hồ sơ
+        </Button>
+        <Button
+          onClick={handleFinish}
+          disabled={
+            groups.length === 0 ||
+            loading ||
+            rebuildSubmitting ||
+            Boolean(rebuildBaselineVersionId)
+          }
+        >
+          <CheckCircle2 data-icon="inline-start" />
+          Tạo mục lục
+        </Button>
+      </div>
+    </div>
+  )
 
   return (
     <motion.div
@@ -387,12 +661,12 @@ export function FinalResult({
             chỉnh bằng kéo thả.
           </p>
           <p className="mt-2 flex items-center gap-2 text-sm text-[#475569]">
-            {loading ? (
+            {loading || checkingClusters ? (
               <Loader2 className="size-4 animate-spin text-[#0052FF]" />
             ) : (
               <CheckCircle2 className="size-4 text-emerald-600" />
             )}
-            {status}
+            {resultStatusText}
           </p>
         </div>
         <div className="grid shrink-0 grid-cols-3 gap-2">
@@ -402,50 +676,22 @@ export function FinalResult({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#D8E1EC] bg-white px-4 py-3 shadow-sm">
-        <p className="min-w-[260px] flex-1 text-sm text-[#64748B]">
-          {pendingFeedbackCount > 0
-            ? `Có ${pendingFeedbackCount} feedback đã lưu và đang chờ cập nhật cụm.`
-            : "Feedback manual-move sẽ được lưu lại và chỉ áp dụng khi cập nhật cụm."}
-        </p>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {previewDocument && (
-            <label className="flex items-center gap-2 rounded-lg border border-[#CBD5E1] bg-[#F8FAFC] px-2 py-1 text-[11px] font-medium text-[#475569]">
-              <PanelRight className="size-3.5 text-[#0052FF]" />
-              <span className="whitespace-nowrap">Preview</span>
-              <input
-                type="range"
-                min={28}
-                max={55}
-                value={previewWidthPercent}
-                onChange={(event) =>
-                  setPreviewWidthPercent(Number(event.target.value))
-                }
-                className="h-1.5 w-24 accent-[#0052FF] sm:w-32"
-                aria-label="Điều chỉnh kích thước preview"
-              />
-            </label>
-          )}
-          <Button
-            variant="outline"
-            onClick={() => void handleRebuildClusters()}
-            disabled={
-              rebuildSubmitting || loading || !sessionId || groups.length === 0
-            }
-          >
-            {rebuildSubmitting ? (
-              <Loader2 data-icon="inline-start" className="animate-spin" />
-            ) : (
-              <RefreshCw data-icon="inline-start" />
-            )}
-            Cập nhật cụm
-          </Button>
-          <Button onClick={onFinish} disabled={groups.length === 0}>
-            <CheckCircle2 data-icon="inline-start" />
-            Tạo mục lục
-          </Button>
-        </div>
-      </div>
+      {showClusterProgress && (
+        <ProgressTimeline
+          phases={CLUSTER_PROGRESS_PHASES}
+          activePhase={clusterProgressPhase}
+          completedPhases={clusterCompletedPhases}
+          title={
+            clusterJobMode === "update"
+              ? "Tiến độ cập nhật hồ sơ"
+              : "Tiến độ lập hồ sơ"
+          }
+          message={
+            clusterProgressMessage ||
+            "Backend đang lập hồ sơ từ các tài liệu đã xác nhận."
+          }
+        />
+      )}
 
       <div
         className={cn(
@@ -491,9 +737,11 @@ export function FinalResult({
               ))}
               {tree.length === 0 && (
                 <div className="rounded-xl border border-dashed border-[#CBD5E1] bg-[#F8FAFC] p-8 text-center text-sm text-muted-foreground">
-                  {loading
-                    ? "Đang chờ kết quả lập hồ sơ từ backend."
-                    : "Chưa có kết quả lập hồ sơ từ backend."}
+                  {checkingClusters
+                    ? "Đang kiểm tra kết quả lập hồ sơ từ backend."
+                    : loading
+                      ? "Đang chờ kết quả lập hồ sơ từ backend."
+                      : "Chưa có kết quả lập hồ sơ từ backend."}
                 </div>
               )}
             </div>
@@ -508,6 +756,7 @@ export function FinalResult({
           />
         )}
       </div>
+      {feedbackActionsPanel}
     </motion.div>
   )
 }
@@ -966,6 +1215,95 @@ function CountBadge({ value }: { value: number }) {
       {value}
     </span>
   )
+}
+
+function completedClusterPhaseSet(): Set<string> {
+  return new Set(CLUSTER_ALL_PHASE_IDS)
+}
+
+function completedClusterPhaseSetBefore(phaseId: string): Set<string> {
+  const phaseIndex = CLUSTER_PROGRESS_PHASES.findIndex(
+    (phase) => phase.id === phaseId
+  )
+  return new Set(
+    CLUSTER_PROGRESS_PHASES.slice(0, Math.max(phaseIndex, 0)).map(
+      (phase) => phase.id
+    )
+  )
+}
+
+function normalizeClusterProgressPhase(
+  phase: string | null | undefined
+): string | null {
+  if (!phase || phase === "completed") return null
+  if (CLUSTER_ALL_PHASE_IDS.includes(phase)) return phase
+  return CLUSTER_PROGRESS_PHASE_ALIASES[phase] ?? null
+}
+
+function nextClusterProgressPhase(phase: string | null | undefined): string {
+  const currentPhase =
+    normalizeClusterProgressPhase(phase) ?? FIRST_CLUSTER_PROGRESS_PHASE_ID
+  const currentIndex = CLUSTER_PROGRESS_PHASES.findIndex(
+    (item) => item.id === currentPhase
+  )
+  const nextIndex = Math.min(
+    Math.max(currentIndex, 0) + 1,
+    CLUSTER_PROGRESS_PHASES.length - 1
+  )
+  return CLUSTER_PROGRESS_PHASES[nextIndex].id
+}
+
+function clusterProgressLabel(phaseId: string): string {
+  return (
+    CLUSTER_PROGRESS_PHASES.find((phase) => phase.id === phaseId)?.label ?? ""
+  )
+}
+
+function clusterProgressMessageForPhase(
+  phaseId: string,
+  mode: ClusterJobMode
+): string {
+  switch (phaseId) {
+    case "updating_dossiers":
+      return mode === "update"
+        ? "Đang áp dụng feedback và cập nhật cấu trúc hồ sơ."
+        : "Đang gom tài liệu đã xác nhận vào hồ sơ."
+    case "naming_dossiers":
+      return "Đang đặt tiêu đề hồ sơ từ nội dung tài liệu."
+    case "classifying_dossiers":
+      return "Đang phân loại hồ sơ theo phương án chỉnh lý."
+    case "finding_retention":
+      return "Đang tìm thời hạn bảo quản phù hợp."
+    case "reviewing_dossiers":
+      return "Đang rà soát kết quả trước khi hiển thị phiên bản mới."
+    default:
+      return mode === "update"
+        ? "Đang cập nhật hồ sơ từ feedback đã lưu."
+        : "Đang lập hồ sơ mới từ các tài liệu đã xác nhận."
+  }
+}
+
+function isTerminalClusterProgressMessage(message: string): boolean {
+  return (
+    !message ||
+    message.startsWith("Đã ") ||
+    message.includes("xong") ||
+    message.includes("Không có job")
+  )
+}
+
+function dossierUiMessage(message: string): string {
+  return message
+    .replace(/phiên bản cụm/g, "phiên bản hồ sơ")
+    .replace(/cập nhật cụm/g, "cập nhật hồ sơ")
+    .replace(/phân cụm/g, "lập hồ sơ")
+    .replace(/cụm/g, "hồ sơ")
+}
+
+function clusterJobModeFromPayload(
+  payload: Record<string, unknown> | null | undefined
+): ClusterJobMode {
+  return payload?.source === "user_feedback" ? "update" : "new"
 }
 
 function buildResultTree(groups: ClusterGroup[]): ResultTreeNode[] {

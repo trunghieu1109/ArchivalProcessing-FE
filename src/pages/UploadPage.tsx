@@ -18,12 +18,14 @@ import { FolderTree } from "@/features/upload/components/step2/FolderTree"
 import { ProcessStep } from "@/features/upload/components/step3/ProcessStep"
 import { FinalResult } from "@/features/upload/components/step4/FinalResult"
 import { FinalizeArtifactsStep } from "@/pages/FinalizeArtifactsPage"
+import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import { useOcrFolder } from "@/features/upload/hooks/useOcrFolder"
 import {
   createSession,
   enqueuePlanAnalysis,
   getActivePlan,
   getSession,
+  listSessionEvents,
   patchActivePlan,
   uploadSessionInput,
   waitForActivePlan,
@@ -247,6 +249,14 @@ function folderPathFromZipName(fileName: string): string {
 const STEP_LABELS = ["Tải lên", "Cấu trúc", "Xử lý", "Kết quả", "Tạo mục lục"]
 const PLAN_ANALYSIS_TIMEOUT_MS = 10 * 60 * 1000
 const LAST_SESSION_KEY = "archival-processing:last-session-id"
+const PLAN_PROGRESS_PHASES = [
+  { id: "upload_inputs", label: "Nạp dữ liệu đầu vào" },
+  { id: "preparing_plan_file", label: "Chuẩn bị file phương án chỉnh lý" },
+  { id: "classification_criteria", label: "Phân tích tiêu chí phân loại" },
+  { id: "group_definitions", label: "Xác định định nghĩa nhóm" },
+  { id: "retention_period", label: "Xác định thời hạn bảo quản" },
+]
+const PLAN_DONE_VISIBLE_MS = 1_200
 
 let _doc1Has = false
 let _doc2Has = false
@@ -319,6 +329,13 @@ export function UploadPage() {
   const [zipUploadProgress, setZipUploadProgress] =
     useState<UploadProgressSnapshot | null>(_zipUploadProgress)
   const [sessionLoading, setSessionLoading] = useState(false)
+  const [planProgressPhase, setPlanProgressPhase] = useState<string | null>(
+    null
+  )
+  const [planProgressMessage, setPlanProgressMessage] = useState("")
+  const [planCompletedPhases, setPlanCompletedPhases] = useState<Set<string>>(
+    () => new Set()
+  )
 
   const applyWorkflowState = (nextSessionId: string | null) => {
     setDoc1State(_doc1State)
@@ -336,6 +353,11 @@ export function UploadPage() {
     setZipFolderPath(_zipFolderPath)
     setZipMaxFiles(_zipMaxFiles)
     setZipUploadProgress(_zipUploadProgress)
+    if (_planAnalysisState !== "processing") {
+      setPlanProgressPhase(null)
+      setPlanProgressMessage("")
+      setPlanCompletedPhases(new Set())
+    }
   }
 
   const resetWorkflowState = (nextSessionId: string | null) => {
@@ -395,6 +417,62 @@ export function UploadPage() {
           : "Backend chưa trả về tài liệu số hóa."
         : "Đang chờ kết quả số hóa từ remote folder..."
   const ocrLoading = ocr.state === "starting" || ocr.state === "polling"
+
+  useEffect(() => {
+    if (!sessionId || planAnalysisState !== "processing") return
+
+    let cancelled = false
+    let afterId = 0
+    let timeoutId: number | undefined
+
+    const poll = async () => {
+      try {
+        const response = await listSessionEvents(sessionId, {
+          afterId,
+          limit: 100,
+        })
+        if (cancelled) return
+        for (const event of response.events) {
+          afterId = Math.max(afterId, event.id)
+          if (event.event_type === "plan.analysis.progress") {
+            const phase = normalizePlanProgressPhase(event.payload?.phase)
+            if (phase) {
+              setPlanProgressPhase(phase)
+              setPlanCompletedPhases((previous) => {
+                const next = new Set(previous)
+                const phaseIndex = PLAN_PROGRESS_PHASES.findIndex(
+                  (item) => item.id === phase
+                )
+                PLAN_PROGRESS_PHASES.slice(0, Math.max(phaseIndex, 0)).forEach(
+                  (item) => next.add(item.id)
+                )
+                return next
+              })
+            }
+            if (phase) setPlanProgressMessage(planProgressMessageForPhase(phase))
+          }
+          if (event.event_type === "plan.analysis.completed") {
+            setPlanProgressPhase(null)
+            setPlanCompletedPhases(
+              new Set(PLAN_PROGRESS_PHASES.map((phase) => phase.id))
+            )
+            setPlanProgressMessage("Đã phân tích xong phương án chỉnh lý.")
+          }
+        }
+      } catch {
+        // Progress events are best-effort; the active-plan polling owns errors.
+      }
+      if (!cancelled) {
+        timeoutId = window.setTimeout(poll, 1_500)
+      }
+    }
+
+    void poll()
+    return () => {
+      cancelled = true
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId)
+    }
+  }, [planAnalysisState, sessionId])
 
   useEffect(() => {
     const isCurrentDraftSession = Boolean(
@@ -680,6 +758,30 @@ export function UploadPage() {
     zipState === "processing"
   const allDone = planAnalysisState === "done"
 
+  const syncLatestPlanProgress = async (currentSessionId: string) => {
+    try {
+      const response = await listSessionEvents(currentSessionId, { limit: 200 })
+      let latestMessage = "Đã phân tích xong phương án chỉnh lý."
+
+      response.events.forEach((event) => {
+        if (event.event_type !== "plan.analysis.progress") return
+        if (event.message) latestMessage = event.message
+      })
+
+      setPlanCompletedPhases(
+        new Set(PLAN_PROGRESS_PHASES.map((phase) => phase.id))
+      )
+      setPlanProgressPhase(null)
+      setPlanProgressMessage(latestMessage)
+    } catch {
+      setPlanProgressPhase(null)
+      setPlanProgressMessage("Đã phân tích xong phương án chỉnh lý.")
+      setPlanCompletedPhases(
+        new Set(PLAN_PROGRESS_PHASES.map((phase) => phase.id))
+      )
+    }
+  }
+
   const handleStartAll = async () => {
     if (allDone) {
       goTo(2)
@@ -704,6 +806,9 @@ export function UploadPage() {
     }
     try {
       syncPlanAnalysisState("processing")
+      setPlanProgressPhase("upload_inputs")
+      setPlanProgressMessage(planProgressMessageForPhase("upload_inputs"))
+      setPlanCompletedPhases(new Set())
       const currentSessionId = await ensureSession()
       syncZipState("processing")
       syncZipUploadProgress(
@@ -747,6 +852,9 @@ export function UploadPage() {
         plan_file: planFile,
         retention_file: retentionFile,
       })
+      setPlanCompletedPhases((previous) => addSetValue(previous, "upload_inputs"))
+      setPlanProgressPhase("preparing_plan_file")
+      setPlanProgressMessage(planProgressMessageForPhase("preparing_plan_file"))
       await Promise.all([...documentTasks, planJob])
       const planResponse = await waitForActivePlan(
         currentSessionId,
@@ -763,11 +871,16 @@ export function UploadPage() {
       _folderTree = planToTree(plan)
       setParsedPlan(plan)
       setFolderTree(_folderTree)
+      await syncLatestPlanProgress(currentSessionId)
       syncPlanAnalysisState("done")
       toast.success("Đã tạo session và phân tích phương án chỉnh lý.")
+      await wait(PLAN_DONE_VISIBLE_MS)
       navigate(`/sessions/${encodeURIComponent(currentSessionId)}/step/2`)
     } catch (err) {
       syncPlanAnalysisState("idle")
+      setPlanProgressPhase(null)
+      setPlanProgressMessage("")
+      setPlanCompletedPhases(new Set())
       syncZipState("idle")
       if (_draftZipFile) {
         syncZipUploadProgress(
@@ -1024,6 +1137,19 @@ export function UploadPage() {
                     : "Chọn đủ phương án chỉnh lý, thông tư thời hạn bảo quản và file ZIP. Session chỉ được tạo khi bạn bấm bắt đầu phân tích."}
                 </p>
               </div>
+
+              {(planAnalyzing || planProgressMessage) && (
+                <ProgressTimeline
+                  phases={PLAN_PROGRESS_PHASES}
+                  activePhase={planProgressPhase}
+                  completedPhases={planCompletedPhases}
+                  title="Phân tích phương án"
+                  message={
+                    planProgressMessage ||
+                    "Backend đang phân tích phương án chỉnh lý."
+                  }
+                />
+              )}
 
               {/* ZIP */}
               <ZipSection
@@ -1313,4 +1439,56 @@ export function UploadPage() {
       </div>
     </div>
   )
+}
+
+function addSetValue<T>(values: Set<T>, value: T): Set<T> {
+  const next = new Set(values)
+  next.add(value)
+  return next
+}
+
+function normalizePlanProgressPhase(value: unknown): string {
+  const phase = typeof value === "string" ? value : ""
+  if (phase === "resolving_inputs" || phase === "upload_inputs") {
+    return "upload_inputs"
+  }
+  if (
+    phase === "retention_schedule" ||
+    phase === "plan_text" ||
+    phase === "extracting_outline"
+  ) {
+    return "preparing_plan_file"
+  }
+  if (
+    phase === "classification_criteria" ||
+    phase === "normalizing_tree"
+  ) {
+    return "classification_criteria"
+  }
+  if (phase === "group_definitions") return "group_definitions"
+  if (phase === "persisting_plan" || phase === "validating_result") {
+    return "retention_period"
+  }
+  return ""
+}
+
+function planProgressMessageForPhase(phase: string): string {
+  switch (phase) {
+    case "upload_inputs":
+      return "Đang nạp dữ liệu đầu vào lên backend."
+    case "preparing_plan_file":
+      return "Đang chuẩn bị file phương án chỉnh lý để phân tích."
+    case "classification_criteria":
+      return "Đang phân tích tiêu chí phân loại trong phương án."
+    case "group_definitions":
+      return "Đang xác định định nghĩa cho các nhóm phân loại."
+    case "retention_period":
+      return "Đang xác định thời hạn bảo quản từ thông tư đã tải lên."
+    default:
+      return "Backend đang phân tích phương án chỉnh lý."
+  }
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
 }

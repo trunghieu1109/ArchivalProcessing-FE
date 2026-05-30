@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom"
+import {
+  Link,
+  Navigate,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom"
 import {
   AlertCircle,
   Archive,
@@ -18,12 +24,14 @@ import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/shared/lib/utils"
+import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import {
   artifactDownloadAllUrl,
   artifactDownloadUrl,
   artifactPreviewUrl,
   enqueueFinalizeArtifacts,
   listArtifacts,
+  listSessionEvents,
   type SessionArtifact,
 } from "@/features/upload/api/sessionApi"
 
@@ -31,6 +39,12 @@ const FINALIZE_POLL_INTERVAL_MS = 3_000
 const FINALIZE_POLL_TIMEOUT_MS = 10 * 60 * 1_000
 const EXCLUDED_FILE_NAMES = new Set(["tai lieu can kiem tra khi phan cum.xlsx"])
 const HIDDEN_ARTIFACT_TYPES = new Set(["manifest"])
+const FINALIZE_PROGRESS_PHASES = [
+  { id: "loading_data", label: "Tổng hợp dữ liệu hồ sơ" },
+  { id: "creating_xlsx", label: "Tạo các file Excel" },
+  { id: "writing_manifest", label: "Ghi danh sách tệp" },
+  { id: "completed", label: "Hoàn tất" },
+]
 
 interface FinalizeArtifactsStepProps {
   sessionId?: string | null
@@ -44,7 +58,12 @@ export function FinalizeArtifactsPage() {
   const [searchParams] = useSearchParams()
   if (!sessionId) return <Navigate to="/sessions" replace />
   const query = searchParams.toString()
-  return <Navigate to={`/sessions/${encodeURIComponent(sessionId)}/step/5${query ? `?${query}` : ""}`} replace />
+  return (
+    <Navigate
+      to={`/sessions/${encodeURIComponent(sessionId)}/step/5${query ? `?${query}` : ""}`}
+      replace
+    />
+  )
 }
 
 export function FinalizeArtifactsStep({
@@ -60,18 +79,38 @@ export function FinalizeArtifactsStep({
   const [loading, setLoading] = useState(true)
   const [finalizing, setFinalizing] = useState(false)
   const [pollAfterArtifactId, setPollAfterArtifactId] = useState(0)
-  const [statusMessage, setStatusMessage] = useState("Đang tải artifact finalize...")
+  const [statusMessage, setStatusMessage] = useState("Đang tải tệp mục lục...")
   const [error, setError] = useState("")
-  const [selectedArtifactId, setSelectedArtifactId] = useState<number | null>(null)
+  const [selectedArtifactId, setSelectedArtifactId] = useState<number | null>(
+    null
+  )
+  const [progressPhase, setProgressPhase] = useState<string | null>(null)
+  const [progressMessage, setProgressMessage] = useState("")
+  const [completedPhases, setCompletedPhases] = useState<Set<string>>(
+    () => new Set()
+  )
 
-  const visibleArtifacts = useMemo(() => filterVisibleArtifacts(artifacts), [artifacts])
+  const visibleArtifacts = useMemo(
+    () => filterVisibleArtifacts(artifacts),
+    [artifacts]
+  )
   const selectedArtifact = useMemo(
-    () => visibleArtifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null,
+    () =>
+      visibleArtifacts.find((artifact) => artifact.id === selectedArtifactId) ??
+      null,
     [selectedArtifactId, visibleArtifacts]
   )
-  const latestGeneratedAt = useMemo(() => latestArtifactDate(visibleArtifacts), [visibleArtifacts])
+  const latestGeneratedAt = useMemo(
+    () => latestArtifactDate(visibleArtifacts),
+    [visibleArtifacts]
+  )
   const fileTypeCount = useMemo(
-    () => new Set(visibleArtifacts.map((artifact) => artifactExtension(artifact.file_name))).size,
+    () =>
+      new Set(
+        visibleArtifacts.map((artifact) =>
+          artifactExtension(artifact.file_name)
+        )
+      ).size,
     [visibleArtifacts]
   )
 
@@ -97,13 +136,14 @@ export function FinalizeArtifactsStep({
         if (!options.silent) {
           setStatusMessage(
             nextVisibleArtifacts.length > 0
-              ? `Đã có ${nextVisibleArtifacts.length} artifact finalize sẵn sàng.`
-              : "Chưa có artifact finalize sẵn sàng."
+              ? `Đã có ${nextVisibleArtifacts.length} tệp mục lục sẵn sàng.`
+              : "Chưa có tệp mục lục sẵn sàng."
           )
         }
         return nextVisibleArtifacts
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Không thể tải artifact finalize."
+        const message =
+          err instanceof Error ? err.message : "Không thể tải tệp mục lục."
         setError(message)
         if (!options.silent) toast.error(message)
         return []
@@ -126,21 +166,29 @@ export function FinalizeArtifactsStep({
     }
     setFinalizing(true)
     setError("")
-    setStatusMessage("Đang chuẩn bị gửi job finalize dossier...")
+    setStatusMessage("Đang chuẩn bị tạo mục lục...")
     try {
       const currentArtifacts = await refreshArtifacts({ silent: true })
       setLoading(false)
       setPollAfterArtifactId(maxArtifactId(currentArtifacts))
       await enqueueFinalizeArtifacts(sessionId, { created_by: "ui" })
-      setStatusMessage("Đã gửi job finalize dossier. Đang chờ worker sinh artifact...")
-      toast.success("Đã gửi job finalize dossier.")
+      setProgressPhase("loading_data")
+      setProgressMessage("Đã gửi yêu cầu tạo mục lục. Đang chờ worker xử lý.")
+      setCompletedPhases(new Set())
+      setStatusMessage(
+        "Đã gửi yêu cầu tạo mục lục. Đang chờ worker sinh tệp..."
+      )
+      toast.success("Đã gửi yêu cầu tạo mục lục.")
       onAutoStartHandled?.()
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Không thể gửi job finalize dossier."
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Không thể gửi yêu cầu tạo mục lục."
       setFinalizing(false)
       setLoading(false)
       setError(message)
-      setStatusMessage("Finalize dossier chưa chạy được.")
+      setStatusMessage("Chưa chạy được bước tạo mục lục.")
       toast.error(message)
       onAutoStartHandled?.()
     }
@@ -159,7 +207,9 @@ export function FinalizeArtifactsStep({
 
   useEffect(() => {
     if (selectedArtifactId === null) return
-    if (!visibleArtifacts.some((artifact) => artifact.id === selectedArtifactId)) {
+    if (
+      !visibleArtifacts.some((artifact) => artifact.id === selectedArtifactId)
+    ) {
       setSelectedArtifactId(null)
     }
   }, [selectedArtifactId, visibleArtifacts])
@@ -178,13 +228,22 @@ export function FinalizeArtifactsStep({
       )
       if (hasNewArtifacts) {
         setFinalizing(false)
-        setStatusMessage(`Đã có ${nextVisibleArtifacts.length} artifact finalize sẵn sàng.`)
-        toast.success("Artifact finalize đã sẵn sàng.")
+        setStatusMessage(
+          `Đã có ${nextVisibleArtifacts.length} tệp mục lục sẵn sàng.`
+        )
+        setProgressPhase(null)
+        setCompletedPhases(
+          new Set(FINALIZE_PROGRESS_PHASES.map((phase) => phase.id))
+        )
+        setProgressMessage("Tệp mục lục đã sẵn sàng.")
+        toast.success("Tệp mục lục đã sẵn sàng.")
         return
       }
       if (Date.now() - startedAt > FINALIZE_POLL_TIMEOUT_MS) {
         setFinalizing(false)
-        setStatusMessage("Quá thời gian chờ finalize dossier. Hãy kiểm tra backend worker.")
+        setStatusMessage(
+          "Quá thời gian chờ tạo mục lục. Hãy kiểm tra backend worker."
+        )
         return
       }
       timeoutId = window.setTimeout(poll, FINALIZE_POLL_INTERVAL_MS)
@@ -197,89 +256,218 @@ export function FinalizeArtifactsStep({
     }
   }, [finalizing, pollAfterArtifactId, refreshArtifacts, sessionId])
 
+  useEffect(() => {
+    if (!finalizing || !sessionId) return
+
+    let cancelled = false
+    let afterId = 0
+    let timeoutId: number | undefined
+
+    const pollEvents = async () => {
+      try {
+        const response = await listSessionEvents(sessionId, {
+          afterId,
+          limit: 100,
+        })
+        if (cancelled) return
+        for (const event of response.events) {
+          afterId = Math.max(afterId, event.id)
+          if (event.event_type === "artifacts.finalize.progress") {
+            const phase = String(event.payload?.phase ?? "")
+            if (phase) {
+              setProgressPhase(phase === "completed" ? null : phase)
+              setCompletedPhases((previous) => {
+                const next = new Set(previous)
+                const phaseIndex = FINALIZE_PROGRESS_PHASES.findIndex(
+                  (item) => item.id === phase
+                )
+                FINALIZE_PROGRESS_PHASES.slice(
+                  0,
+                  Math.max(phaseIndex, 0)
+                ).forEach((item) => next.add(item.id))
+                if (phase === "completed") {
+                  FINALIZE_PROGRESS_PHASES.forEach((item) => next.add(item.id))
+                }
+                return next
+              })
+            }
+            if (event.message) {
+              setProgressMessage(event.message)
+              setStatusMessage(event.message)
+            }
+          }
+          if (event.event_type === "artifacts.item.ready" && event.message) {
+            setProgressMessage(event.message)
+          }
+        }
+      } catch {
+        // Artifact polling owns user-facing errors.
+      }
+      if (!cancelled) timeoutId = window.setTimeout(pollEvents, 1_500)
+    }
+
+    void pollEvents()
+    return () => {
+      cancelled = true
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId)
+    }
+  }, [finalizing, sessionId])
+
   const handleDownloadAll = () => {
     if (!sessionId || visibleArtifacts.length === 0) return
     window.location.assign(artifactDownloadAllUrl(sessionId))
   }
 
   return (
-    <div className={embedded ? "flex flex-col gap-6 text-[#0F172A]" : "min-h-svh bg-[#EEF3F8] text-[#0F172A]"}>
+    <div
+      className={
+        embedded
+          ? "flex flex-col gap-6 text-[#0F172A]"
+          : "min-h-svh bg-[#EEF3F8] text-[#0F172A]"
+      }
+    >
       {!embedded && (
-      <header className="border-b border-[#D8E1EC] bg-white/80 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-8 py-5">
-          <div className="flex min-w-0 items-center gap-4">
-            <img src="/assets/mbfs.png" alt="MBFS" className="h-14 w-auto object-contain" />
-            <div className="min-w-0">
-              <h1 className="truncate text-2xl font-bold tracking-tight">Tạo mục lục</h1>
-              <p className="mt-1 truncate text-sm text-[#64748B]">{sessionId}</p>
+        <header className="border-b border-[#D8E1EC] bg-white/80 backdrop-blur">
+          <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-8 py-5">
+            <div className="flex min-w-0 items-center gap-4">
+              <img
+                src="/assets/mbfs.png"
+                alt="MBFS"
+                className="h-14 w-auto object-contain"
+              />
+              <div className="min-w-0">
+                <h1 className="truncate text-2xl font-bold tracking-tight">
+                  Tạo mục lục
+                </h1>
+                <p className="mt-1 truncate text-sm text-[#64748B]">
+                  {sessionId}
+                </p>
+              </div>
+            </div>
+            <div className="hidden items-center gap-3 md:flex">
+              <SummaryPill label="Tệp" value={visibleArtifacts.length} />
+              <SummaryPill label="Định dạng" value={fileTypeCount} />
             </div>
           </div>
-          <div className="hidden items-center gap-3 md:flex">
-            <SummaryPill label="Artifact" value={visibleArtifacts.length} />
-            <SummaryPill label="Định dạng" value={fileTypeCount} />
-          </div>
-        </div>
-      </header>
+        </header>
       )}
 
-      <main className={embedded ? "flex flex-col gap-6" : "mx-auto flex max-w-6xl flex-col gap-6 px-8 py-8"}>
+      <main
+        className={
+          embedded
+            ? "flex flex-col gap-6"
+            : "mx-auto flex max-w-6xl flex-col gap-6 px-8 py-8"
+        }
+      >
         <div className="flex flex-wrap items-center justify-between gap-3">
           {embedded ? (
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#64748B]">
+              <p className="text-[11px] font-semibold tracking-[0.16em] text-[#64748B] uppercase">
                 Bước 5
               </p>
-              <h2 className="mt-1 text-xl font-semibold text-[#0F172A]">Tạo mục lục</h2>
-              <p className="mt-1 truncate text-sm text-[#64748B]">{sessionId ?? "Chưa có session"}</p>
+              <h2 className="mt-1 text-xl font-semibold text-[#0F172A]">
+                Tạo mục lục
+              </h2>
+              <p className="mt-1 truncate text-sm text-[#64748B]">
+                {sessionId ?? "Chưa có session"}
+              </p>
             </div>
           ) : (
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" asChild>
-              <Link to="/sessions">
-                <Home data-icon="inline-start" />
-                Danh sách session
-              </Link>
-            </Button>
-            <Button variant="outline" onClick={() => navigate(-1)}>
-              <ArrowLeft data-icon="inline-start" />
-              Quay lại
-            </Button>
-          </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" asChild>
+                <Link to="/sessions">
+                  <Home data-icon="inline-start" />
+                  Danh sách session
+                </Link>
+              </Button>
+              <Button variant="outline" onClick={() => navigate(-1)}>
+                <ArrowLeft data-icon="inline-start" />
+                Quay lại
+              </Button>
+            </div>
           )}
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button variant="outline" onClick={() => void refreshArtifacts()} disabled={loading || finalizing}>
-              {loading ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <RefreshCw data-icon="inline-start" />}
+            <Button
+              variant="outline"
+              onClick={() => void refreshArtifacts()}
+              disabled={loading || finalizing}
+            >
+              {loading ? (
+                <Loader2 data-icon="inline-start" className="animate-spin" />
+              ) : (
+                <RefreshCw data-icon="inline-start" />
+              )}
               Làm mới
             </Button>
-            <Button variant="outline" onClick={() => void startFinalize()} disabled={finalizing || !sessionId}>
-              {finalizing ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Play data-icon="inline-start" />}
+            <Button
+              variant="outline"
+              onClick={() => void startFinalize()}
+              disabled={finalizing || !sessionId}
+            >
+              {finalizing ? (
+                <Loader2 data-icon="inline-start" className="animate-spin" />
+              ) : (
+                <Play data-icon="inline-start" />
+              )}
               {visibleArtifacts.length > 0 ? "Tạo lại" : "Tạo mục lục"}
             </Button>
-            <Button onClick={handleDownloadAll} disabled={visibleArtifacts.length === 0 || !sessionId}>
+            <Button
+              onClick={handleDownloadAll}
+              disabled={visibleArtifacts.length === 0 || !sessionId}
+            >
               <Archive data-icon="inline-start" />
               Tải tất cả
             </Button>
           </div>
         </div>
 
+        {(finalizing || progressMessage) && (
+          <ProgressTimeline
+            phases={FINALIZE_PROGRESS_PHASES}
+            activePhase={progressPhase}
+            completedPhases={completedPhases}
+            title="Tiến độ tạo mục lục"
+            message={
+              progressMessage ||
+              "Backend đang tạo các file mục lục và tổng hợp."
+            }
+          />
+        )}
+
         <section className="rounded-2xl border border-[#D8E1EC] bg-white px-5 py-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className={cn(
-                "flex size-10 items-center justify-center rounded-xl",
-                finalizing ? "bg-blue-50 text-[#0052FF]" : "bg-emerald-50 text-emerald-700"
-              )}>
-                {finalizing ? <Loader2 className="size-5 animate-spin" /> : <CheckCircle2 className="size-5" />}
+              <div
+                className={cn(
+                  "flex size-10 items-center justify-center rounded-xl",
+                  finalizing
+                    ? "bg-blue-50 text-[#0052FF]"
+                    : "bg-emerald-50 text-emerald-700"
+                )}
+              >
+                {finalizing ? (
+                  <Loader2 className="size-5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="size-5" />
+                )}
               </div>
               <div>
-                <p className="text-sm font-semibold text-[#0F172A]">{statusMessage}</p>
+                <p className="text-sm font-semibold text-[#0F172A]">
+                  {statusMessage}
+                </p>
                 <p className="mt-1 text-xs text-[#64748B]">
-                  {latestGeneratedAt ? `Lần sinh mới nhất: ${formatDate(latestGeneratedAt)}` : "Chưa ghi nhận lần sinh artifact."}
+                  {latestGeneratedAt
+                    ? `Lần sinh mới nhất: ${formatDate(latestGeneratedAt)}`
+                    : "Chưa ghi nhận lần sinh tệp."}
                 </p>
               </div>
             </div>
             <Badge variant={finalizing ? "outline" : "secondary"}>
-              {finalizing ? "Đang finalize" : visibleArtifacts.length > 0 ? "Sẵn sàng" : "Chưa có artifact"}
+              {finalizing
+                ? "Đang tạo"
+                : visibleArtifacts.length > 0
+                  ? "Sẵn sàng"
+                  : "Chưa có tệp"}
             </Badge>
           </div>
         </section>
@@ -294,19 +482,26 @@ export function FinalizeArtifactsStep({
         {loading ? (
           <div className="grid gap-3">
             {Array.from({ length: 4 }).map((_, index) => (
-              <div key={index} className="h-20 animate-pulse rounded-2xl border border-[#D8E1EC] bg-white" />
+              <div
+                key={index}
+                className="h-20 animate-pulse rounded-2xl border border-[#D8E1EC] bg-white"
+              />
             ))}
           </div>
         ) : visibleArtifacts.length > 0 ? (
-          <div className="grid gap-4 xl:grid-cols-[minmax(20rem,24rem)_minmax(0,1fr)]">
-            <div className="grid content-start gap-3">
+          <div className="grid gap-4 xl:grid-cols-[minmax(16rem,19rem)_minmax(0,1fr)]">
+            <div className="grid content-start gap-2.5">
               {visibleArtifacts.map((artifact, index) => (
                 <ArtifactRow
                   key={artifact.id}
                   artifact={artifact}
                   index={index}
                   selected={artifact.id === selectedArtifactId}
-                  downloadUrl={sessionId ? artifactDownloadUrl(sessionId, artifact.id) : "#"}
+                  downloadUrl={
+                    sessionId
+                      ? artifactDownloadUrl(sessionId, artifact.id)
+                      : "#"
+                  }
                   onPreview={() => setSelectedArtifactId(artifact.id)}
                 />
               ))}
@@ -325,14 +520,18 @@ export function FinalizeArtifactsStep({
             <div className="flex size-14 items-center justify-center rounded-2xl bg-[#EAF1FF] text-[#0052FF]">
               <Archive className="size-7" />
             </div>
-            <h2 className="mt-4 text-lg font-semibold">Chưa có artifact finalize</h2>
+            <h2 className="mt-4 text-lg font-semibold">Chưa có tệp mục lục</h2>
             <p className="mt-2 max-w-md text-sm leading-6 text-[#64748B]">
               {finalizing
-                ? "Worker đang sinh artifact cho session này. Danh sách sẽ tự cập nhật khi hoàn tất."
-                : "Bấm tạo artifacts để chạy bước finalize dossier cho session hiện tại."}
+                ? "Worker đang sinh tệp mục lục cho session này. Danh sách sẽ tự cập nhật khi hoàn tất."
+                : "Bấm tạo mục lục để sinh các tệp cho session hiện tại."}
             </p>
             {!finalizing && (
-              <Button className="mt-5" onClick={() => void startFinalize()} disabled={!sessionId}>
+              <Button
+                className="mt-5"
+                onClick={() => void startFinalize()}
+                disabled={!sessionId}
+              >
                 <Play data-icon="inline-start" />
                 Tạo mục lục
               </Button>
@@ -373,19 +572,21 @@ function ArtifactRow({
         }
       }}
       className={cn(
-        "flex min-h-20 items-center justify-between gap-3 rounded-2xl border bg-white px-4 py-3 text-left shadow-sm transition-all",
+        "flex min-h-16 items-center justify-between gap-2.5 rounded-xl border bg-white px-3 py-2.5 text-left shadow-sm transition-all",
         selected
           ? "border-[#0052FF]/45 ring-2 ring-[#0052FF]/10"
           : "border-[#D8E1EC] hover:border-[#0052FF]/35"
       )}
     >
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#EAF1FF] text-[#0052FF]">
-          <FileText className="size-5" />
+      <div className="flex min-w-0 items-center gap-2.5">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#EAF1FF] text-[#0052FF]">
+          <FileText className="size-4" />
         </div>
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-[#0F172A]">{artifact.file_name}</p>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[#64748B]">
+          <p className="truncate text-xs font-semibold text-[#0F172A]">
+            {artifact.file_name}
+          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-[#64748B]">
             <span>{artifactTypeLabel(artifact.artifact_type)}</span>
             <span className="text-[#CBD5E1]">/</span>
             <span>{extension.toUpperCase()}</span>
@@ -399,7 +600,12 @@ function ArtifactRow({
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1">
-        <Button variant="ghost" size="icon-sm" onClick={onPreview} title="Xem trước">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onPreview}
+          title="Xem trước"
+        >
           <Eye className="size-4" />
         </Button>
         <Button variant="outline" size="icon-sm" asChild title="Tải xuống">
@@ -425,10 +631,14 @@ function ArtifactPreviewPanel({
         <div className="min-w-0">
           <p className="text-sm font-semibold text-[#0F172A]">Xem trước</p>
           <p className="mt-0.5 truncate text-xs text-[#64748B]">
-            {artifact ? artifact.file_name : "Chọn một artifact"}
+            {artifact ? artifact.file_name : "Chọn một tệp"}
           </p>
         </div>
-        {artifact && <Badge variant="outline">{artifactExtension(artifact.file_name).toUpperCase()}</Badge>}
+        {artifact && (
+          <Badge variant="outline">
+            {artifactExtension(artifact.file_name).toUpperCase()}
+          </Badge>
+        )}
       </div>
       {artifact && previewUrl ? (
         <iframe
@@ -442,7 +652,9 @@ function ArtifactPreviewPanel({
           <div className="mb-3 flex size-12 items-center justify-center rounded-2xl bg-[#EAF1FF] text-[#0052FF]">
             <Eye className="size-6" />
           </div>
-          <p className="font-medium text-[#0F172A]">Chọn một artifact để xem trực tiếp.</p>
+          <p className="font-medium text-[#0F172A]">
+            Chọn một tệp để xem trực tiếp.
+          </p>
         </div>
       )}
     </section>
@@ -452,17 +664,23 @@ function ArtifactPreviewPanel({
 function SummaryPill({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-2xl border border-[#D8E1EC] bg-white px-4 py-2 text-right shadow-sm">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#94A3B8]">{label}</p>
+      <p className="text-[11px] font-semibold tracking-[0.12em] text-[#94A3B8] uppercase">
+        {label}
+      </p>
       <p className="text-lg font-bold text-[#0F172A]">{value}</p>
     </div>
   )
 }
 
-function filterVisibleArtifacts(artifacts: SessionArtifact[]): SessionArtifact[] {
+function filterVisibleArtifacts(
+  artifacts: SessionArtifact[]
+): SessionArtifact[] {
   return artifacts.filter((artifact) => {
     if (artifact.status !== "ready") return false
-    if (HIDDEN_ARTIFACT_TYPES.has(normalizeFilterText(artifact.artifact_type))) return false
-    if (EXCLUDED_FILE_NAMES.has(normalizeFilterText(artifact.file_name))) return false
+    if (HIDDEN_ARTIFACT_TYPES.has(normalizeFilterText(artifact.artifact_type)))
+      return false
+    if (EXCLUDED_FILE_NAMES.has(normalizeFilterText(artifact.file_name)))
+      return false
     return true
   })
 }
@@ -476,10 +694,14 @@ function maxArtifactId(artifacts: SessionArtifact[]): number {
 }
 
 function latestArtifactDate(artifacts: SessionArtifact[]): string | null {
-  return artifacts
-    .map((artifact) => artifact.generated_at)
-    .filter((value): value is string => Boolean(value))
-    .sort((left, right) => new Date(right).getTime() - new Date(left).getTime())[0] ?? null
+  return (
+    artifacts
+      .map((artifact) => artifact.generated_at)
+      .filter((value): value is string => Boolean(value))
+      .sort(
+        (left, right) => new Date(right).getTime() - new Date(left).getTime()
+      )[0] ?? null
+  )
 }
 
 function artifactExtension(fileName: string): string {

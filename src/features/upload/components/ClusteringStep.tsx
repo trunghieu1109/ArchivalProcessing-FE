@@ -6,8 +6,8 @@ import type { FolderNode, PdfMetadata } from "@/features/upload/types"
 const STEPS = [
   "Đang phân tích metadata tài liệu…",
   "Đang so khớp với cấu trúc phông…",
-  "Đang phân cụm tài liệu vào thư mục…",
-  "Hoàn tất phân cụm.",
+  "Đang lập hồ sơ từ tài liệu…",
+  "Hoàn tất lập hồ sơ.",
 ]
 
 function assignFilesToFolders(
@@ -102,7 +102,9 @@ export function ClusteringStep({ tree, items, onDone }: ClusteringStepProps) {
             Bước 3/4
           </span>
         </div>
-        <h2 className="mt-2 text-2xl text-[#0F172A]">Đang phân cụm tài liệu</h2>
+        <h2 className="mt-2 text-2xl text-[#0F172A]">
+          Đang lập hồ sơ tài liệu
+        </h2>
 
         <div className="mt-4 flex flex-col gap-2">
           {STEPS.map((s, i) => (

@@ -112,11 +112,43 @@ export interface UploadProgressSnapshot {
   percent: number | null
 }
 
+export interface SessionProgressEvent {
+  id: number
+  session_id?: string
+  event_type: string
+  message?: string | null
+  payload?: Record<string, unknown>
+  created_at?: string
+}
+
+export interface ActiveJobSummary {
+  id: number
+  job_type: string
+  status: string
+  retry_count: number
+  payload: Record<string, unknown>
+  locked_at?: string | null
+  locked_by?: string | null
+  error?: string | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface ClusterBuildStatusResponse {
+  session_id: string
+  job_type: "build_clusters"
+  active: boolean
+  job: ActiveJobSummary | null
+}
+
 interface SessionEventResponse {
   events: Array<{
     id: number
+    session_id?: string
     event_type: string
+    message?: string | null
     payload?: Record<string, unknown>
+    created_at?: string
   }>
 }
 
@@ -766,6 +798,19 @@ export async function enqueuePlanAnalysis(
   )
 }
 
+export async function listSessionEvents(
+  sessionId: string,
+  options: { afterId?: number; limit?: number } = {}
+): Promise<{ session_id: string; events: SessionProgressEvent[] }> {
+  const query = new URLSearchParams()
+  if (options.afterId !== undefined) query.set("after_id", String(options.afterId))
+  if (options.limit !== undefined) query.set("limit", String(options.limit))
+  const suffix = query.toString()
+  return requestJson<{ session_id: string; events: SessionProgressEvent[] }>(
+    `/sessions/${encodeURIComponent(sessionId)}/events${suffix ? `?${suffix}` : ""}`
+  )
+}
+
 export async function getActivePlan(
   sessionId: string
 ): Promise<ActivePlanResponse | null> {
@@ -881,6 +926,14 @@ export async function getActiveClusters(
 ): Promise<ClusterVersionResponse | null> {
   return requestJsonOrNull<ClusterVersionResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/clusters`
+  )
+}
+
+export async function getClusterBuildStatus(
+  sessionId: string
+): Promise<ClusterBuildStatusResponse> {
+  return requestJson<ClusterBuildStatusResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/clustering/build/status`
   )
 }
 
