@@ -20,6 +20,7 @@ import { FinalResult } from "@/features/upload/components/step4/FinalResult"
 import { FinalizeArtifactsStep } from "@/pages/FinalizeArtifactsPage"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import { useOcrFolder } from "@/features/upload/hooks/useOcrFolder"
+import { buildDisplayMetadata } from "@/features/upload/lib/metadata"
 import {
   createSession,
   enqueuePlanAnalysis,
@@ -396,11 +397,7 @@ export function UploadPage() {
         metadata_ready: job.metadata_ready,
         metadata_final: job.metadata_final,
         error: job.error,
-        light_metadata:
-          job.light_metadata ??
-          job.normalized_metadata ??
-          job.raw_metadata ??
-          {},
+        light_metadata: buildDisplayMetadata(job),
         applied: job.review_status === "verified",
       })) ?? [],
     [ocr.status]

@@ -11,6 +11,7 @@ import {
   startDigitization,
   type SessionDocumentResponse,
 } from "@/features/upload/api/sessionApi"
+import { buildDisplayMetadata } from "@/features/upload/lib/metadata"
 
 export type OcrFolderState = "idle" | "starting" | "polling" | "done" | "error"
 
@@ -322,11 +323,7 @@ function sessionDocumentToJobSummary(
     metadata_ready: document.metadata_ready,
     metadata_final: document.metadata_final,
     error: document.error,
-    light_metadata:
-      document.normalized_metadata ??
-      document.metadata ??
-      document.raw_metadata ??
-      {},
+    light_metadata: buildDisplayMetadata(document),
     normalized_metadata: document.normalized_metadata,
     raw_metadata: document.raw_metadata,
   }

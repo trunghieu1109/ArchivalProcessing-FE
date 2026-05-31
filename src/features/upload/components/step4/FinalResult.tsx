@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type DragEvent as ReactDragEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react"
 import {
@@ -49,6 +50,8 @@ import type { PdfMetadata } from "@/features/upload/types"
 const CLUSTER_POLL_INTERVAL_MS = 3_000
 const CLUSTER_POLL_TIMEOUT_MS = 10 * 60 * 1_000
 const CLUSTER_PROGRESS_TICK_MS = 4_500
+const RESULT_TREE_AUTO_SCROLL_EDGE_PX = 84
+const RESULT_TREE_AUTO_SCROLL_MAX_STEP_PX = 22
 const NO_CLUSTER_VERSION = "__none__"
 const CLUSTER_PROGRESS_PHASES = [
   { id: "updating_dossiers", label: "Đang cập nhật hồ sơ" },
@@ -136,6 +139,9 @@ export function FinalResult({
   >(null)
   const [previewWidthPercent, setPreviewWidthPercent] = useState(50)
   const previewLayoutRef = useRef<HTMLDivElement | null>(null)
+  const resultTreeScrollRef = useRef<HTMLDivElement | null>(null)
+  const resultTreeDragYRef = useRef<number | null>(null)
+  const resultTreeAutoScrollFrameRef = useRef<number | null>(null)
   const [clusterJobMode, setClusterJobMode] = useState<ClusterJobMode>("new")
   const [clusterProgressPhase, setClusterProgressPhase] = useState<
     string | null
@@ -520,9 +526,53 @@ export function FinalResult({
     })
   }
 
+  const stopResultTreeAutoScroll = () => {
+    if (resultTreeAutoScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(resultTreeAutoScrollFrameRef.current)
+      resultTreeAutoScrollFrameRef.current = null
+    }
+    resultTreeDragYRef.current = null
+  }
+
+  useEffect(() => {
+    if (!draggedDocument) {
+      stopResultTreeAutoScroll()
+      return
+    }
+
+    const handleWindowDragOver = (event: DragEvent) => {
+      resultTreeDragYRef.current = event.clientY
+    }
+
+    const tick = () => {
+      const container = resultTreeScrollRef.current
+      const clientY = resultTreeDragYRef.current
+      if (container && clientY !== null) {
+        autoScrollResultTree(container, clientY)
+      }
+      resultTreeAutoScrollFrameRef.current = window.requestAnimationFrame(tick)
+    }
+
+    window.addEventListener("dragover", handleWindowDragOver)
+    resultTreeAutoScrollFrameRef.current = window.requestAnimationFrame(tick)
+
+    return () => {
+      window.removeEventListener("dragover", handleWindowDragOver)
+      stopResultTreeAutoScroll()
+    }
+  }, [draggedDocument])
+
+  const handleResultTreeDragOver = (
+    event: ReactDragEvent<HTMLDivElement>
+  ) => {
+    if (!draggedDocument) return
+    resultTreeDragYRef.current = event.clientY
+  }
+
   const handleDropOnDossier = async (targetClusterId: string) => {
     if (!draggedDocument) return
     if (draggedDocument.fromClusterId === targetClusterId) {
+      stopResultTreeAutoScroll()
       setDraggedDocument(null)
       setDropTargetId(null)
       return
@@ -540,6 +590,7 @@ export function FinalResult({
 
     const moving = draggedDocument
     const sessionDocumentId = draggedDocument.document.sessionDocumentId
+    stopResultTreeAutoScroll()
     setDraggedDocument(null)
     setDropTargetId(null)
     setGroups((previous) =>
@@ -888,7 +939,11 @@ export function FinalResult({
         }
       >
         <div className="min-w-0 overflow-hidden rounded-2xl border border-[#D8E1EC] bg-white shadow-sm">
-          <div className="h-[min(70svh,560px)] min-h-[360px] min-w-0 overflow-y-auto overflow-x-hidden p-2 pr-3 sm:p-3 sm:pr-4">
+          <div
+            ref={resultTreeScrollRef}
+            onDragOver={handleResultTreeDragOver}
+            className="h-[min(70svh,560px)] min-h-[360px] min-w-0 overflow-y-auto overflow-x-hidden p-2 pr-3 sm:p-3 sm:pr-4"
+          >
             <div className="flex min-w-0 w-full max-w-full flex-col gap-1 overflow-hidden pr-2 pb-2">
               {tree.map((node) => (
                 <ResultNode
@@ -905,6 +960,7 @@ export function FinalResult({
                     setDraggedDocument({ document, fromClusterId })
                   }
                   onDragEnd={() => {
+                    stopResultTreeAutoScroll()
                     setDraggedDocument(null)
                     setDropTargetId(null)
                   }}
@@ -948,6 +1004,34 @@ export function FinalResult({
       {feedbackActionsPanel}
     </motion.div>
   )
+}
+
+function autoScrollResultTree(container: HTMLDivElement, clientY: number) {
+  const rect = container.getBoundingClientRect()
+  const edge = RESULT_TREE_AUTO_SCROLL_EDGE_PX
+  const maxStep = RESULT_TREE_AUTO_SCROLL_MAX_STEP_PX
+  const canScrollUp = container.scrollTop > 0
+  const canScrollDown =
+    container.scrollTop + container.clientHeight < container.scrollHeight
+
+  if (clientY >= rect.top - edge && clientY < rect.top + edge && canScrollUp) {
+    const intensity = (rect.top + edge - clientY) / edge
+    container.scrollTop -= Math.ceil(maxStep * clampScrollIntensity(intensity))
+    return
+  }
+
+  if (
+    clientY > rect.bottom - edge &&
+    clientY <= rect.bottom + edge &&
+    canScrollDown
+  ) {
+    const intensity = (clientY - (rect.bottom - edge)) / edge
+    container.scrollTop += Math.ceil(maxStep * clampScrollIntensity(intensity))
+  }
+}
+
+function clampScrollIntensity(value: number): number {
+  return Math.min(1, Math.max(0.15, value))
 }
 
 function ResultNode({

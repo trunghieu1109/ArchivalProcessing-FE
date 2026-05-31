@@ -10,10 +10,14 @@ import {
   type SessionDocumentResponse,
 } from "@/features/upload/api/sessionApi"
 import {
+  buildDisplayMetadata,
+  hasMetadataWarning,
+} from "@/features/upload/lib/metadata"
+import {
   DocumentPdfPreview,
   type DocumentPreviewTarget,
 } from "@/features/upload/components/DocumentPdfPreview"
-import { MetadataCard, getWarningFields } from "./MetadataCard"
+import { MetadataCard } from "./MetadataCard"
 import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
 import type { PdfMetadata } from "@/features/upload/types"
 
@@ -115,9 +119,7 @@ export function ProcessStep({
     }
     const firstWarning =
       sortedItems.find(
-        (item) =>
-          item.review_status !== "verified" &&
-          getWarningFields(item.light_metadata).size > 0
+        (item) => item.review_status !== "verified" && hasMetadataWarning(item)
       ) ?? sortedItems[0]
     setSelectedDocumentId(firstWarning.id)
   }, [selectedDocumentId, sortedItems])
@@ -216,9 +218,7 @@ export function ProcessStep({
   }
 
   const warningCount = items.filter(
-    (item) =>
-      getWarningFields(item.light_metadata).size > 0 &&
-      item.review_status !== "verified"
+    (item) => item.review_status !== "verified" && hasMetadataWarning(item)
   ).length
   const loadingPlaceholderCount = Math.max(
     metadataLoading && items.length === 0 ? 1 : 0,
@@ -483,18 +483,14 @@ function documentResponseToPdfMetadata(
     metadata_ready: document.metadata_ready,
     metadata_final: document.metadata_final,
     error: document.error,
-    light_metadata:
-      document.normalized_metadata ??
-      document.metadata ??
-      document.raw_metadata ??
-      {},
+    light_metadata: buildDisplayMetadata(document),
     applied: document.review_status === "verified",
   }
 }
 
 function metadataSortScore(item: PdfMetadata): number {
   if (item.review_status === "verified") return 3
-  if (getWarningFields(item.light_metadata).size > 0) return 0
+  if (hasMetadataWarning(item)) return 0
   if (item.metadata_ready) return 1
   return 2
 }

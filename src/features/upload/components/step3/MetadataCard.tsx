@@ -15,6 +15,11 @@ import { toast } from "sonner"
 import { cn } from "@/shared/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import {
+  getWarningEntries,
+  getWarningFields,
+  hasMetadataWarning,
+} from "@/features/upload/lib/metadata"
 import type { PdfMetadata } from "@/features/upload/types"
 
 export const METADATA_LABELS: Record<string, string> = {
@@ -33,14 +38,12 @@ export const METADATA_LABELS: Record<string, string> = {
   "nguoi ky": "Người ký",
 }
 
-export function getWarningFields(meta: Record<string, unknown>): Set<string> {
-  const warnings = meta["_warnings"]
-  if (!warnings || typeof warnings !== "object") return new Set()
-  return new Set(Object.keys(warnings as Record<string, unknown>))
-}
-
 function isMetadataFailed(status: string): boolean {
   return ["failed", "final_failed", "signature_failed"].includes(status)
+}
+
+function warningLabel(field: string): string {
+  return METADATA_LABELS[field] ?? field.replace(/[_-]+/g, " ")
 }
 
 interface MetadataCardProps {
@@ -69,7 +72,8 @@ export function MetadataCard({
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<Record<string, string>>({})
   const warningFields = getWarningFields(item.light_metadata)
-  const hasWarnings = warningFields.size > 0
+  const warningEntries = getWarningEntries(item.light_metadata)
+  const hasWarnings = hasMetadataWarning(item)
   const verified = item.review_status === "verified"
   const metadataFailed = isMetadataFailed(item.status)
   const metadataUnavailable = item.status === "failed" && !item.metadata_ready
@@ -250,6 +254,31 @@ export function MetadataCard({
                     <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
                       {item.error ||
                         "Trích xuất metadata thất bại. Có thể chạy lại metadata cho tài liệu này."}
+                    </div>
+                  )}
+                  {hasWarnings && !metadataFailed && (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                      <div className="flex items-center gap-1.5 font-semibold">
+                        <AlertTriangle className="size-3" />
+                        Metadata có cảnh báo, cần kiểm tra trước khi xác nhận.
+                      </div>
+                      {warningEntries.length > 0 && (
+                        <div className="mt-1 flex flex-col gap-0.5">
+                          {warningEntries.slice(0, 6).map((warning, index) => (
+                            <div
+                              key={`${warning.field || "warning"}-${index}`}
+                              className="flex gap-1.5"
+                            >
+                              {warning.field && (
+                                <span className="font-medium">
+                                  {warningLabel(warning.field)}:
+                                </span>
+                              )}
+                              {warning.message && <span>{warning.message}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                   {Object.entries(METADATA_LABELS).map(([key, label]) => {
