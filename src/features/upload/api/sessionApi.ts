@@ -179,6 +179,7 @@ export interface DigitizationDocument {
   raw_metadata?: Record<string, unknown>
   metadata?: Record<string, unknown>
   normalized_metadata?: Record<string, unknown>
+  error?: string | null
 }
 
 export interface DigitizationBatch {
@@ -233,6 +234,7 @@ export interface SessionDocumentResponse {
   metadata?: Record<string, unknown>
   normalized_metadata?: Record<string, unknown>
   raw_metadata?: Record<string, unknown>
+  error?: string | null
 }
 
 export interface DocumentPreviewUrlResponse {
@@ -912,6 +914,24 @@ export async function verifyDocumentMetadata(
   )
 }
 
+export async function restartDocumentMetadata(
+  sessionId: string,
+  documentId: number,
+  payload: { force?: boolean } = {}
+): Promise<SessionDocumentResponse> {
+  return requestJson<SessionDocumentResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/documents/${encodeURIComponent(String(documentId))}/restart-metadata`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        force: true,
+        ...payload,
+      }),
+    }
+  )
+}
+
 export async function getDocumentPreviewUrl(
   sessionId: string,
   documentId: number
@@ -993,6 +1013,7 @@ export function digitizationToFolderStatus(
     review_status: document.review_status,
     metadata_ready: document.metadata_ready,
     metadata_final: document.metadata_final,
+    error: document.error,
     light_metadata:
       document.normalized_metadata ??
       document.metadata ??

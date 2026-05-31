@@ -60,6 +60,7 @@ export interface PdfMetadata {
   metadata_ready: boolean
   metadata_final: boolean
   light_metadata: Record<string, unknown>
+  error?: string | null
   applied: boolean
 }
 

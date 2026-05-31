@@ -7,6 +7,7 @@ import {
   digitizationToFolderStatus,
   getDigitizationStatus,
   isDigitizationComplete,
+  restartDocumentMetadata,
   startDigitization,
   type SessionDocumentResponse,
 } from "@/features/upload/api/sessionApi"
@@ -21,6 +22,7 @@ export interface UseOcrFolderResult {
   error: string
   start: (folderPath: string, options: { maxFiles?: number; confirmedPlanVersionId: string }) => Promise<void>
   refresh: () => Promise<FolderStatusResponse | null>
+  restartMetadata: (documentId: number) => Promise<SessionDocumentResponse>
   mergeVerifiedDocuments: (documents: SessionDocumentResponse[]) => void
   reset: () => void
 }
@@ -38,6 +40,39 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
       clearTimeout(timeoutRef.current)
       timeoutRef.current = null
     }
+  }
+
+  const pollUntilComplete = (
+    token: number,
+    fallbackFolderPath: string,
+    startedAt: number
+  ) => {
+    const poll = async () => {
+      if (tokenRef.current !== token) return
+      try {
+        if (Date.now() - startedAt > OCR_POLL_TIMEOUT_MS) {
+          throw new Error("Quá thời gian chờ trạng thái OCR. Hãy kiểm tra backend worker.")
+        }
+        if (!sessionId) return
+        const result = await getDigitizationStatus(sessionId)
+        setStatus(digitizationToFolderStatus(result, fallbackFolderPath))
+        setError("")
+        if (isDigitizationComplete(result)) {
+          stop()
+          setState("done")
+          return
+        }
+        setState("polling")
+        timeoutRef.current = setTimeout(poll, 2_000)
+      } catch (err) {
+        stop()
+        const message = err instanceof Error ? err.message : "Không thể kiểm tra trạng thái OCR."
+        setError(message)
+        setState("error")
+      }
+    }
+
+    void poll()
   }
 
   const reset = useCallback(() => {
@@ -115,6 +150,30 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
     []
   )
 
+  const restartMetadata = useCallback(
+    async (documentId: number) => {
+      if (!sessionId) {
+        throw new Error("Chưa có session để chạy lại metadata.")
+      }
+      stop()
+      rejectRef.current?.(new Error("Quá trình chờ kết quả OCR đã được thay thế."))
+      rejectRef.current = null
+      const token = tokenRef.current + 1
+      tokenRef.current = token
+      const startedAt = Date.now()
+      const fallbackFolderPath = status?.folder_path ?? ""
+      setState("polling")
+      setError("")
+      const restarted = await restartDocumentMetadata(sessionId, documentId, {
+        force: true,
+      })
+      mergeVerifiedDocuments([restarted])
+      pollUntilComplete(token, fallbackFolderPath || restarted.data_path, startedAt)
+      return restarted
+    },
+    [mergeVerifiedDocuments, sessionId, status?.folder_path]
+  )
+
   useEffect(() => {
     stop()
     tokenRef.current += 1
@@ -175,7 +234,7 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
         throw new Error("Chưa có session để bắt đầu OCR.")
       }
       if (!options.confirmedPlanVersionId) {
-        throw new Error("ChÆ°a xÃ¡c nháº­n phÆ°Æ¡ng Ã¡n chá»‰nh lÃ½.")
+        throw new Error("Chưa xác nhận phương án chỉnh lý.")
       }
       stop()
       rejectRef.current?.(new Error("Quá trình chờ kết quả OCR đã được thay thế."))
@@ -239,7 +298,16 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
     [sessionId]
   )
 
-  return { state, status, error, start, refresh, mergeVerifiedDocuments, reset }
+  return {
+    state,
+    status,
+    error,
+    start,
+    refresh,
+    restartMetadata,
+    mergeVerifiedDocuments,
+    reset,
+  }
 }
 
 function sessionDocumentToJobSummary(
@@ -253,6 +321,7 @@ function sessionDocumentToJobSummary(
     review_status: document.review_status,
     metadata_ready: document.metadata_ready,
     metadata_final: document.metadata_final,
+    error: document.error,
     light_metadata:
       document.normalized_metadata ??
       document.metadata ??

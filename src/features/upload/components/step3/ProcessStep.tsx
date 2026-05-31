@@ -24,6 +24,7 @@ interface ProcessStepProps {
   metadataLoading?: boolean
   metadataMessage?: string
   onDocumentsVerified?: (documents: SessionDocumentResponse[]) => void
+  onRetryMetadata?: (documentId: number) => Promise<SessionDocumentResponse>
   onContinue: (groups: ClusterGroup[]) => void
 }
 
@@ -34,10 +35,12 @@ export function ProcessStep({
   metadataLoading = false,
   metadataMessage = "Đang chờ kết quả số hóa từ backend...",
   onDocumentsVerified,
+  onRetryMetadata,
   onContinue,
 }: ProcessStepProps) {
   const [items, setItems] = useState<PdfMetadata[]>([])
   const [verifyingIds, setVerifyingIds] = useState<Set<number>>(() => new Set())
+  const [retryingIds, setRetryingIds] = useState<Set<number>>(() => new Set())
   const [bulkVerifying, setBulkVerifying] = useState(false)
   const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(
     null
@@ -191,6 +194,27 @@ export function ProcessStep({
     }
   }
 
+  const handleRetryMetadata = async (item: PdfMetadata) => {
+    if (!onRetryMetadata) {
+      toast.error("Backend chưa bật chức năng chạy lại metadata.")
+      return
+    }
+    setRetryingIds((previous) => addId(previous, item.id))
+    try {
+      const restarted = await onRetryMetadata(item.id)
+      setItems((previous) => replaceDocument(previous, restarted))
+      toast.success("Đã gửi yêu cầu chạy lại metadata cho tài liệu.")
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Không thể chạy lại metadata cho tài liệu."
+      )
+    } finally {
+      setRetryingIds((previous) => removeId(previous, item.id))
+    }
+  }
+
   const warningCount = items.filter(
     (item) =>
       getWarningFields(item.light_metadata).size > 0 &&
@@ -311,8 +335,10 @@ export function ProcessStep({
                   item={item}
                   selected={item.id === selectedDocumentId}
                   submitting={verifyingIds.has(item.id)}
+                  retrying={retryingIds.has(item.id)}
                   onSelect={() => setSelectedDocumentId(item.id)}
                   onApply={handleApply}
+                  onRetry={() => void handleRetryMetadata(item)}
                 />
               ))}
               {Array.from({ length: loadingPlaceholderCount }).map((_, i) => (
@@ -424,6 +450,14 @@ function replaceVerifiedDocument(
   return items.map((item) => (item.id === next.id ? next : item))
 }
 
+function replaceDocument(
+  items: PdfMetadata[],
+  document: SessionDocumentResponse
+): PdfMetadata[] {
+  const next = documentResponseToPdfMetadata(document)
+  return items.map((item) => (item.id === next.id ? next : item))
+}
+
 function replaceVerifiedDocuments(
   items: PdfMetadata[],
   documents: SessionDocumentResponse[]
@@ -448,6 +482,7 @@ function documentResponseToPdfMetadata(
     review_status: document.review_status,
     metadata_ready: document.metadata_ready,
     metadata_final: document.metadata_final,
+    error: document.error,
     light_metadata:
       document.normalized_metadata ??
       document.metadata ??

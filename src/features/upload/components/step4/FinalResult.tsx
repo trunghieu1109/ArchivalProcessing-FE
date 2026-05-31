@@ -691,6 +691,8 @@ export function FinalResult({
     checkingClusters ||
     Boolean(clusterProgressMessage) ||
     groups.length > 0
+  const updatingClusterVersion =
+    clusterJobMode === "update" && (loading || Boolean(rebuildBaselineVersionId))
   const feedbackActionsPanel = (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#D8E1EC] bg-white px-4 py-3 shadow-sm">
       <p className="min-w-[260px] flex-1 text-sm text-[#64748B]">
@@ -801,6 +803,24 @@ export function FinalResult({
             "Backend đang lập hồ sơ từ các tài liệu đã xác nhận."
           }
         />
+      )}
+
+      {updatingClusterVersion && !pendingClusterVersion && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#BFD3FF] bg-[#F8FAFF] px-4 py-3 shadow-sm">
+          <div className="min-w-[260px] flex-1">
+            <p className="text-sm font-semibold text-[#0F172A]">
+              Đang cập nhật hồ sơ
+            </p>
+            <p className="mt-1 text-sm text-[#475569]">
+              Backend đang tạo phiên bản hồ sơ mới từ feedback đã lưu. Nút
+              áp dụng sẽ bật khi phiên bản mới sẵn sàng.
+            </p>
+          </div>
+          <Button disabled>
+            <Loader2 data-icon="inline-start" className="animate-spin" />
+            Đang cập nhật
+          </Button>
+        </div>
       )}
 
       {pendingClusterVersion && (

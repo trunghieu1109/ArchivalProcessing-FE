@@ -395,6 +395,7 @@ export function UploadPage() {
         review_status: job.review_status,
         metadata_ready: job.metadata_ready,
         metadata_final: job.metadata_final,
+        error: job.error,
         light_metadata:
           job.light_metadata ??
           job.normalized_metadata ??
@@ -1383,6 +1384,7 @@ export function UploadPage() {
                 metadataLoading={ocrLoading}
                 metadataMessage={ocrMessage}
                 onDocumentsVerified={ocr.mergeVerifiedDocuments}
+                onRetryMetadata={ocr.restartMetadata}
                 onContinue={(groups) => {
                   _clusterGroups = groups
                   setClusterGroups(groups)

@@ -8,6 +8,7 @@ import {
   Edit2,
   FileText,
   Loader2,
+  RefreshCw,
 } from "lucide-react"
 import { AnimatePresence, motion } from "framer-motion"
 import { toast } from "sonner"
@@ -38,11 +39,17 @@ export function getWarningFields(meta: Record<string, unknown>): Set<string> {
   return new Set(Object.keys(warnings as Record<string, unknown>))
 }
 
+function isMetadataFailed(status: string): boolean {
+  return ["failed", "final_failed", "signature_failed"].includes(status)
+}
+
 interface MetadataCardProps {
   item: PdfMetadata
   submitting?: boolean
+  retrying?: boolean
   selected?: boolean
   onSelect?: () => void
+  onRetry?: () => void
   onApply: (
     dataPath: string,
     meta: Record<string, unknown>
@@ -52,8 +59,10 @@ interface MetadataCardProps {
 export function MetadataCard({
   item,
   submitting = false,
+  retrying = false,
   selected = false,
   onSelect,
+  onRetry,
   onApply,
 }: MetadataCardProps) {
   const [expanded, setExpanded] = useState(false)
@@ -62,6 +71,8 @@ export function MetadataCard({
   const warningFields = getWarningFields(item.light_metadata)
   const hasWarnings = warningFields.size > 0
   const verified = item.review_status === "verified"
+  const metadataFailed = isMetadataFailed(item.status)
+  const metadataUnavailable = item.status === "failed" && !item.metadata_ready
 
   const startEdit = () => {
     const nextDraft: Record<string, string> = {}
@@ -148,6 +159,10 @@ export function MetadataCard({
             >
               <Check className="size-2.5" /> Xác nhận
             </span>
+          ) : metadataFailed ? (
+            <span className="flex items-center gap-1 rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+              <AlertTriangle className="size-2.5" /> Lỗi metadata
+            </span>
           ) : hasWarnings ? (
             <span className="flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
               <AlertTriangle className="size-2.5" /> Cần xác minh
@@ -210,7 +225,7 @@ export function MetadataCard({
                       variant="outline"
                       size="sm"
                       onClick={() => setEditing(false)}
-                      disabled={submitting}
+                      disabled={submitting || retrying || metadataUnavailable}
                     >
                       Hủy
                     </Button>
@@ -231,6 +246,12 @@ export function MetadataCard({
                 </div>
               ) : (
                 <div className="flex flex-col gap-1.5">
+                  {metadataFailed && (
+                    <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                      {item.error ||
+                        "Trích xuất metadata thất bại. Có thể chạy lại metadata cho tài liệu này."}
+                    </div>
+                  )}
                   {Object.entries(METADATA_LABELS).map(([key, label]) => {
                     const value = item.light_metadata[key]
                     if (!value) return null
@@ -275,14 +296,37 @@ export function MetadataCard({
                       variant="outline"
                       size="sm"
                       onClick={startEdit}
-                      disabled={submitting}
+                      disabled={submitting || retrying || metadataUnavailable}
                     >
                       <Edit2 data-icon="inline-start" /> Sửa
                     </Button>
+                    {metadataFailed && onRetry && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={onRetry}
+                        disabled={retrying}
+                      >
+                        {retrying ? (
+                          <Loader2
+                            data-icon="inline-start"
+                            className="animate-spin"
+                          />
+                        ) : (
+                          <RefreshCw data-icon="inline-start" />
+                        )}
+                        Chạy lại metadata
+                      </Button>
+                    )}
                     {!verified && (
                       <Button
                         size="sm"
-                        disabled={submitting || !item.metadata_ready}
+                        disabled={
+                          submitting ||
+                          retrying ||
+                          !item.metadata_ready ||
+                          metadataUnavailable
+                        }
                         onClick={() => void applyMetadata(item.light_metadata)}
                       >
                         {submitting ? (
