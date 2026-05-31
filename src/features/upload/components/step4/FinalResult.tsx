@@ -43,6 +43,7 @@ import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import {
   versionToGroups,
   type ClusterDocument,
+  type ClusterDocumentWarning,
   type ClusterGroup,
 } from "@/features/upload/lib/clusterGroups"
 import type { PdfMetadata } from "@/features/upload/types"
@@ -859,7 +860,7 @@ export function FinalResult({
             {resultStatusText}
           </p>
         </div>
-        <div className="grid w-full shrink-0 grid-cols-3 gap-2 sm:w-auto">
+        <div className="ml-auto grid w-full max-w-[22rem] shrink-0 grid-cols-3 justify-end gap-2 sm:w-auto">
           <Metric label="Hồ sơ" value={groups.length} />
           <Metric label="Tài liệu" value={totalFiles} />
           <Metric label="Trang" value={totalPages} />
@@ -1253,7 +1254,9 @@ function DocumentRow({
   onSelectPreview: (document: ClusterDocument) => void
 }) {
   const [expanded, setExpanded] = useState(false)
+  const [showWarningDetails, setShowWarningDetails] = useState(true)
   const [dragging, setDragging] = useState(false)
+  const clusterWarning = document.clusterWarning
   const summary = metadataText(document.metadata, [
     "document_summary",
     "trich_yeu_van_ban",
@@ -1284,6 +1287,11 @@ function DocumentRow({
   const indentStep = compact ? 14 : 20
 
   const detailIndent = 8 + (depth + 1) * indentStep
+  const toggleExpanded = () => {
+    const nextExpanded = !expanded
+    setExpanded(nextExpanded)
+    setShowWarningDetails(nextExpanded)
+  }
 
   return (
     <div className="min-w-0 max-w-full overflow-hidden">
@@ -1291,7 +1299,7 @@ function DocumentRow({
         draggable
         onClick={() => {
           if (!dragging) {
-            setExpanded((value) => !value)
+            toggleExpanded()
           }
         }}
         onDragStart={() => {
@@ -1342,6 +1350,20 @@ function DocumentRow({
                 <CalendarDays className="size-3" /> {issuedDate}
               </span>
             )}
+            {clusterWarning && (
+              <span
+                title={clusterWarningTooltip(clusterWarning)}
+                className={cn(
+                  "flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                  clusterWarningLevelClass(clusterWarning.riskLevel)
+                )}
+              >
+                <AlertTriangle className="size-3" />
+                <span className={cn("max-w-28 truncate", compact && "hidden 2xl:inline")}>
+                  {clusterWarningLevelLabel(clusterWarning.riskLevel)}
+                </span>
+              </span>
+            )}
             {expanded ? (
               <ChevronDown className="ml-auto size-3.5 shrink-0 text-[#64748B]" />
             ) : (
@@ -1371,7 +1393,7 @@ function DocumentRow({
           className="mt-0.5 shrink-0"
           onClick={(event) => {
             event.stopPropagation()
-            setExpanded((value) => !value)
+            toggleExpanded()
           }}
           onDragStart={(event) => event.stopPropagation()}
         >
@@ -1419,6 +1441,13 @@ function DocumentRow({
             </div>
           </div>
           <div className="grid min-w-0 gap-2 text-xs">
+            {clusterWarning && (
+              <ClusterWarningPanel
+                warning={clusterWarning}
+                expanded={showWarningDetails}
+                onToggle={() => setShowWarningDetails((value) => !value)}
+              />
+            )}
             <PreviewField label="Trích yếu" value={metadataSummary} wide />
             <div
               className={cn(
@@ -1443,6 +1472,144 @@ function DocumentRow({
           </div>
         </motion.div>
       )}
+    </div>
+  )
+}
+
+function ClusterWarningPanel({
+  warning,
+  expanded,
+  onToggle,
+}: {
+  warning: ClusterDocumentWarning
+  expanded: boolean
+  onToggle: () => void
+}) {
+  const messages = clusterWarningMessages(warning)
+  const hasCloserWarning = clusterWarningHasCloserReason(warning, messages)
+  const hasTemporalWarning = warning.reasons.includes("temporal_outlier")
+  const closerDossierTitle = warning.nearestOtherDossierTitle.trim()
+  const representativeDocuments = warning.nearestOtherRepresentativeDocuments.length
+    ? warning.nearestOtherRepresentativeDocuments
+    : warning.nearestOtherRepresentativeFileName
+      ? [
+          {
+            documentId: warning.nearestOtherClusterRepresentativeId,
+            fileName: warning.nearestOtherRepresentativeFileName,
+            title: warning.nearestOtherRepresentativeTitle,
+            documentSummary: "",
+            documentType: "",
+            issuedDate: "",
+          },
+        ]
+      : []
+  const detailRows = [
+    {
+      label: "Hồ sơ hiện tại",
+      value: warning.currentDossierTitle,
+    },
+    {
+      label: "Thời gian của tài liệu",
+      value: hasTemporalWarning ? warning.documentIssuedDate || warning.documentYear : "",
+    },
+    {
+      label: "Thời gian chung của hồ sơ",
+      value:
+        hasTemporalWarning && warning.dominantClusterYear
+          ? `Năm ${warning.dominantClusterYear}`
+          : hasTemporalWarning
+            ? warning.currentDossierDateRange
+            : "",
+    },
+  ].filter((item) => item.value)
+
+  return (
+    <div className="col-span-full overflow-hidden rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-2 text-amber-900">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between gap-2 text-left"
+        onClick={onToggle}
+      >
+        <span className="flex min-w-0 items-center gap-1.5 text-xs font-semibold">
+          <AlertTriangle className="size-3.5 shrink-0" />
+          <span className="truncate">
+            Cảnh báo hồ sơ
+          </span>
+        </span>
+        {expanded ? (
+          <ChevronDown className="size-3.5 shrink-0" />
+        ) : (
+          <ChevronRight className="size-3.5 shrink-0" />
+        )}
+      </button>
+      <div className="mt-1 space-y-0.5 text-[11px] leading-4">
+        {messages.map((message, index) => (
+          <p key={`${message}-${index}`}>{message}</p>
+        ))}
+      </div>
+      {expanded && detailRows.length > 0 && (
+        <div className="mt-2 grid gap-1.5 text-[11px] sm:grid-cols-2">
+          {detailRows.map((row) => (
+            <WarningDetail key={row.label} label={row.label} value={row.value} />
+          ))}
+        </div>
+      )}
+      {expanded && hasCloserWarning && (
+        <div className="mt-2 border-t border-amber-200 pt-2">
+          <p className="text-[11px] font-semibold text-amber-900">
+            Hồ sơ phù hợp hơn
+          </p>
+          <p className="mt-1 break-words rounded-md bg-white/70 px-2 py-1 text-[11px] font-medium text-amber-950">
+            {closerDossierTitle ||
+              "Chưa xác định được tên hồ sơ phù hợp hơn từ dữ liệu cảnh báo."}
+          </p>
+          {representativeDocuments.length > 0 && (
+            <>
+              <p className="mt-2 text-[11px] font-semibold text-amber-900">
+                Tài liệu đại diện để đối chiếu
+              </p>
+              <div className="mt-1 grid gap-1.5">
+                {representativeDocuments.map((document, index) => {
+                  const secondary = [
+                    document.documentType,
+                    document.issuedDate,
+                    document.title || document.documentSummary,
+                  ].filter(Boolean)
+                  return (
+                    <div
+                      key={document.documentId || `${document.fileName}-${index}`}
+                      className="min-w-0 border-t border-amber-100 pt-1 first:border-t-0 first:pt-0"
+                    >
+                      <p className="break-words text-[11px] font-medium text-amber-950">
+                        {document.fileName || document.documentId || "Tài liệu đại diện"}
+                      </p>
+                      {secondary.length > 0 && (
+                        <p className="mt-0.5 line-clamp-2 break-words text-[11px] text-amber-800">
+                          {secondary.join(" · ")}
+                        </p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </>
+          )}
+          {representativeDocuments.length === 0 && (
+            <p className="mt-2 rounded-md bg-white/50 px-2 py-1 text-[11px] text-amber-800">
+              Chưa có tài liệu đại diện của hồ sơ này trong dữ liệu cảnh báo.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function WarningDetail({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-md bg-white/70 px-2 py-1">
+      <span className="text-amber-700">{label}: </span>
+      <span className="break-words font-medium text-amber-950">{value}</span>
     </div>
   )
 }
@@ -1483,11 +1650,13 @@ function PreviewField({
 
 function Metric({ label, value }: { label: string; value: number }) {
   return (
-    <div className="min-w-20 rounded-xl border border-[#CBD5E1] bg-white px-3 py-2 text-right shadow-sm">
+    <div className="flex min-h-16 min-w-0 flex-col justify-center rounded-xl border border-[#CBD5E1] bg-white px-3 py-2 text-center shadow-sm">
       <p className="font-roboto text-[10px] font-semibold tracking-[0.12em] text-[#64748B] uppercase">
         {label}
       </p>
-      <p className="text-lg font-semibold text-[#0F172A]">{value}</p>
+      <p className="font-roboto text-xl font-semibold leading-6 text-[#0F172A] tabular-nums">
+        {value}
+      </p>
     </div>
   )
 }
@@ -1724,6 +1893,146 @@ function formatDateRange(
   if (startDate && endDate && startDate !== endDate)
     return `${startDate} - ${endDate}`
   return startDate || endDate || "Chưa rõ thời gian"
+}
+
+function clusterWarningTooltip(warning: ClusterDocumentWarning): string {
+  return clusterWarningMessages(warning).join("\n")
+}
+
+function clusterWarningHasCloserReason(
+  warning: ClusterDocumentWarning,
+  messages: string[] = []
+): boolean {
+  return (
+    warning.reasons.includes("closer_to_another_cluster") ||
+    warning.reasons.includes("closer_to_another_dossier") ||
+    messages.some(isCloserWarningMessage)
+  )
+}
+
+function clusterWarningMessages(warning: ClusterDocumentWarning): string[] {
+  const baseMessages = warning.displayMessages.length
+    ? warning.displayMessages
+    : warning.reasons.length
+    ? warning.reasons.map((reason) => clusterWarningReasonLabel(reason, warning))
+    : warning.message
+      ? [warning.message]
+      : []
+  const messages = baseMessages
+    .map((message) => refineClusterWarningMessage(message, warning))
+    .filter(Boolean)
+  addMissingClusterWarningReasonMessages(messages, warning)
+  if (!messages.length) {
+    messages.push("Tài liệu cần được kiểm tra lại trong hồ sơ hiện tại.")
+  }
+  return uniqueWarningMessages(messages)
+}
+
+function addMissingClusterWarningReasonMessages(
+  messages: string[],
+  warning: ClusterDocumentWarning
+) {
+  const combined = messages.join(" ").toLowerCase()
+  if (
+    warning.reasons.includes("low_similarity_to_cluster") &&
+    !combined.includes("không đồng nhất")
+  ) {
+    messages.push(clusterWarningReasonLabel("low_similarity_to_cluster", warning))
+  }
+  if (
+    warning.reasons.includes("closer_to_another_cluster") &&
+    !combined.includes("tương đồng")
+  ) {
+    messages.push(clusterWarningReasonLabel("closer_to_another_cluster", warning))
+  }
+  if (
+    warning.reasons.includes("temporal_outlier") &&
+    !combined.includes("năm ban hành")
+  ) {
+    messages.push(clusterWarningReasonLabel("temporal_outlier", warning))
+  }
+}
+
+function refineClusterWarningMessage(
+  message: string,
+  warning: ClusterDocumentWarning
+): string {
+  const text = message.trim()
+  if (
+    clusterWarningHasCloserReason(warning, [text]) &&
+    isGenericCloserWarningMessage(text)
+  ) {
+    return clusterWarningReasonLabel("closer_to_another_cluster", warning)
+  }
+  return text
+}
+
+function isGenericCloserWarningMessage(message: string): boolean {
+  const lower = message.toLowerCase()
+  return (
+    lower.includes("hồ sơ khác") ||
+    lower.includes("một hồ sơ khác") ||
+    lower.includes("another dossier") ||
+    lower.includes("another cluster")
+  )
+}
+
+function isCloserWarningMessage(message: string): boolean {
+  const lower = message.toLowerCase()
+  return (
+    (lower.includes("tương đồng") && lower.includes("hồ sơ")) ||
+    lower.includes("another dossier") ||
+    lower.includes("another cluster")
+  )
+}
+
+function clusterWarningReasonLabel(
+  reason: string,
+  warning?: ClusterDocumentWarning
+): string {
+  if (reason === "closer_to_another_cluster") {
+    const dossierTitle = warning?.nearestOtherDossierTitle.trim()
+    return dossierTitle
+      ? `Tài liệu có độ tương đồng với hồ sơ "${dossierTitle}" cao hơn.`
+      : "Tài liệu có độ tương đồng với hồ sơ khác cao hơn."
+  }
+  const labels: Record<string, string> = {
+    low_similarity_to_cluster: "Tài liệu không đồng nhất với hồ sơ.",
+    temporal_outlier: "Năm ban hành của tài liệu khác với đa số tài liệu trong hồ sơ.",
+  }
+  return labels[reason] ?? reason
+}
+
+function uniqueWarningMessages(messages: string[]): string[] {
+  const seen = new Set<string>()
+  return messages.filter((message) => {
+    const normalized = message.trim()
+    if (!normalized || seen.has(normalized)) return false
+    seen.add(normalized)
+    return true
+  })
+}
+
+function clusterWarningLevelLabel(riskLevel: string): string {
+  const normalized = riskLevel.toLowerCase()
+  if (normalized === "high") return "Cảnh báo cao"
+  if (normalized === "medium") return "Cảnh báo trung bình"
+  if (normalized === "low") return "Cảnh báo thấp"
+  return "Cảnh báo"
+}
+
+function clusterWarningLevelClass(riskLevel: string): string {
+  const normalized = riskLevel.toLowerCase()
+  if (normalized === "high") {
+    return "border-red-300 bg-red-50 text-red-700 hover:bg-red-100"
+  }
+  if (normalized === "medium") {
+    return "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+  }
+  if (normalized === "low") {
+    return "border-yellow-300 bg-yellow-50 text-yellow-800 hover:bg-yellow-100"
+  }
+  return "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
 }
 
 function metadataText(

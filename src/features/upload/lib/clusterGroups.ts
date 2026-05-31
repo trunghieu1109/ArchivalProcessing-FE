@@ -33,6 +33,41 @@ export interface ClusterDocument {
   sheetCount: number | null
   requiresReview: boolean
   metadata: Record<string, unknown>
+  clusterWarning: ClusterDocumentWarning | null
+}
+
+export interface ClusterDocumentWarning {
+  riskLevel: string
+  riskScore: number | null
+  reasons: string[]
+  message: string
+  displayMessages: string[]
+  clusterId: string
+  currentDossierTitle: string
+  nearestOtherClusterId: string
+  nearestOtherDossierTitle: string
+  nearestOtherClusterSimilarity: number | null
+  nearestOtherClusterRepresentativeId: string
+  nearestOtherRepresentativeFileName: string
+  nearestOtherRepresentativeTitle: string
+  nearestOtherRepresentativeDocuments: ClusterWarningRepresentativeDocument[]
+  meanSimilarityToCluster: number | null
+  clusterMedianDocSimilarity: number | null
+  otherClusterMargin: number | null
+  documentYear: string
+  documentIssuedDate: string
+  dominantClusterYear: string
+  dominantYearRatio: number | null
+  currentDossierDateRange: string
+}
+
+export interface ClusterWarningRepresentativeDocument {
+  documentId: string
+  fileName: string
+  title: string
+  documentSummary: string
+  documentType: string
+  issuedDate: string
 }
 
 export function versionToGroups(
@@ -62,6 +97,7 @@ function clusterToGroup(
         metadataPath(metadata) ??
         item?.data_path ??
         placement.document_id
+      const clusterWarning = clusterWarningFromMetadata(metadata)
       return {
         documentId: placement.document_id,
         sessionDocumentId: placement.session_document_id,
@@ -70,8 +106,9 @@ function clusterToGroup(
         positionIndex: placement.position_index,
         pageCount: placement.page_count ?? numberValue(metadata.page_count),
         sheetCount: placement.sheet_count ?? numberValue(metadata.sheet_count),
-        requiresReview: Boolean(placement.requires_review),
+        requiresReview: Boolean(placement.requires_review) || Boolean(clusterWarning),
         metadata,
+        clusterWarning,
       }
     })
   const placedIds = new Set(documents.map((document) => document.documentId))
@@ -81,6 +118,7 @@ function clusterToGroup(
       const item = itemsByDocumentId.get(documentId)
       const metadata = item?.light_metadata ?? {}
       const filePath = metadataPath(metadata) ?? item?.data_path ?? documentId
+      const clusterWarning = clusterWarningFromMetadata(metadata)
       return {
         documentId,
         sessionDocumentId: item?.id ?? null,
@@ -89,8 +127,9 @@ function clusterToGroup(
         positionIndex: documents.length + index,
         pageCount: numberValue(metadata.page_count),
         sheetCount: numberValue(metadata.sheet_count),
-        requiresReview: false,
+        requiresReview: Boolean(clusterWarning),
         metadata,
+        clusterWarning,
       }
     })
   const allDocuments = [...documents, ...fallbackDocuments]
@@ -109,7 +148,7 @@ function clusterToGroup(
     confidence: classification?.confidence ?? null,
     requiresReview:
       Boolean(classification?.requires_review) ||
-      Boolean(cluster.placements?.some((placement) => placement.requires_review)),
+      Boolean(allDocuments.some((document) => document.requiresReview)),
     pageCount: cluster.page_count,
     sheetCount: cluster.sheet_count,
     startDate: cluster.start_date,
@@ -140,12 +179,106 @@ function metadataPath(metadata: Record<string, unknown> | undefined): string | n
   ) || null
 }
 
+function clusterWarningFromMetadata(
+  metadata: Record<string, unknown>
+): ClusterDocumentWarning | null {
+  const raw = metadata._cluster_warning
+  if (!isRecord(raw)) return null
+  if (stringValue(raw.status).toLowerCase() !== "warning") return null
+  const displayMessages = stringArray(raw.display_messages ?? raw.displayMessages)
+  return {
+    riskLevel: stringValue(raw.risk_level ?? raw.riskLevel),
+    riskScore: numberValue(raw.risk_score ?? raw.riskScore),
+    reasons: stringArray(raw.risk_reasons ?? raw.riskReasons),
+    message: stringValue(raw.message),
+    displayMessages,
+    clusterId: stringValue(raw.cluster_id ?? raw.clusterId),
+    currentDossierTitle: stringValue(
+      raw.current_dossier_title ?? raw.currentDossierTitle
+    ),
+    nearestOtherClusterId: stringValue(
+      raw.nearest_other_cluster_id ?? raw.nearestOtherClusterId
+    ),
+    nearestOtherDossierTitle: stringValue(
+      raw.nearest_other_dossier_title ?? raw.nearestOtherDossierTitle
+    ),
+    nearestOtherClusterSimilarity: numberValue(
+      raw.nearest_other_cluster_similarity ?? raw.nearestOtherClusterSimilarity
+    ),
+    nearestOtherClusterRepresentativeId: stringValue(
+      raw.nearest_other_cluster_representative_id ??
+        raw.nearestOtherClusterRepresentativeId
+    ),
+    nearestOtherRepresentativeFileName: stringValue(
+      raw.nearest_other_representative_file_name ??
+        raw.nearestOtherRepresentativeFileName
+    ),
+    nearestOtherRepresentativeTitle: stringValue(
+      raw.nearest_other_representative_title ?? raw.nearestOtherRepresentativeTitle
+    ),
+    nearestOtherRepresentativeDocuments: representativeDocuments(
+      raw.nearest_other_representative_documents ??
+        raw.nearestOtherRepresentativeDocuments
+    ),
+    meanSimilarityToCluster: numberValue(
+      raw.mean_similarity_to_cluster ?? raw.meanSimilarityToCluster
+    ),
+    clusterMedianDocSimilarity: numberValue(
+      raw.cluster_median_doc_similarity ?? raw.clusterMedianDocSimilarity
+    ),
+    otherClusterMargin: numberValue(raw.other_cluster_margin ?? raw.otherClusterMargin),
+    documentYear: stringValue(raw.document_year ?? raw.documentYear),
+    documentIssuedDate: stringValue(raw.document_issued_date ?? raw.documentIssuedDate),
+    dominantClusterYear: stringValue(raw.dominant_cluster_year ?? raw.dominantClusterYear),
+    dominantYearRatio: numberValue(raw.dominant_year_ratio ?? raw.dominantYearRatio),
+    currentDossierDateRange: stringValue(
+      raw.current_dossier_date_range ?? raw.currentDossierDateRange
+    ),
+  }
+}
+
+function representativeDocuments(
+  value: unknown
+): ClusterWarningRepresentativeDocument[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => {
+      if (!isRecord(item)) return null
+      return {
+        documentId: stringValue(item.document_id ?? item.documentId),
+        fileName: stringValue(item.file_name ?? item.fileName),
+        title: stringValue(item.title),
+        documentSummary: stringValue(
+          item.document_summary ?? item.documentSummary ?? item.summary
+        ),
+        documentType: stringValue(item.document_type ?? item.documentType),
+        issuedDate: stringValue(item.issued_date ?? item.issuedDate),
+      }
+    })
+    .filter(
+      (item): item is ClusterWarningRepresentativeDocument =>
+        Boolean(item?.documentId || item?.fileName || item?.title || item?.documentSummary)
+    )
+}
+
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)))
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
 function stringValue(value: unknown): string {
   return typeof value === "string" || typeof value === "number" ? String(value).trim() : ""
+}
+
+function stringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map(stringValue).filter(Boolean)
+  }
+  const text = stringValue(value)
+  return text ? [text] : []
 }
 
 function numberValue(value: unknown): number | null {

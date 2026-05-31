@@ -1035,8 +1035,27 @@ export function isDigitizationComplete(
   response: DigitizationStatusResponse | null
 ): boolean {
   const batch = response?.batches[0]
-  return Boolean(
-    batch && ["done", "completed_with_errors", "failed"].includes(batch.status)
+  if (!batch || !["done", "completed_with_errors", "failed"].includes(batch.status)) {
+    return false
+  }
+  const documents = response?.documents ?? []
+  const expectedDocuments = Math.max(
+    batch.total_jobs ?? 0,
+    batch.total_files ?? 0,
+    response?.summary.total_documents ?? 0,
+    documents.length
+  )
+  if (expectedDocuments > 0 && documents.length < expectedDocuments) {
+    return false
+  }
+  return documents.every(isDigitizationDocumentComplete)
+}
+
+function isDigitizationDocumentComplete(document: DigitizationDocument): boolean {
+  const status = String(document.ocr_status ?? "").trim().toLowerCase()
+  return (
+    Boolean(document.metadata_final) ||
+    ["done", "failed", "final_failed", "signature_failed", "cancelled"].includes(status)
   )
 }
 
