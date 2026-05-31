@@ -994,7 +994,7 @@ export function UploadPage() {
   return (
     <div className="min-h-svh bg-[#F0F4F8]">
       {/* Header */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-[#EEF2FF] via-[#F0F4FF] to-[#E8EEFF] px-4 py-5 shadow-sm">
+      <div className="relative overflow-hidden bg-gradient-to-br from-[#EEF2FF] via-[#F0F4FF] to-[#E8EEFF] px-3 py-4 shadow-sm sm:px-4 sm:py-5">
         <div
           className="pointer-events-none absolute -top-24 -right-24 size-80 rounded-full"
           style={{
@@ -1002,27 +1002,64 @@ export function UploadPage() {
               "radial-gradient(circle, rgba(0,82,255,0.08) 0%, transparent 70%)",
           }}
         />
-        <div className="relative mx-auto max-w-6xl">
-          <div className="flex items-start justify-between gap-8">
+        <div className="relative mx-auto max-w-[1560px]">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between md:gap-8">
             {/* Left: badge + title + description */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, ease: easeOut }}
             >
-              <img
-                src="/assets/mbfs.png"
-                alt="MBFS Logo"
-                className="h-20 w-auto object-contain"
-              />
+              <button
+                type="button"
+                onClick={() => navigate("/sessions")}
+                className="block rounded-xl focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2 focus-visible:outline-none"
+                aria-label="Quay lại danh sách session"
+                title="Quay lại danh sách session"
+              >
+                <img
+                  src="/assets/mbfs.png"
+                  alt="MBFS Logo"
+                  className="h-14 w-auto object-contain sm:h-16 lg:h-20"
+                />
+              </button>
             </motion.div>
+
+            <div className="rounded-2xl border border-[#CBD5E1]/70 bg-white/70 px-3 py-2 shadow-sm md:hidden">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold tracking-[0.14em] text-[#64748B] uppercase">
+                    Bước {currentStep}/5
+                  </p>
+                  <p className="truncate text-sm font-semibold text-[#0F172A]">
+                    {STEP_LABELS[currentStep - 1]}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  {STEP_LABELS.map((_, index) => {
+                    const stepNumber = index + 1
+                    return (
+                      <span
+                        key={index}
+                        className={cn(
+                          "h-1.5 rounded-full transition-all",
+                          stepNumber <= currentStep
+                            ? "w-6 bg-[#0052FF]"
+                            : "w-3 bg-[#CBD5E1]"
+                        )}
+                      />
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
 
             {/* Right: step indicators */}
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.6, ease: easeOut, delay: 0.15 }}
-              className="hidden shrink-0 items-center pt-2 md:flex"
+              className="hidden max-w-full shrink-0 items-center overflow-x-auto pt-2 md:flex"
             >
               {STEP_LABELS.map((label, i) => {
                 const s = (i + 1) as AppStep
@@ -1075,7 +1112,7 @@ export function UploadPage() {
                       </span>
                     </div>
                     {i < STEP_LABELS.length - 1 && (
-                      <div className="mx-2 mb-5 h-px w-8 bg-[#CBD5E1]" />
+                      <div className="mx-2 mb-5 h-px w-5 bg-[#CBD5E1] lg:w-8" />
                     )}
                   </div>
                 )
@@ -1088,11 +1125,11 @@ export function UploadPage() {
       {/* Main content */}
       <div
         className={cn(
-          "mx-auto px-4 py-8 sm:px-6 lg:px-8",
-          currentStep === 4 ? "max-w-[1560px]" : "max-w-6xl"
+          "mx-auto px-3 py-5 sm:px-6 sm:py-8 lg:px-8",
+          currentStep >= 3 ? "max-w-[1560px]" : "max-w-6xl"
         )}
       >
-        <div className="mb-5 flex items-center gap-2">
+        <div className="mb-5 flex flex-wrap items-center gap-2">
           <motion.button
             initial={{ opacity: 0, x: -8 }}
             animate={{ opacity: 1, x: 0 }}
@@ -1206,10 +1243,10 @@ export function UploadPage() {
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, ease: easeOut, delay: 0.3 }}
-                className="flex items-center justify-between gap-4 rounded-2xl border border-border bg-card px-6 py-4 shadow-sm"
+                className="flex flex-col items-stretch gap-4 rounded-2xl border border-border bg-card px-4 py-4 shadow-sm sm:px-6 lg:flex-row lg:items-center lg:justify-between"
               >
-                <div className="flex items-center gap-4">
-                  <div className="flex gap-2">
+                <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
+                  <div className="flex flex-wrap gap-2">
                     {statusItems.map((s, i) => (
                       <div
                         key={i}
@@ -1286,7 +1323,7 @@ export function UploadPage() {
                   disabled={allProcessing || sessionLoading}
                   onClick={handleStartAll}
                   className={cn(
-                    "group flex min-w-44 items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold transition-all duration-200",
+                    "group flex w-full min-w-44 items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold transition-all duration-200 sm:w-auto",
                     !allProcessing && !sessionLoading
                       ? "text-primary-foreground hover:-translate-y-0.5 active:scale-[0.98]"
                       : "cursor-not-allowed bg-muted text-muted-foreground"

@@ -80,26 +80,26 @@ function PlanSummary({ plan, readOnly = false, onCriteriaChange }: PlanSummaryPr
       </div>
 
       <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
             Tiêu chí phân nhóm
           </p>
-          {!readOnly && <div className="flex items-center gap-2">
+          {!readOnly && <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-3">
             <button
               onClick={handleResetCriteria}
-              className="flex items-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-3 py-1.5 text-xs font-semibold text-[#0F172A] shadow-sm transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF]"
+              className="flex items-center justify-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-3 py-1.5 text-xs font-semibold text-[#0F172A] shadow-sm transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF]"
             >
               <RotateCcw className="size-3.5" /> Áp dụng lại
             </button>
             <button
               onClick={handleAddCriteriaLevel}
-              className="flex items-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-3 py-1.5 text-xs font-semibold text-[#0F172A] shadow-sm transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF]"
+              className="flex items-center justify-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-3 py-1.5 text-xs font-semibold text-[#0F172A] shadow-sm transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF]"
             >
               <Plus className="size-3.5" /> Thêm cấp
             </button>
             <button
               onClick={handleSaveCriteria}
-              className="flex items-center gap-1.5 rounded-xl bg-[#0052FF] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#0047D6]"
+              className="flex items-center justify-center gap-1.5 rounded-xl bg-[#0052FF] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#0047D6]"
             >
               <Check className="size-3.5" /> Lưu tiêu chí
             </button>
@@ -268,7 +268,7 @@ function FolderNodeItem({
         )}
 
         {!readOnly && !editingName && (
-          <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+          <div className="flex items-center gap-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
             <button
               onClick={startDefinitionEdit}
               title="Sửa định nghĩa"
@@ -517,11 +517,11 @@ export function FolderTree({
 
       <PlanSummary plan={parsedPlan} readOnly={readOnly} onCriteriaChange={onCriteriaChange} />
 
-      <div className="mt-1 flex items-center justify-between">
+      <div className="mt-1 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm font-semibold text-[#0F172A]">Cấu trúc thư mục</p>
         {!readOnly && <button
           onClick={handleAddRoot}
-          className="flex items-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-3 py-1.5 text-xs font-semibold text-[#0F172A] shadow-sm transition-all hover:border-[#0052FF]/30 hover:text-[#0052FF]"
+          className="flex items-center justify-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-3 py-1.5 text-xs font-semibold text-[#0F172A] shadow-sm transition-all hover:border-[#0052FF]/30 hover:text-[#0052FF]"
         >
           <Plus className="size-3.5" /> Thêm thư mục
         </button>}
@@ -536,7 +536,7 @@ export function FolderTree({
           transition={{ duration: 0.25 }}
           className="rounded-2xl border border-[#CBD5E1] bg-white shadow-sm"
         >
-          <ScrollArea className="h-[520px] p-3">
+          <ScrollArea className="h-[min(68svh,520px)] min-h-[360px] p-3">
             {tree.map((node) => (
               <FolderNodeItem
                 key={node.id}
@@ -558,10 +558,10 @@ export function FolderTree({
       </AnimatePresence>
 
 
-      <div className="flex justify-end">
+      <div className="flex justify-stretch sm:justify-end">
         <button
           onClick={handleConfirm}
-          className="flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-white transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98]"
+          className="flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-white transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] sm:w-auto"
           style={{
             background: "linear-gradient(to right, #0052FF, #4D7CFF)",
             boxShadow: "0 4px 14px rgba(0,82,255,0.25)",

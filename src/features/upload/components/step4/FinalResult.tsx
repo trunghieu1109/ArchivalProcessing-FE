@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react"
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+} from "react"
 import {
   AlertTriangle,
   CalendarDays,
@@ -11,7 +18,6 @@ import {
   FolderOpen,
   GripVertical,
   Loader2,
-  PanelRight,
   MoveRight,
   RefreshCw,
   Signature,
@@ -19,7 +25,6 @@ import {
 import { motion } from "framer-motion"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/shared/lib/utils"
 import {
   DocumentPdfPreview,
@@ -129,7 +134,8 @@ export function FinalResult({
   const [selectedPreviewDocumentId, setSelectedPreviewDocumentId] = useState<
     number | null
   >(null)
-  const [previewWidthPercent, setPreviewWidthPercent] = useState(38)
+  const [previewWidthPercent, setPreviewWidthPercent] = useState(50)
+  const previewLayoutRef = useRef<HTMLDivElement | null>(null)
   const [clusterJobMode, setClusterJobMode] = useState<ClusterJobMode>("new")
   const [clusterProgressPhase, setClusterProgressPhase] = useState<
     string | null
@@ -663,6 +669,42 @@ export function FinalResult({
     setSelectedPreviewDocumentId(document.sessionDocumentId)
   }
 
+  const handlePreviewResizePointerDown = (
+    event: ReactPointerEvent<HTMLButtonElement>
+  ) => {
+    const container = previewLayoutRef.current
+    if (!container) return
+    event.preventDefault()
+
+    const previousCursor = document.body.style.cursor
+    const previousUserSelect = document.body.style.userSelect
+    document.body.style.cursor = "col-resize"
+    document.body.style.userSelect = "none"
+
+    const updatePreviewWidth = (clientX: number) => {
+      const rect = container.getBoundingClientRect()
+      const rawPercent = ((rect.right - clientX) / rect.width) * 100
+      setPreviewWidthPercent(Math.min(65, Math.max(50, rawPercent)))
+    }
+
+    updatePreviewWidth(event.clientX)
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      updatePreviewWidth(moveEvent.clientX)
+    }
+    const handlePointerUp = () => {
+      document.body.style.cursor = previousCursor
+      document.body.style.userSelect = previousUserSelect
+      window.removeEventListener("pointermove", handlePointerMove)
+      window.removeEventListener("pointerup", handlePointerUp)
+      window.removeEventListener("pointercancel", handlePointerUp)
+    }
+
+    window.addEventListener("pointermove", handlePointerMove)
+    window.addEventListener("pointerup", handlePointerUp)
+    window.addEventListener("pointercancel", handlePointerUp)
+  }
+
   const handleFinish = () => {
     if (pendingClusterVersion) {
       toast.error("Có phiên bản hồ sơ mới. Hãy áp dụng trước khi tạo mục lục.")
@@ -694,33 +736,17 @@ export function FinalResult({
   const updatingClusterVersion =
     clusterJobMode === "update" && (loading || Boolean(rebuildBaselineVersionId))
   const feedbackActionsPanel = (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#D8E1EC] bg-white px-4 py-3 shadow-sm">
-      <p className="min-w-[260px] flex-1 text-sm text-[#64748B]">
+    <div className="flex flex-col gap-3 rounded-2xl border border-[#D8E1EC] bg-white px-4 py-3 shadow-sm xl:flex-row xl:items-center xl:justify-between">
+      <p className="min-w-0 flex-1 text-sm text-[#64748B]">
         {pendingFeedbackCount > 0
           ? `Có ${pendingFeedbackCount} feedback đã lưu và đang chờ cập nhật hồ sơ.`
           : "Feedback di chuyển tài liệu sẽ được lưu lại và chỉ áp dụng khi cập nhật hồ sơ."}
       </p>
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {previewDocument && (
-          <label className="flex items-center gap-2 rounded-lg border border-[#CBD5E1] bg-[#F8FAFC] px-2 py-1 text-[11px] font-medium text-[#475569]">
-            <PanelRight className="size-3.5 text-[#0052FF]" />
-            <span className="whitespace-nowrap">Preview</span>
-            <input
-              type="range"
-              min={28}
-              max={55}
-              value={previewWidthPercent}
-              onChange={(event) =>
-                setPreviewWidthPercent(Number(event.target.value))
-              }
-              className="h-1.5 w-24 accent-[#0052FF] sm:w-32"
-              aria-label="Điều chỉnh kích thước preview"
-            />
-          </label>
-        )}
+      <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 xl:w-auto xl:flex xl:flex-wrap xl:items-center xl:justify-end">
         <Button
           variant="outline"
           onClick={() => void handleRebuildClusters()}
+          className="w-full xl:w-auto"
           disabled={
             rebuildSubmitting ||
             loading ||
@@ -738,6 +764,7 @@ export function FinalResult({
         </Button>
         <Button
           onClick={handleFinish}
+          className="w-full xl:w-auto"
           disabled={
             groups.length === 0 ||
             loading ||
@@ -760,8 +787,8 @@ export function FinalResult({
       transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
       className="flex flex-col gap-4"
     >
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
           <h2
             className="text-2xl text-[#0F172A]"
             style={{ fontFamily: "'Calistoga', Georgia, serif" }}
@@ -781,7 +808,7 @@ export function FinalResult({
             {resultStatusText}
           </p>
         </div>
-        <div className="grid shrink-0 grid-cols-3 gap-2">
+        <div className="grid w-full shrink-0 grid-cols-3 gap-2 sm:w-auto">
           <Metric label="Hồ sơ" value={groups.length} />
           <Metric label="Tài liệu" value={totalFiles} />
           <Metric label="Trang" value={totalPages} />
@@ -806,8 +833,8 @@ export function FinalResult({
       )}
 
       {updatingClusterVersion && !pendingClusterVersion && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#BFD3FF] bg-[#F8FAFF] px-4 py-3 shadow-sm">
-          <div className="min-w-[260px] flex-1">
+        <div className="flex flex-col gap-3 rounded-2xl border border-[#BFD3FF] bg-[#F8FAFF] px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-[#0F172A]">
               Đang cập nhật hồ sơ
             </p>
@@ -824,8 +851,8 @@ export function FinalResult({
       )}
 
       {pendingClusterVersion && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#BFD3FF] bg-[#F8FAFF] px-4 py-3 shadow-sm">
-          <div className="min-w-[260px] flex-1">
+        <div className="flex flex-col gap-3 rounded-2xl border border-[#BFD3FF] bg-[#F8FAFF] px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-[#0F172A]">
               Đã có cập nhật hồ sơ mới
             </p>
@@ -844,6 +871,7 @@ export function FinalResult({
       )}
 
       <div
+        ref={previewLayoutRef}
         className={cn(
           "grid min-w-0 gap-4",
           previewDocument &&
@@ -854,14 +882,14 @@ export function FinalResult({
             ? ({
                 "--result-preview-columns": `minmax(0, ${
                   100 - previewWidthPercent
-                }fr) minmax(300px, ${previewWidthPercent}fr)`,
+                }fr) minmax(460px, ${previewWidthPercent}fr)`,
               } as CSSProperties)
             : undefined
         }
       >
-        <div className="min-w-0 rounded-2xl border border-[#D8E1EC] bg-white shadow-sm">
-          <ScrollArea className="h-[560px] p-2 pr-3 sm:p-3 sm:pr-4">
-            <div className="flex min-w-0 flex-col gap-1 pr-2 pb-2">
+        <div className="min-w-0 overflow-hidden rounded-2xl border border-[#D8E1EC] bg-white shadow-sm">
+          <div className="h-[min(70svh,560px)] min-h-[360px] min-w-0 overflow-y-auto overflow-x-hidden p-2 pr-3 sm:p-3 sm:pr-4">
+            <div className="flex min-w-0 w-full max-w-full flex-col gap-1 overflow-hidden pr-2 pb-2">
               {tree.map((node) => (
                 <ResultNode
                   key={node.id}
@@ -895,15 +923,26 @@ export function FinalResult({
                 </div>
               )}
             </div>
-          </ScrollArea>
+          </div>
         </div>
         {previewDocument && (
-          <DocumentPdfPreview
-            sessionId={sessionId}
-            document={previewDocument}
-            className="h-[560px] min-w-0"
-            onClose={() => setSelectedPreviewDocumentId(null)}
-          />
+          <div className="relative min-w-0">
+            <button
+              type="button"
+              aria-label="Kéo để đổi kích thước preview"
+              title="Kéo để đổi kích thước preview"
+              onPointerDown={handlePreviewResizePointerDown}
+              className="group absolute top-0 bottom-0 -left-3 z-20 hidden w-5 cursor-col-resize items-center justify-center xl:flex"
+            >
+              <span className="h-16 w-1 rounded-full bg-[#0052FF] opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+            </button>
+            <DocumentPdfPreview
+              sessionId={sessionId}
+              document={previewDocument}
+              className="h-[min(70svh,560px)] min-h-[420px] min-w-0"
+              onClose={() => setSelectedPreviewDocumentId(null)}
+            />
+          </div>
         )}
       </div>
       {feedbackActionsPanel}
@@ -954,10 +993,10 @@ function ResultNode({
     compact && isDossier ? truncateWithDots(node.label, 76) : node.label
 
   return (
-    <div>
+    <div className="min-w-0 max-w-full overflow-hidden">
       <div
         className={cn(
-          "group flex min-h-10 min-w-0 items-center gap-2 rounded-xl px-2 py-1.5 transition-all",
+          "group flex min-h-10 min-w-0 max-w-full items-center gap-2 overflow-hidden rounded-xl px-2 py-1.5 transition-all",
           isDossier ? "border border-transparent" : "",
           canDrop && dropTargetId === node.id
             ? "border-[#0052FF]/40 bg-[#EAF1FF] shadow-[0_8px_24px_rgba(0,82,255,0.10)]"
@@ -999,10 +1038,13 @@ function ResultNode({
         )}
 
         <div className="min-w-0 flex-1 overflow-hidden">
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2 overflow-hidden">
             <span
               className={cn(
-                "truncate text-sm",
+                "min-w-0 flex-1 text-sm",
+                compact
+                  ? "line-clamp-2 whitespace-normal break-words leading-5"
+                  : "truncate",
                 isDossier
                   ? "font-semibold text-[#0F172A]"
                   : "font-medium text-[#0F172A]"
@@ -1157,8 +1199,10 @@ function DocumentRow({
   const metadataSummary = compact ? truncateWithDots(summary, 260) : summary
   const indentStep = compact ? 14 : 20
 
+  const detailIndent = 8 + (depth + 1) * indentStep
+
   return (
-    <div>
+    <div className="min-w-0 max-w-full overflow-hidden">
       <div
         draggable
         onClick={() => {
@@ -1175,7 +1219,7 @@ function DocumentRow({
           window.setTimeout(() => setDragging(false), 0)
         }}
         className={cn(
-          "mr-1 flex min-w-0 cursor-pointer items-start gap-2 rounded-xl px-2 py-1.5 transition-colors active:cursor-grabbing",
+          "mr-1 flex min-w-0 max-w-full cursor-pointer items-start gap-2 overflow-hidden rounded-xl px-2 py-1.5 transition-colors active:cursor-grabbing",
           selected
             ? "bg-[#EAF1FF] ring-1 ring-[#0052FF]/30"
             : expanded
@@ -1191,7 +1235,7 @@ function DocumentRow({
         </div>
         <div className="min-w-0 flex-1 overflow-hidden">
           <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-            <span className="truncate font-roboto text-xs font-medium text-[#334155]">
+            <span className="min-w-0 flex-1 truncate font-roboto text-xs font-medium text-[#334155]">
               {document.fileName}
             </span>
             {docType && (
@@ -1208,7 +1252,7 @@ function DocumentRow({
               <span
                 className={cn(
                   "flex shrink-0 items-center gap-1 text-[10px] text-[#64748B]",
-                  compact && "hidden 2xl:flex"
+                  compact && "hidden"
                 )}
               >
                 <CalendarDays className="size-3" /> {issuedDate}
@@ -1222,7 +1266,12 @@ function DocumentRow({
           </div>
           {displaySummary && (
             <p
-              className="mt-0.5 truncate text-xs text-[#64748B]"
+              className={cn(
+                "mt-0.5 text-xs text-[#64748B]",
+                compact
+                  ? "line-clamp-2 whitespace-normal break-words leading-4"
+                  : "truncate"
+              )}
               title={summary}
             >
               {displaySummary}
@@ -1266,16 +1315,17 @@ function DocumentRow({
           initial={{ opacity: 0, y: -4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.16 }}
-          className="mt-1 mr-3 rounded-2xl border border-[#D8E1EC] bg-white p-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)]"
+          className="mt-1 mr-3 min-w-0 overflow-hidden rounded-2xl border border-[#D8E1EC] bg-white p-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)]"
           style={{
-            marginLeft: `${8 + (depth + 1) * indentStep}px`,
+            marginLeft: `${detailIndent}px`,
+            width: `calc(100% - ${detailIndent + 12}px)`,
           }}
         >
           <div className="mb-3 flex items-start gap-2">
             <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#EAF1FF] text-[#0052FF]">
               <FileText className="size-4" />
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1 overflow-hidden">
               <p className="truncate text-sm font-semibold text-[#0F172A]">
                 {document.fileName}
               </p>
@@ -1284,11 +1334,11 @@ function DocumentRow({
               </p>
             </div>
           </div>
-          <div className="grid gap-2 text-xs">
+          <div className="grid min-w-0 gap-2 text-xs">
             <PreviewField label="Trích yếu" value={metadataSummary} wide />
             <div
               className={cn(
-                "grid grid-cols-1 gap-2",
+                "grid min-w-0 grid-cols-1 gap-2",
                 compact ? "md:grid-cols-2" : "md:grid-cols-3"
               )}
             >
@@ -1327,7 +1377,7 @@ function PreviewField({
   return (
     <div
       className={cn(
-        "min-w-0 rounded-lg bg-[#F8FAFC] px-2.5 py-2",
+        "min-w-0 overflow-hidden rounded-lg bg-[#F8FAFC] px-2.5 py-2",
         wide && "col-span-full"
       )}
     >
@@ -1337,8 +1387,8 @@ function PreviewField({
       </p>
       <p
         className={cn(
-          "text-xs font-medium text-[#0F172A]",
-          wide ? "line-clamp-3" : "truncate"
+          "min-w-0 whitespace-normal break-words text-xs font-medium text-[#0F172A] [overflow-wrap:anywhere]",
+          wide ? "line-clamp-3" : "line-clamp-2"
         )}
       >
         {value || "Chưa có"}

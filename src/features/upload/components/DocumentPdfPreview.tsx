@@ -129,7 +129,7 @@ export function DocumentPdfPreview({
   return (
     <div
       className={cn(
-        "flex min-h-[520px] min-w-0 flex-col overflow-hidden rounded-2xl border border-[#D8E1EC] bg-white shadow-sm",
+        "flex min-h-[360px] min-w-0 flex-col overflow-hidden rounded-2xl border border-[#D8E1EC] bg-white shadow-sm sm:min-h-[520px]",
         className
       )}
     >
@@ -195,7 +195,7 @@ export function DocumentPdfPreview({
             title={
               document ? `PDF preview ${document.fileName}` : "PDF preview"
             }
-            className="h-full min-h-[480px] w-full border-0 bg-white"
+            className="h-full min-h-[320px] w-full border-0 bg-white sm:min-h-[480px]"
           />
         ) : (
           <PreviewEmptyState state={state} hasDocument={Boolean(document)} />
@@ -214,7 +214,7 @@ function PreviewEmptyState({
 }) {
   if (state.status === "loading") {
     return (
-      <div className="flex h-full min-h-[480px] items-center justify-center text-sm text-[#64748B]">
+      <div className="flex h-full min-h-[320px] items-center justify-center text-sm text-[#64748B] sm:min-h-[480px]">
         <Loader2 className="mr-2 size-4 animate-spin text-[#0052FF]" />
         Đang tải preview PDF...
       </div>
@@ -223,7 +223,7 @@ function PreviewEmptyState({
 
   if (state.status === "error") {
     return (
-      <div className="flex h-full min-h-[480px] items-center justify-center px-6 text-center">
+      <div className="flex h-full min-h-[320px] items-center justify-center px-6 text-center sm:min-h-[480px]">
         <div className="max-w-sm text-sm text-[#64748B]">
           <TriangleAlert className="mx-auto mb-3 size-8 text-amber-500" />
           <p className="font-medium text-[#0F172A]">
@@ -236,7 +236,7 @@ function PreviewEmptyState({
   }
 
   return (
-    <div className="flex h-full min-h-[480px] items-center justify-center px-6 text-center">
+    <div className="flex h-full min-h-[320px] items-center justify-center px-6 text-center sm:min-h-[480px]">
       <div className="max-w-sm text-sm text-[#64748B]">
         <FileSearch className="mx-auto mb-3 size-8 text-[#94A3B8]" />
         <p className="font-medium text-[#0F172A]">

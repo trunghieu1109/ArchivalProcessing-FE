@@ -328,12 +328,12 @@ export function FinalizeArtifactsStep({
     >
       {!embedded && (
         <header className="border-b border-[#D8E1EC] bg-white/80 backdrop-blur">
-          <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-8 py-5">
-            <div className="flex min-w-0 items-center gap-4">
+          <div className="mx-auto flex max-w-[1560px] flex-col gap-4 px-4 py-4 sm:px-6 md:flex-row md:items-center md:justify-between md:gap-6 lg:px-8">
+            <div className="flex min-w-0 items-center gap-3 sm:gap-4">
               <img
                 src="/assets/mbfs.png"
                 alt="MBFS"
-                className="h-14 w-auto object-contain"
+                className="h-12 w-auto object-contain sm:h-14"
               />
               <div className="min-w-0">
                 <h1 className="truncate text-2xl font-bold tracking-tight">
@@ -356,10 +356,10 @@ export function FinalizeArtifactsStep({
         className={
           embedded
             ? "flex flex-col gap-6"
-            : "mx-auto flex max-w-6xl flex-col gap-6 px-8 py-8"
+            : "mx-auto flex max-w-[1560px] flex-col gap-6 px-4 py-5 sm:px-6 sm:py-8 lg:px-8"
         }
       >
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           {embedded ? (
             <div className="min-w-0">
               <p className="text-[11px] font-semibold tracking-[0.16em] text-[#64748B] uppercase">
@@ -386,11 +386,12 @@ export function FinalizeArtifactsStep({
               </Button>
             </div>
           )}
-          <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-3 lg:w-auto lg:flex lg:flex-wrap lg:items-center lg:justify-end">
             <Button
               variant="outline"
               onClick={() => void refreshArtifacts()}
               disabled={loading || finalizing}
+              className="w-full lg:w-auto"
             >
               {loading ? (
                 <Loader2 data-icon="inline-start" className="animate-spin" />
@@ -403,6 +404,7 @@ export function FinalizeArtifactsStep({
               variant="outline"
               onClick={() => void startFinalize()}
               disabled={finalizing || !sessionId}
+              className="w-full lg:w-auto"
             >
               {finalizing ? (
                 <Loader2 data-icon="inline-start" className="animate-spin" />
@@ -414,6 +416,7 @@ export function FinalizeArtifactsStep({
             <Button
               onClick={handleDownloadAll}
               disabled={visibleArtifacts.length === 0 || !sessionId}
+              className="w-full lg:w-auto"
             >
               <Archive data-icon="inline-start" />
               Tải tất cả
@@ -489,8 +492,8 @@ export function FinalizeArtifactsStep({
             ))}
           </div>
         ) : visibleArtifacts.length > 0 ? (
-          <div className="grid gap-4 xl:grid-cols-[minmax(16rem,19rem)_minmax(0,1fr)]">
-            <div className="grid content-start gap-2.5">
+          <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)]">
+            <div className="grid min-w-0 content-start gap-2.5">
               {visibleArtifacts.map((artifact, index) => (
                 <ArtifactRow
                   key={artifact.id}
@@ -572,13 +575,13 @@ function ArtifactRow({
         }
       }}
       className={cn(
-        "flex min-h-16 items-center justify-between gap-2.5 rounded-xl border bg-white px-3 py-2.5 text-left shadow-sm transition-all",
+        "flex min-h-16 min-w-0 items-center justify-between gap-2.5 rounded-xl border bg-white px-3 py-2.5 text-left shadow-sm transition-all",
         selected
           ? "border-[#0052FF]/45 ring-2 ring-[#0052FF]/10"
           : "border-[#D8E1EC] hover:border-[#0052FF]/35"
       )}
     >
-      <div className="flex min-w-0 items-center gap-2.5">
+      <div className="flex min-w-0 flex-1 items-center gap-2.5">
         <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#EAF1FF] text-[#0052FF]">
           <FileText className="size-4" />
         </div>
@@ -626,7 +629,7 @@ function ArtifactPreviewPanel({
   previewUrl: string
 }) {
   return (
-    <section className="min-h-[640px] overflow-hidden rounded-2xl border border-[#D8E1EC] bg-white shadow-sm">
+    <section className="min-h-[420px] min-w-0 overflow-hidden rounded-2xl border border-[#D8E1EC] bg-white shadow-sm">
       <div className="flex min-h-14 items-center justify-between gap-3 border-b border-[#EEF2F7] px-4 py-3">
         <div className="min-w-0">
           <p className="text-sm font-semibold text-[#0F172A]">Xem trước</p>
@@ -645,10 +648,10 @@ function ArtifactPreviewPanel({
           title={`Xem trước ${artifact.file_name}`}
           src={previewUrl}
           sandbox=""
-          className="h-[640px] w-full bg-white"
+          className="h-[min(72svh,760px)] min-h-[420px] w-full bg-white"
         />
       ) : (
-        <div className="flex h-[640px] flex-col items-center justify-center px-8 text-center text-sm text-[#64748B]">
+        <div className="flex h-[min(72svh,760px)] min-h-[420px] flex-col items-center justify-center px-8 text-center text-sm text-[#64748B]">
           <div className="mb-3 flex size-12 items-center justify-center rounded-2xl bg-[#EAF1FF] text-[#0052FF]">
             <Eye className="size-6" />
           </div>

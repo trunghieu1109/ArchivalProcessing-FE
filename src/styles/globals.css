@@ -107,7 +107,7 @@
   h1,
   h2 {
     font-family: "Calistoga", Georgia, serif;
-    letter-spacing: -0.02em;
+    letter-spacing: 0;
   }
   button:not(:disabled),
   [role="button"]:not(:disabled) {

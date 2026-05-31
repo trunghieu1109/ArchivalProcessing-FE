@@ -242,8 +242,8 @@ export function ProcessStep({
       transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
       className="flex flex-col gap-4"
     >
-      <div className="flex items-start justify-between gap-4">
-        <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <h2 className="text-2xl text-foreground">Xử lý & lập hồ sơ</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Metadata được lấy từ backend. Sau khi metadata được xác nhận, màn
@@ -262,7 +262,7 @@ export function ProcessStep({
 
       <div className="overflow-hidden rounded-2xl border border-[#D8E1EC] bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
+          <div className="min-w-0 flex-1">
             <p className="text-[11px] font-semibold tracking-[0.16em] text-[#64748B] uppercase">
               Tiến độ metadata
             </p>
@@ -274,7 +274,7 @@ export function ProcessStep({
                   : metadataMessage}
             </p>
           </div>
-          <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="grid w-full grid-cols-3 gap-2 text-center sm:w-auto">
             <ProgressMetric label="Tài liệu" value={expectedCount} />
             <ProgressMetric label="Đã extract" value={readyItems.length} />
             <ProgressMetric label="Đã xác nhận" value={verifiedItems.length} />
@@ -296,13 +296,13 @@ export function ProcessStep({
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(380px,1.05fr)]">
+      <div className="grid gap-4 2xl:grid-cols-[minmax(0,0.9fr)_minmax(400px,1.1fr)]">
         <div className="flex min-w-0 flex-col gap-3">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
             <span className="font-roboto text-[11px] font-semibold tracking-[0.15em] text-muted-foreground uppercase">
               Metadata tài liệu
             </span>
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
               {metadataLoading && (
                 <span className="flex items-center gap-1.5 text-xs text-[#64748B]">
                   <Loader2 className="size-3 animate-spin text-[#0052FF]" />
@@ -327,7 +327,7 @@ export function ProcessStep({
               )}
             </div>
           </div>
-          <ScrollArea className="h-[640px]">
+          <ScrollArea className="h-[min(70svh,640px)] min-h-[360px]">
             <div className="flex flex-col gap-2 pr-1">
               {sortedItems.map((item) => (
                 <MetadataCard
@@ -358,12 +358,12 @@ export function ProcessStep({
         <DocumentPdfPreview
           sessionId={sessionId}
           document={previewDocument}
-          className="h-[678px]"
+          className="h-[min(72svh,678px)] min-h-[420px]"
         />
       </div>
 
-      <div className="flex items-center justify-between rounded-2xl border border-[#CBD5E1] bg-white px-6 py-4 shadow-sm">
-        <div className="text-sm text-[#475569]">
+      <div className="flex flex-col gap-4 rounded-2xl border border-[#CBD5E1] bg-white px-4 py-4 shadow-sm sm:px-6 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0 text-sm text-[#475569]">
           {pendingReadyItems.length > 0 && verifiedItems.length === 0 ? (
             <span className="flex items-center gap-2 text-amber-700">
               <AlertTriangle className="size-4" />
@@ -391,7 +391,7 @@ export function ProcessStep({
           disabled={!canContinue}
           onClick={() => onContinue([])}
           className={cn(
-            "group flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold transition-all duration-200",
+            "group flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold transition-all duration-200 sm:w-auto",
             canContinue
               ? "text-white hover:-translate-y-0.5 active:scale-[0.98]"
               : "cursor-not-allowed bg-[#CBD5E1] text-[#475569]"
