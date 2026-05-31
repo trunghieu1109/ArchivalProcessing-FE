@@ -7,6 +7,7 @@ import {
   digitizationToFolderStatus,
   getDigitizationStatus,
   isDigitizationComplete,
+  normalizeDocumentReviewStatus,
   restartDocumentMetadata,
   startDigitization,
   type SessionDocumentResponse,
@@ -314,16 +315,17 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
 function sessionDocumentToJobSummary(
   document: SessionDocumentResponse
 ): JobSummary {
+  const lightMetadata = buildDisplayMetadata(document)
   return {
     id: document.id,
     document_id: document.document_id,
     data_path: document.data_path,
     status: document.ocr_status,
-    review_status: document.review_status,
+    review_status: normalizeDocumentReviewStatus(document, lightMetadata),
     metadata_ready: document.metadata_ready,
     metadata_final: document.metadata_final,
     error: document.error,
-    light_metadata: buildDisplayMetadata(document),
+    light_metadata: lightMetadata,
     normalized_metadata: document.normalized_metadata,
     raw_metadata: document.raw_metadata,
   }

@@ -135,6 +135,7 @@ function warningEntryFromField(
 ): WarningEntry | null {
   if (!isRecord(value)) {
     if (!hasWarningContent(value)) return null
+    if (hasResolvedFieldValue(meta, field) && isMissingValue(value)) return null
     return { field, message: warningMessage(value) }
   }
 
@@ -184,6 +185,18 @@ function isOkStatus(status: string): boolean {
 
 function isMissingStatus(status: string): boolean {
   return ["missing", "empty", "not_found", "not found"].includes(status)
+}
+
+function isMissingValue(value: unknown): boolean {
+  if (typeof value === "string") {
+    return ["missing", "empty", "not_found", "notfound"].includes(
+      normalizeFieldName(value)
+    )
+  }
+  if (Array.isArray(value)) {
+    return value.every(isMissingValue)
+  }
+  return false
 }
 
 function hasResolvedFieldValue(

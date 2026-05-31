@@ -74,7 +74,7 @@ export function MetadataCard({
   const warningFields = getWarningFields(item.light_metadata)
   const warningEntries = getWarningEntries(item.light_metadata)
   const hasWarnings = hasMetadataWarning(item)
-  const verified = item.review_status === "verified"
+  const verified = item.review_status === "verified" || (item.metadata_ready && !hasWarnings)
   const metadataFailed = isMetadataFailed(item.status)
   const metadataUnavailable = item.status === "failed" && !item.metadata_ready
 

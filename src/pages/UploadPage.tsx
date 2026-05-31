@@ -27,6 +27,7 @@ import {
   getActivePlan,
   getSession,
   listSessionEvents,
+  normalizeDocumentReviewStatus,
   patchActivePlan,
   uploadSessionInput,
   waitForActivePlan,
@@ -388,18 +389,22 @@ export function UploadPage() {
   const ocr = useOcrFolder(sessionId)
   const ocrMetadataItems = useMemo<PdfMetadata[]>(
     () =>
-      ocr.status?.jobs.map((job) => ({
-        id: job.id,
-        document_id: job.document_id,
-        data_path: job.data_path,
-        status: job.status,
-        review_status: job.review_status,
-        metadata_ready: job.metadata_ready,
-        metadata_final: job.metadata_final,
-        error: job.error,
-        light_metadata: buildDisplayMetadata(job),
-        applied: job.review_status === "verified",
-      })) ?? [],
+      ocr.status?.jobs.map((job) => {
+        const lightMetadata = buildDisplayMetadata(job)
+        const reviewStatus = normalizeDocumentReviewStatus(job, lightMetadata)
+        return {
+          id: job.id,
+          document_id: job.document_id,
+          data_path: job.data_path,
+          status: job.status,
+          review_status: reviewStatus,
+          metadata_ready: job.metadata_ready,
+          metadata_final: job.metadata_final,
+          error: job.error,
+          light_metadata: lightMetadata,
+          applied: reviewStatus === "verified",
+        }
+      }) ?? [],
     [ocr.status]
   )
   const ocrPdfPaths = useMemo(

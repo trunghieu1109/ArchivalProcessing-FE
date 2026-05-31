@@ -2,7 +2,10 @@ import type {
   FolderStatusResponse,
   JobSummary,
 } from "@/features/upload/api/ocrApi"
-import { buildDisplayMetadata } from "@/features/upload/lib/metadata"
+import {
+  buildDisplayMetadata,
+  hasMetadataWarning,
+} from "@/features/upload/lib/metadata"
 
 export type SessionInputFileType =
   | "arrangement_plan"
@@ -1006,19 +1009,22 @@ export function digitizationToFolderStatus(
 ): FolderStatusResponse {
   const batch = response?.batches[0]
   const documents = response?.documents ?? []
-  const jobs: JobSummary[] = documents.map((document) => ({
-    id: document.id,
-    document_id: document.document_id,
-    data_path: document.data_path,
-    status: document.ocr_status,
-    review_status: document.review_status,
-    metadata_ready: document.metadata_ready,
-    metadata_final: document.metadata_final,
-    error: document.error,
-    light_metadata: buildDisplayMetadata(document),
-    normalized_metadata: document.normalized_metadata,
-    raw_metadata: document.raw_metadata,
-  }))
+  const jobs: JobSummary[] = documents.map((document) => {
+    const lightMetadata = buildDisplayMetadata(document)
+    return {
+      id: document.id,
+      document_id: document.document_id,
+      data_path: document.data_path,
+      status: document.ocr_status,
+      review_status: normalizeDocumentReviewStatus(document, lightMetadata),
+      metadata_ready: document.metadata_ready,
+      metadata_final: document.metadata_final,
+      error: document.error,
+      light_metadata: lightMetadata,
+      normalized_metadata: document.normalized_metadata,
+      raw_metadata: document.raw_metadata,
+    }
+  })
   return {
     folder_path: batch?.folder_path ?? fallbackFolderPath,
     recursive: batch?.recursive ?? true,
@@ -1029,6 +1035,26 @@ export function digitizationToFolderStatus(
       batch?.status_counts ?? response?.summary.status_counts ?? {},
     jobs,
   }
+}
+
+export function normalizeDocumentReviewStatus(
+  document: { review_status: string; metadata_ready: boolean },
+  lightMetadata: Record<string, unknown>
+): string {
+  const status = String(document.review_status || "").trim().toLowerCase()
+  if (status === "verified" || status === "rejected") return status
+  const hasWarning = hasMetadataWarning({
+    review_status: status,
+    light_metadata: lightMetadata,
+  })
+  if (status === "warning" && hasWarning) return status
+  if (
+    document.metadata_ready &&
+    !hasWarning
+  ) {
+    return "verified"
+  }
+  return status || "pending"
 }
 
 export function isDigitizationComplete(

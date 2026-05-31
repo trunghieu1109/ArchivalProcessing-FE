@@ -6,6 +6,7 @@ import { cn } from "@/shared/lib/utils"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import {
+  normalizeDocumentReviewStatus,
   verifyDocumentMetadata,
   type SessionDocumentResponse,
 } from "@/features/upload/api/sessionApi"
@@ -430,7 +431,8 @@ function mergeIncomingMetadata(
   incoming: PdfMetadata[]
 ): PdfMetadata[] {
   const previousById = new Map(previous.map((item) => [item.id, item]))
-  return incoming.map((item) => {
+  return incoming.map((rawItem) => {
+    const item = normalizePdfMetadata(rawItem)
     const local = previousById.get(item.id)
     if (
       local?.review_status === "verified" &&
@@ -474,17 +476,37 @@ function replaceVerifiedDocuments(
 function documentResponseToPdfMetadata(
   document: SessionDocumentResponse
 ): PdfMetadata {
+  const lightMetadata = buildDisplayMetadata(document)
+  const reviewStatus = normalizeDocumentReviewStatus(document, lightMetadata)
   return {
     id: document.id,
     document_id: document.document_id,
     data_path: document.data_path,
     status: document.ocr_status,
-    review_status: document.review_status,
+    review_status: reviewStatus,
     metadata_ready: document.metadata_ready,
     metadata_final: document.metadata_final,
     error: document.error,
-    light_metadata: buildDisplayMetadata(document),
-    applied: document.review_status === "verified",
+    light_metadata: lightMetadata,
+    applied: reviewStatus === "verified",
+  }
+}
+
+function normalizePdfMetadata(item: PdfMetadata): PdfMetadata {
+  const reviewStatus = normalizeDocumentReviewStatus(
+    {
+      review_status: item.review_status,
+      metadata_ready: item.metadata_ready,
+    },
+    item.light_metadata
+  )
+  if (reviewStatus === item.review_status && item.applied === (reviewStatus === "verified")) {
+    return item
+  }
+  return {
+    ...item,
+    review_status: reviewStatus,
+    applied: reviewStatus === "verified",
   }
 }
 
