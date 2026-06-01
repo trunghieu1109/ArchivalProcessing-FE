@@ -16,7 +16,8 @@ import { buildDisplayMetadata } from "@/features/upload/lib/metadata"
 
 export type OcrFolderState = "idle" | "starting" | "polling" | "done" | "error"
 
-const OCR_POLL_TIMEOUT_MS = 10 * 60 * 1000
+const OCR_POLL_INTERVAL_MS = 2_000
+const OCR_POLL_RETRY_INTERVAL_MS = 5_000
 
 export interface UseOcrFolderResult {
   state: OcrFolderState
@@ -37,45 +38,57 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
   const tokenRef = useRef(0)
   const rejectRef = useRef<((error: Error) => void) | null>(null)
 
-  const stop = () => {
+  const stop = useCallback(() => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current)
       timeoutRef.current = null
     }
-  }
+  }, [])
 
-  const pollUntilComplete = (
-    token: number,
-    fallbackFolderPath: string,
-    startedAt: number
-  ) => {
-    const poll = async () => {
-      if (tokenRef.current !== token) return
-      try {
-        if (Date.now() - startedAt > OCR_POLL_TIMEOUT_MS) {
-          throw new Error("Quá thời gian chờ trạng thái OCR. Hãy kiểm tra backend worker.")
+  const schedulePollRetry = useCallback(
+    (
+      callback: () => void,
+      message: string,
+      retryMs = OCR_POLL_RETRY_INTERVAL_MS
+    ) => {
+      setError(`${message} Đang thử lại...`)
+      setState("polling")
+      timeoutRef.current = setTimeout(callback, retryMs)
+    },
+    []
+  )
+
+  const pollUntilComplete = useCallback(
+    (token: number, fallbackFolderPath: string) => {
+      const poll = async () => {
+        if (tokenRef.current !== token) return
+        try {
+          if (!sessionId) return
+          const result = await getDigitizationStatus(sessionId)
+          setStatus(digitizationToFolderStatus(result, fallbackFolderPath))
+          setError("")
+          if (isDigitizationComplete(result)) {
+            stop()
+            setState("done")
+            return
+          }
+          setState("polling")
+          timeoutRef.current = setTimeout(poll, OCR_POLL_INTERVAL_MS)
+        } catch (err) {
+          if (tokenRef.current !== token) return
+          schedulePollRetry(
+            poll,
+            err instanceof Error
+              ? err.message
+              : "Không thể kiểm tra trạng thái OCR."
+          )
         }
-        if (!sessionId) return
-        const result = await getDigitizationStatus(sessionId)
-        setStatus(digitizationToFolderStatus(result, fallbackFolderPath))
-        setError("")
-        if (isDigitizationComplete(result)) {
-          stop()
-          setState("done")
-          return
-        }
-        setState("polling")
-        timeoutRef.current = setTimeout(poll, 2_000)
-      } catch (err) {
-        stop()
-        const message = err instanceof Error ? err.message : "Không thể kiểm tra trạng thái OCR."
-        setError(message)
-        setState("error")
       }
-    }
 
-    void poll()
-  }
+      void poll()
+    },
+    [schedulePollRetry, sessionId, stop]
+  )
 
   const reset = useCallback(() => {
     stop()
@@ -85,7 +98,7 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
     setState("idle")
     setStatus(null)
     setError("")
-  }, [])
+  }, [stop])
 
   const refresh = useCallback(async () => {
     if (!sessionId) {
@@ -158,11 +171,12 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
         throw new Error("Chưa có session để chạy lại metadata.")
       }
       stop()
-      rejectRef.current?.(new Error("Quá trình chờ kết quả OCR đã được thay thế."))
+      rejectRef.current?.(
+        new Error("Quá trình chờ kết quả OCR đã được thay thế.")
+      )
       rejectRef.current = null
       const token = tokenRef.current + 1
       tokenRef.current = token
-      const startedAt = Date.now()
       const fallbackFolderPath = status?.folder_path ?? ""
       setState("polling")
       setError("")
@@ -170,10 +184,16 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
         force: true,
       })
       mergeVerifiedDocuments([restarted])
-      pollUntilComplete(token, fallbackFolderPath || restarted.data_path, startedAt)
+      pollUntilComplete(token, fallbackFolderPath || restarted.data_path)
       return restarted
     },
-    [mergeVerifiedDocuments, sessionId, status?.folder_path]
+    [
+      mergeVerifiedDocuments,
+      pollUntilComplete,
+      sessionId,
+      status?.folder_path,
+      stop,
+    ]
   )
 
   useEffect(() => {
@@ -213,11 +233,18 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
         }
 
         setState("polling")
-        timeoutRef.current = setTimeout(pollExistingStatus, 2_000)
+        timeoutRef.current = setTimeout(
+          pollExistingStatus,
+          OCR_POLL_INTERVAL_MS
+        )
       } catch (err) {
         if (tokenRef.current !== token) return
-        setError(err instanceof Error ? err.message : "Không thể tải trạng thái số hóa.")
-        setState("error")
+        schedulePollRetry(
+          pollExistingStatus,
+          err instanceof Error
+            ? err.message
+            : "Không thể tải trạng thái số hóa."
+        )
       }
     }
 
@@ -228,10 +255,13 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
         timeoutRef.current = null
       }
     }
-  }, [sessionId])
+  }, [schedulePollRetry, sessionId, stop])
 
   const start = useCallback(
-    async (folderPath: string, options: { maxFiles?: number; confirmedPlanVersionId: string }) => {
+    async (
+      folderPath: string,
+      options: { maxFiles?: number; confirmedPlanVersionId: string }
+    ) => {
       if (!sessionId) {
         throw new Error("Chưa có session để bắt đầu OCR.")
       }
@@ -239,11 +269,12 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
         throw new Error("Chưa xác nhận phương án chỉnh lý.")
       }
       stop()
-      rejectRef.current?.(new Error("Quá trình chờ kết quả OCR đã được thay thế."))
+      rejectRef.current?.(
+        new Error("Quá trình chờ kết quả OCR đã được thay thế.")
+      )
       rejectRef.current = null
       const token = tokenRef.current + 1
       tokenRef.current = token
-      const startedAt = Date.now()
       setState("starting")
       setStatus(null)
       setError("")
@@ -269,35 +300,38 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
         }
         const poll = async () => {
           if (tokenRef.current !== token) {
-            rejectPolling(new Error("Đã hủy quá trình chờ kết quả OCR."))
+            rejectPolling(
+              new Error("Đã hủy quá trình chờ kết quả OCR.")
+            )
             return
           }
           try {
-            if (Date.now() - startedAt > OCR_POLL_TIMEOUT_MS) {
-              throw new Error("Quá thời gian chờ trạng thái OCR. Hãy kiểm tra backend worker.")
-            }
             const result = await getDigitizationStatus(sessionId)
             setStatus(digitizationToFolderStatus(result, folderPath))
+            setError("")
             if (isDigitizationComplete(result)) {
               stop()
               setState("done")
               resolvePolling()
               return
             }
-            timeoutRef.current = setTimeout(poll, 2_000)
+            setState("polling")
+            timeoutRef.current = setTimeout(poll, OCR_POLL_INTERVAL_MS)
           } catch (err) {
-            stop()
-            const message = err instanceof Error ? err.message : "Không thể kiểm tra trạng thái OCR."
-            setError(message)
-            setState("error")
-            rejectPolling(new Error(message))
+            if (tokenRef.current !== token) return
+            schedulePollRetry(
+              poll,
+              err instanceof Error
+                ? err.message
+                : "Không thể kiểm tra trạng thái OCR."
+            )
           }
         }
 
         void poll()
       })
     },
-    [sessionId]
+    [schedulePollRetry, sessionId, stop]
   )
 
   return {

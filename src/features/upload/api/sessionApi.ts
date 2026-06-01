@@ -387,18 +387,14 @@ async function uploadRawZipSessionInputDirect(
     return uploadRawZipSessionInputChunked(sessionId, file, options)
   }
   const contentType = file.type || defaultContentType(file.name)
-  const presign = await requestJson<SessionInputRemoteUploadPresignResponse>(
+  const presign = await postJson<SessionInputRemoteUploadPresignResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/inputs/remote-upload/presign`,
     {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        file_type: "raw_zip",
-        file_name: file.name,
-        content_type: contentType,
-        size_bytes: file.size,
-        created_by: options.createdBy ?? "ui",
-      }),
+      file_type: "raw_zip",
+      file_name: file.name,
+      content_type: contentType,
+      size_bytes: file.size,
+      created_by: options.createdBy ?? "ui",
     }
   )
   if (!presign.remote_file_id) {
@@ -434,21 +430,17 @@ async function uploadRawZipSessionInputDirect(
   options.onProgress?.(
     uploadProgressSnapshot("processing", file.size, file.size)
   )
-  const completed = await requestJson<SessionInputUploadResponse>(
+  const completed = await postJson<SessionInputUploadResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/inputs/remote-upload/complete`,
     {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        file_type: "raw_zip",
-        file_name: file.name,
-        content_type: contentType,
-        size_bytes: file.size,
-        remote_batch_id: presign.remote_batch_id,
-        remote_file_id: presign.remote_file_id,
-        upload_url: presign.upload_url,
-        created_by: options.createdBy ?? "ui",
-      }),
+      file_type: "raw_zip",
+      file_name: file.name,
+      content_type: contentType,
+      size_bytes: file.size,
+      remote_batch_id: presign.remote_batch_id,
+      remote_file_id: presign.remote_file_id,
+      upload_url: presign.upload_url,
+      created_by: options.createdBy ?? "ui",
     }
   )
   options.onProgress?.(uploadProgressSnapshot("done", file.size, file.size))
@@ -809,7 +801,8 @@ export async function listSessionEvents(
   options: { afterId?: number; limit?: number } = {}
 ): Promise<{ session_id: string; events: SessionProgressEvent[] }> {
   const query = new URLSearchParams()
-  if (options.afterId !== undefined) query.set("after_id", String(options.afterId))
+  if (options.afterId !== undefined)
+    query.set("after_id", String(options.afterId))
   if (options.limit !== undefined) query.set("limit", String(options.limit))
   const suffix = query.toString()
   return requestJson<{ session_id: string; events: SessionProgressEvent[] }>(
@@ -1041,17 +1034,16 @@ export function normalizeDocumentReviewStatus(
   document: { review_status: string; metadata_ready: boolean },
   lightMetadata: Record<string, unknown>
 ): string {
-  const status = String(document.review_status || "").trim().toLowerCase()
+  const status = String(document.review_status || "")
+    .trim()
+    .toLowerCase()
   if (status === "verified" || status === "rejected") return status
   const hasWarning = hasMetadataWarning({
     review_status: status,
     light_metadata: lightMetadata,
   })
   if (status === "warning" && hasWarning) return status
-  if (
-    document.metadata_ready &&
-    !hasWarning
-  ) {
+  if (document.metadata_ready && !hasWarning) {
     return "verified"
   }
   return status || "pending"
@@ -1061,7 +1053,10 @@ export function isDigitizationComplete(
   response: DigitizationStatusResponse | null
 ): boolean {
   const batch = response?.batches[0]
-  if (!batch || !["done", "completed_with_errors", "failed"].includes(batch.status)) {
+  if (
+    !batch ||
+    !["done", "completed_with_errors", "failed"].includes(batch.status)
+  ) {
     return false
   }
   const documents = response?.documents ?? []
@@ -1077,11 +1072,21 @@ export function isDigitizationComplete(
   return documents.every(isDigitizationDocumentComplete)
 }
 
-function isDigitizationDocumentComplete(document: DigitizationDocument): boolean {
-  const status = String(document.ocr_status ?? "").trim().toLowerCase()
+function isDigitizationDocumentComplete(
+  document: DigitizationDocument
+): boolean {
+  const status = String(document.ocr_status ?? "")
+    .trim()
+    .toLowerCase()
   return (
     Boolean(document.metadata_final) ||
-    ["done", "failed", "final_failed", "signature_failed", "cancelled"].includes(status)
+    [
+      "done",
+      "failed",
+      "final_failed",
+      "signature_failed",
+      "cancelled",
+    ].includes(status)
   )
 }
 
@@ -1157,6 +1162,17 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(await responseErrorMessage(response))
   }
   return response.json() as Promise<T>
+}
+
+async function postJson<T>(
+  path: string,
+  payload: Record<string, unknown>
+): Promise<T> {
+  return requestJson<T>(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
 }
 
 async function withSessionUploadEventProgress<T>(

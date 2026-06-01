@@ -13,7 +13,7 @@ import { AnimatePresence, motion } from "framer-motion"
 import { cn } from "@/shared/lib/utils"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
-import { METADATA_LABELS } from "./MetadataCard"
+import { METADATA_FIELDS, metadataFieldText } from "./MetadataCard"
 import type { PdfMetadata } from "@/features/upload/types"
 import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
 
@@ -63,16 +63,16 @@ function PdfPreviewModal({
         <div className="p-5">
           {metadata ? (
             <div className="flex flex-col gap-2">
-              {Object.entries(METADATA_LABELS).map(([key, label]) => {
-                const value = metadata.light_metadata[key]
-                if (!value) return null
-                const display = Array.isArray(value)
-                  ? value.map(String).join(", ")
-                  : String(value)
+              {METADATA_FIELDS.map((field) => {
+                const display = metadataFieldText(
+                  metadata.light_metadata,
+                  field.aliases
+                )
+                if (!display) return null
                 return (
-                  <div key={key} className="flex gap-3 text-sm">
+                  <div key={field.key} className="flex gap-3 text-sm">
                     <span className="w-36 shrink-0 font-medium text-muted-foreground">
-                      {label}
+                      {field.label}
                     </span>
                     <span className="flex-1 text-foreground">{display}</span>
                   </div>

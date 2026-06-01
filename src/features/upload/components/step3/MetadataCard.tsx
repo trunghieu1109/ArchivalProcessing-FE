@@ -38,12 +38,70 @@ export const METADATA_LABELS: Record<string, string> = {
   "nguoi ky": "Người ký",
 }
 
+export const METADATA_FIELDS = [
+  {
+    key: "document_summary",
+    label: METADATA_LABELS.document_summary,
+    aliases: ["document_summary", "trich_yeu_tai_lieu", "trich_yeu"],
+  },
+  {
+    key: "document_type",
+    label: METADATA_LABELS.document_type,
+    aliases: ["document_type", "loai_van_ban", "loai_tai_lieu"],
+  },
+  {
+    key: "document_number",
+    label: METADATA_LABELS.document_number,
+    aliases: ["document_number", "so_hieu_tai_lieu", "so_hieu", "so_ky_hieu"],
+  },
+  {
+    key: "issuing_agency",
+    label: METADATA_LABELS.issuing_agency,
+    aliases: ["issuing_agency", "co_quan_ban_hanh", "don_vi_ban_hanh"],
+  },
+  {
+    key: "issued_date",
+    label: METADATA_LABELS.issued_date,
+    aliases: ["issued_date", "ngay_ban_hanh", "ngay_thang_van_ban"],
+  },
+  {
+    key: "signer",
+    label: METADATA_LABELS.signer,
+    aliases: ["signer", "nguoi_ky", "nguoi ky", "nguoi_ki", "nguoi_ky_ten"],
+  },
+] as const
+
+export function metadataFieldText(
+  metadata: Record<string, unknown>,
+  aliases: readonly string[]
+): string {
+  for (const alias of aliases) {
+    const value = metadata[alias]
+    if (!hasMetadataValue(value)) continue
+    return Array.isArray(value) ? value.map(String).join(", ") : String(value)
+  }
+  return ""
+}
+
 function isMetadataFailed(status: string): boolean {
   return ["failed", "final_failed", "signature_failed"].includes(status)
 }
 
 function warningLabel(field: string): string {
   return METADATA_LABELS[field] ?? field.replace(/[_-]+/g, " ")
+}
+
+function hasMetadataValue(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(hasMetadataValue)
+  if (typeof value === "string") return value.trim().length > 0
+  return value !== null && value !== undefined && value !== false
+}
+
+function fieldHasWarning(
+  warningFields: Set<string>,
+  aliases: readonly string[]
+): boolean {
+  return aliases.some((alias) => warningFields.has(alias))
 }
 
 interface MetadataCardProps {
@@ -80,11 +138,11 @@ export function MetadataCard({
 
   const startEdit = () => {
     const nextDraft: Record<string, string> = {}
-    Object.keys(METADATA_LABELS).forEach((key) => {
-      const value = item.light_metadata[key]
-      nextDraft[key] = Array.isArray(value)
-        ? value.map(String).join(", ")
-        : String(value ?? "")
+    METADATA_FIELDS.forEach((field) => {
+      nextDraft[field.key] = metadataFieldText(
+        item.light_metadata,
+        field.aliases
+      )
     })
     setDraft(nextDraft)
     setEditing(true)
@@ -93,8 +151,11 @@ export function MetadataCard({
 
   const commitEdit = async () => {
     const updated: Record<string, unknown> = { ...item.light_metadata }
-    Object.entries(draft).forEach(([key, value]) => {
-      updated[key] = value
+    METADATA_FIELDS.forEach((field) => {
+      field.aliases.forEach((alias) => {
+        if (alias !== field.key) delete updated[alias]
+      })
+      updated[field.key] = draft[field.key] ?? ""
     })
     updated["_warnings"] = {}
     await applyMetadata(updated)
@@ -207,17 +268,17 @@ export function MetadataCard({
             <div className="border-t border-border px-4 py-3">
               {editing ? (
                 <div className="flex flex-col gap-2">
-                  {Object.entries(METADATA_LABELS).map(([key, label]) => (
-                    <div key={key} className="flex items-start gap-2">
+                  {METADATA_FIELDS.map((field) => (
+                    <div key={field.key} className="flex items-start gap-2">
                       <span className="w-32 shrink-0 pt-2 text-[11px] font-medium text-muted-foreground">
-                        {label}
+                        {field.label}
                       </span>
                       <Input
-                        value={draft[key] ?? ""}
+                        value={draft[field.key] ?? ""}
                         onChange={(event) =>
                           setDraft((current) => ({
                             ...current,
-                            [key]: event.target.value,
+                            [field.key]: event.target.value,
                           }))
                         }
                         className="h-7 flex-1 text-xs"
@@ -281,16 +342,16 @@ export function MetadataCard({
                       )}
                     </div>
                   )}
-                  {Object.entries(METADATA_LABELS).map(([key, label]) => {
-                    const value = item.light_metadata[key]
-                    if (!value) return null
-                    const display = Array.isArray(value)
-                      ? value.map(String).join(", ")
-                      : String(value)
-                    const isWarning = warningFields.has(key)
+                  {METADATA_FIELDS.map((field) => {
+                    const display = metadataFieldText(
+                      item.light_metadata,
+                      field.aliases
+                    )
+                    if (!display) return null
+                    const isWarning = fieldHasWarning(warningFields, field.aliases)
                     return (
                       <div
-                        key={key}
+                        key={field.key}
                         className={cn(
                           "flex gap-2 rounded-md px-2 py-1 text-xs",
                           isWarning && "bg-amber-50"
@@ -304,7 +365,7 @@ export function MetadataCard({
                               : "text-muted-foreground"
                           )}
                         >
-                          {label}
+                          {field.label}
                           {isWarning && (
                             <AlertTriangle className="ml-1 inline size-2.5 text-amber-500" />
                           )}

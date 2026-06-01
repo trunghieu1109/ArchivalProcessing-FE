@@ -30,6 +30,8 @@ interface PreviewState {
   error: string
 }
 
+const PREVIEW_RETRY_INTERVAL_MS = 2_000
+
 export function DocumentPdfPreview({
   sessionId,
   document,
@@ -51,6 +53,13 @@ export function DocumentPdfPreview({
 
   useEffect(() => {
     let cancelled = false
+    let retryTimeout: ReturnType<typeof setTimeout> | null = null
+
+    const scheduleRetry = () => {
+      retryTimeout = setTimeout(() => {
+        if (!cancelled) setRefreshKey((key) => key + 1)
+      }, PREVIEW_RETRY_INTERVAL_MS)
+    }
 
     if (!document) {
       setState({ status: "idle", url: "", error: "" })
@@ -109,6 +118,7 @@ export function DocumentPdfPreview({
             error:
               err instanceof Error ? err.message : "Không thể tải preview PDF.",
           }))
+          scheduleRetry()
         }
       }
     }
@@ -116,8 +126,9 @@ export function DocumentPdfPreview({
     void load()
     return () => {
       cancelled = true
+      if (retryTimeout) clearTimeout(retryTimeout)
     }
-  }, [documentId, documentKey, refreshKey, sessionId])
+  }, [document, documentId, documentKey, refreshKey, sessionId])
 
   const canRefresh = Boolean(document && sessionId && document.id !== null)
   const iframeUrl = state.url ? pdfEmbedUrl(state.url) : ""
