@@ -4,6 +4,7 @@ import type {
   JobSummary,
 } from "@/features/upload/api/ocrApi"
 import {
+  documentHasUserMetadataEdit,
   digitizationToFolderStatus,
   getDigitizationStatus,
   isDigitizationComplete,
@@ -358,6 +359,8 @@ function sessionDocumentToJobSummary(
     review_status: normalizeDocumentReviewStatus(document, lightMetadata),
     metadata_ready: document.metadata_ready,
     metadata_final: document.metadata_final,
+    metadata_version_count: document.metadata_version_count,
+    metadata_user_edited: documentHasUserMetadataEdit(document),
     error: document.error,
     light_metadata: lightMetadata,
     normalized_metadata: document.normalized_metadata,

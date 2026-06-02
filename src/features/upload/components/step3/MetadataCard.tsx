@@ -14,7 +14,6 @@ import { AnimatePresence, motion } from "framer-motion"
 import { toast } from "sonner"
 import { cn } from "@/shared/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import {
   getWarningEntries,
   getWarningFields,
@@ -104,6 +103,12 @@ function fieldHasWarning(
   return aliases.some((alias) => warningFields.has(alias))
 }
 
+function metadataEditorRows(fieldKey: string): number {
+  if (fieldKey === "document_summary") return 4
+  if (fieldKey === "issuing_agency") return 3
+  return 2
+}
+
 interface MetadataCardProps {
   item: PdfMetadata
   submitting?: boolean
@@ -113,7 +118,7 @@ interface MetadataCardProps {
   onRetry?: () => void
   onApply: (
     dataPath: string,
-    meta: Record<string, unknown>
+    meta?: Record<string, unknown>
   ) => Promise<void> | void
 }
 
@@ -135,6 +140,7 @@ export function MetadataCard({
   const verified = item.review_status === "verified" || (item.metadata_ready && !hasWarnings)
   const metadataFailed = isMetadataFailed(item.status)
   const metadataUnavailable = item.status === "failed" && !item.metadata_ready
+  const hasMetadataEdits = item.metadata_user_edited === true
 
   const startEdit = () => {
     const nextDraft: Record<string, string> = {}
@@ -162,7 +168,7 @@ export function MetadataCard({
     setEditing(false)
   }
 
-  const applyMetadata = async (metadata: Record<string, unknown>) => {
+  const applyMetadata = async (metadata?: Record<string, unknown>) => {
     try {
       await onApply(item.data_path, metadata)
       toast.success("Metadata đã được xác nhận.")
@@ -171,6 +177,11 @@ export function MetadataCard({
         err instanceof Error ? err.message : "Không thể xác nhận metadata."
       )
     }
+  }
+
+  const openMetadata = () => {
+    onSelect?.()
+    setExpanded(true)
   }
 
   return (
@@ -191,14 +202,14 @@ export function MetadataCard({
           "flex items-center gap-3 px-4 py-3",
           onSelect && "cursor-pointer"
         )}
-        onClick={onSelect}
+        onClick={openMetadata}
         onKeyDown={(event) => {
-          if (!onSelect || (event.key !== "Enter" && event.key !== " ")) return
+          if (event.key !== "Enter" && event.key !== " ") return
           event.preventDefault()
-          onSelect()
+          openMetadata()
         }}
-        role={onSelect ? "button" : undefined}
-        tabIndex={onSelect ? 0 : undefined}
+        role="button"
+        tabIndex={0}
       >
         <div
           className="flex size-8 shrink-0 items-center justify-center rounded-lg shadow-[0_4px_14px_rgba(0,82,255,0.2)]"
@@ -214,7 +225,12 @@ export function MetadataCard({
             {item.data_path}
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex max-w-[12rem] shrink-0 flex-wrap items-center justify-end gap-2">
+          {hasMetadataEdits && (
+            <span className="flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+              <Edit2 className="size-2.5" /> Đã sửa
+            </span>
+          )}
           {verified ? (
             <span
               className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold text-primary-foreground"
@@ -244,7 +260,10 @@ export function MetadataCard({
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setExpanded((value) => !value)}
+            onClick={(event) => {
+              event.stopPropagation()
+              setExpanded((value) => !value)
+            }}
             className="size-7 p-0 text-muted-foreground"
           >
             {expanded ? (
@@ -269,11 +288,14 @@ export function MetadataCard({
               {editing ? (
                 <div className="flex flex-col gap-2">
                   {METADATA_FIELDS.map((field) => (
-                    <div key={field.key} className="flex items-start gap-2">
-                      <span className="w-32 shrink-0 pt-2 text-[11px] font-medium text-muted-foreground">
+                    <div
+                      key={field.key}
+                      className="grid min-w-0 grid-cols-1 gap-1 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-2"
+                    >
+                      <span className="pt-2 text-[11px] font-medium text-muted-foreground">
                         {field.label}
                       </span>
-                      <Input
+                      <textarea
                         value={draft[field.key] ?? ""}
                         onChange={(event) =>
                           setDraft((current) => ({
@@ -281,7 +303,8 @@ export function MetadataCard({
                             [field.key]: event.target.value,
                           }))
                         }
-                        className="h-7 flex-1 text-xs"
+                        rows={metadataEditorRows(field.key)}
+                        className="min-h-9 w-full min-w-0 resize-y rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-xs leading-5 whitespace-pre-wrap outline-none transition-colors [overflow-wrap:anywhere] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50"
                       />
                     </div>
                   ))}
@@ -353,13 +376,13 @@ export function MetadataCard({
                       <div
                         key={field.key}
                         className={cn(
-                          "flex gap-2 rounded-md px-2 py-1 text-xs",
+                          "grid min-w-0 grid-cols-1 gap-1 rounded-md px-2 py-1 text-xs sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-2",
                           isWarning && "bg-amber-50"
                         )}
                       >
                         <span
                           className={cn(
-                            "w-32 shrink-0 font-medium",
+                            "font-medium",
                             isWarning
                               ? "text-amber-700"
                               : "text-muted-foreground"
@@ -372,7 +395,7 @@ export function MetadataCard({
                         </span>
                         <span
                           className={cn(
-                            "flex-1",
+                            "min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]",
                             isWarning ? "text-amber-900" : "text-foreground"
                           )}
                         >
@@ -417,7 +440,7 @@ export function MetadataCard({
                           !item.metadata_ready ||
                           metadataUnavailable
                         }
-                        onClick={() => void applyMetadata(item.light_metadata)}
+                        onClick={() => void applyMetadata()}
                       >
                         {submitting ? (
                           <Loader2

@@ -1,7 +1,19 @@
 import { useEffect, useMemo, useState } from "react"
 import type { ReactNode } from "react"
 import { useNavigate } from "react-router-dom"
-import { Archive, ArrowRight, CalendarDays, FileStack, Loader2, Plus, RefreshCw } from "lucide-react"
+import {
+  AlertTriangle,
+  Archive,
+  ArrowRight,
+  CheckCircle2,
+  Clock,
+  FileStack,
+  FileText,
+  Layers3,
+  Loader2,
+  Plus,
+  RefreshCw,
+} from "lucide-react"
 import { motion } from "framer-motion"
 import { toast } from "sonner"
 import { cn } from "@/shared/lib/utils"
@@ -156,19 +168,28 @@ function SessionCard({
 }) {
   const hasPlan = Boolean(session.active_plan_version_id)
   const hasClusters = Boolean(session.active_cluster_version_id)
+  const documentCount = session.document_count ?? 0
+  const clusterCount = session.cluster_count ?? 0
+  const incorrectCount =
+    session.metadata_incorrect_document_count ?? 0
+  const correctCount =
+    session.metadata_correct_document_count ??
+    Math.max(documentCount - incorrectCount, 0)
   const statusText = hasClusters ? "Đã lập hồ sơ" : hasPlan ? "Có phương án" : statusLabel(session.status)
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.28, delay: index * 0.035 }}
-      className="group flex min-h-48 flex-col justify-between rounded-2xl border border-[#D8E1EC] bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-1 hover:border-[#0052FF]/35 hover:shadow-[0_18px_42px_rgba(15,23,42,0.12)]"
+      className="group flex min-h-56 flex-col justify-between rounded-2xl border border-[#D8E1EC] bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-1 hover:border-[#0052FF]/35 hover:shadow-[0_18px_42px_rgba(15,23,42,0.12)]"
     >
       <div>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="truncate text-base font-bold text-[#0F172A]">{session.session_id}</p>
-            <p className="mt-1 text-xs text-[#64748B]">{formatDate(session.updated_at ?? session.created_at)}</p>
+            <p className="mt-1 text-xs text-[#64748B]">
+              Cập nhật {formatDate(session.updated_at ?? session.created_at)}
+            </p>
           </div>
           <span
             className={cn(
@@ -183,9 +204,40 @@ function SessionCard({
             {statusText}
           </span>
         </div>
-        <div className="mt-5 grid grid-cols-2 gap-2">
-          <Metric icon={<FileStack className="size-3.5" />} label="Tệp đầu vào" value={session.file_count ?? 0} />
-          <Metric icon={<CalendarDays className="size-3.5" />} label="Ngày tạo" value={shortDate(session.created_at)} />
+        <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <Metric
+            icon={<Clock className="size-3.5" />}
+            label="Tạo lúc"
+            value={shortDateTime(session.created_at)}
+            valueClassName="text-xs"
+          />
+          <Metric
+            icon={<FileStack className="size-3.5" />}
+            label="Tệp đầu vào"
+            value={session.file_count ?? 0}
+          />
+          <Metric
+            icon={<FileText className="size-3.5" />}
+            label="Tài liệu"
+            value={documentCount}
+          />
+          <Metric
+            icon={<Layers3 className="size-3.5" />}
+            label="Cụm"
+            value={clusterCount}
+          />
+          <Metric
+            icon={<CheckCircle2 className="size-3.5" />}
+            label="Extract đúng"
+            value={correctCount}
+            valueClassName="text-emerald-700"
+          />
+          <Metric
+            icon={<AlertTriangle className="size-3.5" />}
+            label="Extract sai"
+            value={incorrectCount}
+            valueClassName={incorrectCount > 0 ? "text-amber-700" : undefined}
+          />
         </div>
       </div>
       <div className="mt-5 flex flex-col gap-2 border-t border-[#EEF2F7] pt-4 sm:flex-row sm:items-center sm:justify-between">
@@ -221,14 +273,26 @@ function SummaryPill({ label, value }: { label: string; value: number }) {
   )
 }
 
-function Metric({ icon, label, value }: { icon: ReactNode; label: string; value: string | number }) {
+function Metric({
+  icon,
+  label,
+  value,
+  valueClassName,
+}: {
+  icon: ReactNode
+  label: string
+  value: string | number
+  valueClassName?: string
+}) {
   return (
     <div className="rounded-xl bg-[#F8FAFC] px-3 py-2">
       <div className="flex items-center gap-1.5 text-[#64748B]">
         {icon}
-        <span className="text-[11px] font-semibold uppercase tracking-[0.1em]">{label}</span>
+        <span className="text-[11px] font-semibold uppercase">{label}</span>
       </div>
-      <p className="mt-1 truncate text-sm font-semibold text-[#0F172A]">{value}</p>
+      <p className={cn("mt-1 break-words text-sm font-semibold leading-tight text-[#0F172A]", valueClassName)}>
+        {value}
+      </p>
     </div>
   )
 }
@@ -242,13 +306,15 @@ function formatDate(value: string): string {
   }).format(date)
 }
 
-function shortDate(value: string): string {
+function shortDateTime(value: string): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return new Intl.DateTimeFormat("vi-VN", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   }).format(date)
 }
 

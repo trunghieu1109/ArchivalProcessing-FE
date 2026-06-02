@@ -16,6 +16,8 @@ export interface JobSummary {
   review_status: string
   metadata_ready: boolean
   metadata_final: boolean
+  metadata_version_count?: number
+  metadata_user_edited?: boolean
   error?: string | null
   light_metadata?: Record<string, unknown>
   normalized_metadata?: Record<string, unknown>

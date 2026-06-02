@@ -59,6 +59,8 @@ export interface PdfMetadata {
   review_status: string
   metadata_ready: boolean
   metadata_final: boolean
+  metadata_version_count?: number
+  metadata_user_edited?: boolean
   light_metadata: Record<string, unknown>
   error?: string | null
   applied: boolean

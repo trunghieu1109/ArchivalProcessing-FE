@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState } from "react"
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+} from "react"
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react"
 import { motion } from "framer-motion"
 import { toast } from "sonner"
@@ -6,6 +13,7 @@ import { cn } from "@/shared/lib/utils"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import {
+  documentHasUserMetadataEdit,
   normalizeDocumentReviewStatus,
   verifyDocumentMetadata,
   type SessionDocumentResponse,
@@ -50,13 +58,15 @@ export function ProcessStep({
   const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(
     null
   )
+  const [previewWidthPercent, setPreviewWidthPercent] = useState(48)
+  const previewLayoutRef = useRef<HTMLDivElement | null>(null)
 
   const metadataKey = useMemo(
     () =>
       metadataItems
         .map(
           (item) =>
-            `${item.id}:${item.status}:${item.review_status}:${String(item.metadata_ready)}:${String(item.metadata_final)}`
+            `${item.id}:${item.status}:${item.review_status}:${String(item.metadata_ready)}:${String(item.metadata_final)}:${String(item.metadata_user_edited ?? false)}`
         )
         .join("\n"),
     [metadataItems]
@@ -127,7 +137,7 @@ export function ProcessStep({
 
   const handleApply = async (
     dataPath: string,
-    meta: Record<string, unknown>
+    meta?: Record<string, unknown>
   ) => {
     const item = items.find((candidate) => candidate.data_path === dataPath)
     if (!item) throw new Error("Không tìm thấy tài liệu trong session.")
@@ -163,7 +173,7 @@ export function ProcessStep({
     try {
       const results = await Promise.allSettled(
         pendingReadyItems.map((item) =>
-          verifyDocumentMetadata(sessionId, item.id, item.light_metadata)
+          verifyDocumentMetadata(sessionId, item.id)
         )
       )
       const verified = results
@@ -216,6 +226,42 @@ export function ProcessStep({
     } finally {
       setRetryingIds((previous) => removeId(previous, item.id))
     }
+  }
+
+  const handlePreviewResizePointerDown = (
+    event: ReactPointerEvent<HTMLButtonElement>
+  ) => {
+    const container = previewLayoutRef.current
+    if (!container) return
+    event.preventDefault()
+
+    const previousCursor = document.body.style.cursor
+    const previousUserSelect = document.body.style.userSelect
+    document.body.style.cursor = "col-resize"
+    document.body.style.userSelect = "none"
+
+    const updatePreviewWidth = (clientX: number) => {
+      const rect = container.getBoundingClientRect()
+      const rawPercent = ((rect.right - clientX) / rect.width) * 100
+      setPreviewWidthPercent(Math.min(68, Math.max(35, rawPercent)))
+    }
+
+    updatePreviewWidth(event.clientX)
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      updatePreviewWidth(moveEvent.clientX)
+    }
+    const handlePointerUp = () => {
+      document.body.style.cursor = previousCursor
+      document.body.style.userSelect = previousUserSelect
+      window.removeEventListener("pointermove", handlePointerMove)
+      window.removeEventListener("pointerup", handlePointerUp)
+      window.removeEventListener("pointercancel", handlePointerUp)
+    }
+
+    window.addEventListener("pointermove", handlePointerMove)
+    window.addEventListener("pointerup", handlePointerUp)
+    window.addEventListener("pointercancel", handlePointerUp)
   }
 
   const warningCount = items.filter(
@@ -297,7 +343,17 @@ export function ProcessStep({
         </div>
       </div>
 
-      <div className="grid gap-4 2xl:grid-cols-[minmax(0,0.9fr)_minmax(400px,1.1fr)]">
+      <div
+        ref={previewLayoutRef}
+        className="grid min-w-0 gap-4 xl:[grid-template-columns:var(--process-preview-columns)]"
+        style={
+          {
+            "--process-preview-columns": `minmax(0, ${
+              100 - previewWidthPercent
+            }fr) minmax(360px, ${previewWidthPercent}fr)`,
+          } as CSSProperties
+        }
+      >
         <div className="flex min-w-0 flex-col gap-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
             <span className="font-roboto text-[11px] font-semibold tracking-[0.15em] text-muted-foreground uppercase">
@@ -356,11 +412,22 @@ export function ProcessStep({
             </div>
           </ScrollArea>
         </div>
-        <DocumentPdfPreview
-          sessionId={sessionId}
-          document={previewDocument}
-          className="h-[min(72svh,678px)] min-h-[420px]"
-        />
+        <div className="relative min-w-0">
+          <button
+            type="button"
+            aria-label="Kéo để đổi kích thước preview"
+            title="Kéo để đổi kích thước preview"
+            onPointerDown={handlePreviewResizePointerDown}
+            className="group absolute top-0 bottom-0 -left-3 z-20 hidden w-5 cursor-col-resize items-center justify-center xl:flex"
+          >
+            <span className="h-16 w-1 rounded-full bg-[#0052FF] opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+          </button>
+          <DocumentPdfPreview
+            sessionId={sessionId}
+            document={previewDocument}
+            className="h-[min(72svh,678px)] min-h-[420px] min-w-0"
+          />
+        </div>
       </div>
 
       <div className="flex flex-col gap-4 rounded-2xl border border-[#CBD5E1] bg-white px-4 py-4 shadow-sm sm:px-6 lg:flex-row lg:items-center lg:justify-between">
@@ -486,6 +553,8 @@ function documentResponseToPdfMetadata(
     review_status: reviewStatus,
     metadata_ready: document.metadata_ready,
     metadata_final: document.metadata_final,
+    metadata_version_count: document.metadata_version_count,
+    metadata_user_edited: documentHasUserMetadataEdit(document),
     error: document.error,
     light_metadata: lightMetadata,
     applied: reviewStatus === "verified",
@@ -500,7 +569,10 @@ function normalizePdfMetadata(item: PdfMetadata): PdfMetadata {
     },
     item.light_metadata
   )
-  if (reviewStatus === item.review_status && item.applied === (reviewStatus === "verified")) {
+  if (
+    reviewStatus === item.review_status &&
+    item.applied === (reviewStatus === "verified")
+  ) {
     return item
   }
   return {

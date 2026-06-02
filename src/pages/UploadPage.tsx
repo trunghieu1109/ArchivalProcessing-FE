@@ -400,6 +400,8 @@ export function UploadPage() {
           review_status: reviewStatus,
           metadata_ready: job.metadata_ready,
           metadata_final: job.metadata_final,
+          metadata_version_count: job.metadata_version_count,
+          metadata_user_edited: job.metadata_user_edited,
           error: job.error,
           light_metadata: lightMetadata,
           applied: reviewStatus === "verified",

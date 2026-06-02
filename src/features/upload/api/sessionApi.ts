@@ -26,6 +26,11 @@ export interface SessionSummary {
   active_plan_version_id?: string | null
   active_cluster_version_id?: string | null
   file_count?: number
+  document_count?: number
+  cluster_count?: number
+  metadata_edited_document_count?: number
+  metadata_correct_document_count?: number
+  metadata_incorrect_document_count?: number
 }
 
 export interface SessionListResponse {
@@ -180,6 +185,9 @@ export interface DigitizationDocument {
   review_status: string
   metadata_ready: boolean
   metadata_final: boolean
+  metadata_version_count?: number
+  metadata_user_edited?: boolean
+  latest_metadata_version?: MetadataVersionSummary | null
   raw_metadata?: Record<string, unknown>
   metadata?: Record<string, unknown>
   normalized_metadata?: Record<string, unknown>
@@ -235,10 +243,37 @@ export interface SessionDocumentResponse {
   review_status: string
   metadata_ready: boolean
   metadata_final: boolean
+  metadata_version_count?: number
+  metadata_user_edited?: boolean
+  latest_metadata_version?: MetadataVersionSummary | null
   metadata?: Record<string, unknown>
   normalized_metadata?: Record<string, unknown>
   raw_metadata?: Record<string, unknown>
   error?: string | null
+}
+
+export interface MetadataVersionSummary {
+  id?: number
+  version_number?: number
+  source?: string | null
+  review_status?: string | null
+  remote_status?: string | null
+  metadata_final?: boolean
+  created_by?: string | null
+  created_at?: string | null
+}
+
+const USER_METADATA_EDIT_SOURCES = new Set(["user_patch", "user_verified"])
+
+export function documentHasUserMetadataEdit(document: {
+  metadata_user_edited?: boolean
+  latest_metadata_version?: MetadataVersionSummary | null
+}): boolean {
+  if (typeof document.metadata_user_edited === "boolean") {
+    return document.metadata_user_edited
+  }
+  const source = String(document.latest_metadata_version?.source ?? "")
+  return USER_METADATA_EDIT_SOURCES.has(source)
 }
 
 export interface DocumentPreviewUrlResponse {
@@ -1012,6 +1047,8 @@ export function digitizationToFolderStatus(
       review_status: normalizeDocumentReviewStatus(document, lightMetadata),
       metadata_ready: document.metadata_ready,
       metadata_final: document.metadata_final,
+      metadata_version_count: document.metadata_version_count,
+      metadata_user_edited: documentHasUserMetadataEdit(document),
       error: document.error,
       light_metadata: lightMetadata,
       normalized_metadata: document.normalized_metadata,
