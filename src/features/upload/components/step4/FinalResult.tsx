@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronRight,
   Eye,
+  FileSpreadsheet,
   FileText,
   Folder,
   FolderOpen,
@@ -32,12 +33,15 @@ import {
   type DocumentPreviewTarget,
 } from "@/features/upload/components/DocumentPdfPreview"
 import {
+  artifactDownloadUrl,
   enqueueClusterBuild,
+  exportMetadataSnapshot,
   getActiveClusters,
   getClusterBuildStatus,
   listSessionEvents,
   moveDocumentBetweenClusters,
   type ClusterVersionResponse,
+  type MetadataSnapshotGroup,
 } from "@/features/upload/api/sessionApi"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import {
@@ -46,6 +50,10 @@ import {
   type ClusterDocumentWarning,
   type ClusterGroup,
 } from "@/features/upload/lib/clusterGroups"
+import {
+  signatureTagInfo,
+  type SignatureTagKind,
+} from "@/features/upload/lib/signatureStatus"
 import type { PdfMetadata } from "@/features/upload/types"
 
 const CLUSTER_POLL_INTERVAL_MS = 3_000
@@ -134,6 +142,7 @@ export function FinalResult({
   >(null)
   const [rebuildPollKey, setRebuildPollKey] = useState(0)
   const [rebuildSubmitting, setRebuildSubmitting] = useState(false)
+  const [metadataExporting, setMetadataExporting] = useState(false)
   const [pendingFeedbackCount, setPendingFeedbackCount] = useState(0)
   const [selectedPreviewDocumentId, setSelectedPreviewDocumentId] = useState<
     number | null
@@ -713,6 +722,39 @@ export function FinalResult({
     toast.success("Đã áp dụng phiên bản hồ sơ mới.")
   }
 
+  const handleExportMetadataSnapshot = async () => {
+    if (!sessionId) {
+      toast.error("Chưa có session để xuất metadata.")
+      return
+    }
+    if (groups.length === 0) {
+      toast.error("Chưa có dữ liệu hồ sơ để xuất metadata.")
+      return
+    }
+
+    setMetadataExporting(true)
+    try {
+      const result = await exportMetadataSnapshot(sessionId, {
+        created_by: "ui",
+        groups: metadataSnapshotGroups(groups),
+      })
+      const artifact = result.artifact ?? result.artifacts[0]
+      if (!artifact) {
+        throw new Error("Backend chưa trả về artifact metadata.")
+      }
+      toast.success("Đã tạo snapshot metadata. Đang tải file.")
+      window.location.assign(artifactDownloadUrl(sessionId, artifact.id))
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Không thể xuất metadata tại thời điểm hiện tại."
+      )
+    } finally {
+      setMetadataExporting(false)
+    }
+  }
+
   const handleSelectPreviewDocument = (document: ClusterDocument) => {
     if (document.sessionDocumentId === null) {
       toast.error("Tài liệu này chưa có mã trong session để lấy preview.")
@@ -794,7 +836,20 @@ export function FinalResult({
           ? `Có ${pendingFeedbackCount} feedback đã lưu và đang chờ cập nhật hồ sơ.`
           : "Feedback di chuyển tài liệu sẽ được lưu lại và chỉ áp dụng khi cập nhật hồ sơ."}
       </p>
-      <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 xl:w-auto xl:flex xl:flex-wrap xl:items-center xl:justify-end">
+      <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-3 xl:w-auto xl:flex xl:flex-wrap xl:items-center xl:justify-end">
+        <Button
+          variant="outline"
+          onClick={() => void handleExportMetadataSnapshot()}
+          className="w-full xl:w-auto"
+          disabled={metadataExporting || !sessionId || groups.length === 0}
+        >
+          {metadataExporting ? (
+            <Loader2 data-icon="inline-start" className="animate-spin" />
+          ) : (
+            <FileSpreadsheet data-icon="inline-start" />
+          )}
+          Xuất metadata
+        </Button>
         <Button
           variant="outline"
           onClick={() => void handleRebuildClusters()}
@@ -1279,7 +1334,16 @@ function DocumentRow({
     "document_number",
     "so_ky_hieu",
   ])
-  const signer = metadataText(document.metadata, ["signer", "nguoi_ky"])
+  const signer = metadataText(document.metadata, [
+    "signer",
+    "signer_name",
+    "nguoi_ky",
+    "nguoi ky",
+    "nguoi_ki",
+    "nguoi_ky_ten",
+    "ten_nguoi_ky",
+  ])
+  const signatureTag = signatureTagInfo(document)
   const displaySummary = compact
     ? truncateWithDots(summary, 108)
     : truncateWithDots(summary, 190)
@@ -1348,6 +1412,20 @@ function DocumentRow({
                 )}
               >
                 <CalendarDays className="size-3" /> {issuedDate}
+              </span>
+            )}
+            {signatureTag && (
+              <span
+                title={signatureTag.title}
+                className={cn(
+                  "flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                  signatureTagClass(signatureTag.kind)
+                )}
+              >
+                <Signature className="size-3" />
+                <span className={cn("max-w-24 truncate", compact && "max-w-20")}>
+                  {signatureTag.label}
+                </span>
               </span>
             )}
             {clusterWarning && (
@@ -1865,6 +1943,38 @@ function moveDocumentLocally(
   })
 }
 
+function metadataSnapshotGroups(groups: ClusterGroup[]): MetadataSnapshotGroup[] {
+  return groups.map((group) => ({
+    id: group.id,
+    label: group.label,
+    dossierId: group.dossierId ?? null,
+    dossierNumber: group.dossierNumber ?? null,
+    folderName: group.folderName ?? null,
+    classificationPath: group.classificationPath ?? [],
+    retentionPeriod: group.retentionPeriod ?? null,
+    confidence: group.confidence ?? null,
+    requiresReview: group.requiresReview ?? false,
+    pageCount: group.pageCount ?? null,
+    sheetCount: group.sheetCount ?? null,
+    startDate: group.startDate ?? null,
+    endDate: group.endDate ?? null,
+    documents: group.documents.map((document) => ({
+      documentId: document.documentId,
+      sessionDocumentId: document.sessionDocumentId,
+      filePath: document.filePath,
+      fileName: document.fileName,
+      positionIndex: document.positionIndex,
+      pageCount: document.pageCount,
+      sheetCount: document.sheetCount,
+      requiresReview: document.requiresReview,
+      metadata: document.metadata,
+      remoteMetadataStatus: document.remoteMetadataStatus,
+      ocrStatus: document.ocrStatus,
+      signatureStatus: document.signatureStatus,
+    })),
+  }))
+}
+
 function dossierYearLabel(group: ClusterGroup): string {
   const year =
     yearFromText(group.startDate) ||
@@ -2033,6 +2143,16 @@ function clusterWarningLevelClass(riskLevel: string): string {
     return "border-yellow-300 bg-yellow-50 text-yellow-800 hover:bg-yellow-100"
   }
   return "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+}
+
+function signatureTagClass(kind: SignatureTagKind): string {
+  if (kind === "done") {
+    return "border-emerald-300 bg-emerald-50 text-emerald-700"
+  }
+  if (kind === "failed") {
+    return "border-red-300 bg-red-50 text-red-700"
+  }
+  return "border-slate-300 bg-slate-50 text-slate-600"
 }
 
 function metadataText(

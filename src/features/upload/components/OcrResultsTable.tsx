@@ -4,6 +4,7 @@ import {
   AlertCircle,
   Clock,
   FileText,
+  Signature,
 } from "lucide-react"
 import { motion } from "framer-motion"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -12,6 +13,10 @@ import type {
   FolderStatusResponse,
   JobSummary,
 } from "@/features/upload/api/ocrApi"
+import {
+  signatureTagInfo,
+  type SignatureTagKind,
+} from "@/features/upload/lib/signatureStatus"
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "Chờ xử lý",
@@ -62,6 +67,16 @@ function StatusIcon({ status }: { status: string }) {
   return <Clock className="size-3.5 text-[#64748B]" />
 }
 
+function signatureTagClass(kind: SignatureTagKind): string {
+  if (kind === "done") {
+    return "border-emerald-300 bg-emerald-50 text-emerald-700"
+  }
+  if (kind === "failed") {
+    return "border-red-300 bg-red-50 text-red-700"
+  }
+  return "border-slate-300 bg-slate-50 text-slate-600"
+}
+
 const METADATA_LABELS: Record<string, string> = {
   loai_van_ban: "Loại văn bản",
   so_hieu_tai_lieu: "Số hiệu",
@@ -75,6 +90,7 @@ const METADATA_LABELS: Record<string, string> = {
 
 function JobCard({ job, index }: { job: JobSummary; index: number }) {
   const meta = job.light_metadata ?? {}
+  const signatureTag = signatureTagInfo(job)
   const visibleMeta = Object.entries(METADATA_LABELS)
     .map(([key, label]) => ({ key, label, value: meta[key] }))
     .filter((e) => e.value !== undefined && e.value !== null && e.value !== "")
@@ -97,7 +113,18 @@ function JobCard({ job, index }: { job: JobSummary; index: number }) {
             {job.data_path}
           </span>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+          {signatureTag && (
+            <span
+              title={signatureTag.title}
+              className={cn(
+                "flex items-center gap-1 rounded-full border px-2 py-0.5 font-roboto text-[10px] font-semibold",
+                signatureTagClass(signatureTag.kind)
+              )}
+            >
+              <Signature className="size-3" /> {signatureTag.label}
+            </span>
+          )}
           <StatusIcon status={job.status} />
           <span
             className={cn(

@@ -181,6 +181,7 @@ export interface DigitizationDocument {
   id: number
   document_id: string
   data_path: string
+  remote_metadata_status?: string | null
   ocr_status: string
   review_status: string
   metadata_ready: boolean
@@ -211,6 +212,13 @@ export interface DigitizationStatusResponse {
   documents: DigitizationDocument[]
   summary: {
     total_documents: number
+    metadata_ready?: number
+    metadata_final?: number
+    verified?: number
+    warning?: number
+    signature_extracted_documents?: number
+    signature_pending_documents?: number
+    signature_failed_documents?: number
     status_counts: Record<string, number>
   }
 }
@@ -233,12 +241,54 @@ export interface ArtifactListResponse {
   artifacts: SessionArtifact[]
 }
 
+export interface MetadataSnapshotDocument {
+  documentId: string
+  sessionDocumentId?: number | null
+  filePath: string
+  fileName: string
+  positionIndex: number
+  pageCount?: number | null
+  sheetCount?: number | null
+  requiresReview?: boolean
+  metadata: Record<string, unknown>
+  remoteMetadataStatus?: string | null
+  ocrStatus?: string
+  signatureStatus?: string
+  error?: string | null
+}
+
+export interface MetadataSnapshotGroup {
+  id: string
+  label: string
+  dossierId?: string | null
+  dossierNumber?: string | null
+  folderName?: string | null
+  classificationPath?: string[]
+  retentionPeriod?: string | null
+  confidence?: number | null
+  requiresReview?: boolean
+  pageCount?: number | null
+  sheetCount?: number | null
+  startDate?: string | null
+  endDate?: string | null
+  documents: MetadataSnapshotDocument[]
+}
+
+export interface MetadataSnapshotResponse {
+  session_id: string
+  run_id: string
+  artifact: SessionArtifact
+  artifacts: SessionArtifact[]
+  summary: Record<string, unknown>
+}
+
 export interface SessionDocumentResponse {
   id: number
   session_id: string
   document_id: string
   data_path: string
   file_name: string
+  remote_metadata_status?: string | null
   ocr_status: string
   review_status: string
   metadata_ready: boolean
@@ -1044,6 +1094,7 @@ export function digitizationToFolderStatus(
       document_id: document.document_id,
       data_path: document.data_path,
       status: document.ocr_status,
+      remote_metadata_status: document.remote_metadata_status,
       review_status: normalizeDocumentReviewStatus(document, lightMetadata),
       metadata_ready: document.metadata_ready,
       metadata_final: document.metadata_final,
@@ -1063,8 +1114,30 @@ export function digitizationToFolderStatus(
     missing_files: batch?.missing_files ?? [],
     status_counts:
       batch?.status_counts ?? response?.summary.status_counts ?? {},
+    signature_extracted_documents:
+      response?.summary.signature_extracted_documents ??
+      documents.filter((document) => documentSignatureStatus(document) === "done")
+        .length,
+    signature_pending_documents:
+      response?.summary.signature_pending_documents ??
+      documents.filter(
+        (document) => documentSignatureStatus(document) === "signature_pending"
+      )
+        .length,
+    signature_failed_documents:
+      response?.summary.signature_failed_documents ??
+      documents.filter(
+        (document) => documentSignatureStatus(document) === "signature_failed"
+      )
+        .length,
     jobs,
   }
+}
+
+function documentSignatureStatus(document: DigitizationDocument): string {
+  return String(document.remote_metadata_status || document.ocr_status || "")
+    .trim()
+    .toLowerCase()
 }
 
 export function normalizeDocumentReviewStatus(
@@ -1133,6 +1206,20 @@ export async function enqueueFinalizeArtifacts(
 ): Promise<Record<string, unknown>> {
   return requestJson<Record<string, unknown>>(
     `/sessions/${encodeURIComponent(sessionId)}/artifacts/finalize`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
+}
+
+export async function exportMetadataSnapshot(
+  sessionId: string,
+  payload: { created_by?: string; groups?: MetadataSnapshotGroup[] } = {}
+): Promise<MetadataSnapshotResponse> {
+  return requestJson<MetadataSnapshotResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/artifacts/metadata-snapshot`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },

@@ -1,16 +1,22 @@
 services:
   frontend:
-    build:
-      context: .
-      args:
-        VITE_ARCHIVAL_API_BASE_URL: ${VITE_ARCHIVAL_API_BASE_URL:-/api}
-        VITE_ARCHIVAL_DIRECT_PRESIGNED_UPLOAD: ${VITE_ARCHIVAL_DIRECT_PRESIGNED_UPLOAD:-false}
-    image: archival-processing-frontend:local
+    image: node:22-alpine
+    working_dir: /app
     ports:
-      - "${FE_HTTP_PORT:-5173}:8080"
+      - "${FE_HTTP_PORT:-5173}:5173"
     environment:
-      ARCHIVAL_API_PROXY_PASS: ${ARCHIVAL_API_PROXY_PASS:-http://api:8000}
-      NGINX_CLIENT_MAX_BODY_SIZE: ${NGINX_CLIENT_MAX_BODY_SIZE:-1g}
+      VITE_ARCHIVAL_API_BASE_URL: ${VITE_ARCHIVAL_API_BASE_URL:-/api}
+      VITE_ARCHIVAL_DIRECT_PRESIGNED_UPLOAD: ${VITE_ARCHIVAL_DIRECT_PRESIGNED_UPLOAD:-false}
+      VITE_ARCHIVAL_DEV_API_PROXY_TARGET: ${ARCHIVAL_API_PROXY_PASS:-http://api:8000}
+    volumes:
+      - .:/app
+      - frontend-node-modules:/app/node_modules
+    command:
+      [
+        "sh",
+        "-c",
+        "npm install && npm run dev -- --host 0.0.0.0 --port 5173",
+      ]
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -21,3 +27,6 @@ networks:
   archival-processing:
     name: ${ARCHIVAL_DOCKER_NETWORK:-archival-processing-net}
     external: true
+
+volumes:
+  frontend-node-modules:

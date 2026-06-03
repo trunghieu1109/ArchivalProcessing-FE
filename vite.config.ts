@@ -7,7 +7,9 @@ import { defineConfig, loadEnv } from "vite"
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "VITE_")
   const apiProxyTarget =
-    env.VITE_ARCHIVAL_DEV_API_PROXY_TARGET || "http://127.0.0.1:8000"
+    process.env.VITE_ARCHIVAL_DEV_API_PROXY_TARGET ||
+    env.VITE_ARCHIVAL_DEV_API_PROXY_TARGET ||
+    "http://127.0.0.1:8000"
 
   return {
     plugins: [react(), tailwindcss()],

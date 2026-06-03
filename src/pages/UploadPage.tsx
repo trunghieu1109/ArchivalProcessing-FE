@@ -397,6 +397,7 @@ export function UploadPage() {
           document_id: job.document_id,
           data_path: job.data_path,
           status: job.status,
+          remote_metadata_status: job.remote_metadata_status,
           review_status: reviewStatus,
           metadata_ready: job.metadata_ready,
           metadata_final: job.metadata_final,
@@ -404,6 +405,8 @@ export function UploadPage() {
           metadata_user_edited: job.metadata_user_edited,
           error: job.error,
           light_metadata: lightMetadata,
+          normalized_metadata: job.normalized_metadata,
+          raw_metadata: job.raw_metadata,
           applied: reviewStatus === "verified",
         }
       }) ?? [],
@@ -412,6 +415,14 @@ export function UploadPage() {
   const ocrPdfPaths = useMemo(
     () => ocrMetadataItems.map((item) => item.data_path),
     [ocrMetadataItems]
+  )
+  const ocrSignatureStatus = useMemo(
+    () => ({
+      extracted: ocr.status?.signature_extracted_documents ?? 0,
+      pending: ocr.status?.signature_pending_documents ?? 0,
+      failed: ocr.status?.signature_failed_documents ?? 0,
+    }),
+    [ocr.status]
   )
   const ocrMessage =
     ocr.state === "error"
@@ -1424,6 +1435,7 @@ export function UploadPage() {
                 metadataItems={ocrMetadataItems}
                 metadataLoading={ocrLoading}
                 metadataMessage={ocrMessage}
+                signatureStatus={ocrSignatureStatus}
                 onDocumentsVerified={ocr.mergeVerifiedDocuments}
                 onRetryMetadata={ocr.restartMetadata}
                 onContinue={(groups) => {

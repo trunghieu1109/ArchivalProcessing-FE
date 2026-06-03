@@ -36,6 +36,11 @@ interface ProcessStepProps {
   metadataItems?: PdfMetadata[]
   metadataLoading?: boolean
   metadataMessage?: string
+  signatureStatus?: {
+    extracted: number
+    pending: number
+    failed: number
+  }
   onDocumentsVerified?: (documents: SessionDocumentResponse[]) => void
   onRetryMetadata?: (documentId: number) => Promise<SessionDocumentResponse>
   onContinue: (groups: ClusterGroup[]) => void
@@ -47,6 +52,7 @@ export function ProcessStep({
   metadataItems = [],
   metadataLoading = false,
   metadataMessage = "Đang chờ kết quả số hóa từ backend...",
+  signatureStatus = { extracted: 0, pending: 0, failed: 0 },
   onDocumentsVerified,
   onRetryMetadata,
   onContinue,
@@ -60,13 +66,14 @@ export function ProcessStep({
   )
   const [previewWidthPercent, setPreviewWidthPercent] = useState(48)
   const previewLayoutRef = useRef<HTMLDivElement | null>(null)
+  const didAutoSelectRef = useRef(false)
 
   const metadataKey = useMemo(
     () =>
       metadataItems
         .map(
           (item) =>
-            `${item.id}:${item.status}:${item.review_status}:${String(item.metadata_ready)}:${String(item.metadata_final)}:${String(item.metadata_user_edited ?? false)}`
+            `${item.id}:${item.status}:${item.remote_metadata_status ?? ""}:${item.review_status}:${String(item.metadata_ready)}:${String(item.metadata_final)}:${String(item.metadata_user_edited ?? false)}`
         )
         .join("\n"),
     [metadataItems]
@@ -120,6 +127,7 @@ export function ProcessStep({
   useEffect(() => {
     if (sortedItems.length === 0) {
       setSelectedDocumentId(null)
+      didAutoSelectRef.current = false
       return
     }
     if (
@@ -128,11 +136,19 @@ export function ProcessStep({
     ) {
       return
     }
+    if (selectedDocumentId !== null) {
+      setSelectedDocumentId(null)
+      return
+    }
+    if (didAutoSelectRef.current) {
+      return
+    }
     const firstWarning =
       sortedItems.find(
         (item) => item.review_status !== "verified" && hasMetadataWarning(item)
       ) ?? sortedItems[0]
     setSelectedDocumentId(firstWarning.id)
+    didAutoSelectRef.current = true
   }, [selectedDocumentId, sortedItems])
 
   const handleApply = async (
@@ -320,10 +336,23 @@ export function ProcessStep({
                   ? `Có ${readyItems.length} tài liệu sẵn sàng, ${verifiedItems.length} đã xác nhận.`
                   : metadataMessage}
             </p>
+            {(signatureStatus.pending > 0 || signatureStatus.failed > 0) && (
+              <p className="mt-1 text-xs text-[#64748B]">
+                Chữ ký: {signatureStatus.extracted} xong
+                {signatureStatus.pending > 0
+                  ? `, ${signatureStatus.pending} đang chờ`
+                  : ""}
+                {signatureStatus.failed > 0
+                  ? `, ${signatureStatus.failed} lỗi`
+                  : ""}
+                .
+              </p>
+            )}
           </div>
-          <div className="grid w-full grid-cols-3 gap-2 text-center sm:w-auto">
+          <div className="grid w-full grid-cols-2 gap-2 text-center sm:w-auto sm:grid-cols-4">
             <ProgressMetric label="Tài liệu" value={expectedCount} />
             <ProgressMetric label="Đã extract" value={readyItems.length} />
+            <ProgressMetric label="Chữ ký xong" value={signatureStatus.extracted} />
             <ProgressMetric label="Đã xác nhận" value={verifiedItems.length} />
           </div>
         </div>
@@ -393,7 +422,11 @@ export function ProcessStep({
                   selected={item.id === selectedDocumentId}
                   submitting={verifyingIds.has(item.id)}
                   retrying={retryingIds.has(item.id)}
-                  onSelect={() => setSelectedDocumentId(item.id)}
+                  onSelect={(expanded) =>
+                    setSelectedDocumentId((current) =>
+                      expanded ? item.id : current === item.id ? null : current
+                    )
+                  }
                   onApply={handleApply}
                   onRetry={() => void handleRetryMetadata(item)}
                 />
@@ -505,7 +538,24 @@ function mergeIncomingMetadata(
       local?.review_status === "verified" &&
       item.review_status !== "verified"
     ) {
-      return local
+      const normalizedMetadata = item.normalized_metadata ?? local.normalized_metadata
+      const rawMetadata = item.raw_metadata ?? local.raw_metadata
+      return {
+        ...local,
+        status: item.status,
+        remote_metadata_status: item.remote_metadata_status,
+        metadata_ready: item.metadata_ready,
+        metadata_final: item.metadata_final,
+        normalized_metadata: normalizedMetadata,
+        raw_metadata: rawMetadata,
+        light_metadata: buildDisplayMetadata({
+          light_metadata: local.light_metadata,
+          normalized_metadata: normalizedMetadata,
+          raw_metadata: rawMetadata,
+          remote_metadata_status: item.remote_metadata_status,
+          status: item.status,
+        }),
+      }
     }
     return item
   })
@@ -550,6 +600,7 @@ function documentResponseToPdfMetadata(
     document_id: document.document_id,
     data_path: document.data_path,
     status: document.ocr_status,
+    remote_metadata_status: document.remote_metadata_status,
     review_status: reviewStatus,
     metadata_ready: document.metadata_ready,
     metadata_final: document.metadata_final,
@@ -557,6 +608,8 @@ function documentResponseToPdfMetadata(
     metadata_user_edited: documentHasUserMetadataEdit(document),
     error: document.error,
     light_metadata: lightMetadata,
+    normalized_metadata: document.normalized_metadata,
+    raw_metadata: document.raw_metadata,
     applied: reviewStatus === "verified",
   }
 }

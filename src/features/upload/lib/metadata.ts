@@ -1,3 +1,5 @@
+import { documentSignatureStatus } from "@/features/upload/lib/signatureStatus"
+
 type MetadataSource = Record<string, unknown> | null | undefined
 
 export interface WarningEntry {
@@ -10,9 +12,66 @@ interface DisplayMetadataSources {
   normalized_metadata?: MetadataSource
   metadata?: MetadataSource
   raw_metadata?: MetadataSource
+  remote_metadata_status?: string | null
+  remoteMetadataStatus?: string | null
+  signature_status?: string | null
+  signatureStatus?: string | null
+  ocr_status?: string | null
+  ocrStatus?: string | null
+  status?: string | null
 }
 
 const WARNING_KEY = "_warnings"
+const SIGNER_METADATA_FIELD_KEYS = new Set([
+  "signer",
+  "signer_name",
+  "signed_by",
+  "nguoi_ky",
+  "nguoi_ki",
+  "nguoi_ky_ten",
+  "ten_nguoi_ky",
+])
+const SIGNATURE_METADATA_FIELD_KEYS = new Set([
+  "_signature",
+  "signature",
+  "digital_signature",
+  "chu_ky",
+  "chu_ki",
+  "thong_tin_chu_ky",
+])
+const SIGNATURE_SIGNER_FIELD_KEYS = new Set([
+  "signer",
+  "signer_name",
+  "signer_full_name",
+  "signed_by",
+  "nguoi_ky",
+  "nguoi_ki",
+  "ten_nguoi_ky",
+  "name",
+  "full_name",
+  "display_name",
+  "common_name",
+  "subject",
+  "subject_name",
+  "subject_dn",
+  "subject_common_name",
+  "subject_cn",
+  "certificate_subject",
+  "cn",
+])
+const TEXT_VALUE_FIELD_KEYS = [
+  "name",
+  "full_name",
+  "display_name",
+  "common_name",
+  "subject",
+  "subject_name",
+  "subject_dn",
+  "subject_common_name",
+  "subject_cn",
+  "certificate_subject",
+  "cn",
+]
 const FIELD_ALIAS_GROUPS = [
   ["document_summary", "trich_yeu_tai_lieu", "trich_yeu"],
   ["long_summary", "summary"],
@@ -43,6 +102,17 @@ export function buildDisplayMetadata(
   )
   if (warnings !== undefined) {
     metadata[WARNING_KEY] = warnings
+  }
+  if (!hasResolvedFieldValue(metadata, "signer") && documentSignatureStatus(sources) === "done") {
+    const signer = firstSignerValue(
+      sources.light_metadata,
+      sources.normalized_metadata,
+      sources.metadata,
+      sources.raw_metadata
+    )
+    if (signer) {
+      metadata.signer = signer
+    }
   }
   return metadata
 }
@@ -103,6 +173,86 @@ function firstWarningValue(...sources: MetadataSource[]): unknown {
     emptyWarningValue ??= warnings
   }
   return emptyWarningValue
+}
+
+function firstSignerValue(...sources: MetadataSource[]): string {
+  for (const source of sources) {
+    if (!isRecord(source)) continue
+    const signer = signerFromMetadataFields(source)
+    if (signer) return signer
+  }
+  for (const source of sources) {
+    if (!isRecord(source)) continue
+    for (const [key, value] of Object.entries(source)) {
+      if (!SIGNATURE_METADATA_FIELD_KEYS.has(normalizeFieldName(key))) continue
+      const signer = signerFromSignaturePayload(value)
+      if (signer) return signer
+    }
+  }
+  return ""
+}
+
+function signerFromMetadataFields(meta: Record<string, unknown>): string {
+  for (const [key, value] of Object.entries(meta)) {
+    if (!SIGNER_METADATA_FIELD_KEYS.has(normalizeFieldName(key))) continue
+    const signer = metadataTextValue(value)
+    if (signer) return signer
+  }
+  return ""
+}
+
+function signerFromSignaturePayload(value: unknown): string {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const signer = signerFromSignaturePayload(item)
+      if (signer) return signer
+    }
+    return ""
+  }
+  if (!isRecord(value)) return ""
+
+  for (const [key, itemValue] of Object.entries(value)) {
+    if (!SIGNATURE_SIGNER_FIELD_KEYS.has(normalizeFieldName(key))) continue
+    const signer = metadataTextValue(itemValue)
+    if (signer) return signer
+  }
+  for (const [key, itemValue] of Object.entries(value)) {
+    if (SIGNATURE_SIGNER_FIELD_KEYS.has(normalizeFieldName(key))) continue
+    const signer = signerFromSignaturePayload(itemValue)
+    if (signer) return signer
+  }
+  return ""
+}
+
+function metadataTextValue(value: unknown): string {
+  if (typeof value === "string") return cleanSignerText(value)
+  if (typeof value === "number") return String(value)
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const text = metadataTextValue(item)
+      if (text) return text
+    }
+    return ""
+  }
+  if (isRecord(value)) {
+    for (const key of TEXT_VALUE_FIELD_KEYS) {
+      const text = metadataTextValue(value[key])
+      if (text) return text
+    }
+  }
+  return ""
+}
+
+function cleanSignerText(value: string): string {
+  const text = value.trim()
+  if (!hasTextContent(text)) return ""
+  for (const part of text.split(",")) {
+    const [key, ...rawValueParts] = part.split("=")
+    if (key?.trim().toLowerCase() !== "cn") continue
+    const commonName = rawValueParts.join("=").trim()
+    if (commonName) return commonName
+  }
+  return text
 }
 
 function hasWarningContent(value: unknown): boolean {
@@ -217,7 +367,16 @@ function fieldAliases(field: string): string[] {
 }
 
 function normalizeFieldName(field: string): string {
-  return field.trim().toLowerCase().replace(/[\s-]+/g, "_")
+  const rawText = field.trim().toLowerCase()
+  const prefix = rawText.startsWith("_") ? "_" : ""
+  const normalized = rawText
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .split("_")
+    .filter(Boolean)
+    .join("_")
+  return `${prefix}${normalized}`
 }
 
 function hasDisplayValue(value: unknown): boolean {

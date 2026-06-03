@@ -9,6 +9,7 @@ import {
   FileText,
   Loader2,
   RefreshCw,
+  Signature,
 } from "lucide-react"
 import { AnimatePresence, motion } from "framer-motion"
 import { toast } from "sonner"
@@ -19,6 +20,10 @@ import {
   getWarningFields,
   hasMetadataWarning,
 } from "@/features/upload/lib/metadata"
+import {
+  signatureTagInfo,
+  type SignatureTagKind,
+} from "@/features/upload/lib/signatureStatus"
 import type { PdfMetadata } from "@/features/upload/types"
 
 export const METADATA_LABELS: Record<string, string> = {
@@ -96,6 +101,16 @@ function hasMetadataValue(value: unknown): boolean {
   return value !== null && value !== undefined && value !== false
 }
 
+function signatureTagClass(kind: SignatureTagKind): string {
+  if (kind === "done") {
+    return "border-emerald-300 bg-emerald-50 text-emerald-700"
+  }
+  if (kind === "failed") {
+    return "border-red-300 bg-red-50 text-red-700"
+  }
+  return "border-slate-300 bg-slate-50 text-slate-600"
+}
+
 function fieldHasWarning(
   warningFields: Set<string>,
   aliases: readonly string[]
@@ -114,7 +129,7 @@ interface MetadataCardProps {
   submitting?: boolean
   retrying?: boolean
   selected?: boolean
-  onSelect?: () => void
+  onSelect?: (expanded: boolean) => void
   onRetry?: () => void
   onApply: (
     dataPath: string,
@@ -141,6 +156,7 @@ export function MetadataCard({
   const metadataFailed = isMetadataFailed(item.status)
   const metadataUnavailable = item.status === "failed" && !item.metadata_ready
   const hasMetadataEdits = item.metadata_user_edited === true
+  const signatureTag = signatureTagInfo(item)
 
   const startEdit = () => {
     const nextDraft: Record<string, string> = {}
@@ -179,9 +195,13 @@ export function MetadataCard({
     }
   }
 
-  const openMetadata = () => {
-    onSelect?.()
-    setExpanded(true)
+  const toggleMetadata = () => {
+    const next = !expanded
+    setExpanded(next)
+    onSelect?.(next)
+    if (!next) {
+      setEditing(false)
+    }
   }
 
   return (
@@ -202,11 +222,11 @@ export function MetadataCard({
           "flex items-center gap-3 px-4 py-3",
           onSelect && "cursor-pointer"
         )}
-        onClick={openMetadata}
+        onClick={toggleMetadata}
         onKeyDown={(event) => {
           if (event.key !== "Enter" && event.key !== " ") return
           event.preventDefault()
-          openMetadata()
+          toggleMetadata()
         }}
         role="button"
         tabIndex={0}
@@ -225,7 +245,18 @@ export function MetadataCard({
             {item.data_path}
           </p>
         </div>
-        <div className="flex max-w-[12rem] shrink-0 flex-wrap items-center justify-end gap-2">
+        <div className="flex max-w-[18rem] shrink-0 flex-wrap items-center justify-end gap-2">
+          {signatureTag && (
+            <span
+              title={signatureTag.title}
+              className={cn(
+                "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                signatureTagClass(signatureTag.kind)
+              )}
+            >
+              <Signature className="size-2.5" /> {signatureTag.label}
+            </span>
+          )}
           {hasMetadataEdits && (
             <span className="flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
               <Edit2 className="size-2.5" /> Đã sửa
@@ -262,7 +293,7 @@ export function MetadataCard({
             size="sm"
             onClick={(event) => {
               event.stopPropagation()
-              setExpanded((value) => !value)
+              toggleMetadata()
             }}
             className="size-7 p-0 text-muted-foreground"
           >

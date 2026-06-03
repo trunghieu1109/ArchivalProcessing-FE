@@ -13,6 +13,7 @@ export interface JobSummary {
   document_id: string
   data_path: string
   status: string
+  remote_metadata_status?: string | null
   review_status: string
   metadata_ready: boolean
   metadata_final: boolean
@@ -39,5 +40,8 @@ export interface FolderStatusResponse {
   total_jobs: number
   missing_files: string[]
   status_counts: Record<string, number>
+  signature_extracted_documents: number
+  signature_pending_documents: number
+  signature_failed_documents: number
   jobs: JobSummary[]
 }

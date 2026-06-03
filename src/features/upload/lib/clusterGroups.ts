@@ -3,6 +3,8 @@ import type {
   DossierClassification,
   SessionClusterSummary,
 } from "@/features/upload/api/sessionApi"
+import { buildDisplayMetadata } from "@/features/upload/lib/metadata"
+import { documentSignatureStatus } from "@/features/upload/lib/signatureStatus"
 import type { PdfMetadata } from "@/features/upload/types"
 
 export interface ClusterGroup {
@@ -28,6 +30,9 @@ export interface ClusterDocument {
   sessionDocumentId: number | null
   filePath: string
   fileName: string
+  remoteMetadataStatus: string | null
+  ocrStatus: string
+  signatureStatus: string
   positionIndex: number
   pageCount: number | null
   sheetCount: number | null
@@ -89,10 +94,24 @@ function clusterToGroup(
     .sort((a, b) => a.position_index - b.position_index)
     .map((placement) => {
       const item = itemsByDocumentId.get(placement.document_id)
-      const metadata = {
-        ...(item?.light_metadata ?? {}),
-        ...(placement.metadata ?? {}),
-      }
+      const metadataSource = mergeMetadataSources(
+        item?.light_metadata,
+        placement.metadata
+      )
+      const remoteMetadataStatus =
+        (item?.remote_metadata_status ??
+          stringValue(metadataSource.remote_metadata_status)) ||
+        null
+      const ocrStatus =
+        item?.status ?? stringValue(metadataSource.ocr_status ?? metadataSource.status)
+      const metadata = buildDisplayMetadata({
+        light_metadata: metadataSource,
+        normalized_metadata: item?.normalized_metadata,
+        raw_metadata: item?.raw_metadata,
+        remote_metadata_status: remoteMetadataStatus,
+        ocr_status: ocrStatus,
+        status: stringValue(metadataSource.status),
+      })
       const filePath =
         metadataPath(metadata) ??
         item?.data_path ??
@@ -103,6 +122,12 @@ function clusterToGroup(
         sessionDocumentId: placement.session_document_id,
         filePath,
         fileName: filePath.split(/[\\/]/).pop() || filePath,
+        remoteMetadataStatus,
+        ocrStatus,
+        signatureStatus: documentSignatureStatus({
+          remoteMetadataStatus,
+          ocrStatus,
+        }),
         positionIndex: placement.position_index,
         pageCount: placement.page_count ?? numberValue(metadata.page_count),
         sheetCount: placement.sheet_count ?? numberValue(metadata.sheet_count),
@@ -116,7 +141,21 @@ function clusterToGroup(
     .filter((documentId) => !placedIds.has(documentId))
     .map((documentId, index) => {
       const item = itemsByDocumentId.get(documentId)
-      const metadata = item?.light_metadata ?? {}
+      const metadataSource = item?.light_metadata ?? {}
+      const remoteMetadataStatus =
+        (item?.remote_metadata_status ??
+          stringValue(metadataSource.remote_metadata_status)) ||
+        null
+      const ocrStatus =
+        item?.status ?? stringValue(metadataSource.ocr_status ?? metadataSource.status)
+      const metadata = buildDisplayMetadata({
+        light_metadata: metadataSource,
+        normalized_metadata: item?.normalized_metadata,
+        raw_metadata: item?.raw_metadata,
+        remote_metadata_status: remoteMetadataStatus,
+        ocr_status: ocrStatus,
+        status: stringValue(metadataSource.status),
+      })
       const filePath = metadataPath(metadata) ?? item?.data_path ?? documentId
       const clusterWarning = clusterWarningFromMetadata(metadata)
       return {
@@ -124,6 +163,12 @@ function clusterToGroup(
         sessionDocumentId: item?.id ?? null,
         filePath,
         fileName: filePath.split(/[\\/]/).pop() || filePath,
+        remoteMetadataStatus,
+        ocrStatus,
+        signatureStatus: documentSignatureStatus({
+          remoteMetadataStatus,
+          ocrStatus,
+        }),
         positionIndex: documents.length + index,
         pageCount: numberValue(metadata.page_count),
         sheetCount: numberValue(metadata.sheet_count),
@@ -259,6 +304,34 @@ function representativeDocuments(
       (item): item is ClusterWarningRepresentativeDocument =>
         Boolean(item?.documentId || item?.fileName || item?.title || item?.documentSummary)
     )
+}
+
+function mergeMetadataSources(
+  ...sources: Array<Record<string, unknown> | null | undefined>
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = {}
+  for (const source of sources) {
+    if (!source) continue
+    for (const [key, value] of Object.entries(source)) {
+      if (isEmptyMetadataValue(value) && hasMetadataValue(merged[key])) {
+        continue
+      }
+      merged[key] = value
+    }
+  }
+  return merged
+}
+
+function isEmptyMetadataValue(value: unknown): boolean {
+  if (value === null || value === undefined) return true
+  if (typeof value === "string") return value.trim().length === 0
+  if (Array.isArray(value)) return value.length === 0
+  if (isRecord(value)) return Object.keys(value).length === 0
+  return false
+}
+
+function hasMetadataValue(value: unknown): boolean {
+  return !isEmptyMetadataValue(value) && value !== false
 }
 
 function uniqueStrings(values: string[]): string[] {

@@ -356,6 +356,7 @@ function sessionDocumentToJobSummary(
     document_id: document.document_id,
     data_path: document.data_path,
     status: document.ocr_status,
+    remote_metadata_status: document.remote_metadata_status,
     review_status: normalizeDocumentReviewStatus(document, lightMetadata),
     metadata_ready: document.metadata_ready,
     metadata_final: document.metadata_final,

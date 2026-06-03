@@ -56,12 +56,15 @@ export interface PdfMetadata {
   document_id: string
   data_path: string
   status: string
+  remote_metadata_status?: string | null
   review_status: string
   metadata_ready: boolean
   metadata_final: boolean
   metadata_version_count?: number
   metadata_user_edited?: boolean
   light_metadata: Record<string, unknown>
+  normalized_metadata?: Record<string, unknown>
+  raw_metadata?: Record<string, unknown>
   error?: string | null
   applied: boolean
 }

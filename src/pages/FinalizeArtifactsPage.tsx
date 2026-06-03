@@ -725,6 +725,7 @@ function artifactTypeLabel(value: string): string {
     muc_luc_van_ban_co_thoi_han_xlsx: "Mục lục văn bản có thời hạn Excel",
     metadata_extracted_documents_xlsx: "Metadata tài liệu trích xuất",
     metadata_digitalized_documents_xlsx: "Metadata tài liệu số hóa",
+    metadata_snapshot_xlsx: "Snapshot metadata",
   }
   return labels[value] ?? value.replace(/_/g, " ")
 }
