@@ -14,6 +14,7 @@ export interface ClusterGroup {
   documents: ClusterDocument[]
   dossierId?: string | null
   dossierNumber?: string | null
+  boxNumber?: string | null
   folderName?: string | null
   classificationPath?: string[]
   retentionPeriod?: string | null
@@ -183,6 +184,7 @@ function clusterToGroup(
     id: cluster.cluster_id,
     dossierId: dossier?.dossier_id ?? cluster.dossier_id,
     dossierNumber: dossier?.dossier_number ?? null,
+    boxNumber: dossier?.box_number ?? null,
     folderName: dossier?.folder_name ?? null,
     label:
       dossier?.title || dossier?.generated_title || cluster.title || cluster.dossier_id || cluster.cluster_id,

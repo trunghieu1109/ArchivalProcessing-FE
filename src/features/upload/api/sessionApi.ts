@@ -262,6 +262,7 @@ export interface MetadataSnapshotGroup {
   label: string
   dossierId?: string | null
   dossierNumber?: string | null
+  boxNumber?: string | null
   folderName?: string | null
   classificationPath?: string[]
   retentionPeriod?: string | null
@@ -280,6 +281,27 @@ export interface MetadataSnapshotResponse {
   artifact: SessionArtifact
   artifacts: SessionArtifact[]
   summary: Record<string, unknown>
+}
+
+export interface MetadataBoxNumberImportResponse {
+  session_id: string
+  cluster_version_id: string
+  cluster_version_number: number
+  file_name?: string | null
+  sheet_name: string
+  header_row: number
+  data_row_count: number
+  imported_box_rows: number
+  skipped_empty_box_rows: number
+  matched_rows: number
+  unmatched_rows: number
+  updated_dossiers: number
+  unchanged_dossiers: number
+  conflict_count: number
+  updated?: Array<Record<string, unknown>>
+  unchanged?: Array<Record<string, unknown>>
+  conflicts?: Array<Record<string, unknown>>
+  unmatched?: Array<Record<string, unknown>>
 }
 
 export interface SessionDocumentResponse {
@@ -365,6 +387,7 @@ export interface SessionDossierSummary {
   title: string
   title_override: string | null
   dossier_number: string | null
+  box_number: string | null
   folder_name: string | null
   retention_period: string | null
   retention_recommendation: Record<string, unknown>
@@ -1224,6 +1247,23 @@ export async function exportMetadataSnapshot(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+    }
+  )
+}
+
+export async function importMetadataBoxNumbers(
+  sessionId: string,
+  file: File,
+  payload: { created_by?: string } = {}
+): Promise<MetadataBoxNumberImportResponse> {
+  const form = new FormData()
+  form.append("created_by", payload.created_by ?? "ui")
+  form.append("file", file)
+  return requestJson<MetadataBoxNumberImportResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/artifacts/metadata-snapshot/import-box-numbers`,
+    {
+      method: "POST",
+      body: form,
     }
   )
 }

@@ -23,6 +23,7 @@ import {
   MoveRight,
   RefreshCw,
   Signature,
+  Upload,
 } from "lucide-react"
 import { motion } from "framer-motion"
 import { toast } from "sonner"
@@ -38,6 +39,7 @@ import {
   exportMetadataSnapshot,
   getActiveClusters,
   getClusterBuildStatus,
+  importMetadataBoxNumbers,
   listSessionEvents,
   moveDocumentBetweenClusters,
   type ClusterVersionResponse,
@@ -143,12 +145,14 @@ export function FinalResult({
   const [rebuildPollKey, setRebuildPollKey] = useState(0)
   const [rebuildSubmitting, setRebuildSubmitting] = useState(false)
   const [metadataExporting, setMetadataExporting] = useState(false)
+  const [metadataImporting, setMetadataImporting] = useState(false)
   const [pendingFeedbackCount, setPendingFeedbackCount] = useState(0)
   const [selectedPreviewDocumentId, setSelectedPreviewDocumentId] = useState<
     number | null
   >(null)
   const [previewWidthPercent, setPreviewWidthPercent] = useState(50)
   const previewLayoutRef = useRef<HTMLDivElement | null>(null)
+  const metadataImportInputRef = useRef<HTMLInputElement | null>(null)
   const resultTreeScrollRef = useRef<HTMLDivElement | null>(null)
   const resultTreeDragYRef = useRef<number | null>(null)
   const resultTreeAutoScrollFrameRef = useRef<number | null>(null)
@@ -755,6 +759,49 @@ export function FinalResult({
     }
   }
 
+  const handleImportMetadataBoxNumbers = async (file: File | null) => {
+    if (!file) return
+    if (!sessionId) {
+      toast.error("Chưa có session để nhập số hộp.")
+      return
+    }
+    if (!file.name.toLowerCase().endsWith(".xlsx")) {
+      toast.error("File nhập số hộp phải là .xlsx.")
+      return
+    }
+
+    setMetadataImporting(true)
+    try {
+      const result = await importMetadataBoxNumbers(sessionId, file, {
+        created_by: "ui",
+      })
+      const version = await getActiveClusters(sessionId)
+      if (!version) {
+        throw new Error("Backend chưa trả về phiên bản hồ sơ sau khi nhập số hộp.")
+      }
+      const nextGroups = versionToGroups(version, metadataItems)
+      setGroups(nextGroups)
+      setActiveClusterVersionId(version.id)
+      setDisplayedClusterVersionId(version.id)
+      setPendingClusterVersion(null)
+      toast.success(
+        `Đã cập nhật số hộp cho ${result.updated_dossiers} hồ sơ.`
+      )
+      const issueCount = result.unmatched_rows + result.conflict_count
+      if (issueCount > 0) {
+        toast.info(
+          `Có ${issueCount} dòng chưa cập nhật được do chưa khớp hồ sơ hoặc bị trùng số hộp.`
+        )
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Không thể nhập số hộp từ metadata."
+      )
+    } finally {
+      setMetadataImporting(false)
+    }
+  }
+
   const handleSelectPreviewDocument = (document: ClusterDocument) => {
     if (document.sessionDocumentId === null) {
       toast.error("Tài liệu này chưa có mã trong session để lấy preview.")
@@ -804,7 +851,7 @@ export function FinalResult({
       toast.error("Có phiên bản hồ sơ mới. Hãy áp dụng trước khi tạo mục lục.")
       return
     }
-    if (loading || rebuildSubmitting || rebuildBaselineVersionId) {
+    if (loading || rebuildSubmitting || rebuildBaselineVersionId || metadataImporting) {
       toast.error("Đang cập nhật hồ sơ. Vui lòng chờ xong rồi tạo mục lục.")
       return
     }
@@ -836,12 +883,28 @@ export function FinalResult({
           ? `Có ${pendingFeedbackCount} feedback đã lưu và đang chờ cập nhật hồ sơ.`
           : "Feedback di chuyển tài liệu sẽ được lưu lại và chỉ áp dụng khi cập nhật hồ sơ."}
       </p>
-      <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-3 xl:w-auto xl:flex xl:flex-wrap xl:items-center xl:justify-end">
+      <input
+        ref={metadataImportInputRef}
+        type="file"
+        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0] ?? null
+          event.currentTarget.value = ""
+          void handleImportMetadataBoxNumbers(file)
+        }}
+      />
+      <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-4 xl:w-auto xl:flex xl:flex-wrap xl:items-center xl:justify-end">
         <Button
           variant="outline"
           onClick={() => void handleExportMetadataSnapshot()}
           className="w-full xl:w-auto"
-          disabled={metadataExporting || !sessionId || groups.length === 0}
+          disabled={
+            metadataExporting ||
+            metadataImporting ||
+            !sessionId ||
+            groups.length === 0
+          }
         >
           {metadataExporting ? (
             <Loader2 data-icon="inline-start" className="animate-spin" />
@@ -852,11 +915,30 @@ export function FinalResult({
         </Button>
         <Button
           variant="outline"
+          onClick={() => metadataImportInputRef.current?.click()}
+          className="w-full xl:w-auto"
+          disabled={
+            metadataExporting ||
+            metadataImporting ||
+            !sessionId ||
+            groups.length === 0
+          }
+        >
+          {metadataImporting ? (
+            <Loader2 data-icon="inline-start" className="animate-spin" />
+          ) : (
+            <Upload data-icon="inline-start" />
+          )}
+          Nhập số hộp
+        </Button>
+        <Button
+          variant="outline"
           onClick={() => void handleRebuildClusters()}
           className="w-full xl:w-auto"
           disabled={
             rebuildSubmitting ||
             loading ||
+            metadataImporting ||
             !sessionId ||
             groups.length === 0 ||
             Boolean(pendingClusterVersion)
@@ -876,6 +958,7 @@ export function FinalResult({
             groups.length === 0 ||
             loading ||
             rebuildSubmitting ||
+            metadataImporting ||
             Boolean(rebuildBaselineVersionId) ||
             Boolean(pendingClusterVersion)
           }
@@ -1206,6 +1289,12 @@ function ResultNode({
                   ? `Số ${group.dossierNumber}`
                   : "Chưa có số hồ sơ"}
               </span>
+              {group.boxNumber && (
+                <>
+                  <span>·</span>
+                  <span>Hộp {group.boxNumber}</span>
+                </>
+              )}
               <span>·</span>
               <span>{formatDateRange(group.startDate, group.endDate)}</span>
               <span>·</span>
@@ -1949,6 +2038,7 @@ function metadataSnapshotGroups(groups: ClusterGroup[]): MetadataSnapshotGroup[]
     label: group.label,
     dossierId: group.dossierId ?? null,
     dossierNumber: group.dossierNumber ?? null,
+    boxNumber: group.boxNumber ?? null,
     folderName: group.folderName ?? null,
     classificationPath: group.classificationPath ?? [],
     retentionPeriod: group.retentionPeriod ?? null,

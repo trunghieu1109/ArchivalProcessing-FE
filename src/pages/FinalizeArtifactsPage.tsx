@@ -39,6 +39,38 @@ const FINALIZE_POLL_INTERVAL_MS = 3_000
 const FINALIZE_POLL_TIMEOUT_MS = 10 * 60 * 1_000
 const EXCLUDED_FILE_NAMES = new Set(["tai lieu can kiem tra khi phan cum.xlsx"])
 const HIDDEN_ARTIFACT_TYPES = new Set(["manifest"])
+const ARTIFACT_SECTION_DEFINITIONS = [
+  { id: "metadata", ordinal: "01", label: "Tổng hợp metadata" },
+  { id: "dossierIndex", ordinal: "02", label: "Mục lục hồ sơ" },
+  { id: "documentIndex", ordinal: "03", label: "Mục lục văn bản" },
+  { id: "phieuTin", ordinal: "04", label: "Phiếu tin" },
+  { id: "nhanHop", ordinal: "05", label: "Nhãn hộp" },
+] as const
+const SECTION_ARTIFACT_TYPE_ORDER: Record<string, string[]> = {
+  metadata: [
+    "tong_hop_data_so_hoa_xlsx",
+    "metadata_digitalized_documents_xlsx",
+    "metadata_extracted_documents_xlsx",
+    "metadata_snapshot_xlsx",
+  ],
+  dossierIndex: [
+    "muc_luc_ho_so_xlsx",
+    "muc_luc_ho_so_co_thoi_han_xlsx",
+    "muc_luc_ho_so",
+    "muc_luc_ho_so_co_thoi_han",
+    "danh_muc_ho_so",
+  ],
+  documentIndex: [
+    "muc_luc_van_ban_xlsx",
+    "muc_luc_van_ban_co_thoi_han_xlsx",
+    "muc_luc_van_ban",
+    "muc_luc_van_ban_co_thoi_han",
+  ],
+}
+const VI_NATURAL_COLLATOR = new Intl.Collator("vi", {
+  numeric: true,
+  sensitivity: "base",
+})
 const FINALIZE_PROGRESS_PHASES = [
   { id: "loading_data", label: "Tổng hợp dữ liệu hồ sơ" },
   { id: "creating_xlsx", label: "Tạo các file Excel" },
@@ -51,6 +83,17 @@ interface FinalizeArtifactsStepProps {
   autoStart?: boolean
   onAutoStartHandled?: () => void
   embedded?: boolean
+}
+
+type ArtifactSectionId =
+  | (typeof ARTIFACT_SECTION_DEFINITIONS)[number]["id"]
+  | "other"
+
+interface ArtifactSection {
+  id: ArtifactSectionId
+  ordinal: string
+  label: string
+  artifacts: SessionArtifact[]
 }
 
 export function FinalizeArtifactsPage() {
@@ -93,6 +136,10 @@ export function FinalizeArtifactsStep({
   const visibleArtifacts = useMemo(
     () => filterVisibleArtifacts(artifacts),
     [artifacts]
+  )
+  const artifactSections = useMemo(
+    () => buildArtifactSections(visibleArtifacts),
+    [visibleArtifacts]
   )
   const selectedArtifact = useMemo(
     () =>
@@ -493,20 +540,37 @@ export function FinalizeArtifactsStep({
           </div>
         ) : visibleArtifacts.length > 0 ? (
           <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)]">
-            <div className="grid min-w-0 content-start gap-2.5">
-              {visibleArtifacts.map((artifact, index) => (
-                <ArtifactRow
-                  key={artifact.id}
-                  artifact={artifact}
-                  index={index}
-                  selected={artifact.id === selectedArtifactId}
-                  downloadUrl={
-                    sessionId
-                      ? artifactDownloadUrl(sessionId, artifact.id)
-                      : "#"
-                  }
-                  onPreview={() => setSelectedArtifactId(artifact.id)}
-                />
+            <div className="grid min-w-0 content-start gap-5">
+              {artifactSections.map((section) => (
+                <section key={section.id} className="min-w-0">
+                  <div className="mb-2 flex items-center justify-between gap-3 px-1">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold tracking-[0.16em] text-[#94A3B8] uppercase">
+                        Mục {section.ordinal}
+                      </p>
+                      <h3 className="truncate text-sm font-semibold text-[#0F172A]">
+                        {section.label}
+                      </h3>
+                    </div>
+                    <Badge variant="outline">{section.artifacts.length}</Badge>
+                  </div>
+                  <div className="grid gap-2.5">
+                    {section.artifacts.map((artifact, index) => (
+                      <ArtifactRow
+                        key={artifact.id}
+                        artifact={artifact}
+                        index={index}
+                        selected={artifact.id === selectedArtifactId}
+                        downloadUrl={
+                          sessionId
+                            ? artifactDownloadUrl(sessionId, artifact.id)
+                            : "#"
+                        }
+                        onPreview={() => setSelectedArtifactId(artifact.id)}
+                      />
+                    ))}
+                  </div>
+                </section>
               ))}
             </div>
             <ArtifactPreviewPanel
@@ -688,6 +752,76 @@ function filterVisibleArtifacts(
   })
 }
 
+function buildArtifactSections(artifacts: SessionArtifact[]): ArtifactSection[] {
+  const buckets: Record<ArtifactSectionId, SessionArtifact[]> = {
+    metadata: [],
+    dossierIndex: [],
+    documentIndex: [],
+    phieuTin: [],
+    nhanHop: [],
+    other: [],
+  }
+  artifacts.forEach((artifact) => {
+    buckets[artifactSectionId(artifact)].push(artifact)
+  })
+
+  const sections: ArtifactSection[] = ARTIFACT_SECTION_DEFINITIONS.map(
+    (section) => ({
+      ...section,
+      artifacts: sortArtifactsForSection(buckets[section.id], section.id),
+    })
+  ).filter((section) => section.artifacts.length > 0)
+
+  if (buckets.other.length > 0) {
+    sections.push({
+      id: "other",
+      ordinal: "06",
+      label: "Tệp khác",
+      artifacts: sortArtifactsForSection(buckets.other, "other"),
+    })
+  }
+  return sections
+}
+
+function artifactSectionId(artifact: SessionArtifact): ArtifactSectionId {
+  const type = normalizeFilterText(artifact.artifact_type)
+  if (type === "phieu_tin") return "phieuTin"
+  if (type === "nhan_hop") return "nhanHop"
+  if (type.includes("metadata") || type.includes("tong_hop")) {
+    return "metadata"
+  }
+  if (type.startsWith("muc_luc_ho_so") || type === "danh_muc_ho_so") {
+    return "dossierIndex"
+  }
+  if (type.startsWith("muc_luc_van_ban")) return "documentIndex"
+  return "other"
+}
+
+function sortArtifactsForSection(
+  artifacts: SessionArtifact[],
+  sectionId: ArtifactSectionId
+): SessionArtifact[] {
+  const typeOrder = SECTION_ARTIFACT_TYPE_ORDER[sectionId] ?? []
+  return [...artifacts].sort((left, right) => {
+    const priorityDelta =
+      artifactTypePriority(left, typeOrder) -
+      artifactTypePriority(right, typeOrder)
+    if (priorityDelta !== 0) return priorityDelta
+    return (
+      VI_NATURAL_COLLATOR.compare(left.file_name, right.file_name) ||
+      left.id - right.id
+    )
+  })
+}
+
+function artifactTypePriority(
+  artifact: SessionArtifact,
+  typeOrder: string[]
+): number {
+  const index = typeOrder.indexOf(normalizeFilterText(artifact.artifact_type))
+  return index >= 0 ? index : typeOrder.length
+}
+
 function normalizeFilterText(value: string): string {
   return value.trim().toLowerCase()
 }
@@ -723,6 +857,8 @@ function artifactTypeLabel(value: string): string {
     muc_luc_van_ban_co_thoi_han: "Mục lục văn bản có thời hạn",
     muc_luc_van_ban_xlsx: "Mục lục văn bản Excel",
     muc_luc_van_ban_co_thoi_han_xlsx: "Mục lục văn bản có thời hạn Excel",
+    phieu_tin: "Phiếu tin",
+    nhan_hop: "Nhãn hộp",
     metadata_extracted_documents_xlsx: "Metadata tài liệu trích xuất",
     metadata_digitalized_documents_xlsx: "Metadata tài liệu số hóa",
     metadata_snapshot_xlsx: "Snapshot metadata",
