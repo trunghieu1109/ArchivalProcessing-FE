@@ -10,9 +10,11 @@ import {
 import {
   AlertTriangle,
   CalendarDays,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Edit2,
   Eye,
   FileSpreadsheet,
   FileText,
@@ -42,8 +44,11 @@ import {
   importMetadataBoxNumbers,
   listSessionEvents,
   moveDocumentBetweenClusters,
+  patchSessionDossier,
   type ClusterVersionResponse,
   type MetadataSnapshotGroup,
+  type SessionDossierPatchPayload,
+  type SessionDossierSummary,
 } from "@/features/upload/api/sessionApi"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import {
@@ -111,6 +116,28 @@ interface ResultTreeNode {
   pageCount: number
 }
 
+interface DossierMetadataDraft {
+  title: string
+  dossierNumber: string
+  boxNumber: string
+  folderName: string
+  retentionPeriod: string
+}
+
+type DossierMetadataDraftKey = keyof DossierMetadataDraft
+
+const DOSSIER_METADATA_EDIT_FIELDS: Array<{
+  key: DossierMetadataDraftKey
+  label: string
+  rows: number
+}> = [
+  { key: "title", label: "Tiêu đề hồ sơ", rows: 4 },
+  { key: "dossierNumber", label: "Số hồ sơ", rows: 1 },
+  { key: "boxNumber", label: "Số hộp", rows: 1 },
+  { key: "folderName", label: "Tên thư mục", rows: 2 },
+  { key: "retentionPeriod", label: "Thời hạn bảo quản", rows: 2 },
+]
+
 export function FinalResult({
   sessionId,
   groups: initialGroups,
@@ -146,6 +173,9 @@ export function FinalResult({
   const [rebuildSubmitting, setRebuildSubmitting] = useState(false)
   const [metadataExporting, setMetadataExporting] = useState(false)
   const [metadataImporting, setMetadataImporting] = useState(false)
+  const [savingDossierMetadataId, setSavingDossierMetadataId] = useState<
+    string | null
+  >(null)
   const [pendingFeedbackCount, setPendingFeedbackCount] = useState(0)
   const [selectedPreviewDocumentId, setSelectedPreviewDocumentId] = useState<
     number | null
@@ -640,6 +670,46 @@ export function FinalResult({
     }
   }
 
+  const handleSaveDossierMetadata = async (
+    group: ClusterGroup,
+    draft: DossierMetadataDraft
+  ) => {
+    if (!sessionId) {
+      toast.error("Chưa có session để cập nhật metadata hồ sơ.")
+      throw new Error("Missing session id")
+    }
+    const dossierId = group.dossierId ?? group.id
+    if (!dossierId) {
+      toast.error("Hồ sơ này chưa có mã để cập nhật metadata.")
+      throw new Error("Missing dossier id")
+    }
+
+    setSavingDossierMetadataId(dossierId)
+    try {
+      const response = await patchSessionDossier(
+        sessionId,
+        dossierId,
+        dossierPatchPayloadFromDraft(draft)
+      )
+      setGroups((previous) =>
+        updateDossierGroupFromResponse(previous, group.id, response)
+      )
+      setStatus(
+        `Đã cập nhật metadata hồ sơ "${response.title || response.generated_title || group.label}".`
+      )
+      toast.success("Đã cập nhật metadata hồ sơ.")
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Không thể cập nhật metadata hồ sơ."
+      )
+      throw err
+    } finally {
+      setSavingDossierMetadataId(null)
+    }
+  }
+
   const handleRebuildClusters = async () => {
     if (!sessionId) {
       toast.error("Chưa có session để cập nhật hồ sơ.")
@@ -1094,6 +1164,7 @@ export function FinalResult({
                   dropTargetId={dropTargetId}
                   compact={Boolean(previewDocument)}
                   selectedPreviewDocumentId={selectedPreviewDocumentId}
+                  savingDossierMetadataId={savingDossierMetadataId}
                   onToggle={toggleNode}
                   onDragStart={(document, fromClusterId) =>
                     setDraggedDocument({ document, fromClusterId })
@@ -1106,6 +1177,7 @@ export function FinalResult({
                   onDragEnter={setDropTargetId}
                   onDropOnDossier={handleDropOnDossier}
                   onSelectPreview={handleSelectPreviewDocument}
+                  onSaveDossierMetadata={handleSaveDossierMetadata}
                 />
               ))}
               {tree.length === 0 && (
@@ -1181,12 +1253,14 @@ function ResultNode({
   dropTargetId,
   compact,
   selectedPreviewDocumentId,
+  savingDossierMetadataId,
   onToggle,
   onDragStart,
   onDragEnd,
   onDragEnter,
   onDropOnDossier,
   onSelectPreview,
+  onSaveDossierMetadata,
 }: {
   node: ResultTreeNode
   depth: number
@@ -1195,13 +1269,22 @@ function ResultNode({
   dropTargetId: string | null
   compact: boolean
   selectedPreviewDocumentId: number | null
+  savingDossierMetadataId: string | null
   onToggle: (nodeId: string) => void
   onDragStart: (document: ClusterDocument, fromClusterId: string) => void
   onDragEnd: () => void
   onDragEnter: (nodeId: string | null) => void
   onDropOnDossier: (targetClusterId: string) => void
   onSelectPreview: (document: ClusterDocument) => void
+  onSaveDossierMetadata: (
+    group: ClusterGroup,
+    draft: DossierMetadataDraft
+  ) => Promise<void>
 }) {
+  const [dossierMetadataOpen, setDossierMetadataOpen] = useState(false)
+  const [dossierMetadataEditing, setDossierMetadataEditing] = useState(false)
+  const [dossierMetadataDraft, setDossierMetadataDraft] =
+    useState<DossierMetadataDraft>(() => createDossierMetadataDraft(null))
   const open = openNodeIds.has(node.id)
   const isDossier = node.type === "dossier"
   const group = node.group
@@ -1214,6 +1297,39 @@ function ResultNode({
   const indentStep = compact ? 14 : 20
   const displayLabel =
     compact && isDossier ? truncateWithDots(node.label, 76) : node.label
+  const dossierMetadataKey = group?.dossierId ?? group?.id ?? null
+  const dossierMetadataSaving = Boolean(
+    dossierMetadataKey && savingDossierMetadataId === dossierMetadataKey
+  )
+
+  const toggleDossierMetadata = () => {
+    if (!group) return
+    setDossierMetadataDraft(createDossierMetadataDraft(group))
+    setDossierMetadataEditing(false)
+    setDossierMetadataOpen((value) => !value)
+  }
+
+  const startDossierMetadataEdit = () => {
+    if (!group) return
+    setDossierMetadataDraft(createDossierMetadataDraft(group))
+    setDossierMetadataEditing(true)
+    setDossierMetadataOpen(true)
+  }
+
+  const cancelDossierMetadataEdit = () => {
+    setDossierMetadataDraft(createDossierMetadataDraft(group))
+    setDossierMetadataEditing(false)
+  }
+
+  const saveDossierMetadata = async () => {
+    if (!group) return
+    try {
+      await onSaveDossierMetadata(group, dossierMetadataDraft)
+      setDossierMetadataEditing(false)
+    } catch {
+      // The parent handler owns user-facing error messages.
+    }
+  }
 
   return (
     <div className="min-w-0 max-w-full overflow-hidden">
@@ -1318,6 +1434,20 @@ function ResultNode({
               </span>
             </span>
           )}
+          {isDossier && group && (
+            <Button
+              type="button"
+              variant={dossierMetadataOpen ? "default" : "outline"}
+              size="icon-sm"
+              title="Xem metadata hồ sơ"
+              onClick={(event) => {
+                event.stopPropagation()
+                toggleDossierMetadata()
+              }}
+            >
+              <FileText className="size-3.5" />
+            </Button>
+          )}
           {isDossier && primaryDocument && (
             <Button
               type="button"
@@ -1335,6 +1465,26 @@ function ResultNode({
           <CountBadge value={node.documentCount} />
         </div>
       </div>
+
+      {dossierMetadataOpen && isDossier && group && (
+        <DossierMetadataPanel
+          group={group}
+          depth={depth}
+          compact={compact}
+          editing={dossierMetadataEditing}
+          draft={dossierMetadataDraft}
+          saving={dossierMetadataSaving}
+          onDraftChange={(key, value) =>
+            setDossierMetadataDraft((current) => ({
+              ...current,
+              [key]: value,
+            }))
+          }
+          onStartEdit={startDossierMetadataEdit}
+          onCancelEdit={cancelDossierMetadataEdit}
+          onSave={() => void saveDossierMetadata()}
+        />
+      )}
 
       {open && (
         <div className="mt-1">
@@ -1364,17 +1514,163 @@ function ResultNode({
               dropTargetId={dropTargetId}
               compact={compact}
               selectedPreviewDocumentId={selectedPreviewDocumentId}
+              savingDossierMetadataId={savingDossierMetadataId}
               onToggle={onToggle}
               onDragStart={onDragStart}
               onDragEnd={onDragEnd}
               onDragEnter={onDragEnter}
               onDropOnDossier={onDropOnDossier}
               onSelectPreview={onSelectPreview}
+              onSaveDossierMetadata={onSaveDossierMetadata}
             />
           ))}
         </div>
       )}
     </div>
+  )
+}
+
+function DossierMetadataPanel({
+  group,
+  depth,
+  compact,
+  editing,
+  draft,
+  saving,
+  onDraftChange,
+  onStartEdit,
+  onCancelEdit,
+  onSave,
+}: {
+  group: ClusterGroup
+  depth: number
+  compact: boolean
+  editing: boolean
+  draft: DossierMetadataDraft
+  saving: boolean
+  onDraftChange: (key: DossierMetadataDraftKey, value: string) => void
+  onStartEdit: () => void
+  onCancelEdit: () => void
+  onSave: () => void
+}) {
+  const indentStep = compact ? 14 : 20
+  const detailIndent = 8 + (depth + 1) * indentStep
+  const classificationPath = group.classificationPath?.join(" / ") ?? ""
+  const documentCount = String(group.documents.length)
+  const confidence = formatConfidence(group.confidence)
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.16 }}
+      className="mt-1 mr-3 min-w-0 overflow-hidden rounded-2xl border border-[#D8E1EC] bg-white p-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)]"
+      style={{
+        marginLeft: `${detailIndent}px`,
+        width: `calc(100% - ${detailIndent + 12}px)`,
+      }}
+    >
+      <div className="mb-3 flex items-start gap-2">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#EAF1FF] text-[#0052FF]">
+          <FolderOpen className="size-4" />
+        </div>
+        <div className="min-w-0 flex-1 overflow-hidden">
+          <p className="truncate text-sm font-semibold text-[#0F172A]">
+            Metadata hồ sơ
+          </p>
+          <p className="truncate text-[11px] text-[#64748B]">{group.label}</p>
+        </div>
+      </div>
+
+      {editing ? (
+        <div className="flex flex-col gap-2">
+          {DOSSIER_METADATA_EDIT_FIELDS.map((field) => (
+            <div
+              key={field.key}
+              className="grid min-w-0 grid-cols-1 gap-1 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-2"
+            >
+              <span className="pt-2 text-[11px] font-medium text-[#64748B]">
+                {field.label}
+              </span>
+              <textarea
+                value={draft[field.key]}
+                onChange={(event) =>
+                  onDraftChange(field.key, event.target.value)
+                }
+                rows={field.rows}
+                disabled={saving}
+                className="min-h-9 w-full min-w-0 resize-y rounded-lg border border-[#CBD5E1] bg-transparent px-2.5 py-1.5 text-xs leading-5 whitespace-pre-wrap outline-none transition-colors [overflow-wrap:anywhere] placeholder:text-[#94A3B8] focus-visible:border-[#0052FF] focus-visible:ring-3 focus-visible:ring-[#0052FF]/20 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-[#F8FAFC] disabled:opacity-70"
+              />
+            </div>
+          ))}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onCancelEdit}
+              disabled={saving}
+            >
+              Hủy
+            </Button>
+            <Button size="sm" onClick={onSave} disabled={saving}>
+              {saving ? (
+                <Loader2 data-icon="inline-start" className="animate-spin" />
+              ) : (
+                <Check data-icon="inline-start" />
+              )}
+              Lưu metadata
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="grid min-w-0 gap-2 text-xs">
+          <PreviewField label="Tiêu đề hồ sơ" value={group.label} wide />
+          <div
+            className={cn(
+              "grid min-w-0 grid-cols-1 gap-2",
+              compact ? "md:grid-cols-2" : "md:grid-cols-3"
+            )}
+          >
+            <PreviewField label="Số hồ sơ" value={group.dossierNumber ?? ""} />
+            <PreviewField label="Số hộp" value={group.boxNumber ?? ""} />
+            <PreviewField label="Tên thư mục" value={group.folderName ?? ""} />
+            <PreviewField
+              label="Thời hạn bảo quản"
+              value={group.retentionPeriod ?? ""}
+            />
+            <PreviewField label="Phân loại" value={classificationPath} />
+            <PreviewField
+              label="Thời gian"
+              value={formatDateRange(group.startDate, group.endDate)}
+            />
+            <PreviewField label="Số tài liệu" value={documentCount} />
+            <PreviewField
+              label="Số trang"
+              value={String(dossierPageCount(group) || "")}
+            />
+            <PreviewField
+              label="Số tờ"
+              value={
+                typeof group.sheetCount === "number"
+                  ? String(group.sheetCount)
+                  : ""
+              }
+            />
+            <PreviewField label="Độ tin cậy" value={confidence} />
+          </div>
+          <div className="flex justify-end pt-1">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onStartEdit}
+              disabled={saving}
+            >
+              <Edit2 data-icon="inline-start" /> Sửa
+            </Button>
+          </div>
+        </div>
+      )}
+    </motion.div>
   )
 }
 
@@ -2032,6 +2328,49 @@ function moveDocumentLocally(
   })
 }
 
+function createDossierMetadataDraft(
+  group: ClusterGroup | null | undefined
+): DossierMetadataDraft {
+  return {
+    title: group?.label ?? "",
+    dossierNumber: group?.dossierNumber ?? "",
+    boxNumber: group?.boxNumber ?? "",
+    folderName: group?.folderName ?? "",
+    retentionPeriod: group?.retentionPeriod ?? "",
+  }
+}
+
+function dossierPatchPayloadFromDraft(
+  draft: DossierMetadataDraft
+): SessionDossierPatchPayload {
+  return {
+    title: trimmedOrNull(draft.title),
+    dossier_number: trimmedOrNull(draft.dossierNumber),
+    box_number: trimmedOrNull(draft.boxNumber),
+    folder_name: trimmedOrNull(draft.folderName),
+    retention_period: trimmedOrNull(draft.retentionPeriod),
+  }
+}
+
+function updateDossierGroupFromResponse(
+  groups: ClusterGroup[],
+  groupId: string,
+  dossier: SessionDossierSummary
+): ClusterGroup[] {
+  return groups.map((group) => {
+    if (group.id !== groupId) return group
+    return {
+      ...group,
+      dossierId: dossier.dossier_id ?? group.dossierId,
+      dossierNumber: dossier.dossier_number ?? null,
+      boxNumber: dossier.box_number ?? null,
+      folderName: dossier.folder_name ?? null,
+      retentionPeriod: dossier.retention_period ?? null,
+      label: dossier.title || dossier.generated_title || group.label,
+    }
+  })
+}
+
 function metadataSnapshotGroups(groups: ClusterGroup[]): MetadataSnapshotGroup[] {
   return groups.map((group) => ({
     id: group.id,
@@ -2093,6 +2432,17 @@ function formatDateRange(
   if (startDate && endDate && startDate !== endDate)
     return `${startDate} - ${endDate}`
   return startDate || endDate || "Chưa rõ thời gian"
+}
+
+function formatConfidence(value?: number | null): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return ""
+  const percent = value <= 1 ? value * 100 : value
+  return `${Math.round(percent)}%`
+}
+
+function trimmedOrNull(value: string): string | null {
+  const text = value.trim()
+  return text ? text : null
 }
 
 function clusterWarningTooltip(warning: ClusterDocumentWarning): string {

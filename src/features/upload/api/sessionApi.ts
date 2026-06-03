@@ -381,6 +381,7 @@ export interface DossierClassification {
 }
 
 export interface SessionDossierSummary {
+  id?: number
   dossier_id: string
   cluster_id: string
   generated_title: string
@@ -391,7 +392,21 @@ export interface SessionDossierSummary {
   folder_name: string | null
   retention_period: string | null
   retention_recommendation: Record<string, unknown>
+  retention_override?: Record<string, unknown>
+  status?: string
+  source?: string
+  created_by?: string | null
   classification: DossierClassification | null
+  updated_at?: string
+}
+
+export interface SessionDossierPatchPayload {
+  title?: string | null
+  dossier_number?: string | null
+  box_number?: string | null
+  folder_name?: string | null
+  retention_period?: string | null
+  created_by?: string
 }
 
 export interface SessionClusterSummary {
@@ -1051,6 +1066,24 @@ export async function getActiveClusters(
 ): Promise<ClusterVersionResponse | null> {
   return requestJsonOrNull<ClusterVersionResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/clusters`
+  )
+}
+
+export async function patchSessionDossier(
+  sessionId: string,
+  dossierId: string,
+  payload: SessionDossierPatchPayload
+): Promise<SessionDossierSummary & { feedback_event_id?: number }> {
+  return requestJson<SessionDossierSummary & { feedback_event_id?: number }>(
+    `/sessions/${encodeURIComponent(sessionId)}/dossiers/${encodeURIComponent(dossierId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        created_by: "ui",
+        ...payload,
+      }),
+    }
   )
 }
 
