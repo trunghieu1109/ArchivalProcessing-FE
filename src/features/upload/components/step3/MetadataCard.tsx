@@ -27,6 +27,8 @@ import {
 import type { PdfMetadata } from "@/features/upload/types"
 
 export const METADATA_LABELS: Record<string, string> = {
+  document: "Tài liệu",
+  document_scan_issue: "Tài liệu",
   document_summary: "Trích yếu",
   trich_yeu_tai_lieu: "Trích yếu",
   document_type: "Loại văn bản",

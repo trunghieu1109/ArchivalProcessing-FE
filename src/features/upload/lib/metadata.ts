@@ -22,6 +22,14 @@ interface DisplayMetadataSources {
 }
 
 const WARNING_KEY = "_warnings"
+const FIRST_PAGE_GUARD_KEY = "_first_page_guard"
+const DOCUMENT_SCAN_WARNING_KEY = "document_scan_issue"
+const DOCUMENT_SCAN_WARNING_CATEGORIES = new Set([
+  "form_template",
+  "appendix",
+  "table_form",
+  "inventory_or_list",
+])
 const SIGNER_METADATA_FIELD_KEYS = new Set([
   "signer",
   "signer_name",
@@ -118,14 +126,24 @@ export function buildDisplayMetadata(
     sources.raw_metadata
   )
   const metadata = { ...base }
+  const firstPageGuard = firstFirstPageGuard(
+    sources.light_metadata,
+    sources.raw_metadata,
+    sources.normalized_metadata,
+    sources.metadata
+  )
   const warnings = firstWarningValue(
     sources.light_metadata,
     sources.raw_metadata,
     sources.normalized_metadata,
     sources.metadata
   )
-  if (warnings !== undefined) {
-    metadata[WARNING_KEY] = warnings
+  const mergedWarnings = mergeFirstPageGuardWarning(warnings, firstPageGuard)
+  if (mergedWarnings !== undefined) {
+    metadata[WARNING_KEY] = mergedWarnings
+  }
+  if (firstPageGuard && !(FIRST_PAGE_GUARD_KEY in metadata)) {
+    metadata[FIRST_PAGE_GUARD_KEY] = firstPageGuard
   }
   if (!hasResolvedFieldValue(metadata, "signer") && documentSignatureStatus(sources) === "done") {
     const signer = firstSignerValue(
@@ -197,6 +215,76 @@ function firstWarningValue(...sources: MetadataSource[]): unknown {
     emptyWarningValue ??= warnings
   }
   return emptyWarningValue
+}
+
+function firstFirstPageGuard(
+  ...sources: MetadataSource[]
+): Record<string, unknown> | undefined {
+  for (const source of sources) {
+    if (!isRecord(source)) continue
+    const guard = source[FIRST_PAGE_GUARD_KEY]
+    if (isRecord(guard)) return guard
+  }
+  return undefined
+}
+
+function mergeFirstPageGuardWarning(
+  warnings: unknown,
+  guard: Record<string, unknown> | undefined
+): unknown {
+  if (!firstPageGuardHasWarning(guard)) return warnings
+
+  const issue = documentScanIssueWarning(guard)
+  if (!hasWarningContent(warnings)) {
+    return { [DOCUMENT_SCAN_WARNING_KEY]: issue }
+  }
+  if (isRecord(warnings)) {
+    const merged = { ...warnings }
+    const hasDocumentIssue = Object.keys(merged).some(
+      (key) => normalizeFieldName(key) === DOCUMENT_SCAN_WARNING_KEY
+    )
+    if (!hasDocumentIssue) {
+      merged[DOCUMENT_SCAN_WARNING_KEY] = issue
+    }
+    return merged
+  }
+  return {
+    remote_warning: warnings,
+    [DOCUMENT_SCAN_WARNING_KEY]: issue,
+  }
+}
+
+function firstPageGuardHasWarning(
+  guard: Record<string, unknown> | undefined
+): guard is Record<string, unknown> {
+  if (!guard) return false
+  const warningFlag = guard.warning
+  if (typeof warningFlag === "boolean") return warningFlag
+  if (["true", "1", "yes", "warning"].includes(normalizeFieldName(String(warningFlag ?? "")))) {
+    return true
+  }
+  const category = normalizeFieldName(stringValue(guard.category))
+  return (
+    DOCUMENT_SCAN_WARNING_CATEGORIES.has(category) &&
+    guard.is_main_document_first_page === false
+  )
+}
+
+function documentScanIssueWarning(
+  guard: Record<string, unknown>
+): Record<string, unknown> {
+  const category = stringValue(guard.category)
+  const reason = stringValue(guard.reason)
+  const message =
+    reason || "Trang dau OCR co dau hieu can duoc kiem tra thu cong."
+  return {
+    field: "document",
+    value: category,
+    status: "warning",
+    warnings: [message],
+    category,
+    reason,
+  }
 }
 
 function firstSignerValue(...sources: MetadataSource[]): string {
