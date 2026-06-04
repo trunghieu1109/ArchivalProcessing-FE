@@ -1347,8 +1347,7 @@ function ResultNode({
     (document) => document.sessionDocumentId !== null
   )
   const indentStep = compact ? 14 : 20
-  const displayLabel =
-    compact && isDropFolder ? truncateWithDots(node.label, 76) : node.label
+  const displayLabel = node.label
   const dossierMetadataKey = group?.dossierId ?? group?.id ?? null
   const dossierMetadataSaving = Boolean(
     dossierMetadataKey && savingDossierMetadataId === dossierMetadataKey
@@ -1384,10 +1383,11 @@ function ResultNode({
   }
 
   return (
-    <div className="max-w-full min-w-0 overflow-hidden">
+    <div className={cn("max-w-full min-w-0", isDossier ? "overflow-visible" : "overflow-hidden")}>
       <div
         className={cn(
-          "group flex min-h-10 max-w-full min-w-0 items-center gap-2 overflow-hidden rounded-xl px-2 py-1.5 transition-all",
+          "group flex min-h-10 max-w-full min-w-0 gap-2 rounded-xl px-2 py-1.5 transition-all",
+          isDossier ? "items-start overflow-visible" : "items-center overflow-hidden",
           isDropFolder ? "border border-transparent" : "",
           isTemporary && "bg-amber-50/60",
           canDrop && dropTargetId === node.id
@@ -1431,13 +1431,20 @@ function ResultNode({
           <Folder className="size-4 shrink-0 text-[#0052FF]" />
         )}
 
-        <div className="min-w-0 flex-1 overflow-hidden">
-          <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+        <div className={cn("min-w-0 flex-1", isDossier ? "overflow-visible" : "overflow-hidden")}>
+          <div
+            className={cn(
+              "flex min-w-0 gap-2",
+              isDossier ? "items-start overflow-visible" : "items-center overflow-hidden"
+            )}
+          >
             <span
               className={cn(
                 "min-w-0 flex-1 text-sm",
-                compact
-                  ? "line-clamp-2 leading-5 break-words whitespace-normal"
+                isDossier
+                  ? "leading-5 break-words whitespace-normal [overflow-wrap:anywhere]"
+                  : compact
+                    ? "line-clamp-2 leading-5 break-words whitespace-normal"
                   : "truncate",
                 isDropFolder
                   ? "font-semibold text-[#0F172A]"
@@ -1639,10 +1646,12 @@ function DossierMetadataPanel({
           <FolderOpen className="size-4" />
         </div>
         <div className="min-w-0 flex-1 overflow-hidden">
-          <p className="truncate text-sm font-semibold text-[#0F172A]">
+          <p className="text-sm font-semibold text-[#0F172A]">
             Metadata hồ sơ
           </p>
-          <p className="truncate text-[11px] text-[#64748B]">{group.label}</p>
+          <p className="text-[11px] leading-4 break-words whitespace-normal text-[#64748B] [overflow-wrap:anywhere]">
+            {group.label}
+          </p>
         </div>
       </div>
 
@@ -2182,7 +2191,7 @@ function PreviewField({
       <p
         className={cn(
           "min-w-0 text-xs font-medium [overflow-wrap:anywhere] break-words whitespace-normal text-[#0F172A]",
-          wide ? "line-clamp-3" : "line-clamp-2"
+          !wide && "line-clamp-2"
         )}
       >
         {value || "Chưa có"}

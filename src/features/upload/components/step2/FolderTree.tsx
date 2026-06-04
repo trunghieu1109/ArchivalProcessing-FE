@@ -270,7 +270,7 @@ function FolderNodeItem({
         ) : (
           <button
             onClick={startDefinitionEdit}
-            className="min-w-0 flex-1 truncate text-left text-sm text-[#0F172A]"
+            className="min-w-0 flex-1 text-left text-sm leading-5 break-words whitespace-normal text-[#0F172A] [overflow-wrap:anywhere]"
             title={readOnly ? "Xem định nghĩa nhóm" : "Sửa định nghĩa nhóm"}
           >
             {node.name}

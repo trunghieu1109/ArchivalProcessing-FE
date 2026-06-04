@@ -69,7 +69,7 @@ function InlineNameEditor({ name, onSave }: InlineNameEditorProps) {
 
   return (
     <div className="group/name flex min-w-0 flex-1 items-center gap-1.5">
-      <span className="truncate text-sm font-medium text-foreground">
+      <span className="min-w-0 flex-1 text-sm font-medium break-words whitespace-normal text-foreground [overflow-wrap:anywhere]">
         {name}
       </span>
       <Button
@@ -222,7 +222,7 @@ function FolderResultNode({
             onSave={(name) => onRenameNode(node.id, name)}
           />
         ) : (
-          <span className="flex-1 truncate text-sm font-medium text-foreground">
+          <span className="min-w-0 flex-1 text-sm font-medium break-words whitespace-normal text-foreground [overflow-wrap:anywhere]">
             {node.name}
           </span>
         )}

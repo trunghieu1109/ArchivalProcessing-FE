@@ -110,16 +110,16 @@ function ClusterGroupCard({
         onClick={() => setOpen((value) => !value)}
         className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50"
       >
-        <div className="flex min-w-0 items-start gap-3">
+        <div className="flex min-w-0 flex-1 items-start gap-3">
           <div
             className="flex size-7 shrink-0 items-center justify-center rounded-md text-[10px] font-bold text-primary-foreground shadow-[0_2px_8px_rgba(0,82,255,0.3)]"
             style={{ background: "linear-gradient(135deg, #0052FF, #4D7CFF)" }}
           >
             {index + 1}
           </div>
-          <div className="min-w-0">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="truncate text-sm font-semibold text-foreground">
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-start gap-2">
+              <span className="min-w-0 flex-1 text-sm leading-5 font-semibold break-words whitespace-normal text-foreground [overflow-wrap:anywhere]">
                 {group.label}
               </span>
               <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 font-roboto text-[10px] font-bold text-primary">

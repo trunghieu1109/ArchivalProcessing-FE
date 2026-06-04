@@ -181,21 +181,21 @@ function InlineMetadataField({
           type="button"
           onClick={onStartEditing}
           disabled={disabled}
-          className="group mt-1 flex min-h-8 max-w-full items-center gap-2 text-left disabled:cursor-default"
+          className="group mt-1 flex min-h-8 max-w-full items-start gap-2 text-left disabled:cursor-default"
           title={`Chỉnh sửa ${label.toLowerCase()}`}
         >
           <span
             className={cn(
-              "truncate text-xl font-semibold transition-colors group-hover:text-[#0052FF]",
+              "min-w-0 text-xl leading-7 font-semibold break-words whitespace-normal transition-colors [overflow-wrap:anywhere] group-hover:text-[#0052FF]",
               emptyValue ? "text-[#64748B]" : "text-[#0F172A]"
             )}
           >
             {value}
           </span>
           {saving ? (
-            <Loader2 className="size-4 shrink-0 animate-spin text-[#0052FF]" />
+            <Loader2 className="mt-1.5 size-4 shrink-0 animate-spin text-[#0052FF]" />
           ) : (
-            <Pencil className="size-3.5 shrink-0 text-[#94A3B8] opacity-0 transition-opacity group-hover:opacity-100" />
+            <Pencil className="mt-2 size-3.5 shrink-0 text-[#94A3B8] opacity-0 transition-opacity group-hover:opacity-100" />
           )}
         </button>
       )}
