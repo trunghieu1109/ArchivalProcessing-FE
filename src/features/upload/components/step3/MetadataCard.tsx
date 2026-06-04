@@ -401,7 +401,6 @@ export function MetadataCard({
                       item.light_metadata,
                       field.aliases
                     )
-                    if (!display) return null
                     const isWarning = fieldHasWarning(warningFields, field.aliases)
                     return (
                       <div
@@ -426,8 +425,12 @@ export function MetadataCard({
                         </span>
                         <span
                           className={cn(
-                            "min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]",
-                            isWarning ? "text-amber-900" : "text-foreground"
+                            "min-h-4 min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]",
+                            isWarning
+                              ? "text-amber-900"
+                              : display
+                                ? "text-foreground"
+                                : "text-muted-foreground"
                           )}
                         >
                           {display}

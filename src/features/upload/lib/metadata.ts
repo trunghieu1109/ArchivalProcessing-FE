@@ -83,6 +83,30 @@ const FIELD_ALIAS_GROUPS = [
   ["direct_target_subject", "doi_tuong_huong_toi"],
   ["mentioned_subjects", "doi_tuong_duoc_nhac_den", "chu_the_duoc_nhac_den"],
 ]
+const OK_WARNING_STATUSES = new Set([
+  "ok",
+  "valid",
+  "verified",
+  "success",
+  "passed",
+  "resolved",
+])
+const MISSING_WARNING_STATUSES = new Set([
+  "missing",
+  "empty",
+  "not_found",
+  "not found",
+])
+const NEUTRAL_WARNING_STATUSES = new Set([
+  "none",
+  "no_warning",
+  "no warnings",
+  "not_applicable",
+  "not applicable",
+  "n/a",
+  "skipped",
+  "ignored",
+])
 
 export function buildDisplayMetadata(
   sources: DisplayMetadataSources
@@ -294,10 +318,15 @@ function warningEntryFromField(
   const warningPayload = value.warnings ?? value.warning ?? value.message ?? value.reason
   const hasPayload = hasWarningContent(warningPayload)
 
-  if (isOkStatus(status) && !hasPayload) return null
+  if (isOkWarningStatus(status) && !hasPayload) return null
   if (isMissingStatus(status) && hasResolvedFieldValue(meta, warningField)) {
     return null
   }
+  if (status && !isMissingStatus(status) && !isNeutralWarningStatus(status)) {
+    const message = warningMessage(warningPayload) || status
+    return { field: warningField, message }
+  }
+  if (isNeutralWarningStatus(status) && !hasPayload) return null
 
   const message = warningMessage(warningPayload) || status || warningMessage(value)
   if (!message && !warningField) return null
@@ -329,12 +358,16 @@ function hasTextContent(value: string): boolean {
   return value.replace(/[,\s;|]+/g, "").length > 0
 }
 
-function isOkStatus(status: string): boolean {
-  return ["ok", "valid", "verified", "success", "passed"].includes(status)
+function isOkWarningStatus(status: string): boolean {
+  return OK_WARNING_STATUSES.has(status)
 }
 
 function isMissingStatus(status: string): boolean {
-  return ["missing", "empty", "not_found", "not found"].includes(status)
+  return MISSING_WARNING_STATUSES.has(status)
+}
+
+function isNeutralWarningStatus(status: string): boolean {
+  return NEUTRAL_WARNING_STATUSES.has(status)
 }
 
 function isMissingValue(value: unknown): boolean {
