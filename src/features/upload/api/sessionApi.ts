@@ -438,6 +438,7 @@ export interface ClusterVersionResponse {
   version_number: number
   source: string
   status: string
+  previous_version_id: string | null
   summary: Record<string, unknown>
   affected_clusters: string[]
   batch_snapshot_count: number
@@ -1090,6 +1091,20 @@ export async function getActiveClusters(
   )
 }
 
+export async function activateClusterVersion(
+  sessionId: string,
+  clusterVersionId: string
+): Promise<ClusterVersionResponse> {
+  return requestJson<ClusterVersionResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/clusters/versions/${encodeURIComponent(clusterVersionId)}/activate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ created_by: "ui" }),
+    }
+  )
+}
+
 export async function patchSessionDossier(
   sessionId: string,
   dossierId: string,
@@ -1118,7 +1133,11 @@ export async function getClusterBuildStatus(
 
 export async function enqueueClusterBuild(
   sessionId: string,
-  payload: { source?: string; batch_size?: number } = {}
+  payload: {
+    source?: string
+    batch_size?: number
+    dossier_build_strategy?: "file_register"
+  } = {}
 ): Promise<Record<string, unknown>> {
   return requestJson<Record<string, unknown>>(
     `/sessions/${encodeURIComponent(sessionId)}/clustering/build`,

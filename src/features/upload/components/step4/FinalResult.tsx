@@ -9,6 +9,7 @@ import {
 } from "react"
 import {
   AlertTriangle,
+  Archive,
   CalendarDays,
   Check,
   CheckCircle2,
@@ -26,6 +27,7 @@ import {
   MoveRight,
   RefreshCw,
   Signature,
+  Undo2,
   Upload,
 } from "lucide-react"
 import { motion } from "framer-motion"
@@ -37,6 +39,7 @@ import {
   type DocumentPreviewTarget,
 } from "@/features/upload/components/DocumentPdfPreview"
 import {
+  activateClusterVersion,
   artifactDownloadUrl,
   enqueueClusterBuild,
   exportMetadataSnapshot,
@@ -88,7 +91,7 @@ const CLUSTER_PROGRESS_PHASE_ALIASES: Record<string, string> = {
   persisting_clusters: "reviewing_dossiers",
 }
 
-type ClusterJobMode = "new" | "update" | "plan_reanalysis"
+type ClusterJobMode = "new" | "update" | "plan_reanalysis" | "file_register"
 
 interface FinalResultProps {
   sessionId: string | null
@@ -172,6 +175,8 @@ export function FinalResult({
   const [displayedClusterVersionId, setDisplayedClusterVersionId] = useState<
     string | null
   >(null)
+  const [displayedClusterVersion, setDisplayedClusterVersion] =
+    useState<ClusterVersionResponse | null>(null)
   const [pendingClusterVersion, setPendingClusterVersion] =
     useState<ClusterVersionResponse | null>(null)
   const [rebuildBaselineVersionId, setRebuildBaselineVersionId] = useState<
@@ -179,6 +184,7 @@ export function FinalResult({
   >(null)
   const [rebuildPollKey, setRebuildPollKey] = useState(0)
   const [rebuildSubmitting, setRebuildSubmitting] = useState(false)
+  const [restoringClusterVersion, setRestoringClusterVersion] = useState(false)
   const [metadataExporting, setMetadataExporting] = useState(false)
   const [metadataImporting, setMetadataImporting] = useState(false)
   const [savingDossierMetadataId, setSavingDossierMetadataId] = useState<
@@ -322,7 +328,7 @@ export function FinalResult({
         const activeJobMode = hasActiveBuildJob
           ? clusterJobModeFromPayload(buildStatus?.job?.payload)
           : rebuildBaselineVersionId
-            ? "update"
+            ? clusterJobMode
             : "new"
         const nextVersionId = version?.id ?? null
         const nextVersionMarker = nextVersionId ?? NO_CLUSTER_VERSION
@@ -341,6 +347,7 @@ export function FinalResult({
         if (shouldDisplayInitialVersion && nextVersionId) {
           setGroups(nextGroups)
           setDisplayedClusterVersionId(nextVersionId)
+          setDisplayedClusterVersion(version)
           setPendingClusterVersion(null)
         }
 
@@ -374,6 +381,10 @@ export function FinalResult({
             setStatus(
               "Đang chờ backend lập lại hồ sơ theo phương án chỉnh lý và thời hạn bảo quản mới."
             )
+          } else if (activeJobMode === "file_register") {
+            setStatus(
+              "Đang chờ backend lập lại hồ sơ theo phương án tập lưu."
+            )
           } else {
             setStatus(
             activeJobMode === "update"
@@ -392,12 +403,18 @@ export function FinalResult({
           nextVersionMarker === rebuildBaselineVersionId
         ) {
           setRebuildBaselineVersionId(null)
-          setClusterJobMode("update")
+          setClusterJobMode(activeJobMode)
           setClusterProgressPhase(null)
           setClusterCompletedPhases(completedClusterPhaseSet())
-          setClusterProgressMessage("Không có job cập nhật hồ sơ đang chạy.")
+          setClusterProgressMessage(
+            activeJobMode === "file_register"
+              ? "Không có job lập lại hồ sơ theo tập lưu đang chạy."
+              : "Không có job cập nhật hồ sơ đang chạy."
+          )
           setStatus(
-            "Chưa ghi nhận phiên bản hồ sơ mới. Feedback đã lưu sẽ được áp dụng ở lần cập nhật hồ sơ tiếp theo."
+            activeJobMode === "file_register"
+              ? "Chưa ghi nhận phiên bản hồ sơ tập lưu mới."
+              : "Chưa ghi nhận phiên bản hồ sơ mới. Feedback đã lưu sẽ được áp dụng ở lần cập nhật hồ sơ tiếp theo."
           )
           schedule()
           return
@@ -495,6 +512,7 @@ export function FinalResult({
     }
   }, [
     displayedClusterVersionId,
+    clusterJobMode,
     groups,
     hasClusterData,
     metadataItems,
@@ -746,7 +764,11 @@ export function FinalResult({
     }
   }
 
-  const handleRebuildClusters = async () => {
+  const handleRebuildClusters = async (
+    mode: "update" | "file_register" = "update"
+  ) => {
+    const forceFileRegister = mode === "file_register"
+    const previousJobMode = clusterJobMode
     if (!sessionId) {
       toast.error("Chưa có session để cập nhật hồ sơ.")
       return
@@ -757,6 +779,7 @@ export function FinalResult({
       )
       return
     }
+    setClusterJobMode(mode)
     setRebuildSubmitting(true)
     try {
       const currentVersion = await getActiveClusters(sessionId)
@@ -766,34 +789,46 @@ export function FinalResult({
         currentVersion?.id ?? activeClusterVersionId ?? null
       )
       const response = await enqueueClusterBuild(sessionId, {
-        source: "user_feedback",
+        source: forceFileRegister ? "user_file_register" : "user_feedback",
+        ...(forceFileRegister
+          ? { dossier_build_strategy: "file_register" as const }
+          : {}),
       })
       setRebuildBaselineVersionId(baselineVersionId)
       setRebuildPollKey((key) => key + 1)
       setLoading(true)
       setCheckingClusters(false)
-      setClusterJobMode("update")
+      setClusterJobMode(mode)
       setClusterProgressPhase(FIRST_CLUSTER_PROGRESS_PHASE_ID)
       setClusterProgressMessage(
         clusterProgressMessageForPhase(
           FIRST_CLUSTER_PROGRESS_PHASE_ID,
-          "update"
+          mode
         )
       )
       setClusterCompletedPhases(new Set())
       setStatus(
-        "Đã gửi job cập nhật hồ sơ. Đang chờ backend tạo phiên bản mới."
+        forceFileRegister
+          ? "Đã gửi job lập lại hồ sơ theo tập lưu. Đang chờ backend tạo phiên bản mới."
+          : "Đã gửi job cập nhật hồ sơ. Đang chờ backend tạo phiên bản mới."
       )
       toast.success(
         response.status === "already_queued_or_running"
-          ? "Đã có job cập nhật hồ sơ đang chạy."
-          : "Đã gửi job cập nhật hồ sơ."
+          ? forceFileRegister
+            ? "Đã có job lập hồ sơ đang chạy."
+            : "Đã có job cập nhật hồ sơ đang chạy."
+          : forceFileRegister
+            ? "Đã gửi job lập lại hồ sơ theo tập lưu."
+            : "Đã gửi job cập nhật hồ sơ."
       )
     } catch (err) {
+      setClusterJobMode(previousJobMode)
       toast.error(
         err instanceof Error
           ? err.message
-          : "Không gửi được job cập nhật hồ sơ."
+          : forceFileRegister
+            ? "Không gửi được job lập lại hồ sơ theo tập lưu."
+            : "Không gửi được job cập nhật hồ sơ."
       )
     } finally {
       setRebuildSubmitting(false)
@@ -810,9 +845,13 @@ export function FinalResult({
     )
     setGroups(nextGroups)
     setDisplayedClusterVersionId(pendingClusterVersion.id)
+    setDisplayedClusterVersion(pendingClusterVersion)
     setActiveClusterVersionId(pendingClusterVersion.id)
     setPendingClusterVersion(null)
-    if (pendingClusterVersion.source === "user_feedback") {
+    if (
+      pendingClusterVersion.source === "user_feedback" ||
+      pendingClusterVersion.source === "user_file_register"
+    ) {
       setPendingFeedbackCount(0)
     }
     setClusterJobMode(clusterJobModeFromSource(pendingClusterVersion.source))
@@ -832,6 +871,46 @@ export function FinalResult({
             : "Chưa có kết quả lập hồ sơ từ backend."
     )
     toast.success("Đã áp dụng phiên bản hồ sơ mới.")
+  }
+
+  const handleRestorePreviousClusterVersion = async () => {
+    const previousVersionId = displayedClusterVersion?.previous_version_id
+    if (!sessionId || !previousVersionId) {
+      toast.error("Không tìm thấy phiên bản hồ sơ ban đầu để quay trở lại.")
+      return
+    }
+    if (pendingClusterVersion) {
+      toast.error("Hãy xử lý phiên bản hồ sơ đang chờ áp dụng trước.")
+      return
+    }
+
+    setRestoringClusterVersion(true)
+    try {
+      const version = await activateClusterVersion(sessionId, previousVersionId)
+      const nextGroups = versionToGroups(version, metadataItems)
+      setGroups(nextGroups)
+      setActiveClusterVersionId(version.id)
+      setDisplayedClusterVersionId(version.id)
+      setDisplayedClusterVersion(version)
+      setPendingClusterVersion(null)
+      setRebuildBaselineVersionId(null)
+      setClusterJobMode(clusterJobModeFromSource(version.source))
+      setClusterProgressPhase(null)
+      setClusterCompletedPhases(completedClusterPhaseSet())
+      setClusterProgressMessage("Đã quay trở lại phiên bản hồ sơ ban đầu.")
+      setStatus(
+        `Đã quay trở lại phiên bản hồ sơ ban đầu với ${regularDossierCount(nextGroups)} hồ sơ.`
+      )
+      toast.success("Đã quay trở lại phiên bản hồ sơ ban đầu.")
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Không thể quay trở lại phiên bản hồ sơ ban đầu."
+      )
+    } finally {
+      setRestoringClusterVersion(false)
+    }
   }
 
   const handleExportMetadataSnapshot = async () => {
@@ -893,6 +972,7 @@ export function FinalResult({
       setGroups(nextGroups)
       setActiveClusterVersionId(version.id)
       setDisplayedClusterVersionId(version.id)
+      setDisplayedClusterVersion(version)
       setPendingClusterVersion(null)
       toast.success(`Đã cập nhật số hộp cho ${result.updated_dossiers} hồ sơ.`)
       const issueCount = result.unmatched_rows + result.conflict_count
@@ -970,6 +1050,7 @@ export function FinalResult({
     if (
       loading ||
       rebuildSubmitting ||
+      restoringClusterVersion ||
       rebuildBaselineVersionId ||
       metadataImporting
     ) {
@@ -988,6 +1069,8 @@ export function FinalResult({
         ? `${activeClusterProgressLabel}. ${status}`
         : clusterJobMode === "plan_reanalysis"
           ? `Đang lập lại hồ sơ theo phương án mới. ${status}`
+          : clusterJobMode === "file_register"
+            ? `Đang lập lại hồ sơ theo tập lưu. ${status}`
           : clusterJobMode === "update"
           ? `Đang cập nhật hồ sơ. ${status}`
           : `Đang lập hồ sơ mới. ${status}`
@@ -1000,6 +1083,9 @@ export function FinalResult({
   const updatingClusterVersion =
     clusterJobMode !== "new" &&
     (loading || Boolean(rebuildBaselineVersionId))
+  const canRestoreFileRegisterVersion =
+    displayedClusterVersion?.source === "user_file_register" &&
+    Boolean(displayedClusterVersion.previous_version_id)
   const feedbackActionsPanel = (
     <div className="flex flex-col gap-3 rounded-2xl border border-[#D8E1EC] bg-white px-4 py-3 shadow-sm xl:flex-row xl:items-center xl:justify-between">
       <p className="min-w-0 flex-1 text-sm text-[#64748B]">
@@ -1018,7 +1104,7 @@ export function FinalResult({
           void handleImportMetadataBoxNumbers(file)
         }}
       />
-      <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-4 xl:flex xl:w-auto xl:flex-wrap xl:items-center xl:justify-end">
+      <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5 xl:flex xl:w-auto xl:flex-wrap xl:items-center xl:justify-end">
         <Button
           variant="outline"
           onClick={() => void handleExportMetadataSnapshot()}
@@ -1026,6 +1112,7 @@ export function FinalResult({
           disabled={
             metadataExporting ||
             metadataImporting ||
+            restoringClusterVersion ||
             !sessionId ||
             totalDossiers === 0
           }
@@ -1044,6 +1131,7 @@ export function FinalResult({
           disabled={
             metadataExporting ||
             metadataImporting ||
+            restoringClusterVersion ||
             !sessionId ||
             totalDossiers === 0
           }
@@ -1057,10 +1145,20 @@ export function FinalResult({
         </Button>
         <Button
           variant="outline"
-          onClick={() => void handleRebuildClusters()}
+          onClick={() =>
+            void (canRestoreFileRegisterVersion
+              ? handleRestorePreviousClusterVersion()
+              : handleRebuildClusters("file_register"))
+          }
           className="w-full xl:w-auto"
+          title={
+            canRestoreFileRegisterVersion
+              ? "Quay trở lại phiên bản hồ sơ trước khi lập theo tập lưu"
+              : "Lập lại hồ sơ theo dạng tập lưu, không phụ thuộc phương án chỉnh lý hiện tại"
+          }
           disabled={
             rebuildSubmitting ||
+            restoringClusterVersion ||
             loading ||
             metadataImporting ||
             !sessionId ||
@@ -1068,7 +1166,33 @@ export function FinalResult({
             Boolean(pendingClusterVersion)
           }
         >
-          {rebuildSubmitting ? (
+          {restoringClusterVersion ||
+          (rebuildSubmitting && clusterJobMode === "file_register") ? (
+            <Loader2 data-icon="inline-start" className="animate-spin" />
+          ) : canRestoreFileRegisterVersion ? (
+            <Undo2 data-icon="inline-start" />
+          ) : (
+            <Archive data-icon="inline-start" />
+          )}
+          {canRestoreFileRegisterVersion
+            ? "Quay trở lại phiên bản ban đầu"
+            : "Lập lại theo tập lưu"}
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => void handleRebuildClusters()}
+          className="w-full xl:w-auto"
+          disabled={
+            rebuildSubmitting ||
+            restoringClusterVersion ||
+            loading ||
+            metadataImporting ||
+            !sessionId ||
+            totalFiles === 0 ||
+            Boolean(pendingClusterVersion)
+          }
+        >
+          {rebuildSubmitting && clusterJobMode === "update" ? (
             <Loader2 data-icon="inline-start" className="animate-spin" />
           ) : (
             <RefreshCw data-icon="inline-start" />
@@ -1083,6 +1207,7 @@ export function FinalResult({
             pendingFeedbackCount > 0 ||
             loading ||
             rebuildSubmitting ||
+            restoringClusterVersion ||
             metadataImporting ||
             Boolean(rebuildBaselineVersionId) ||
             Boolean(pendingClusterVersion)
@@ -1138,6 +1263,8 @@ export function FinalResult({
           title={
             clusterJobMode === "plan_reanalysis"
               ? "Tiến độ lập lại hồ sơ"
+              : clusterJobMode === "file_register"
+                ? "Tiến độ lập hồ sơ theo tập lưu"
               : clusterJobMode === "update"
               ? "Tiến độ cập nhật hồ sơ"
               : "Tiến độ lập hồ sơ"
@@ -1160,6 +1287,12 @@ export function FinalResult({
                 Backend đang lập lại hồ sơ và phân loại theo phương án chỉnh lý
                 cùng thời hạn bảo quản mới. Nút áp dụng sẽ bật khi phiên bản
                 mới sẵn sàng.
+              </p>
+            ) : clusterJobMode === "file_register" ? (
+              <p className="mt-1 text-sm text-[#475569]">
+                Backend đang bỏ qua cách lập hồ sơ của phương án hiện tại và
+                sắp xếp tài liệu theo dạng tập lưu. Nút áp dụng sẽ bật khi
+                phiên bản mới sẵn sàng.
               </p>
             ) : (
               <p className="mt-1 text-sm text-[#475569]">
@@ -2286,6 +2419,8 @@ function clusterProgressMessageForPhase(
     case "updating_dossiers":
       return mode === "plan_reanalysis"
         ? "Đang lập lại hồ sơ theo phương án chỉnh lý và thời hạn bảo quản mới."
+        : mode === "file_register"
+        ? "Đang sắp xếp tài liệu theo loại văn bản, thời gian và giới hạn số trang của tập lưu."
         : mode === "update"
         ? "Đang áp dụng feedback và cập nhật cấu trúc hồ sơ."
         : "Đang gom tài liệu đã xác nhận vào hồ sơ."
@@ -2300,6 +2435,8 @@ function clusterProgressMessageForPhase(
     default:
       return mode === "plan_reanalysis"
         ? "Đang lập lại hồ sơ theo phương án chỉnh lý mới."
+        : mode === "file_register"
+        ? "Đang lập lại hồ sơ theo phương án tập lưu."
         : mode === "update"
         ? "Đang cập nhật hồ sơ từ feedback đã lưu."
         : "Đang lập hồ sơ mới từ các tài liệu đã xác nhận."
@@ -2331,6 +2468,7 @@ function clusterJobModeFromPayload(
 
 function clusterJobModeFromSource(source: unknown): ClusterJobMode {
   if (source === "plan_reanalysis") return "plan_reanalysis"
+  if (source === "user_file_register") return "file_register"
   return source === "user_feedback" ? "update" : "new"
 }
 
