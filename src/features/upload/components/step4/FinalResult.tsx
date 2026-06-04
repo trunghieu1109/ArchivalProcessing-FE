@@ -88,7 +88,7 @@ const CLUSTER_PROGRESS_PHASE_ALIASES: Record<string, string> = {
   persisting_clusters: "reviewing_dossiers",
 }
 
-type ClusterJobMode = "new" | "update"
+type ClusterJobMode = "new" | "update" | "plan_reanalysis"
 
 interface FinalResultProps {
   sessionId: string | null
@@ -370,11 +370,17 @@ export function FinalResult({
                   activeJobMode
                 )
           )
-          setStatus(
+          if (activeJobMode === "plan_reanalysis") {
+            setStatus(
+              "Đang chờ backend lập lại hồ sơ theo phương án chỉnh lý và thời hạn bảo quản mới."
+            )
+          } else {
+            setStatus(
             activeJobMode === "update"
               ? "Đang chờ backend tạo phiên bản hồ sơ mới từ feedback đã lưu."
               : "Đang chờ backend lập hồ sơ từ tài liệu đã xác nhận."
-          )
+            )
+          }
           schedule()
           return
         }
@@ -407,9 +413,7 @@ export function FinalResult({
             setRebuildBaselineVersionId(null)
           }
           setPendingClusterVersion(version)
-          setClusterJobMode(
-            version.source === "user_feedback" ? "update" : "new"
-          )
+          setClusterJobMode(clusterJobModeFromSource(version.source))
           setClusterProgressPhase(null)
           setClusterCompletedPhases(completedClusterPhaseSet())
           setClusterProgressMessage(
@@ -811,9 +815,7 @@ export function FinalResult({
     if (pendingClusterVersion.source === "user_feedback") {
       setPendingFeedbackCount(0)
     }
-    setClusterJobMode(
-      pendingClusterVersion.source === "user_feedback" ? "update" : "new"
-    )
+    setClusterJobMode(clusterJobModeFromSource(pendingClusterVersion.source))
     setClusterProgressPhase(null)
     setClusterCompletedPhases(completedClusterPhaseSet())
     setClusterProgressMessage("Đã áp dụng phiên bản hồ sơ mới.")
@@ -984,7 +986,9 @@ export function FinalResult({
     loading || checkingClusters
       ? activeClusterProgressLabel
         ? `${activeClusterProgressLabel}. ${status}`
-        : clusterJobMode === "update"
+        : clusterJobMode === "plan_reanalysis"
+          ? `Đang lập lại hồ sơ theo phương án mới. ${status}`
+          : clusterJobMode === "update"
           ? `Đang cập nhật hồ sơ. ${status}`
           : `Đang lập hồ sơ mới. ${status}`
       : status
@@ -994,7 +998,7 @@ export function FinalResult({
     Boolean(clusterProgressMessage) ||
     hasClusterData
   const updatingClusterVersion =
-    clusterJobMode === "update" &&
+    clusterJobMode !== "new" &&
     (loading || Boolean(rebuildBaselineVersionId))
   const feedbackActionsPanel = (
     <div className="flex flex-col gap-3 rounded-2xl border border-[#D8E1EC] bg-white px-4 py-3 shadow-sm xl:flex-row xl:items-center xl:justify-between">
@@ -1132,7 +1136,9 @@ export function FinalResult({
           activePhase={clusterProgressPhase}
           completedPhases={clusterCompletedPhases}
           title={
-            clusterJobMode === "update"
+            clusterJobMode === "plan_reanalysis"
+              ? "Tiến độ lập lại hồ sơ"
+              : clusterJobMode === "update"
               ? "Tiến độ cập nhật hồ sơ"
               : "Tiến độ lập hồ sơ"
           }
@@ -1149,10 +1155,18 @@ export function FinalResult({
             <p className="text-sm font-semibold text-[#0F172A]">
               Đang cập nhật hồ sơ
             </p>
-            <p className="mt-1 text-sm text-[#475569]">
+            {clusterJobMode === "plan_reanalysis" ? (
+              <p className="mt-1 text-sm text-[#475569]">
+                Backend đang lập lại hồ sơ và phân loại theo phương án chỉnh lý
+                cùng thời hạn bảo quản mới. Nút áp dụng sẽ bật khi phiên bản
+                mới sẵn sàng.
+              </p>
+            ) : (
+              <p className="mt-1 text-sm text-[#475569]">
               Backend đang tạo phiên bản hồ sơ mới từ feedback đã lưu. Nút áp
               dụng sẽ bật khi phiên bản mới sẵn sàng.
-            </p>
+              </p>
+            )}
           </div>
           <Button disabled>
             <Loader2 data-icon="inline-start" className="animate-spin" />
@@ -2270,7 +2284,9 @@ function clusterProgressMessageForPhase(
 ): string {
   switch (phaseId) {
     case "updating_dossiers":
-      return mode === "update"
+      return mode === "plan_reanalysis"
+        ? "Đang lập lại hồ sơ theo phương án chỉnh lý và thời hạn bảo quản mới."
+        : mode === "update"
         ? "Đang áp dụng feedback và cập nhật cấu trúc hồ sơ."
         : "Đang gom tài liệu đã xác nhận vào hồ sơ."
     case "naming_dossiers":
@@ -2282,7 +2298,9 @@ function clusterProgressMessageForPhase(
     case "reviewing_dossiers":
       return "Đang rà soát kết quả trước khi hiển thị phiên bản mới."
     default:
-      return mode === "update"
+      return mode === "plan_reanalysis"
+        ? "Đang lập lại hồ sơ theo phương án chỉnh lý mới."
+        : mode === "update"
         ? "Đang cập nhật hồ sơ từ feedback đã lưu."
         : "Đang lập hồ sơ mới từ các tài liệu đã xác nhận."
   }
@@ -2308,7 +2326,12 @@ function dossierUiMessage(message: string): string {
 function clusterJobModeFromPayload(
   payload: Record<string, unknown> | null | undefined
 ): ClusterJobMode {
-  return payload?.source === "user_feedback" ? "update" : "new"
+  return clusterJobModeFromSource(payload?.source)
+}
+
+function clusterJobModeFromSource(source: unknown): ClusterJobMode {
+  if (source === "plan_reanalysis") return "plan_reanalysis"
+  return source === "user_feedback" ? "update" : "new"
 }
 
 function buildResultTree(groups: ClusterGroup[]): ResultTreeNode[] {

@@ -27,6 +27,7 @@ import { useOcrFolder } from "@/features/upload/hooks/useOcrFolder"
 import { buildDisplayMetadata } from "@/features/upload/lib/metadata"
 import {
   createSession,
+  enqueueClusterBuild,
   enqueuePlanAnalysis,
   getActivePlan,
   getSession,
@@ -387,6 +388,8 @@ let _sessionMetadata: SessionMetadataValues = {
   fonds_name: null,
 }
 let _zipUpload: SessionInputUploadResponse | null = null
+let _arrangementPlanUpload: SessionInputUploadResponse | null = null
+let _retentionUpload: SessionInputUploadResponse | null = null
 let _zipFolderPath = ""
 let _zipMaxFiles = ""
 let _activePlanVersionId = ""
@@ -394,6 +397,8 @@ let _draftArrangementPlanFile: File | null = null
 let _draftRetentionFile: File | null = null
 let _draftZipFile: File | null = null
 let _zipUploadProgress: UploadProgressSnapshot | null = null
+let _arrangementPlanReuploaded = false
+let _retentionReuploaded = false
 
 export function UploadPage() {
   const navigate = useNavigate()
@@ -454,6 +459,10 @@ export function UploadPage() {
   const [planCompletedPhases, setPlanCompletedPhases] = useState<Set<string>>(
     () => new Set()
   )
+  const [planReuploadState, setPlanReuploadState] = useState(() => ({
+    arrangement: _arrangementPlanReuploaded,
+    retention: _retentionReuploaded,
+  }))
 
   const applyWorkflowState = (nextSessionId: string | null) => {
     setDoc1State(_doc1State)
@@ -472,6 +481,10 @@ export function UploadPage() {
     setZipFolderPath(_zipFolderPath)
     setZipMaxFiles(_zipMaxFiles)
     setZipUploadProgress(_zipUploadProgress)
+    setPlanReuploadState({
+      arrangement: _arrangementPlanReuploaded,
+      retention: _retentionReuploaded,
+    })
     if (_planAnalysisState !== "processing") {
       setPlanProgressPhase(null)
       setPlanProgressMessage("")
@@ -497,6 +510,8 @@ export function UploadPage() {
       fonds_name: null,
     }
     _zipUpload = null
+    _arrangementPlanUpload = null
+    _retentionUpload = null
     _zipFolderPath = ""
     _zipMaxFiles = ""
     _activePlanVersionId = ""
@@ -504,6 +519,8 @@ export function UploadPage() {
     _draftRetentionFile = null
     _draftZipFile = null
     _zipUploadProgress = null
+    _arrangementPlanReuploaded = false
+    _retentionReuploaded = false
     applyWorkflowState(nextSessionId)
   }
 
@@ -655,6 +672,10 @@ export function UploadPage() {
         _doc1State = arrangementPlanFile ? "done" : "idle"
         _doc2State = retentionFile ? "done" : "idle"
         _zipState = zipFile ? "done" : "idle"
+        _arrangementPlanUpload = arrangementPlanFile ?? null
+        _retentionUpload = retentionFile ?? null
+        _arrangementPlanReuploaded = false
+        _retentionReuploaded = false
         _zipUpload = zipFile ?? null
         _zipFolderPath = zipFile?.folder_path ?? zipFile?.data_path ?? ""
         setDoc1Has(_doc1Has)
@@ -663,6 +684,7 @@ export function UploadPage() {
         setDoc1State(_doc1State)
         setDoc2State(_doc2State)
         setZipState(_zipState)
+        setPlanReuploadState({ arrangement: false, retention: false })
         setZipFolderPath(_zipFolderPath)
 
         if (activePlan) {
@@ -751,8 +773,35 @@ export function UploadPage() {
     }
     if (fileType === "raw_zip") _zipUpload = uploaded
     if (fileType === "arrangement_plan" || fileType === "retention_schedule") {
+      if (fileType === "arrangement_plan") {
+        _arrangementPlanUpload = uploaded
+        if (existingSessionMode) {
+          _arrangementPlanReuploaded = true
+          setPlanReuploadState((previous) => ({
+            ...previous,
+            arrangement: true,
+          }))
+          _doc1State = "done"
+          setDoc1State("done")
+        }
+      }
+      if (fileType === "retention_schedule") {
+        _retentionUpload = uploaded
+        if (existingSessionMode) {
+          _retentionReuploaded = true
+          setPlanReuploadState((previous) => ({
+            ...previous,
+            retention: true,
+          }))
+          _doc2State = "done"
+          setDoc2State("done")
+        }
+      }
       _planAnalysisState = "idle"
       setPlanAnalysisState("idle")
+      setPlanProgressPhase(null)
+      setPlanProgressMessage("")
+      setPlanCompletedPhases(new Set())
     }
     return uploaded
   }
@@ -793,6 +842,11 @@ export function UploadPage() {
     _doc1Has = v
     if (!v) {
       _draftArrangementPlanFile = null
+      _arrangementPlanReuploaded = false
+      setPlanReuploadState((previous) => ({
+        ...previous,
+        arrangement: false,
+      }))
       syncPlanAnalysisState("idle")
     }
     setDoc1Has(v)
@@ -801,6 +855,11 @@ export function UploadPage() {
     _doc2Has = v
     if (!v) {
       _draftRetentionFile = null
+      _retentionReuploaded = false
+      setPlanReuploadState((previous) => ({
+        ...previous,
+        retention: false,
+      }))
       syncPlanAnalysisState("idle")
     }
     setDoc2Has(v)
@@ -885,9 +944,16 @@ export function UploadPage() {
     return parsed
   }
 
+  const planInputsReuploaded =
+    planReuploadState.arrangement || planReuploadState.retention
+  const planReanalysisReady = existingSessionMode && planInputsReuploaded
   const hasAnyFile = doc1Has || doc2Has || zipHas
   const readyCount = (
-    existingSessionMode ? [zipHas] : [doc1Has, doc2Has, zipHas]
+    existingSessionMode
+      ? planInputsReuploaded
+        ? [planInputsReuploaded]
+        : [zipHas]
+      : [doc1Has, doc2Has, zipHas]
   ).filter(Boolean).length
   const requiredFileCount = existingSessionMode ? 1 : 3
   const statusItems = existingSessionMode
@@ -912,7 +978,8 @@ export function UploadPage() {
     doc1State === "processing" ||
     doc2State === "processing" ||
     zipState === "processing"
-  const allDone = planAnalysisState === "done"
+  const allDone = planAnalysisState === "done" && !planInputsReuploaded
+  const primaryActionDisabled = allProcessing || sessionLoading
 
   const syncLatestPlanProgress = async (currentSessionId: string) => {
     try {
@@ -938,12 +1005,126 @@ export function UploadPage() {
     }
   }
 
+  const resetPlanReuploadState = () => {
+    _arrangementPlanReuploaded = false
+    _retentionReuploaded = false
+    setPlanReuploadState({ arrangement: false, retention: false })
+  }
+
+  const handleReanalyzeExistingSessionPlan = async () => {
+    const currentSessionId = sessionId ?? routeSessionId ?? _sessionId
+    if (!currentSessionId) {
+      toast.error("Chưa có session để phân tích lại phương án.")
+      return
+    }
+    if (!planReanalysisReady) {
+      toast.error(
+        "Vui lòng tải lại phương án chỉnh lý hoặc thời hạn bảo quản."
+      )
+      return
+    }
+
+    const planFile = _arrangementPlanUpload?.local_cached_path
+    const retentionFile = _retentionUpload?.local_cached_path
+    if (planReuploadState.arrangement && !planFile) {
+      toast.error(
+        "Backend chưa trả về đường dẫn local cho file phương án vừa tải lại."
+      )
+      return
+    }
+    if (planReuploadState.retention && !retentionFile) {
+      toast.error(
+        "Backend chưa trả về đường dẫn local cho file thời hạn bảo quản vừa tải lại."
+      )
+      return
+    }
+    if (!planFile && !retentionFile) {
+      toast.error(
+        "Chưa có file phương án hoặc thời hạn bảo quản để phân tích lại."
+      )
+      return
+    }
+
+    const previousPlanId = _activePlanVersionId || undefined
+    try {
+      syncPlanAnalysisState("processing")
+      syncDoc1State("processing")
+      syncDoc2State("processing")
+      setPlanCompletedPhases(new Set(["upload_inputs"]))
+      setPlanProgressPhase("preparing_plan_file")
+      setPlanProgressMessage(planProgressMessageForPhase("preparing_plan_file"))
+
+      await enqueuePlanAnalysis(currentSessionId, {
+        ...(planFile ? { plan_file: planFile } : {}),
+        ...(retentionFile ? { retention_file: retentionFile } : {}),
+      })
+      const planResponse = await waitForActivePlan(
+        currentSessionId,
+        PLAN_ANALYSIS_TIMEOUT_MS,
+        2_000,
+        { previousPlanId }
+      )
+      const plan = activePlanToParsedPlan(planResponse)
+      _activePlanVersionId = planResponse.id ?? ""
+      _parsedPlan = plan
+      _folderTree = planToTree(plan)
+      setParsedPlan(plan)
+      setFolderTree(_folderTree)
+      const sessionAfterPlan = await getSession(currentSessionId)
+      syncSessionMetadata(sessionAfterPlan)
+      await syncLatestPlanProgress(currentSessionId)
+      syncPlanAnalysisState("done")
+      syncDoc1State("done")
+      syncDoc2State("done")
+      resetPlanReuploadState()
+
+      setPlanProgressMessage(
+        "Đã phân tích xong phương án mới. Đang gửi task lập lại hồ sơ."
+      )
+      try {
+        await enqueueClusterBuild(currentSessionId, {
+          source: "plan_reanalysis",
+        })
+      } catch (err) {
+        toast.error(
+          err instanceof Error
+            ? `Đã lưu phương án mới nhưng chưa gửi được task lập lại hồ sơ: ${err.message}`
+            : "Đã lưu phương án mới nhưng chưa gửi được task lập lại hồ sơ."
+        )
+        goTo(2, currentSessionId)
+        return
+      }
+      _clusterGroups = []
+      setClusterGroups([])
+      toast.success(
+        "Đã phân tích lại phương án và gửi task lập lại hồ sơ."
+      )
+      goTo(4, currentSessionId)
+    } catch (err) {
+      syncPlanAnalysisState("idle")
+      syncDoc1State("done")
+      syncDoc2State("done")
+      setPlanProgressPhase(null)
+      setPlanProgressMessage("")
+      setPlanCompletedPhases(new Set())
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Không thể phân tích lại phương án."
+      )
+    }
+  }
+
   const handleStartAll = async () => {
     if (allDone) {
       goTo(2)
       return
     }
     if (existingSessionMode) {
+      if (planInputsReuploaded) {
+        await handleReanalyzeExistingSessionPlan()
+        return
+      }
       goTo(2)
       return
     }
@@ -985,6 +1166,8 @@ export function UploadPage() {
           onProgress: syncZipUploadProgress,
         }),
       ])
+      _arrangementPlanUpload = arrangementPlan
+      _retentionUpload = retentionPlan
       syncZipUploadProgress(
         zipUploadProgressForFile(_draftZipFile, "done", _draftZipFile.size)
       )
@@ -1337,7 +1520,7 @@ export function UploadPage() {
                 </p>
                 <p className="mt-1 text-sm text-[#64748B]">
                   {existingSessionMode
-                    ? "Bạn có thể tải thêm file ZIP hoặc tiếp tục xem và chỉnh sửa phương án đã phân tích."
+                    ? "Bạn có thể tải thêm ZIP, hoặc tải lại phương án chỉnh lý và thời hạn bảo quản để phân tích lại rồi lập lại hồ sơ mà không extract metadata lại."
                     : "Chọn đủ phương án chỉnh lý, thông tư thời hạn bảo quản và file ZIP. Session chỉ được tạo khi bạn bấm bắt đầu phân tích."}
                 </p>
               </div>
@@ -1371,38 +1554,44 @@ export function UploadPage() {
               />
 
               {/* DOCX */}
-              {!existingSessionMode && (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <DocxSection
-                    ref={doc1Ref}
-                    index={1}
-                    label="Phương án phân loại"
-                    sublabel="Tải lên file Word chứa phương án phân loại tài liệu."
-                    processState={doc1State}
-                    onProcessStateChange={syncDoc1State}
-                    onHasFileChange={syncDoc1Has}
-                    onUploadFile={(file) =>
-                      uploadInput("arrangement_plan", file).then(
-                        () => undefined
-                      )
-                    }
-                  />
-                  <DocxSection
-                    ref={doc2Ref}
-                    index={2}
-                    label="Thời hạn bảo quản"
-                    sublabel="Tải lên file Word chứa thời hạn bảo quản."
-                    processState={doc2State}
-                    onProcessStateChange={syncDoc2State}
-                    onHasFileChange={syncDoc2Has}
-                    onUploadFile={(file) =>
-                      uploadInput("retention_schedule", file).then(
-                        () => undefined
-                      )
-                    }
-                  />
-                </div>
-              )}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <DocxSection
+                  ref={doc1Ref}
+                  index={1}
+                  label="Phương án phân loại"
+                  sublabel={
+                    existingSessionMode
+                      ? "Tải lại file Word chứa phương án phân loại để phân tích lại session."
+                      : "Tải lên file Word chứa phương án phân loại tài liệu."
+                  }
+                  processState={doc1State}
+                  onProcessStateChange={syncDoc1State}
+                  onHasFileChange={syncDoc1Has}
+                  onUploadFile={(file) =>
+                    uploadInput("arrangement_plan", file).then(
+                      () => undefined
+                    )
+                  }
+                />
+                <DocxSection
+                  ref={doc2Ref}
+                  index={2}
+                  label="Thời hạn bảo quản"
+                  sublabel={
+                    existingSessionMode
+                      ? "Tải lại file Word chứa thời hạn bảo quản để phân loại lại hồ sơ."
+                      : "Tải lên file Word chứa thời hạn bảo quản."
+                  }
+                  processState={doc2State}
+                  onProcessStateChange={syncDoc2State}
+                  onHasFileChange={syncDoc2Has}
+                  onUploadFile={(file) =>
+                    uploadInput("retention_schedule", file).then(
+                      () => undefined
+                    )
+                  }
+                />
+              </div>
 
               {/* Action bar */}
               <motion.div
@@ -1486,16 +1675,16 @@ export function UploadPage() {
                 </div>
 
                 <button
-                  disabled={allProcessing || sessionLoading}
+                  disabled={primaryActionDisabled}
                   onClick={handleStartAll}
                   className={cn(
                     "group flex w-full min-w-44 items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold transition-all duration-200 sm:w-auto",
-                    !allProcessing && !sessionLoading
+                    !primaryActionDisabled
                       ? "text-primary-foreground hover:-translate-y-0.5 active:scale-[0.98]"
                       : "cursor-not-allowed bg-muted text-muted-foreground"
                   )}
                   style={
-                    !allProcessing && !sessionLoading
+                    !primaryActionDisabled
                       ? {
                           background:
                             "linear-gradient(to right, #0052FF, #4D7CFF)",
@@ -1518,13 +1707,15 @@ export function UploadPage() {
                         ? "Đang phân tích..."
                         : allProcessing
                           ? "Đang xử lý..."
+                          : planInputsReuploaded
+                              ? "Phân tích lại và lập hồ sơ"
                           : allDone
                             ? "Tiếp tục"
                             : existingSessionMode
                               ? "Tiếp tục"
                               : "Bắt đầu phân tích"}
                   </span>
-                  {!allProcessing && (
+                  {!primaryActionDisabled && (
                     <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
                   )}
                 </button>

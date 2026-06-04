@@ -928,7 +928,7 @@ export async function registerSessionInput(
 
 export async function enqueuePlanAnalysis(
   sessionId: string,
-  payload: { plan_file: string; retention_file?: string }
+  payload: { plan_file?: string; retention_file?: string }
 ): Promise<void> {
   await requestJson<unknown>(
     `/sessions/${encodeURIComponent(sessionId)}/plan/analyze`,
