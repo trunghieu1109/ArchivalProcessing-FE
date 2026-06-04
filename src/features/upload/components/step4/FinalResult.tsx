@@ -22,6 +22,7 @@ import {
   Folder,
   FolderClock,
   FolderOpen,
+  FolderPlus,
   GripVertical,
   Loader2,
   MoveRight,
@@ -49,6 +50,7 @@ import {
   listSessionEvents,
   moveDocumentBetweenClusters,
   patchSessionDossier,
+  promoteTemporaryFolderDocuments,
   type ClusterVersionResponse,
   type MetadataSnapshotGroup,
   type SessionDossierPatchPayload,
@@ -142,7 +144,6 @@ const DOSSIER_METADATA_EDIT_FIELDS: Array<{
   { key: "title", label: "Tiêu đề hồ sơ", rows: 4 },
   { key: "dossierNumber", label: "Số hồ sơ", rows: 1 },
   { key: "boxNumber", label: "Số hộp", rows: 1 },
-  { key: "folderName", label: "Tên thư mục", rows: 2 },
   { key: "retentionPeriod", label: "Thời hạn bảo quản", rows: 2 },
 ]
 
@@ -185,6 +186,8 @@ export function FinalResult({
   const [rebuildPollKey, setRebuildPollKey] = useState(0)
   const [rebuildSubmitting, setRebuildSubmitting] = useState(false)
   const [restoringClusterVersion, setRestoringClusterVersion] = useState(false)
+  const [promotingTemporaryFolder, setPromotingTemporaryFolder] =
+    useState(false)
   const [metadataExporting, setMetadataExporting] = useState(false)
   const [metadataImporting, setMetadataImporting] = useState(false)
   const [savingDossierMetadataId, setSavingDossierMetadataId] = useState<
@@ -764,6 +767,60 @@ export function FinalResult({
     }
   }
 
+  const handlePromoteTemporaryFolder = async (group: ClusterGroup) => {
+    if (!sessionId) {
+      toast.error("Chưa có session để cập nhật Thư mục tạm.")
+      return
+    }
+    if (pendingClusterVersion) {
+      toast.error("Có phiên bản hồ sơ mới. Hãy áp dụng trước khi cập nhật Thư mục tạm.")
+      return
+    }
+    if (
+      loading ||
+      rebuildSubmitting ||
+      rebuildBaselineVersionId ||
+      promotingTemporaryFolder
+    ) {
+      toast.error("Đang cập nhật hồ sơ. Vui lòng chờ xong rồi thử lại.")
+      return
+    }
+    const sessionDocumentIds = group.documents
+      .map((document) => document.sessionDocumentId)
+      .filter((id): id is number => id !== null)
+    if (sessionDocumentIds.length === 0) {
+      toast.error("Thư mục tạm chưa có tài liệu hợp lệ để tạo hồ sơ.")
+      return
+    }
+    if (sessionDocumentIds.length !== group.documents.length) {
+      toast.error("Một số tài liệu trong Thư mục tạm chưa có mã session.")
+      return
+    }
+
+    setPromotingTemporaryFolder(true)
+    try {
+      const response = await promoteTemporaryFolderDocuments(sessionId, {
+        session_document_ids: sessionDocumentIds,
+      })
+      setPendingFeedbackCount(
+        (count) => count + Math.max(1, response.feedback_count)
+      )
+      setStatus(
+        `Đã ghi nhận ${response.promoted_document_ids.length} tài liệu trong Thư mục tạm thành hồ sơ mới. Đang gửi job cập nhật hồ sơ.`
+      )
+      toast.success("Đã ghi nhận Thư mục tạm thành hồ sơ mới.")
+      await handleRebuildClusters("update")
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Không thể cập nhật Thư mục tạm thành hồ sơ mới."
+      )
+    } finally {
+      setPromotingTemporaryFolder(false)
+    }
+  }
+
   const handleRebuildClusters = async (
     mode: "update" | "file_register" = "update"
   ) => {
@@ -1051,6 +1108,7 @@ export function FinalResult({
       loading ||
       rebuildSubmitting ||
       restoringClusterVersion ||
+      promotingTemporaryFolder ||
       rebuildBaselineVersionId ||
       metadataImporting
     ) {
@@ -1086,6 +1144,16 @@ export function FinalResult({
   const canRestoreFileRegisterVersion =
     displayedClusterVersion?.source === "user_file_register" &&
     Boolean(displayedClusterVersion.previous_version_id)
+  const temporaryFolderUpdateDisabled =
+    !sessionId ||
+    loading ||
+    checkingClusters ||
+    rebuildSubmitting ||
+    restoringClusterVersion ||
+    promotingTemporaryFolder ||
+    metadataImporting ||
+    Boolean(rebuildBaselineVersionId) ||
+    Boolean(pendingClusterVersion)
   const feedbackActionsPanel = (
     <div className="flex flex-col gap-3 rounded-2xl border border-[#D8E1EC] bg-white px-4 py-3 shadow-sm xl:flex-row xl:items-center xl:justify-between">
       <p className="min-w-0 flex-1 text-sm text-[#64748B]">
@@ -1159,6 +1227,7 @@ export function FinalResult({
           disabled={
             rebuildSubmitting ||
             restoringClusterVersion ||
+            promotingTemporaryFolder ||
             loading ||
             metadataImporting ||
             !sessionId ||
@@ -1185,6 +1254,7 @@ export function FinalResult({
           disabled={
             rebuildSubmitting ||
             restoringClusterVersion ||
+            promotingTemporaryFolder ||
             loading ||
             metadataImporting ||
             !sessionId ||
@@ -1208,6 +1278,7 @@ export function FinalResult({
             loading ||
             rebuildSubmitting ||
             restoringClusterVersion ||
+            promotingTemporaryFolder ||
             metadataImporting ||
             Boolean(rebuildBaselineVersionId) ||
             Boolean(pendingClusterVersion)
@@ -1362,6 +1433,8 @@ export function FinalResult({
                   compact={Boolean(previewDocument)}
                   selectedPreviewDocumentId={selectedPreviewDocumentId}
                   savingDossierMetadataId={savingDossierMetadataId}
+                  promotingTemporaryFolder={promotingTemporaryFolder}
+                  temporaryFolderUpdateDisabled={temporaryFolderUpdateDisabled}
                   onToggle={toggleNode}
                   onDragStart={(document, fromClusterId) =>
                     setDraggedDocument({ document, fromClusterId })
@@ -1375,6 +1448,7 @@ export function FinalResult({
                   onDropOnDossier={handleDropOnDossier}
                   onSelectPreview={handleSelectPreviewDocument}
                   onSaveDossierMetadata={handleSaveDossierMetadata}
+                  onPromoteTemporaryFolder={handlePromoteTemporaryFolder}
                 />
               ))}
               {tree.length === 0 && (
@@ -1451,6 +1525,8 @@ function ResultNode({
   compact,
   selectedPreviewDocumentId,
   savingDossierMetadataId,
+  promotingTemporaryFolder,
+  temporaryFolderUpdateDisabled,
   onToggle,
   onDragStart,
   onDragEnd,
@@ -1458,6 +1534,7 @@ function ResultNode({
   onDropOnDossier,
   onSelectPreview,
   onSaveDossierMetadata,
+  onPromoteTemporaryFolder,
 }: {
   node: ResultTreeNode
   depth: number
@@ -1467,6 +1544,8 @@ function ResultNode({
   compact: boolean
   selectedPreviewDocumentId: number | null
   savingDossierMetadataId: string | null
+  promotingTemporaryFolder: boolean
+  temporaryFolderUpdateDisabled: boolean
   onToggle: (nodeId: string) => void
   onDragStart: (document: ClusterDocument, fromClusterId: string) => void
   onDragEnd: () => void
@@ -1477,6 +1556,7 @@ function ResultNode({
     group: ClusterGroup,
     draft: DossierMetadataDraft
   ) => Promise<void>
+  onPromoteTemporaryFolder: (group: ClusterGroup) => void
 }) {
   const [dossierMetadataOpen, setDossierMetadataOpen] = useState(false)
   const [dossierMetadataEditing, setDossierMetadataEditing] = useState(false)
@@ -1601,6 +1681,15 @@ function ResultNode({
             >
               {displayLabel}
             </span>
+            {group?.createdFromTemporaryFolder && !isTemporary && (
+              <span
+                className="flex h-6 shrink-0 items-center gap-1 rounded-full border border-[#0052FF] bg-[#0052FF] px-2.5 text-[11px] font-bold text-white shadow-[0_4px_12px_rgba(0,82,255,0.22)]"
+                title="Hồ sơ được tạo thủ công từ Thư mục tạm"
+              >
+                <FolderPlus className="size-3" />
+                Thủ công
+              </span>
+            )}
             {group?.requiresReview && !isTemporary && (
               <span className="flex shrink-0 items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
                 <AlertTriangle className="size-3" /> Cần xem
@@ -1651,6 +1740,28 @@ function ResultNode({
                 {isTemporary ? "Để xử lý sau" : "Chuyển vào đây"}
               </span>
             </span>
+          )}
+          {isTemporary && group && group.documents.length > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              title="Tạo hồ sơ từ các tài liệu trong Thư mục tạm"
+              disabled={temporaryFolderUpdateDisabled}
+              onClick={(event) => {
+                event.stopPropagation()
+                onPromoteTemporaryFolder(group)
+              }}
+            >
+              {promotingTemporaryFolder ? (
+                <Loader2 data-icon="inline-start" className="animate-spin" />
+              ) : (
+                <FolderPlus data-icon="inline-start" />
+              )}
+              <span className={cn(compact && "hidden 2xl:inline")}>
+                Cập nhật
+              </span>
+            </Button>
           )}
           {isDossier && group && (
             <Button
@@ -1733,6 +1844,8 @@ function ResultNode({
               compact={compact}
               selectedPreviewDocumentId={selectedPreviewDocumentId}
               savingDossierMetadataId={savingDossierMetadataId}
+              promotingTemporaryFolder={promotingTemporaryFolder}
+              temporaryFolderUpdateDisabled={temporaryFolderUpdateDisabled}
               onToggle={onToggle}
               onDragStart={onDragStart}
               onDragEnd={onDragEnd}
@@ -1740,6 +1853,7 @@ function ResultNode({
               onDropOnDossier={onDropOnDossier}
               onSelectPreview={onSelectPreview}
               onSaveDossierMetadata={onSaveDossierMetadata}
+              onPromoteTemporaryFolder={onPromoteTemporaryFolder}
             />
           ))}
         </div>
@@ -1773,9 +1887,7 @@ function DossierMetadataPanel({
 }) {
   const indentStep = compact ? 14 : 20
   const detailIndent = 8 + (depth + 1) * indentStep
-  const classificationPath = group.classificationPath?.join(" / ") ?? ""
   const documentCount = String(group.documents.length)
-  const confidence = formatConfidence(group.confidence)
 
   return (
     <motion.div
@@ -1853,12 +1965,10 @@ function DossierMetadataPanel({
           >
             <PreviewField label="Số hồ sơ" value={group.dossierNumber ?? ""} />
             <PreviewField label="Số hộp" value={group.boxNumber ?? ""} />
-            <PreviewField label="Tên thư mục" value={group.folderName ?? ""} />
             <PreviewField
               label="Thời hạn bảo quản"
               value={group.retentionPeriod ?? ""}
             />
-            <PreviewField label="Phân loại" value={classificationPath} />
             <PreviewField
               label="Thời gian"
               value={formatDateRange(group.startDate, group.endDate)}
@@ -1873,10 +1983,9 @@ function DossierMetadataPanel({
               value={
                 typeof group.sheetCount === "number"
                   ? String(group.sheetCount)
-                  : ""
+                : ""
               }
             />
-            <PreviewField label="Độ tin cậy" value={confidence} />
           </div>
           <div className="flex justify-end pt-1">
             <Button
@@ -2667,7 +2776,6 @@ function dossierPatchPayloadFromDraft(
     title: trimmedOrNull(draft.title),
     dossier_number: trimmedOrNull(draft.dossierNumber),
     box_number: trimmedOrNull(draft.boxNumber),
-    folder_name: trimmedOrNull(draft.folderName),
     retention_period: trimmedOrNull(draft.retentionPeriod),
   }
 }
@@ -2686,6 +2794,10 @@ function updateDossierGroupFromResponse(
       boxNumber: dossier.box_number ?? null,
       folderName: dossier.folder_name ?? null,
       retentionPeriod: dossier.retention_period ?? null,
+      createdFromTemporaryFolder:
+        typeof dossier.created_from_temporary_folder === "boolean"
+          ? dossier.created_from_temporary_folder
+          : group.createdFromTemporaryFolder,
       label: dossier.title || dossier.generated_title || group.label,
     }
   })
@@ -2766,12 +2878,6 @@ function formatDateRange(
   if (startDate && endDate && startDate !== endDate)
     return `${startDate} - ${endDate}`
   return startDate || endDate || "Chưa rõ thời gian"
-}
-
-function formatConfidence(value?: number | null): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) return ""
-  const percent = value <= 1 ? value * 100 : value
-  return `${Math.round(percent)}%`
 }
 
 function trimmedOrNull(value: string): string | null {

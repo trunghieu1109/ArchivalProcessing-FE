@@ -16,6 +16,7 @@ export interface ClusterGroup {
   files: string[]
   documents: ClusterDocument[]
   isTemporary?: boolean
+  createdFromTemporaryFolder?: boolean
   dossierId?: string | null
   dossierNumber?: string | null
   boxNumber?: string | null
@@ -112,6 +113,7 @@ export function ensureTemporaryFolderGroup(
           label: TEMPORARY_FOLDER_NAME,
           dossierId: null,
           isTemporary: true,
+          createdFromTemporaryFolder: false,
           classificationPath: [],
         }
       : {
@@ -121,6 +123,7 @@ export function ensureTemporaryFolderGroup(
           documents: [],
           dossierId: null,
           isTemporary: true,
+          createdFromTemporaryFolder: false,
           classificationPath: [],
           requiresReview: false,
         },
@@ -230,6 +233,12 @@ function clusterToGroup(
     id: cluster.cluster_id,
     dossierId: isTemporary ? null : (dossier?.dossier_id ?? cluster.dossier_id),
     isTemporary,
+    createdFromTemporaryFolder:
+      !isTemporary &&
+      Boolean(
+        cluster.created_from_temporary_folder ||
+          dossier?.created_from_temporary_folder
+      ),
     dossierNumber: dossier?.dossier_number ?? null,
     boxNumber: dossier?.box_number ?? null,
     folderName: dossier?.folder_name ?? null,

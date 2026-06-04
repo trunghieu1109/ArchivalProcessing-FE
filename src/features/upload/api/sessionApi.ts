@@ -402,6 +402,7 @@ export interface SessionDossierSummary {
   status?: string
   source?: string
   created_by?: string | null
+  created_from_temporary_folder?: boolean
   classification: DossierClassification | null
   updated_at?: string
 }
@@ -420,6 +421,7 @@ export interface SessionClusterSummary {
   cluster_id: string
   dossier_id: string
   is_temporary?: boolean
+  created_from_temporary_folder?: boolean
   title: string
   dossier: SessionDossierSummary | null
   status: string
@@ -444,6 +446,18 @@ export interface ClusterVersionResponse {
   batch_snapshot_count: number
   created_at: string
   clusters: SessionClusterSummary[]
+}
+
+export interface TemporaryFolderPromoteResponse {
+  session_id: string
+  target_cluster_id: string
+  temporary_cluster_id: string
+  promoted_document_ids: string[]
+  promoted_session_document_ids: number[]
+  feedback_count: number
+  feedback_event_id?: number
+  recompute_status?: string
+  worker_required?: boolean
 }
 
 const API_BASE = (import.meta.env.VITE_ARCHIVAL_API_BASE_URL ?? "/api").replace(
@@ -1170,6 +1184,26 @@ export async function moveDocumentBetweenClusters(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         weight: 1,
+        created_by: "ui",
+        ...payload,
+      }),
+    }
+  )
+}
+
+export async function promoteTemporaryFolderDocuments(
+  sessionId: string,
+  payload: {
+    session_document_ids: number[]
+    created_by?: string
+  }
+): Promise<TemporaryFolderPromoteResponse> {
+  return requestJson<TemporaryFolderPromoteResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/clusters/temporary-folder/promote`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         created_by: "ui",
         ...payload,
       }),
