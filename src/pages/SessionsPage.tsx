@@ -239,7 +239,7 @@ function SessionCard({
           />
           <Metric
             icon={<Layers3 className="size-3.5" />}
-            label="Cụm"
+            label="Số hồ sơ"
             value={clusterCount}
           />
           <Metric

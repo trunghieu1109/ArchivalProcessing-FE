@@ -19,6 +19,7 @@ import {
   FileSpreadsheet,
   FileText,
   Folder,
+  FolderClock,
   FolderOpen,
   GripVertical,
   Loader2,
@@ -52,6 +53,7 @@ import {
 } from "@/features/upload/api/sessionApi"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import {
+  ensureTemporaryFolderGroup,
   versionToGroups,
   type ClusterDocument,
   type ClusterDocumentWarning,
@@ -109,7 +111,7 @@ interface PreviewDocumentEntry {
 interface ResultTreeNode {
   id: string
   label: string
-  type: "year" | "classification" | "dossier"
+  type: "year" | "classification" | "dossier" | "temporary"
   children: ResultTreeNode[]
   group?: ClusterGroup
   documentCount: number
@@ -144,15 +146,18 @@ export function FinalResult({
   metadataItems = [],
   onFinish,
 }: FinalResultProps) {
-  const [groups, setGroups] = useState<ClusterGroup[]>(initialGroups)
+  const initialDossierCount = regularDossierCount(initialGroups)
+  const [groups, setGroups] = useState<ClusterGroup[]>(() =>
+    ensureTemporaryFolderGroup(initialGroups)
+  )
   const [status, setStatus] = useState(
-    initialGroups.length > 0
-      ? `Đã lập ${initialGroups.length} hồ sơ.`
+    initialDossierCount > 0
+      ? `Đã lập ${initialDossierCount} hồ sơ.`
       : "Đang kiểm tra kết quả lập hồ sơ..."
   )
   const [loading, setLoading] = useState(false)
   const [checkingClusters, setCheckingClusters] = useState(
-    initialGroups.length === 0
+    initialDossierCount === 0
   )
   const [draggedDocument, setDraggedDocument] =
     useState<DraggedDocument | null>(null)
@@ -191,17 +196,21 @@ export function FinalResult({
     string | null
   >(null)
   const [clusterProgressMessage, setClusterProgressMessage] = useState(
-    initialGroups.length > 0 ? "Đã lập hồ sơ xong." : ""
+    initialDossierCount > 0 ? "Đã lập hồ sơ xong." : ""
   )
   const [clusterCompletedPhases, setClusterCompletedPhases] = useState<
     Set<string>
-  >(() => (initialGroups.length > 0 ? completedClusterPhaseSet() : new Set()))
+  >(() => (initialDossierCount > 0 ? completedClusterPhaseSet() : new Set()))
 
   const verifiedItems = useMemo(
     () => metadataItems.filter((item) => item.review_status === "verified"),
     [metadataItems]
   )
   const tree = useMemo(() => buildResultTree(groups), [groups])
+  const totalDossiers = regularDossierCount(groups)
+  const hasClusterData = groups.some(
+    (group) => !group.isTemporary || group.documents.length > 0
+  )
   const totalFiles = groups.reduce(
     (sum, group) => sum + group.documents.length,
     0
@@ -249,6 +258,7 @@ export function FinalResult({
     (sum, group) => sum + group.documents.length,
     0
   )
+  const pendingDossierCount = regularDossierCount(pendingClusterGroups)
 
   useEffect(() => {
     setOpenNodeIds(
@@ -288,7 +298,6 @@ export function FinalResult({
       }
       if (
         Date.now() - startedAt > CLUSTER_POLL_TIMEOUT_MS &&
-        groups.length === 0 &&
         !displayedClusterVersionId
       ) {
         setLoading(false)
@@ -318,7 +327,7 @@ export function FinalResult({
         const nextGroups = versionToGroups(version, metadataItems)
         const shouldDisplayInitialVersion =
           Boolean(version && nextVersionId) &&
-          (!displayedClusterVersionId || groups.length === 0)
+          (!displayedClusterVersionId || !hasClusterData)
         const effectiveDisplayedVersionId = shouldDisplayInitialVersion
           ? nextVersionId
           : displayedClusterVersionId
@@ -404,7 +413,7 @@ export function FinalResult({
             "Đã có phiên bản hồ sơ mới. Bấm áp dụng để cập nhật giao diện."
           )
           setStatus(
-            `Đã có cập nhật hồ sơ mới: phiên bản ${version.version_number} với ${nextGroups.length} hồ sơ.`
+            `Đã có cập nhật hồ sơ mới: phiên bản ${version.version_number} với ${regularDossierCount(nextGroups)} hồ sơ.`
           )
           schedule()
           return
@@ -421,26 +430,36 @@ export function FinalResult({
           (item) => !clusteredIds.has(item.document_id)
         )
         const allVerifiedClustered =
-          displayedGroupsForStatus.length > 0 &&
+          displayedGroupsForStatus.some(
+            (group) => group.documents.length > 0
+          ) &&
           (verifiedItems.length === 0 || missingVerified.length === 0)
+        const displayedDossierCount = regularDossierCount(
+          displayedGroupsForStatus
+        )
+        const displayedTemporaryCount = temporaryDocumentCount(
+          displayedGroupsForStatus
+        )
 
         if (allVerifiedClustered) {
           setClusterProgressPhase(null)
           setClusterCompletedPhases(completedClusterPhaseSet())
           setClusterProgressMessage("Đã lập hồ sơ xong.")
           setStatus(
-            `Đã lập ${displayedGroupsForStatus.length} hồ sơ từ ${verifiedItems.length} tài liệu đã xác nhận.`
+            displayedDossierCount > 0
+              ? `Đã lập ${displayedDossierCount} hồ sơ từ ${verifiedItems.length} tài liệu đã xác nhận.${displayedTemporaryCount > 0 ? ` Có ${displayedTemporaryCount} tài liệu trong Thư mục tạm.` : ""}`
+              : `Có ${displayedTemporaryCount} tài liệu trong Thư mục tạm; chưa có hồ sơ để tạo mục lục.`
           )
           schedule()
           return
         }
 
-        if (displayedGroupsForStatus.length > 0 && missingVerified.length > 0) {
+        if (displayedDossierCount > 0 && missingVerified.length > 0) {
           setClusterProgressPhase(null)
           setClusterCompletedPhases(completedClusterPhaseSet())
           setClusterProgressMessage("Đã lập hồ sơ xong.")
           setStatus(
-            `Đã có ${displayedGroupsForStatus.length} hồ sơ. Có ${missingVerified.length} tài liệu đã xác nhận chưa được cập nhật vào hồ sơ.`
+            `Đã có ${displayedDossierCount} hồ sơ. Có ${missingVerified.length} tài liệu đã xác nhận chưa được cập nhật vào hồ sơ.`
           )
           schedule()
         } else {
@@ -470,6 +489,7 @@ export function FinalResult({
   }, [
     displayedClusterVersionId,
     groups,
+    hasClusterData,
     metadataItems,
     rebuildBaselineVersionId,
     rebuildPollKey,
@@ -606,9 +626,7 @@ export function FinalResult({
     }
   }, [draggedDocument])
 
-  const handleResultTreeDragOver = (
-    event: ReactDragEvent<HTMLDivElement>
-  ) => {
+  const handleResultTreeDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
     if (!draggedDocument) return
     resultTreeDragYRef.current = event.clientY
   }
@@ -633,6 +651,9 @@ export function FinalResult({
     }
 
     const moving = draggedDocument
+    const targetIsTemporary = Boolean(
+      groups.find((group) => group.id === targetClusterId)?.isTemporary
+    )
     const sessionDocumentId = draggedDocument.document.sessionDocumentId
     stopResultTreeAutoScroll()
     setDraggedDocument(null)
@@ -648,7 +669,9 @@ export function FinalResult({
         source_cluster_id: moving.fromClusterId,
         target_cluster_id: targetClusterId,
         details: {
-          action: "manual_move",
+          action: targetIsTemporary
+            ? "move_to_temporary_folder"
+            : "manual_move",
           document_id: moving.document.documentId,
           file_name: moving.document.fileName,
           source_cluster_id: moving.fromClusterId,
@@ -657,9 +680,15 @@ export function FinalResult({
       })
       setPendingFeedbackCount((count) => count + 1)
       setStatus(
-        "Đã lưu feedback di chuyển tài liệu. Bấm Cập nhật hồ sơ khi bạn muốn lập hồ sơ lại."
+        targetIsTemporary
+          ? "Đã lưu việc chuyển tài liệu vào Thư mục tạm. Bấm Cập nhật hồ sơ để áp dụng."
+          : "Đã lưu feedback di chuyển tài liệu. Bấm Cập nhật hồ sơ khi bạn muốn lập hồ sơ lại."
       )
-      toast.success("Đã lưu feedback chuyển tài liệu.")
+      toast.success(
+        targetIsTemporary
+          ? "Đã chuyển tài liệu vào Thư mục tạm."
+          : "Đã lưu feedback chuyển tài liệu."
+      )
     } catch (err) {
       setStatus("Không lưu được feedback di chuyển tài liệu. Vui lòng thử lại.")
       toast.error(
@@ -785,13 +814,17 @@ export function FinalResult({
     setClusterProgressPhase(null)
     setClusterCompletedPhases(completedClusterPhaseSet())
     setClusterProgressMessage("Đã áp dụng phiên bản hồ sơ mới.")
+    const nextDossierCount = regularDossierCount(nextGroups)
+    const nextTemporaryCount = temporaryDocumentCount(nextGroups)
     setStatus(
-      nextGroups.length > 0 &&
+      nextDossierCount > 0 &&
         (verifiedItems.length === 0 || missingVerified.length === 0)
-        ? `Đã lập ${nextGroups.length} hồ sơ từ ${verifiedItems.length} tài liệu đã xác nhận.`
-        : nextGroups.length > 0 && missingVerified.length > 0
-          ? `Đã có ${nextGroups.length} hồ sơ. Có ${missingVerified.length} tài liệu đã xác nhận chưa được cập nhật vào hồ sơ.`
-          : "Chưa có kết quả lập hồ sơ từ backend."
+        ? `Đã lập ${nextDossierCount} hồ sơ từ ${verifiedItems.length} tài liệu đã xác nhận.${nextTemporaryCount > 0 ? ` Có ${nextTemporaryCount} tài liệu trong Thư mục tạm.` : ""}`
+        : nextDossierCount > 0 && missingVerified.length > 0
+          ? `Đã có ${nextDossierCount} hồ sơ. Có ${missingVerified.length} tài liệu đã xác nhận chưa được cập nhật vào hồ sơ.`
+          : nextTemporaryCount > 0
+            ? `Có ${nextTemporaryCount} tài liệu trong Thư mục tạm; chưa có hồ sơ để tạo mục lục.`
+            : "Chưa có kết quả lập hồ sơ từ backend."
     )
     toast.success("Đã áp dụng phiên bản hồ sơ mới.")
   }
@@ -801,7 +834,7 @@ export function FinalResult({
       toast.error("Chưa có session để xuất metadata.")
       return
     }
-    if (groups.length === 0) {
+    if (totalDossiers === 0) {
       toast.error("Chưa có dữ liệu hồ sơ để xuất metadata.")
       return
     }
@@ -847,16 +880,16 @@ export function FinalResult({
       })
       const version = await getActiveClusters(sessionId)
       if (!version) {
-        throw new Error("Backend chưa trả về phiên bản hồ sơ sau khi nhập số hộp.")
+        throw new Error(
+          "Backend chưa trả về phiên bản hồ sơ sau khi nhập số hộp."
+        )
       }
       const nextGroups = versionToGroups(version, metadataItems)
       setGroups(nextGroups)
       setActiveClusterVersionId(version.id)
       setDisplayedClusterVersionId(version.id)
       setPendingClusterVersion(null)
-      toast.success(
-        `Đã cập nhật số hộp cho ${result.updated_dossiers} hồ sơ.`
-      )
+      toast.success(`Đã cập nhật số hộp cho ${result.updated_dossiers} hồ sơ.`)
       const issueCount = result.unmatched_rows + result.conflict_count
       if (issueCount > 0) {
         toast.info(
@@ -865,7 +898,9 @@ export function FinalResult({
       }
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Không thể nhập số hộp từ metadata."
+        err instanceof Error
+          ? err.message
+          : "Không thể nhập số hộp từ metadata."
       )
     } finally {
       setMetadataImporting(false)
@@ -917,11 +952,22 @@ export function FinalResult({
   }
 
   const handleFinish = () => {
+    if (pendingFeedbackCount > 0) {
+      toast.error(
+        "Hãy cập nhật hồ sơ để áp dụng các tài liệu đã di chuyển trước khi tạo mục lục."
+      )
+      return
+    }
     if (pendingClusterVersion) {
       toast.error("Có phiên bản hồ sơ mới. Hãy áp dụng trước khi tạo mục lục.")
       return
     }
-    if (loading || rebuildSubmitting || rebuildBaselineVersionId || metadataImporting) {
+    if (
+      loading ||
+      rebuildSubmitting ||
+      rebuildBaselineVersionId ||
+      metadataImporting
+    ) {
       toast.error("Đang cập nhật hồ sơ. Vui lòng chờ xong rồi tạo mục lục.")
       return
     }
@@ -943,15 +989,16 @@ export function FinalResult({
     loading ||
     checkingClusters ||
     Boolean(clusterProgressMessage) ||
-    groups.length > 0
+    hasClusterData
   const updatingClusterVersion =
-    clusterJobMode === "update" && (loading || Boolean(rebuildBaselineVersionId))
+    clusterJobMode === "update" &&
+    (loading || Boolean(rebuildBaselineVersionId))
   const feedbackActionsPanel = (
     <div className="flex flex-col gap-3 rounded-2xl border border-[#D8E1EC] bg-white px-4 py-3 shadow-sm xl:flex-row xl:items-center xl:justify-between">
       <p className="min-w-0 flex-1 text-sm text-[#64748B]">
         {pendingFeedbackCount > 0
           ? `Có ${pendingFeedbackCount} feedback đã lưu và đang chờ cập nhật hồ sơ.`
-          : "Feedback di chuyển tài liệu sẽ được lưu lại và chỉ áp dụng khi cập nhật hồ sơ."}
+          : "Kéo tài liệu chưa thuộc hồ sơ vào Thư mục tạm để xử lý sau."}
       </p>
       <input
         ref={metadataImportInputRef}
@@ -964,7 +1011,7 @@ export function FinalResult({
           void handleImportMetadataBoxNumbers(file)
         }}
       />
-      <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-4 xl:w-auto xl:flex xl:flex-wrap xl:items-center xl:justify-end">
+      <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-4 xl:flex xl:w-auto xl:flex-wrap xl:items-center xl:justify-end">
         <Button
           variant="outline"
           onClick={() => void handleExportMetadataSnapshot()}
@@ -973,7 +1020,7 @@ export function FinalResult({
             metadataExporting ||
             metadataImporting ||
             !sessionId ||
-            groups.length === 0
+            totalDossiers === 0
           }
         >
           {metadataExporting ? (
@@ -991,7 +1038,7 @@ export function FinalResult({
             metadataExporting ||
             metadataImporting ||
             !sessionId ||
-            groups.length === 0
+            totalDossiers === 0
           }
         >
           {metadataImporting ? (
@@ -1010,7 +1057,7 @@ export function FinalResult({
             loading ||
             metadataImporting ||
             !sessionId ||
-            groups.length === 0 ||
+            totalFiles === 0 ||
             Boolean(pendingClusterVersion)
           }
         >
@@ -1025,7 +1072,8 @@ export function FinalResult({
           onClick={handleFinish}
           className="w-full xl:w-auto"
           disabled={
-            groups.length === 0 ||
+            totalDossiers === 0 ||
+            pendingFeedbackCount > 0 ||
             loading ||
             rebuildSubmitting ||
             metadataImporting ||
@@ -1069,7 +1117,7 @@ export function FinalResult({
           </p>
         </div>
         <div className="ml-auto grid w-full max-w-[22rem] shrink-0 grid-cols-3 justify-end gap-2 sm:w-auto">
-          <Metric label="Hồ sơ" value={groups.length} />
+          <Metric label="Hồ sơ" value={totalDossiers} />
           <Metric label="Tài liệu" value={totalFiles} />
           <Metric label="Trang" value={totalPages} />
         </div>
@@ -1099,8 +1147,8 @@ export function FinalResult({
               Đang cập nhật hồ sơ
             </p>
             <p className="mt-1 text-sm text-[#475569]">
-              Backend đang tạo phiên bản hồ sơ mới từ feedback đã lưu. Nút
-              áp dụng sẽ bật khi phiên bản mới sẵn sàng.
+              Backend đang tạo phiên bản hồ sơ mới từ feedback đã lưu. Nút áp
+              dụng sẽ bật khi phiên bản mới sẵn sàng.
             </p>
           </div>
           <Button disabled>
@@ -1118,9 +1166,8 @@ export function FinalResult({
             </p>
             <p className="mt-1 text-sm text-[#475569]">
               Phiên bản {pendingClusterVersion.version_number} có{" "}
-              {pendingClusterGroups.length} hồ sơ và{" "}
-              {pendingClusterDocumentCount} tài liệu. Bấm áp dụng để chuyển
-              giao diện sang phiên bản mới.
+              {pendingDossierCount} hồ sơ và {pendingClusterDocumentCount} tài
+              liệu. Bấm áp dụng để chuyển giao diện sang phiên bản mới.
             </p>
           </div>
           <Button onClick={handleApplyPendingClusterVersion}>
@@ -1151,9 +1198,9 @@ export function FinalResult({
           <div
             ref={resultTreeScrollRef}
             onDragOver={handleResultTreeDragOver}
-            className="h-[min(70svh,560px)] min-h-[360px] min-w-0 overflow-y-auto overflow-x-hidden p-2 pr-3 sm:p-3 sm:pr-4"
+            className="h-[min(70svh,560px)] min-h-[360px] min-w-0 overflow-x-hidden overflow-y-auto p-2 pr-3 sm:p-3 sm:pr-4"
           >
-            <div className="flex min-w-0 w-full max-w-full flex-col gap-1 overflow-hidden pr-2 pb-2">
+            <div className="flex w-full max-w-full min-w-0 flex-col gap-1 overflow-hidden pr-2 pb-2">
               {tree.map((node) => (
                 <ResultNode
                   key={node.id}
@@ -1287,6 +1334,8 @@ function ResultNode({
     useState<DossierMetadataDraft>(() => createDossierMetadataDraft(null))
   const open = openNodeIds.has(node.id)
   const isDossier = node.type === "dossier"
+  const isTemporary = node.type === "temporary"
+  const isDropFolder = isDossier || isTemporary
   const group = node.group
   const canDrop = Boolean(
     draggedDocument && group && draggedDocument.fromClusterId !== group.id
@@ -1296,7 +1345,7 @@ function ResultNode({
   )
   const indentStep = compact ? 14 : 20
   const displayLabel =
-    compact && isDossier ? truncateWithDots(node.label, 76) : node.label
+    compact && isDropFolder ? truncateWithDots(node.label, 76) : node.label
   const dossierMetadataKey = group?.dossierId ?? group?.id ?? null
   const dossierMetadataSaving = Boolean(
     dossierMetadataKey && savingDossierMetadataId === dossierMetadataKey
@@ -1332,24 +1381,25 @@ function ResultNode({
   }
 
   return (
-    <div className="min-w-0 max-w-full overflow-hidden">
+    <div className="max-w-full min-w-0 overflow-hidden">
       <div
         className={cn(
-          "group flex min-h-10 min-w-0 max-w-full items-center gap-2 overflow-hidden rounded-xl px-2 py-1.5 transition-all",
-          isDossier ? "border border-transparent" : "",
+          "group flex min-h-10 max-w-full min-w-0 items-center gap-2 overflow-hidden rounded-xl px-2 py-1.5 transition-all",
+          isDropFolder ? "border border-transparent" : "",
+          isTemporary && "bg-amber-50/60",
           canDrop && dropTargetId === node.id
             ? "border-[#0052FF]/40 bg-[#EAF1FF] shadow-[0_8px_24px_rgba(0,82,255,0.10)]"
             : "hover:bg-[#F8FAFC]"
         )}
         style={{ paddingLeft: `${8 + depth * indentStep}px` }}
         onDragOver={(event) => {
-          if (!isDossier || !canDrop) return
+          if (!isDropFolder || !canDrop) return
           event.preventDefault()
           onDragEnter(node.id)
         }}
-        onDragLeave={() => isDossier && onDragEnter(null)}
+        onDragLeave={() => isDropFolder && onDragEnter(null)}
         onDrop={(event) => {
-          if (!isDossier || !group) return
+          if (!isDropFolder || !group) return
           event.preventDefault()
           void onDropOnDossier(group.id)
         }}
@@ -1359,7 +1409,7 @@ function ResultNode({
           onClick={() => onToggle(node.id)}
           className="flex size-5 shrink-0 items-center justify-center rounded-md text-[#64748B] hover:bg-[#E2E8F0]"
         >
-          {node.children.length > 0 || isDossier ? (
+          {node.children.length > 0 || isDropFolder ? (
             open ? (
               <ChevronDown className="size-3.5" />
             ) : (
@@ -1370,7 +1420,9 @@ function ResultNode({
           )}
         </button>
 
-        {open ? (
+        {isTemporary ? (
+          <FolderClock className="size-4 shrink-0 text-amber-600" />
+        ) : open ? (
           <FolderOpen className="size-4 shrink-0 text-[#0052FF]" />
         ) : (
           <Folder className="size-4 shrink-0 text-[#0052FF]" />
@@ -1382,9 +1434,9 @@ function ResultNode({
               className={cn(
                 "min-w-0 flex-1 text-sm",
                 compact
-                  ? "line-clamp-2 whitespace-normal break-words leading-5"
+                  ? "line-clamp-2 leading-5 break-words whitespace-normal"
                   : "truncate",
-                isDossier
+                isDropFolder
                   ? "font-semibold text-[#0F172A]"
                   : "font-medium text-[#0F172A]"
               )}
@@ -1392,7 +1444,7 @@ function ResultNode({
             >
               {displayLabel}
             </span>
-            {group?.requiresReview && (
+            {group?.requiresReview && !isTemporary && (
               <span className="flex shrink-0 items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
                 <AlertTriangle className="size-3" /> Cần xem
               </span>
@@ -1423,14 +1475,23 @@ function ResultNode({
               )}
             </div>
           )}
+          {isTemporary && group && (
+            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] text-amber-700">
+              <span>Chưa xử lý khi tạo mục lục</span>
+              <span>·</span>
+              <span>{group.documents.length} tài liệu</span>
+              <span>·</span>
+              <span>{dossierPageCount(group)} trang</span>
+            </div>
+          )}
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5 pl-1">
-          {isDossier && canDrop && (
+          {isDropFolder && canDrop && (
             <span className="flex items-center gap-1 rounded-full bg-[#DBEAFE] px-2 py-1 text-[10px] font-semibold text-[#0052FF]">
               <MoveRight className="size-3" />
               <span className={cn(compact && "hidden 2xl:inline")}>
-                Chuyển vào đây
+                {isTemporary ? "Để xử lý sau" : "Chuyển vào đây"}
               </span>
             </span>
           )}
@@ -1599,7 +1660,7 @@ function DossierMetadataPanel({
                 }
                 rows={field.rows}
                 disabled={saving}
-                className="min-h-9 w-full min-w-0 resize-y rounded-lg border border-[#CBD5E1] bg-transparent px-2.5 py-1.5 text-xs leading-5 whitespace-pre-wrap outline-none transition-colors [overflow-wrap:anywhere] placeholder:text-[#94A3B8] focus-visible:border-[#0052FF] focus-visible:ring-3 focus-visible:ring-[#0052FF]/20 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-[#F8FAFC] disabled:opacity-70"
+                className="min-h-9 w-full min-w-0 resize-y rounded-lg border border-[#CBD5E1] bg-transparent px-2.5 py-1.5 text-xs leading-5 [overflow-wrap:anywhere] whitespace-pre-wrap transition-colors outline-none placeholder:text-[#94A3B8] focus-visible:border-[#0052FF] focus-visible:ring-3 focus-visible:ring-[#0052FF]/20 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-[#F8FAFC] disabled:opacity-70"
               />
             </div>
           ))}
@@ -1743,7 +1804,7 @@ function DocumentRow({
   }
 
   return (
-    <div className="min-w-0 max-w-full overflow-hidden">
+    <div className="max-w-full min-w-0 overflow-hidden">
       <div
         draggable
         onClick={() => {
@@ -1760,7 +1821,7 @@ function DocumentRow({
           window.setTimeout(() => setDragging(false), 0)
         }}
         className={cn(
-          "mr-1 flex min-w-0 max-w-full cursor-pointer items-start gap-2 overflow-hidden rounded-xl px-2 py-1.5 transition-colors active:cursor-grabbing",
+          "mr-1 flex max-w-full min-w-0 cursor-pointer items-start gap-2 overflow-hidden rounded-xl px-2 py-1.5 transition-colors active:cursor-grabbing",
           selected
             ? "bg-[#EAF1FF] ring-1 ring-[#0052FF]/30"
             : expanded
@@ -1808,7 +1869,9 @@ function DocumentRow({
                 )}
               >
                 <Signature className="size-3" />
-                <span className={cn("max-w-24 truncate", compact && "max-w-20")}>
+                <span
+                  className={cn("max-w-24 truncate", compact && "max-w-20")}
+                >
                   {signatureTag.label}
                 </span>
               </span>
@@ -1822,7 +1885,12 @@ function DocumentRow({
                 )}
               >
                 <AlertTriangle className="size-3" />
-                <span className={cn("max-w-28 truncate", compact && "hidden 2xl:inline")}>
+                <span
+                  className={cn(
+                    "max-w-28 truncate",
+                    compact && "hidden 2xl:inline"
+                  )}
+                >
                   {clusterWarningLevelLabel(clusterWarning.riskLevel)}
                 </span>
               </span>
@@ -1838,7 +1906,7 @@ function DocumentRow({
               className={cn(
                 "mt-0.5 text-xs text-[#64748B]",
                 compact
-                  ? "line-clamp-2 whitespace-normal break-words leading-4"
+                  ? "line-clamp-2 leading-4 break-words whitespace-normal"
                   : "truncate"
               )}
               title={summary}
@@ -1952,7 +2020,8 @@ function ClusterWarningPanel({
   const hasCloserWarning = clusterWarningHasCloserReason(warning, messages)
   const hasTemporalWarning = warning.reasons.includes("temporal_outlier")
   const closerDossierTitle = warning.nearestOtherDossierTitle.trim()
-  const representativeDocuments = warning.nearestOtherRepresentativeDocuments.length
+  const representativeDocuments = warning.nearestOtherRepresentativeDocuments
+    .length
     ? warning.nearestOtherRepresentativeDocuments
     : warning.nearestOtherRepresentativeFileName
       ? [
@@ -1973,7 +2042,9 @@ function ClusterWarningPanel({
     },
     {
       label: "Thời gian của tài liệu",
-      value: hasTemporalWarning ? warning.documentIssuedDate || warning.documentYear : "",
+      value: hasTemporalWarning
+        ? warning.documentIssuedDate || warning.documentYear
+        : "",
     },
     {
       label: "Thời gian chung của hồ sơ",
@@ -1995,9 +2066,7 @@ function ClusterWarningPanel({
       >
         <span className="flex min-w-0 items-center gap-1.5 text-xs font-semibold">
           <AlertTriangle className="size-3.5 shrink-0" />
-          <span className="truncate">
-            Cảnh báo hồ sơ
-          </span>
+          <span className="truncate">Cảnh báo hồ sơ</span>
         </span>
         {expanded ? (
           <ChevronDown className="size-3.5 shrink-0" />
@@ -2013,7 +2082,11 @@ function ClusterWarningPanel({
       {expanded && detailRows.length > 0 && (
         <div className="mt-2 grid gap-1.5 text-[11px] sm:grid-cols-2">
           {detailRows.map((row) => (
-            <WarningDetail key={row.label} label={row.label} value={row.value} />
+            <WarningDetail
+              key={row.label}
+              label={row.label}
+              value={row.value}
+            />
           ))}
         </div>
       )}
@@ -2022,7 +2095,7 @@ function ClusterWarningPanel({
           <p className="text-[11px] font-semibold text-amber-900">
             Hồ sơ phù hợp hơn
           </p>
-          <p className="mt-1 break-words rounded-md bg-white/70 px-2 py-1 text-[11px] font-medium text-amber-950">
+          <p className="mt-1 rounded-md bg-white/70 px-2 py-1 text-[11px] font-medium break-words text-amber-950">
             {closerDossierTitle ||
               "Chưa xác định được tên hồ sơ phù hợp hơn từ dữ liệu cảnh báo."}
           </p>
@@ -2040,14 +2113,18 @@ function ClusterWarningPanel({
                   ].filter(Boolean)
                   return (
                     <div
-                      key={document.documentId || `${document.fileName}-${index}`}
+                      key={
+                        document.documentId || `${document.fileName}-${index}`
+                      }
                       className="min-w-0 border-t border-amber-100 pt-1 first:border-t-0 first:pt-0"
                     >
-                      <p className="break-words text-[11px] font-medium text-amber-950">
-                        {document.fileName || document.documentId || "Tài liệu đại diện"}
+                      <p className="text-[11px] font-medium break-words text-amber-950">
+                        {document.fileName ||
+                          document.documentId ||
+                          "Tài liệu đại diện"}
                       </p>
                       {secondary.length > 0 && (
-                        <p className="mt-0.5 line-clamp-2 break-words text-[11px] text-amber-800">
+                        <p className="mt-0.5 line-clamp-2 text-[11px] break-words text-amber-800">
                           {secondary.join(" · ")}
                         </p>
                       )}
@@ -2072,7 +2149,7 @@ function WarningDetail({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 rounded-md bg-white/70 px-2 py-1">
       <span className="text-amber-700">{label}: </span>
-      <span className="break-words font-medium text-amber-950">{value}</span>
+      <span className="font-medium break-words text-amber-950">{value}</span>
     </div>
   )
 }
@@ -2101,7 +2178,7 @@ function PreviewField({
       </p>
       <p
         className={cn(
-          "min-w-0 whitespace-normal break-words text-xs font-medium text-[#0F172A] [overflow-wrap:anywhere]",
+          "min-w-0 text-xs font-medium [overflow-wrap:anywhere] break-words whitespace-normal text-[#0F172A]",
           wide ? "line-clamp-3" : "line-clamp-2"
         )}
       >
@@ -2117,7 +2194,7 @@ function Metric({ label, value }: { label: string; value: number }) {
       <p className="font-roboto text-[10px] font-semibold tracking-[0.12em] text-[#64748B] uppercase">
         {label}
       </p>
-      <p className="font-roboto text-xl font-semibold leading-6 text-[#0F172A] tabular-nums">
+      <p className="font-roboto text-xl leading-6 font-semibold text-[#0F172A] tabular-nums">
         {value}
       </p>
     </div>
@@ -2226,42 +2303,62 @@ function buildResultTree(groups: ClusterGroup[]): ResultTreeNode[] {
   const roots: ResultTreeNode[] = []
   const rootByLabel = new Map<string, ResultTreeNode>()
 
-  groups.forEach((group) => {
-    const yearLabel = dossierYearLabel(group)
-    let current = rootByLabel.get(yearLabel)
-    if (!current) {
-      current = createTreeNode(`year:${yearLabel}`, yearLabel, "year")
-      rootByLabel.set(yearLabel, current)
-      roots.push(current)
-    }
+  groups
+    .filter((group) => group.isTemporary)
+    .forEach((group) => {
+      roots.push({
+        id: `temporary:${group.id}`,
+        label: group.label,
+        type: "temporary",
+        children: [],
+        group,
+        documentCount: group.documents.length,
+        pageCount: dossierPageCount(group),
+      })
+    })
 
-    const path = group.classificationPath?.length
-      ? group.classificationPath
-      : ["Chưa phân loại"]
-    path.forEach((segment, index) => {
-      const label = segment.trim() || "Chưa phân loại"
-      const id = `${current!.id}/class:${index}:${label}`
-      let child = current!.children.find((candidate) => candidate.id === id)
-      if (!child) {
-        child = createTreeNode(id, label, "classification")
-        current!.children.push(child)
+  groups
+    .filter((group) => !group.isTemporary)
+    .forEach((group) => {
+      const yearLabel = dossierYearLabel(group)
+      let current = rootByLabel.get(yearLabel)
+      if (!current) {
+        current = createTreeNode(`year:${yearLabel}`, yearLabel, "year")
+        rootByLabel.set(yearLabel, current)
+        roots.push(current)
       }
-      current = child
-    })
 
-    current.children.push({
-      id: `dossier:${group.id}`,
-      label: group.label,
-      type: "dossier",
-      children: [],
-      group,
-      documentCount: group.documents.length,
-      pageCount: dossierPageCount(group),
+      const path = group.classificationPath?.length
+        ? group.classificationPath
+        : ["Chưa phân loại"]
+      path.forEach((segment, index) => {
+        const label = segment.trim() || "Chưa phân loại"
+        const id = `${current!.id}/class:${index}:${label}`
+        let child = current!.children.find((candidate) => candidate.id === id)
+        if (!child) {
+          child = createTreeNode(id, label, "classification")
+          current!.children.push(child)
+        }
+        current = child
+      })
+
+      current.children.push({
+        id: `dossier:${group.id}`,
+        label: group.label,
+        type: "dossier",
+        children: [],
+        group,
+        documentCount: group.documents.length,
+        pageCount: dossierPageCount(group),
+      })
     })
-  })
 
   roots.forEach(updateTreeCounts)
-  return roots.sort((a, b) => a.label.localeCompare(b.label, "vi"))
+  return roots.sort((a, b) => {
+    if (a.type === "temporary") return -1
+    if (b.type === "temporary") return 1
+    return a.label.localeCompare(b.label, "vi")
+  })
 }
 
 function createTreeNode(
@@ -2371,37 +2468,51 @@ function updateDossierGroupFromResponse(
   })
 }
 
-function metadataSnapshotGroups(groups: ClusterGroup[]): MetadataSnapshotGroup[] {
-  return groups.map((group) => ({
-    id: group.id,
-    label: group.label,
-    dossierId: group.dossierId ?? null,
-    dossierNumber: group.dossierNumber ?? null,
-    boxNumber: group.boxNumber ?? null,
-    folderName: group.folderName ?? null,
-    classificationPath: group.classificationPath ?? [],
-    retentionPeriod: group.retentionPeriod ?? null,
-    confidence: group.confidence ?? null,
-    requiresReview: group.requiresReview ?? false,
-    pageCount: group.pageCount ?? null,
-    sheetCount: group.sheetCount ?? null,
-    startDate: group.startDate ?? null,
-    endDate: group.endDate ?? null,
-    documents: group.documents.map((document) => ({
-      documentId: document.documentId,
-      sessionDocumentId: document.sessionDocumentId,
-      filePath: document.filePath,
-      fileName: document.fileName,
-      positionIndex: document.positionIndex,
-      pageCount: document.pageCount,
-      sheetCount: document.sheetCount,
-      requiresReview: document.requiresReview,
-      metadata: document.metadata,
-      remoteMetadataStatus: document.remoteMetadataStatus,
-      ocrStatus: document.ocrStatus,
-      signatureStatus: document.signatureStatus,
-    })),
-  }))
+function metadataSnapshotGroups(
+  groups: ClusterGroup[]
+): MetadataSnapshotGroup[] {
+  return groups
+    .filter((group) => !group.isTemporary)
+    .map((group) => ({
+      id: group.id,
+      label: group.label,
+      dossierId: group.dossierId ?? null,
+      dossierNumber: group.dossierNumber ?? null,
+      boxNumber: group.boxNumber ?? null,
+      folderName: group.folderName ?? null,
+      classificationPath: group.classificationPath ?? [],
+      retentionPeriod: group.retentionPeriod ?? null,
+      confidence: group.confidence ?? null,
+      requiresReview: group.requiresReview ?? false,
+      pageCount: group.pageCount ?? null,
+      sheetCount: group.sheetCount ?? null,
+      startDate: group.startDate ?? null,
+      endDate: group.endDate ?? null,
+      documents: group.documents.map((document) => ({
+        documentId: document.documentId,
+        sessionDocumentId: document.sessionDocumentId,
+        filePath: document.filePath,
+        fileName: document.fileName,
+        positionIndex: document.positionIndex,
+        pageCount: document.pageCount,
+        sheetCount: document.sheetCount,
+        requiresReview: document.requiresReview,
+        metadata: document.metadata,
+        remoteMetadataStatus: document.remoteMetadataStatus,
+        ocrStatus: document.ocrStatus,
+        signatureStatus: document.signatureStatus,
+      })),
+    }))
+}
+
+function regularDossierCount(groups: ClusterGroup[]): number {
+  return groups.filter((group) => !group.isTemporary).length
+}
+
+function temporaryDocumentCount(groups: ClusterGroup[]): number {
+  return groups
+    .filter((group) => group.isTemporary)
+    .reduce((sum, group) => sum + group.documents.length, 0)
 }
 
 function dossierYearLabel(group: ClusterGroup): string {
@@ -2464,10 +2575,12 @@ function clusterWarningMessages(warning: ClusterDocumentWarning): string[] {
   const baseMessages = warning.displayMessages.length
     ? warning.displayMessages
     : warning.reasons.length
-    ? warning.reasons.map((reason) => clusterWarningReasonLabel(reason, warning))
-    : warning.message
-      ? [warning.message]
-      : []
+      ? warning.reasons.map((reason) =>
+          clusterWarningReasonLabel(reason, warning)
+        )
+      : warning.message
+        ? [warning.message]
+        : []
   const messages = baseMessages
     .map((message) => refineClusterWarningMessage(message, warning))
     .filter(Boolean)
@@ -2487,13 +2600,17 @@ function addMissingClusterWarningReasonMessages(
     warning.reasons.includes("low_similarity_to_cluster") &&
     !combined.includes("không đồng nhất")
   ) {
-    messages.push(clusterWarningReasonLabel("low_similarity_to_cluster", warning))
+    messages.push(
+      clusterWarningReasonLabel("low_similarity_to_cluster", warning)
+    )
   }
   if (
     warning.reasons.includes("closer_to_another_cluster") &&
     !combined.includes("tương đồng")
   ) {
-    messages.push(clusterWarningReasonLabel("closer_to_another_cluster", warning))
+    messages.push(
+      clusterWarningReasonLabel("closer_to_another_cluster", warning)
+    )
   }
   if (
     warning.reasons.includes("temporal_outlier") &&
@@ -2548,7 +2665,8 @@ function clusterWarningReasonLabel(
   }
   const labels: Record<string, string> = {
     low_similarity_to_cluster: "Tài liệu không đồng nhất với hồ sơ.",
-    temporal_outlier: "Năm ban hành của tài liệu khác với đa số tài liệu trong hồ sơ.",
+    temporal_outlier:
+      "Năm ban hành của tài liệu khác với đa số tài liệu trong hồ sơ.",
   }
   return labels[reason] ?? reason
 }

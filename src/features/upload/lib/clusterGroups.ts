@@ -7,11 +7,15 @@ import { buildDisplayMetadata } from "@/features/upload/lib/metadata"
 import { documentSignatureStatus } from "@/features/upload/lib/signatureStatus"
 import type { PdfMetadata } from "@/features/upload/types"
 
+export const TEMPORARY_CLUSTER_ID = "temporary-folder"
+export const TEMPORARY_FOLDER_NAME = "Thư mục tạm"
+
 export interface ClusterGroup {
   id: string
   label: string
   files: string[]
   documents: ClusterDocument[]
+  isTemporary?: boolean
   dossierId?: string | null
   dossierNumber?: string | null
   boxNumber?: string | null
@@ -81,8 +85,47 @@ export function versionToGroups(
   items: PdfMetadata[]
 ): ClusterGroup[] {
   if (!version?.clusters) return []
-  const itemsByDocumentId = new Map(items.map((item) => [item.document_id, item]))
-  return version.clusters.map((cluster) => clusterToGroup(cluster, itemsByDocumentId))
+  const itemsByDocumentId = new Map(
+    items.map((item) => [item.document_id, item])
+  )
+  return ensureTemporaryFolderGroup(
+    version.clusters.map((cluster) =>
+      clusterToGroup(cluster, itemsByDocumentId)
+    )
+  )
+}
+
+export function ensureTemporaryFolderGroup(
+  groups: ClusterGroup[]
+): ClusterGroup[] {
+  const temporaryGroup = groups.find(
+    (group) => group.isTemporary || group.id === TEMPORARY_CLUSTER_ID
+  )
+  const regularGroups = groups.filter(
+    (group) => !group.isTemporary && group.id !== TEMPORARY_CLUSTER_ID
+  )
+  return [
+    temporaryGroup
+      ? {
+          ...temporaryGroup,
+          id: TEMPORARY_CLUSTER_ID,
+          label: TEMPORARY_FOLDER_NAME,
+          dossierId: null,
+          isTemporary: true,
+          classificationPath: [],
+        }
+      : {
+          id: TEMPORARY_CLUSTER_ID,
+          label: TEMPORARY_FOLDER_NAME,
+          files: [],
+          documents: [],
+          dossierId: null,
+          isTemporary: true,
+          classificationPath: [],
+          requiresReview: false,
+        },
+    ...regularGroups,
+  ]
 }
 
 function clusterToGroup(
@@ -90,6 +133,8 @@ function clusterToGroup(
   itemsByDocumentId: Map<string, PdfMetadata>
 ): ClusterGroup {
   const dossier = cluster.dossier
+  const isTemporary =
+    Boolean(cluster.is_temporary) || cluster.cluster_id === TEMPORARY_CLUSTER_ID
   const classification = dossier?.classification
   const documents = [...(cluster.placements ?? [])]
     .sort((a, b) => a.position_index - b.position_index)
@@ -104,7 +149,8 @@ function clusterToGroup(
           stringValue(metadataSource.remote_metadata_status)) ||
         null
       const ocrStatus =
-        item?.status ?? stringValue(metadataSource.ocr_status ?? metadataSource.status)
+        item?.status ??
+        stringValue(metadataSource.ocr_status ?? metadataSource.status)
       const metadata = buildDisplayMetadata({
         light_metadata: metadataSource,
         normalized_metadata: item?.normalized_metadata,
@@ -114,9 +160,7 @@ function clusterToGroup(
         status: stringValue(metadataSource.status),
       })
       const filePath =
-        metadataPath(metadata) ??
-        item?.data_path ??
-        placement.document_id
+        metadataPath(metadata) ?? item?.data_path ?? placement.document_id
       const clusterWarning = clusterWarningFromMetadata(metadata)
       return {
         documentId: placement.document_id,
@@ -132,7 +176,8 @@ function clusterToGroup(
         positionIndex: placement.position_index,
         pageCount: placement.page_count ?? numberValue(metadata.page_count),
         sheetCount: placement.sheet_count ?? numberValue(metadata.sheet_count),
-        requiresReview: Boolean(placement.requires_review) || Boolean(clusterWarning),
+        requiresReview:
+          Boolean(placement.requires_review) || Boolean(clusterWarning),
         metadata,
         clusterWarning,
       }
@@ -148,7 +193,8 @@ function clusterToGroup(
           stringValue(metadataSource.remote_metadata_status)) ||
         null
       const ocrStatus =
-        item?.status ?? stringValue(metadataSource.ocr_status ?? metadataSource.status)
+        item?.status ??
+        stringValue(metadataSource.ocr_status ?? metadataSource.status)
       const metadata = buildDisplayMetadata({
         light_metadata: metadataSource,
         normalized_metadata: item?.normalized_metadata,
@@ -182,15 +228,21 @@ function clusterToGroup(
 
   return {
     id: cluster.cluster_id,
-    dossierId: dossier?.dossier_id ?? cluster.dossier_id,
+    dossierId: isTemporary ? null : (dossier?.dossier_id ?? cluster.dossier_id),
+    isTemporary,
     dossierNumber: dossier?.dossier_number ?? null,
     boxNumber: dossier?.box_number ?? null,
     folderName: dossier?.folder_name ?? null,
-    label:
-      dossier?.title || dossier?.generated_title || cluster.title || cluster.dossier_id || cluster.cluster_id,
+    label: isTemporary
+      ? TEMPORARY_FOLDER_NAME
+      : dossier?.title ||
+        dossier?.generated_title ||
+        cluster.title ||
+        cluster.dossier_id ||
+        cluster.cluster_id,
     files: uniqueStrings(allDocuments.map((document) => document.filePath)),
     documents: allDocuments,
-    classificationPath: classificationPath(classification),
+    classificationPath: isTemporary ? [] : classificationPath(classification),
     retentionPeriod: dossier?.retention_period ?? null,
     confidence: classification?.confidence ?? null,
     requiresReview:
@@ -212,18 +264,27 @@ function classificationPath(
     ?.map((level) => {
       if (typeof level !== "object" || level === null) return ""
       const record = level as Record<string, unknown>
-      return stringValue(record.name ?? record.group_name ?? record.label ?? record.id)
+      return stringValue(
+        record.name ?? record.group_name ?? record.label ?? record.id
+      )
     })
     .filter(Boolean)
   if (fromLevels?.length) return fromLevels
   return classification.group_name ? [classification.group_name] : []
 }
 
-function metadataPath(metadata: Record<string, unknown> | undefined): string | null {
+function metadataPath(
+  metadata: Record<string, unknown> | undefined
+): string | null {
   if (!metadata) return null
-  return stringValue(
-    metadata.data_path ?? metadata.file_path ?? metadata.path ?? metadata.source_path
-  ) || null
+  return (
+    stringValue(
+      metadata.data_path ??
+        metadata.file_path ??
+        metadata.path ??
+        metadata.source_path
+    ) || null
+  )
 }
 
 function clusterWarningFromMetadata(
@@ -232,7 +293,9 @@ function clusterWarningFromMetadata(
   const raw = metadata._cluster_warning
   if (!isRecord(raw)) return null
   if (stringValue(raw.status).toLowerCase() !== "warning") return null
-  const displayMessages = stringArray(raw.display_messages ?? raw.displayMessages)
+  const displayMessages = stringArray(
+    raw.display_messages ?? raw.displayMessages
+  )
   return {
     riskLevel: stringValue(raw.risk_level ?? raw.riskLevel),
     riskScore: numberValue(raw.risk_score ?? raw.riskScore),
@@ -261,7 +324,8 @@ function clusterWarningFromMetadata(
         raw.nearestOtherRepresentativeFileName
     ),
     nearestOtherRepresentativeTitle: stringValue(
-      raw.nearest_other_representative_title ?? raw.nearestOtherRepresentativeTitle
+      raw.nearest_other_representative_title ??
+        raw.nearestOtherRepresentativeTitle
     ),
     nearestOtherRepresentativeDocuments: representativeDocuments(
       raw.nearest_other_representative_documents ??
@@ -273,11 +337,19 @@ function clusterWarningFromMetadata(
     clusterMedianDocSimilarity: numberValue(
       raw.cluster_median_doc_similarity ?? raw.clusterMedianDocSimilarity
     ),
-    otherClusterMargin: numberValue(raw.other_cluster_margin ?? raw.otherClusterMargin),
+    otherClusterMargin: numberValue(
+      raw.other_cluster_margin ?? raw.otherClusterMargin
+    ),
     documentYear: stringValue(raw.document_year ?? raw.documentYear),
-    documentIssuedDate: stringValue(raw.document_issued_date ?? raw.documentIssuedDate),
-    dominantClusterYear: stringValue(raw.dominant_cluster_year ?? raw.dominantClusterYear),
-    dominantYearRatio: numberValue(raw.dominant_year_ratio ?? raw.dominantYearRatio),
+    documentIssuedDate: stringValue(
+      raw.document_issued_date ?? raw.documentIssuedDate
+    ),
+    dominantClusterYear: stringValue(
+      raw.dominant_cluster_year ?? raw.dominantClusterYear
+    ),
+    dominantYearRatio: numberValue(
+      raw.dominant_year_ratio ?? raw.dominantYearRatio
+    ),
     currentDossierDateRange: stringValue(
       raw.current_dossier_date_range ?? raw.currentDossierDateRange
     ),
@@ -302,9 +374,13 @@ function representativeDocuments(
         issuedDate: stringValue(item.issued_date ?? item.issuedDate),
       }
     })
-    .filter(
-      (item): item is ClusterWarningRepresentativeDocument =>
-        Boolean(item?.documentId || item?.fileName || item?.title || item?.documentSummary)
+    .filter((item): item is ClusterWarningRepresentativeDocument =>
+      Boolean(
+        item?.documentId ||
+        item?.fileName ||
+        item?.title ||
+        item?.documentSummary
+      )
     )
 }
 
@@ -345,7 +421,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function stringValue(value: unknown): string {
-  return typeof value === "string" || typeof value === "number" ? String(value).trim() : ""
+  return typeof value === "string" || typeof value === "number"
+    ? String(value).trim()
+    : ""
 }
 
 function stringArray(value: unknown): string[] {

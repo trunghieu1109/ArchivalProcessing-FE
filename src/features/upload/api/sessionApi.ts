@@ -418,6 +418,7 @@ export interface SessionClusterSummary {
   id: number
   cluster_id: string
   dossier_id: string
+  is_temporary?: boolean
   title: string
   dossier: SessionDossierSummary | null
   status: string
@@ -488,11 +489,14 @@ export async function patchSessionMetadata(
   sessionId: string,
   payload: { archive_name?: string | null; fonds_name?: string | null }
 ): Promise<SessionSummary> {
-  return requestJson<SessionSummary>(`/sessions/${encodeURIComponent(sessionId)}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
+  return requestJson<SessionSummary>(
+    `/sessions/${encodeURIComponent(sessionId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
 }
 
 export async function uploadSessionInput(
@@ -1188,20 +1192,19 @@ export function digitizationToFolderStatus(
       batch?.status_counts ?? response?.summary.status_counts ?? {},
     signature_extracted_documents:
       response?.summary.signature_extracted_documents ??
-      documents.filter((document) => documentSignatureStatus(document) === "done")
-        .length,
+      documents.filter(
+        (document) => documentSignatureStatus(document) === "done"
+      ).length,
     signature_pending_documents:
       response?.summary.signature_pending_documents ??
       documents.filter(
         (document) => documentSignatureStatus(document) === "signature_pending"
-      )
-        .length,
+      ).length,
     signature_failed_documents:
       response?.summary.signature_failed_documents ??
       documents.filter(
         (document) => documentSignatureStatus(document) === "signature_failed"
-      )
-        .length,
+      ).length,
     jobs,
   }
 }
