@@ -19,6 +19,10 @@ import { ProcessStep } from "@/features/upload/components/step3/ProcessStep"
 import { FinalResult } from "@/features/upload/components/step4/FinalResult"
 import { FinalizeArtifactsStep } from "@/pages/FinalizeArtifactsPage"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
+import {
+  SessionMetadataBar,
+  type SessionMetadataValues,
+} from "@/features/upload/components/SessionMetadataBar"
 import { useOcrFolder } from "@/features/upload/hooks/useOcrFolder"
 import { buildDisplayMetadata } from "@/features/upload/lib/metadata"
 import {
@@ -29,6 +33,7 @@ import {
   listSessionEvents,
   normalizeDocumentReviewStatus,
   patchActivePlan,
+  patchSessionMetadata,
   uploadSessionInput,
   waitForActivePlan,
   type ActivePlanResponse,
@@ -272,6 +277,10 @@ let _doc2State: ProcessState = "idle"
 let _zipState: ProcessState = "idle"
 let _planAnalysisState: ProcessState = "idle"
 let _sessionId: string | null = null
+let _sessionMetadata: SessionMetadataValues = {
+  archive_name: null,
+  fonds_name: null,
+}
 let _zipUpload: SessionInputUploadResponse | null = null
 let _zipFolderPath = ""
 let _zipMaxFiles = ""
@@ -326,6 +335,8 @@ export function UploadPage() {
   const [clusterGroups, setClusterGroups] =
     useState<ClusterGroup[]>(_clusterGroups)
   const [sessionId, setSessionId] = useState<string | null>(_sessionId)
+  const [sessionMetadata, setSessionMetadata] =
+    useState<SessionMetadataValues>(_sessionMetadata)
   const [zipFolderPath, setZipFolderPath] = useState(_zipFolderPath)
   const [zipMaxFiles, setZipMaxFiles] = useState(_zipMaxFiles)
   const [zipUploadProgress, setZipUploadProgress] =
@@ -352,6 +363,7 @@ export function UploadPage() {
     setParsedPlan(_parsedPlan)
     setClusterGroups(_clusterGroups)
     setSessionId(nextSessionId)
+    setSessionMetadata(_sessionMetadata)
     setZipFolderPath(_zipFolderPath)
     setZipMaxFiles(_zipMaxFiles)
     setZipUploadProgress(_zipUploadProgress)
@@ -375,6 +387,10 @@ export function UploadPage() {
     _zipState = "idle"
     _planAnalysisState = "idle"
     _sessionId = nextSessionId
+    _sessionMetadata = {
+      archive_name: null,
+      fonds_name: null,
+    }
     _zipUpload = null
     _zipFolderPath = ""
     _zipMaxFiles = ""
@@ -384,6 +400,14 @@ export function UploadPage() {
     _draftZipFile = null
     _zipUploadProgress = null
     applyWorkflowState(nextSessionId)
+  }
+
+  const syncSessionMetadata = (metadata: SessionMetadataValues) => {
+    _sessionMetadata = {
+      archive_name: metadata.archive_name ?? null,
+      fonds_name: metadata.fonds_name ?? null,
+    }
+    setSessionMetadata(_sessionMetadata)
   }
 
   const ocr = useOcrFolder(sessionId)
@@ -511,6 +535,7 @@ export function UploadPage() {
         ])
         if (cancelled) return
 
+        syncSessionMetadata(sessionDetail)
         const files = sessionDetail.files ?? []
         const arrangementPlanFile = files.find(
           (file) => file.file_type === "arrangement_plan"
@@ -569,8 +594,18 @@ export function UploadPage() {
     const created = await createSession()
     _sessionId = created.session_id
     setSessionId(created.session_id)
+    syncSessionMetadata(created)
     window.localStorage.setItem(LAST_SESSION_KEY, created.session_id)
     return created.session_id
+  }
+
+  const saveSessionMetadata = async (metadata: SessionMetadataValues) => {
+    const currentSessionId = sessionId ?? routeSessionId ?? _sessionId
+    if (!currentSessionId) {
+      throw new Error("Chưa có session để lưu thông tin kho/phông.")
+    }
+    const updated = await patchSessionMetadata(currentSessionId, metadata)
+    syncSessionMetadata(updated)
   }
 
   const uploadInput = async (fileType: SessionInputFileType, file: File) => {
@@ -887,6 +922,8 @@ export function UploadPage() {
       _folderTree = planToTree(plan)
       setParsedPlan(plan)
       setFolderTree(_folderTree)
+      const sessionAfterPlan = await getSession(currentSessionId)
+      syncSessionMetadata(sessionAfterPlan)
       await syncLatestPlanProgress(currentSessionId)
       syncPlanAnalysisState("done")
       toast.success("Đã tạo session và phân tích phương án chỉnh lý.")
@@ -1166,6 +1203,15 @@ export function UploadPage() {
             </motion.button>
           )}
         </div>
+
+        {(sessionId || routeSessionId) && (
+          <SessionMetadataBar
+            sessionId={sessionId ?? routeSessionId ?? null}
+            metadata={sessionMetadata}
+            onSave={saveSessionMetadata}
+            className="mb-5"
+          />
+        )}
 
         <AnimatePresence mode="wait">
           {/* Bước 1: Tải lên */}

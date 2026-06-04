@@ -176,6 +176,8 @@ function SessionCard({
     session.metadata_correct_document_count ??
     Math.max(documentCount - incorrectCount, 0)
   const statusText = hasClusters ? "Đã lập hồ sơ" : hasPlan ? "Có phương án" : statusLabel(session.status)
+  const displayName = session.fonds_name?.trim() || session.session_id
+  const archiveName = session.archive_name?.trim()
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -186,7 +188,12 @@ function SessionCard({
       <div>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="truncate text-base font-bold text-[#0F172A]">{session.session_id}</p>
+            <p className="truncate text-base font-bold text-[#0F172A]" title={displayName}>
+              {displayName}
+            </p>
+            <p className="mt-1 text-xs text-[#64748B]">
+              {displayName === session.session_id ? "Mã session" : `Mã session: ${session.session_id}`}
+            </p>
             <p className="mt-1 text-xs text-[#64748B]">
               Cập nhật {formatDate(session.updated_at ?? session.created_at)}
             </p>
@@ -202,6 +209,15 @@ function SessionCard({
             )}
           >
             {statusText}
+          </span>
+        </div>
+        <div className="mt-4 flex min-w-0 items-center gap-2 rounded-xl bg-[#F8FAFC] px-3 py-2 text-sm text-[#475569]">
+          <Archive className="size-4 shrink-0 text-[#0052FF]" />
+          <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#64748B]">
+            Kho
+          </span>
+          <span className="truncate font-semibold text-[#0F172A]" title={archiveName || "Chưa có kho lưu trữ"}>
+            {archiveName || "Chưa có kho lưu trữ"}
           </span>
         </div>
         <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -246,7 +262,7 @@ function SessionCard({
           onClick={onOpen}
           className="flex items-center justify-center gap-1.5 rounded-lg px-2 py-1 text-sm font-semibold text-[#0052FF] transition-colors hover:bg-[#EAF1FF]"
         >
-          Mở session
+          Mở phông
           <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
         </button>
         {hasClusters && (

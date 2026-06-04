@@ -15,12 +15,16 @@ export type SessionInputFileType =
 export interface CreateSessionResponse {
   session_id: string
   status: string
+  archive_name?: string | null
+  fonds_name?: string | null
   created_at: string
 }
 
 export interface SessionSummary {
   session_id: string
   status: string
+  archive_name?: string | null
+  fonds_name?: string | null
   created_at: string
   updated_at?: string
   active_plan_version_id?: string | null
@@ -170,6 +174,7 @@ export interface ActivePlanResponse {
   id?: string
   version_number?: number
   summary: string
+  archive_name?: string
   fonds_name: string
   groups?: unknown[]
   flat_groups?: unknown[]
@@ -476,6 +481,17 @@ export async function createSession(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ created_by: createdBy }),
+  })
+}
+
+export async function patchSessionMetadata(
+  sessionId: string,
+  payload: { archive_name?: string | null; fonds_name?: string | null }
+): Promise<SessionSummary> {
+  return requestJson<SessionSummary>(`/sessions/${encodeURIComponent(sessionId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
   })
 }
 
