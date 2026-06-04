@@ -270,8 +270,17 @@ export interface MetadataSnapshotGroup {
   dossierNumber?: string | null
   boxNumber?: string | null
   folderName?: string | null
+  archiveName?: string | null
+  fondsName?: string | null
+  inventoryNumber?: string | null
+  informationSign?: string | null
+  annotation?: string | null
   classificationPath?: string[]
   retentionPeriod?: string | null
+  language?: string | null
+  usageMode?: string | null
+  physicalCondition?: string | null
+  note?: string | null
   confidence?: number | null
   requiresReview?: boolean
   pageCount?: number | null
@@ -397,6 +406,18 @@ export interface SessionDossierSummary {
   box_number: string | null
   folder_name: string | null
   retention_period: string | null
+  archive_name?: string | null
+  fonds_name?: string | null
+  inventory_number?: string | null
+  information_sign?: string | null
+  annotation?: string | null
+  start_date?: string | null
+  end_date?: string | null
+  language?: string | null
+  sheet_count?: string | null
+  usage_mode?: string | null
+  physical_condition?: string | null
+  note?: string | null
   retention_recommendation: Record<string, unknown>
   retention_override?: Record<string, unknown>
   status?: string
@@ -413,6 +434,18 @@ export interface SessionDossierPatchPayload {
   box_number?: string | null
   folder_name?: string | null
   retention_period?: string | null
+  archive_name?: string | null
+  fonds_name?: string | null
+  inventory_number?: string | null
+  information_sign?: string | null
+  annotation?: string | null
+  start_date?: string | null
+  end_date?: string | null
+  language?: string | null
+  sheet_count?: string | null
+  usage_mode?: string | null
+  physical_condition?: string | null
+  note?: string | null
   created_by?: string
 }
 

@@ -21,6 +21,15 @@ export interface ClusterGroup {
   dossierNumber?: string | null
   boxNumber?: string | null
   folderName?: string | null
+  archiveName?: string | null
+  fondsName?: string | null
+  inventoryNumber?: string | null
+  informationSign?: string | null
+  annotation?: string | null
+  language?: string | null
+  usageMode?: string | null
+  physicalCondition?: string | null
+  note?: string | null
   classificationPath?: string[]
   retentionPeriod?: string | null
   confidence?: number | null
@@ -242,6 +251,15 @@ function clusterToGroup(
     dossierNumber: dossier?.dossier_number ?? null,
     boxNumber: dossier?.box_number ?? null,
     folderName: dossier?.folder_name ?? null,
+    archiveName: dossier?.archive_name ?? null,
+    fondsName: dossier?.fonds_name ?? null,
+    inventoryNumber: dossier?.inventory_number ?? null,
+    informationSign: dossier?.information_sign ?? null,
+    annotation: dossier?.annotation ?? null,
+    language: dossier?.language ?? null,
+    usageMode: dossier?.usage_mode ?? null,
+    physicalCondition: dossier?.physical_condition ?? null,
+    note: dossier?.note ?? null,
     label: isTemporary
       ? TEMPORARY_FOLDER_NAME
       : dossier?.title ||
@@ -258,9 +276,9 @@ function clusterToGroup(
       Boolean(classification?.requires_review) ||
       Boolean(allDocuments.some((document) => document.requiresReview)),
     pageCount: cluster.page_count,
-    sheetCount: cluster.sheet_count,
-    startDate: cluster.start_date,
-    endDate: cluster.end_date,
+    sheetCount: numberValue(dossier?.sheet_count) ?? cluster.sheet_count,
+    startDate: dossier?.start_date ?? cluster.start_date,
+    endDate: dossier?.end_date ?? cluster.end_date,
   }
 }
 

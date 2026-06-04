@@ -540,38 +540,42 @@ export function FinalizeArtifactsStep({
           </div>
         ) : visibleArtifacts.length > 0 ? (
           <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)]">
-            <div className="grid min-w-0 content-start gap-5">
-              {artifactSections.map((section) => (
-                <section key={section.id} className="min-w-0">
-                  <div className="mb-2 flex items-center justify-between gap-3 px-1">
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-semibold tracking-[0.16em] text-[#94A3B8] uppercase">
-                        Mục {section.ordinal}
-                      </p>
-                      <h3 className="truncate text-sm font-semibold text-[#0F172A]">
-                        {section.label}
-                      </h3>
+            <div className="min-h-0 min-w-0 overflow-y-auto pr-1 pb-2 xl:h-[calc(min(72svh,760px)+3.5rem)] xl:min-h-[476px]">
+              <div className="grid min-w-0 content-start gap-5">
+                {artifactSections.map((section) => (
+                  <section key={section.id} className="min-w-0">
+                    <div className="mb-2 flex items-center justify-between gap-3 px-1">
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-semibold tracking-[0.16em] text-[#94A3B8] uppercase">
+                          Mục {section.ordinal}
+                        </p>
+                        <h3 className="truncate text-sm font-semibold text-[#0F172A]">
+                          {section.label}
+                        </h3>
+                      </div>
+                      <Badge variant="outline">
+                        {section.artifacts.length}
+                      </Badge>
                     </div>
-                    <Badge variant="outline">{section.artifacts.length}</Badge>
-                  </div>
-                  <div className="grid gap-2.5">
-                    {section.artifacts.map((artifact, index) => (
-                      <ArtifactRow
-                        key={artifact.id}
-                        artifact={artifact}
-                        index={index}
-                        selected={artifact.id === selectedArtifactId}
-                        downloadUrl={
-                          sessionId
-                            ? artifactDownloadUrl(sessionId, artifact.id)
-                            : "#"
-                        }
-                        onPreview={() => setSelectedArtifactId(artifact.id)}
-                      />
-                    ))}
-                  </div>
-                </section>
-              ))}
+                    <div className="grid gap-2.5">
+                      {section.artifacts.map((artifact, index) => (
+                        <ArtifactRow
+                          key={artifact.id}
+                          artifact={artifact}
+                          index={index}
+                          selected={artifact.id === selectedArtifactId}
+                          downloadUrl={
+                            sessionId
+                              ? artifactDownloadUrl(sessionId, artifact.id)
+                              : "#"
+                          }
+                          onPreview={() => setSelectedArtifactId(artifact.id)}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </div>
             </div>
             <ArtifactPreviewPanel
               artifact={selectedArtifact}
