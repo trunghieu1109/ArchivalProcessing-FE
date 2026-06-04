@@ -118,6 +118,9 @@ interface ResultTreeNode {
   pageCount: number
 }
 
+const UNKNOWN_YEAR_LABEL = "Không rõ năm"
+const UNCLASSIFIED_LABEL = "Chưa phân loại"
+
 interface DossierMetadataDraft {
   title: string
   dossierNumber: string
@@ -2320,29 +2323,38 @@ function buildResultTree(groups: ClusterGroup[]): ResultTreeNode[] {
   groups
     .filter((group) => !group.isTemporary)
     .forEach((group) => {
-      const yearLabel = dossierYearLabel(group)
-      let current = rootByLabel.get(yearLabel)
-      if (!current) {
-        current = createTreeNode(`year:${yearLabel}`, yearLabel, "year")
-        rootByLabel.set(yearLabel, current)
-        roots.push(current)
-      }
-
-      const path = group.classificationPath?.length
-        ? group.classificationPath
-        : ["Chưa phân loại"]
+      const path = resultTreePath(group)
+      let current: ResultTreeNode | null = null
       path.forEach((segment, index) => {
-        const label = segment.trim() || "Chưa phân loại"
+        const label = segment.trim() || UNCLASSIFIED_LABEL
+        if (index === 0) {
+          current = rootByLabel.get(label) ?? null
+          if (!current) {
+            current = createTreeNode(
+              `root:${label}`,
+              label,
+              isYearPathSegment(label) ? "year" : "classification"
+            )
+            rootByLabel.set(label, current)
+            roots.push(current)
+          }
+          return
+        }
+
         const id = `${current!.id}/class:${index}:${label}`
         let child = current!.children.find((candidate) => candidate.id === id)
         if (!child) {
-          child = createTreeNode(id, label, "classification")
+          child = createTreeNode(
+            id,
+            label,
+            isYearPathSegment(label) ? "year" : "classification"
+          )
           current!.children.push(child)
         }
         current = child
       })
 
-      current.children.push({
+      current!.children.push({
         id: `dossier:${group.id}`,
         label: group.label,
         type: "dossier",
@@ -2359,6 +2371,47 @@ function buildResultTree(groups: ClusterGroup[]): ResultTreeNode[] {
     if (b.type === "temporary") return 1
     return a.label.localeCompare(b.label, "vi")
   })
+}
+
+function resultTreePath(group: ClusterGroup): string[] {
+  const classificationPath = (group.classificationPath ?? [])
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+  const yearLabel = dossierYearLabel(group)
+  const hasKnownYear = normalizePathSegment(yearLabel) !== normalizePathSegment(UNKNOWN_YEAR_LABEL)
+  const hasClassificationYear = classificationPath.some(isYearPathSegment)
+
+  if (hasClassificationYear) {
+    let yearSegmentUsed = false
+    const deduped = classificationPath.flatMap((segment) => {
+      if (!isYearPathSegment(segment)) return [segment]
+      if (yearSegmentUsed) return []
+      yearSegmentUsed = true
+      return [hasKnownYear ? yearLabel : segment]
+    })
+    return deduped.length > 0 ? deduped : [UNCLASSIFIED_LABEL]
+  }
+
+  const tail = classificationPath.length > 0 ? classificationPath : [UNCLASSIFIED_LABEL]
+  return [yearLabel, ...tail]
+}
+
+function isYearPathSegment(value: string): boolean {
+  const normalized = normalizePathSegment(value)
+  return (
+    normalized === normalizePathSegment(UNKNOWN_YEAR_LABEL) ||
+    /^nam\s+(?:19|20)\d{2}\b/.test(normalized) ||
+    /^year\s+(?:19|20)\d{2}\b/.test(normalized)
+  )
+}
+
+function normalizePathSegment(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim()
 }
 
 function createTreeNode(
@@ -2525,7 +2578,7 @@ function dossierYearLabel(group: ClusterGroup): string {
         )
       )
       .find(Boolean)
-  return year ? `Năm ${year}` : "Không rõ năm"
+  return year ? `Năm ${year}` : UNKNOWN_YEAR_LABEL
 }
 
 function dossierPageCount(group: ClusterGroup): number {

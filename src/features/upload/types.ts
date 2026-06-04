@@ -19,11 +19,23 @@ export interface ClassificationCriterion {
   definition: string
 }
 
+export interface PlanLeafCandidate {
+  title: string
+  kind?: string
+  evidence?: string
+}
+
+export interface PlanLeafGroupCandidates {
+  leaf_group_ref: string
+  candidates: PlanLeafCandidate[]
+}
+
 export interface PlanGroup {
   id: string
   name: string
   type: string
   definition: string
+  candidates?: PlanLeafCandidate[]
   children: PlanGroup[]
 }
 
@@ -37,6 +49,7 @@ export interface ParsedPlan {
   fonds_name: string
   groups: PlanGroup[]
   criterias: PlanCriterionSet[]
+  leaf_group_candidates: PlanLeafGroupCandidates[]
 }
 
 export interface FolderNode {
@@ -45,6 +58,7 @@ export interface FolderNode {
   children: FolderNode[]
   type?: string
   definition?: string
+  candidates?: PlanLeafCandidate[]
   criteria?: ClassificationCriterion[]
   hoSoName?: string
   soHoSo?: string

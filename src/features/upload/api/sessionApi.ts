@@ -180,6 +180,7 @@ export interface ActivePlanResponse {
   flat_groups?: unknown[]
   classification_groups?: unknown[]
   criterias?: unknown[]
+  leaf_group_candidates?: unknown[]
 }
 
 export interface DigitizationDocument {

@@ -48,6 +48,8 @@ import type {
   FolderNode,
   PlanGroup,
   PlanCriterionSet,
+  PlanLeafCandidate,
+  PlanLeafGroupCandidates,
   ParsedPlan,
   PdfMetadata,
   AppStep,
@@ -61,6 +63,7 @@ const EMPTY_PARSED_PLAN: ParsedPlan = {
   fonds_name: "",
   groups: [],
   criterias: [],
+  leaf_group_candidates: [],
 }
 
 let _nodeId = 1000
@@ -78,6 +81,7 @@ function groupToTreeNode(group: PlanGroup): FolderNode {
     name: group.name,
     type: group.type,
     definition: group.definition,
+    candidates: group.candidates ?? [],
     children: group.children.map(groupToTreeNode),
     criteria: [],
   }
@@ -118,6 +122,10 @@ function treeToFlatGroups(
 }
 
 function activePlanToParsedPlan(plan: ActivePlanResponse): ParsedPlan {
+  const leafGroupCandidates = normalizeLeafGroupCandidates(
+    plan.leaf_group_candidates
+  )
+  const leafCandidateMap = leafCandidateMapFromGroups(leafGroupCandidates)
   const nestedGroups = normalizePlanGroups(plan.groups)
   const flatPlanGroups = flatGroupsToNested(plan.flat_groups)
   const classificationGroups = flatGroupsToNested(plan.classification_groups)
@@ -130,8 +138,9 @@ function activePlanToParsedPlan(plan: ActivePlanResponse): ParsedPlan {
   return {
     summary: plan.summary || "Phương án phân loại đã được phân tích.",
     fonds_name: plan.fonds_name || "",
-    groups: flatGroups,
+    groups: attachLeafCandidates(flatGroups, leafCandidateMap),
     criterias: normalizePlanCriterias(plan.criterias),
+    leaf_group_candidates: leafGroupCandidates,
   }
 }
 
@@ -140,7 +149,7 @@ function normalizePlanCriterias(
 ): ParsedPlan["criterias"] {
   if (!Array.isArray(values)) return []
   return values
-    .map((value) => {
+    .map((value): PlanCriterionSet | null => {
       const record = asRecord(value)
       if (!record) return null
       const groupLevel = stringValue(
@@ -159,7 +168,7 @@ function normalizePlanCriterias(
 function normalizePlanGroups(values: unknown[] | undefined): PlanGroup[] {
   if (!Array.isArray(values)) return []
   return values
-    .map((value) => {
+    .map((value): PlanGroup | null => {
       const record = asRecord(value)
       if (!record) return null
       return {
@@ -167,6 +176,9 @@ function normalizePlanGroups(values: unknown[] | undefined): PlanGroup[] {
         name: stringValue(record.name),
         type: stringValue(record.type) || "level-1",
         definition: stringValue(record.definition),
+        candidates: normalizeLeafCandidates(
+          arrayValue(record.candidates || record.leaf_candidates)
+        ),
         children: normalizePlanGroups(arrayValue(record.children)),
       }
     })
@@ -184,6 +196,9 @@ function flatGroupsToNested(values: unknown[] | undefined): PlanGroup[] {
       name: stringValue(record.name || record.group_name),
       type: stringValue(record.type) || "level-1",
       definition: stringValue(record.definition),
+      candidates: normalizeLeafCandidates(
+        arrayValue(record.candidates || record.leaf_candidates)
+      ),
       children: [] as PlanGroup[],
       parentRefs: arrayValue(record.parent || record.parent_refs).map(
         stringValue
@@ -203,8 +218,98 @@ function flatGroupsToNested(values: unknown[] | undefined): PlanGroup[] {
     name: group.name,
     type: group.type,
     definition: group.definition,
-    children: group.children,
+    candidates: group.candidates,
+    children: group.children.map(stripFlatGroupMetadata),
   }))
+}
+
+function stripFlatGroupMetadata(
+  group: PlanGroup & { parentRefs?: string[] }
+): PlanGroup {
+  return {
+    id: group.id,
+    name: group.name,
+    type: group.type,
+    definition: group.definition,
+    candidates: group.candidates,
+    children: group.children.map(stripFlatGroupMetadata),
+  }
+}
+
+function normalizeLeafGroupCandidates(
+  values: unknown[] | undefined
+): PlanLeafGroupCandidates[] {
+  if (!Array.isArray(values)) return []
+  return values
+    .map((value): PlanLeafGroupCandidates | null => {
+      const record = asRecord(value)
+      if (!record) return null
+      const leafGroupRef = stringValue(
+        record.leaf_group_ref || record.group_ref || record.group_id || record.id
+      )
+      const candidates = normalizeLeafCandidates(arrayValue(record.candidates))
+      return leafGroupRef
+        ? { leaf_group_ref: leafGroupRef, candidates }
+        : null
+    })
+    .filter(
+      (item): item is PlanLeafGroupCandidates =>
+        Boolean(item && item.candidates.length > 0)
+    )
+}
+
+function normalizeLeafCandidates(values: unknown[]): PlanLeafCandidate[] {
+  return values
+    .map((value): PlanLeafCandidate | null => {
+      const record = asRecord(value)
+      if (!record) return null
+      const title = stringValue(record.title || record.name || record.label)
+      if (!title) return null
+      return {
+        title,
+        kind: stringValue(record.kind || record.type) || undefined,
+        evidence: stringValue(record.evidence || record.source) || undefined,
+      }
+    })
+    .filter((item): item is PlanLeafCandidate => Boolean(item))
+}
+
+function leafCandidateMapFromGroups(
+  values: PlanLeafGroupCandidates[]
+): Map<string, PlanLeafCandidate[]> {
+  const result = new Map<string, PlanLeafCandidate[]>()
+  values.forEach((item) => {
+    result.set(item.leaf_group_ref, item.candidates)
+  })
+  return result
+}
+
+function attachLeafCandidates(
+  groups: PlanGroup[],
+  leafCandidateMap: Map<string, PlanLeafCandidate[]>
+): PlanGroup[] {
+  return groups.map((group) => {
+    const children = attachLeafCandidates(group.children, leafCandidateMap)
+    const directCandidates = group.candidates ?? []
+    const mappedCandidates =
+      leafCandidateMap.get(groupCandidateRef(group)) ??
+      leafCandidateMap.get(group.id) ??
+      []
+    return {
+      ...group,
+      children,
+      candidates:
+        children.length === 0
+          ? mappedCandidates.length > 0
+            ? mappedCandidates
+            : directCandidates
+          : [],
+    }
+  })
+}
+
+function groupCandidateRef(group: PlanGroup): string {
+  return group.type && group.id ? `${group.type}-${group.id}` : group.id
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

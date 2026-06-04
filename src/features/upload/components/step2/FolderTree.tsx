@@ -15,7 +15,12 @@ import {
 import { AnimatePresence, motion } from "framer-motion"
 import { toast } from "sonner"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import type { FolderNode, ParsedPlan, PlanCriterionSet } from "@/features/upload/types"
+import type {
+  FolderNode,
+  ParsedPlan,
+  PlanCriterionSet,
+  PlanLeafCandidate,
+} from "@/features/upload/types"
 
 let _idCounter = 100
 function newId() {
@@ -195,6 +200,11 @@ function FolderNodeItem({
   const [definitionDraft, setDefinitionDraft] = useState(node.definition ?? "")
   const canAddChild = depth < MAX_DEPTH
   const hasDefinition = Boolean((node.definition ?? "").trim())
+  const isLeaf = node.children.length === 0
+  const candidates = isLeaf
+    ? (node.candidates ?? []).filter((candidate) => candidate.title.trim())
+    : []
+  const hasCandidates = candidates.length > 0
 
   const commitRename = () => {
     if (nameDraft.trim()) onRename(node.id, nameDraft.trim())
@@ -225,7 +235,7 @@ function FolderNodeItem({
           onClick={() => setOpen((value) => !value)}
           className="shrink-0 text-[#64748B]"
         >
-          {node.children.length > 0 || hasDefinition || editingDefinition ? (
+          {node.children.length > 0 || hasDefinition || editingDefinition || hasCandidates ? (
             open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />
           ) : (
             <span className="block size-3.5" />
@@ -260,11 +270,17 @@ function FolderNodeItem({
         ) : (
           <button
             onClick={startDefinitionEdit}
-            className="flex-1 truncate text-left text-sm text-[#0F172A]"
+            className="min-w-0 flex-1 truncate text-left text-sm text-[#0F172A]"
             title={readOnly ? "Xem định nghĩa nhóm" : "Sửa định nghĩa nhóm"}
           >
             {node.name}
           </button>
+        )}
+
+        {hasCandidates && (
+          <span className="hidden shrink-0 rounded-full border border-[#BFDBFE] bg-[#EFF6FF] px-2 py-0.5 text-[10px] font-semibold text-[#1D4ED8] sm:inline-flex">
+            {candidates.length} giá trị
+          </span>
         )}
 
         {!readOnly && !editingName && (
@@ -309,7 +325,7 @@ function FolderNodeItem({
       </div>
 
       <AnimatePresence initial={false}>
-        {open && (editingDefinition || hasDefinition || node.children.length > 0) && (
+        {open && (editingDefinition || hasDefinition || hasCandidates || node.children.length > 0) && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
@@ -319,10 +335,10 @@ function FolderNodeItem({
           >
             {(editingDefinition || hasDefinition) && (
               <div
-                className="mb-2 mr-2 rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] px-3 py-3"
+                className="mb-1.5 mr-2 rounded-lg border border-[#CBD5E1] bg-[#F8FAFC] px-3 py-2"
                 style={{ marginLeft: `${28 + depth * 20}px` }}
               >
-                <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="mb-1.5 flex items-center justify-between gap-2">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#64748B]">
                     Định nghĩa nhóm
                   </p>
@@ -336,35 +352,42 @@ function FolderNodeItem({
                   )}
                 </div>
                 {editingDefinition ? (
-                  <div className="flex flex-col gap-3">
+                  <div className="flex flex-col gap-2">
                     <textarea
                       autoFocus
                       value={definitionDraft}
                       onChange={(event) => setDefinitionDraft(event.target.value)}
-                      rows={8}
-                      className="min-h-44 w-full resize-y rounded-xl border border-[#CBD5E1] bg-white px-3 py-2 text-sm leading-6 text-[#0F172A] outline-none focus:border-[#0052FF]/60"
+                      rows={4}
+                      className="min-h-24 w-full resize-y rounded-lg border border-[#CBD5E1] bg-white px-3 py-2 text-sm leading-5 text-[#0F172A] outline-none focus:border-[#0052FF]/60"
                     />
                     <div className="flex justify-end gap-2">
                       <button
                         onClick={() => setEditingDefinition(false)}
-                        className="rounded-xl border border-[#CBD5E1] bg-white px-4 py-2 text-xs font-semibold text-[#475569] hover:bg-[#F8FAFC]"
+                        className="rounded-lg border border-[#CBD5E1] bg-white px-3 py-1.5 text-xs font-semibold text-[#475569] hover:bg-[#F8FAFC]"
                       >
                         Hủy
                       </button>
                       <button
                         onClick={commitDefinition}
-                        className="rounded-xl bg-[#0052FF] px-4 py-2 text-xs font-semibold text-white hover:bg-[#0047D6]"
+                        className="rounded-lg bg-[#0052FF] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0047D6]"
                       >
                         Lưu định nghĩa
                       </button>
                     </div>
                   </div>
                 ) : (
-                  <p className="whitespace-pre-wrap text-sm leading-6 text-[#475569]">
+                  <p className="whitespace-pre-wrap text-sm leading-5 text-[#475569]">
                     {node.definition}
                   </p>
                 )}
               </div>
+            )}
+
+            {hasCandidates && (
+              <LeafCandidateList
+                candidates={candidates}
+                marginLeft={28 + depth * 20}
+              />
             )}
 
             {node.children.map((child) => (
@@ -384,6 +407,71 @@ function FolderNodeItem({
       </AnimatePresence>
     </div>
   )
+}
+
+interface LeafCandidateListProps {
+  candidates: PlanLeafCandidate[]
+  marginLeft: number
+}
+
+function LeafCandidateList({ candidates, marginLeft }: LeafCandidateListProps) {
+  return (
+    <div
+      className="mb-2 mr-2 border-l border-[#CBD5E1] py-1 pl-3"
+      style={{ marginLeft: `${marginLeft}px` }}
+    >
+      <div className="mb-1.5 flex items-center gap-2">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#64748B]">
+          Giá trị tiềm năng
+        </p>
+        <span className="rounded-full bg-[#E0F2FE] px-1.5 py-0.5 text-[10px] font-semibold text-[#0369A1]">
+          {candidates.length}
+        </span>
+      </div>
+      <div className="flex flex-col gap-1">
+        {candidates.map((candidate, index) => (
+          <div
+            key={`${candidate.title}-${index}`}
+            className="flex items-start gap-2 rounded-lg border border-[#E2E8F0] bg-white px-2.5 py-1.5"
+            title={candidate.evidence ? `Nguồn: ${candidate.evidence}` : undefined}
+          >
+            <span
+              className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${candidateKindClass(
+                candidate.kind
+              )}`}
+            >
+              {candidateKindLabel(candidate.kind)}
+            </span>
+            <p className="min-w-0 flex-1 text-xs leading-5 text-[#0F172A]">
+              {candidate.title}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function candidateKindLabel(kind?: string): string {
+  const normalized = (kind ?? "").toLowerCase()
+  if (
+    normalized.includes("document") ||
+    normalized.includes("file") ||
+    normalized.includes("tài liệu") ||
+    normalized.includes("van ban")
+  ) {
+    return "Tài liệu"
+  }
+  if (normalized.includes("dossier") || normalized.includes("hồ sơ")) {
+    return "Hồ sơ"
+  }
+  return "Giá trị"
+}
+
+function candidateKindClass(kind?: string): string {
+  return candidateKindLabel(kind) === "Tài liệu"
+    ? "bg-[#FEF3C7] text-[#92400E]"
+    : "bg-[#DCFCE7] text-[#166534]"
 }
 
 function addNode(
@@ -466,6 +554,7 @@ export function FolderTree({
       id: newId(),
       name: "Thư mục mới",
       definition: "",
+      candidates: [],
       children: [],
       criteria: [],
     }
@@ -477,6 +566,7 @@ export function FolderTree({
       id: newId(),
       name: "Thư mục mới",
       definition: "",
+      candidates: [],
       children: [],
       criteria: [],
     }
