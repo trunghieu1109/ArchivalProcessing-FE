@@ -13,11 +13,16 @@ import {
   Loader2,
   Plus,
   RefreshCw,
+  Trash2,
 } from "lucide-react"
 import { motion } from "framer-motion"
 import { toast } from "sonner"
 import { cn } from "@/shared/lib/utils"
-import { listSessions, type SessionSummary } from "@/features/upload/api/sessionApi"
+import {
+  deleteSession,
+  listSessions,
+  type SessionSummary,
+} from "@/features/upload/api/sessionApi"
 
 const LAST_SESSION_KEY = "archival-processing:last-session-id"
 
@@ -26,6 +31,7 @@ export function SessionsPage() {
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null)
 
   const readyCount = useMemo(
     () => sessions.filter((session) => session.active_plan_version_id).length,
@@ -59,6 +65,40 @@ export function SessionsPage() {
   const openArtifacts = (sessionId: string) => {
     window.localStorage.setItem(LAST_SESSION_KEY, sessionId)
     navigate(`/sessions/${encodeURIComponent(sessionId)}/step/5`)
+  }
+
+  const removeSession = async (session: SessionSummary) => {
+    const displayName = session.fonds_name?.trim() || session.session_id
+    const confirmed = window.confirm(
+      `Xóa session "${displayName}"? Toàn bộ dữ liệu và tệp liên quan sẽ bị xóa vĩnh viễn.`
+    )
+    if (!confirmed) return
+
+    setDeletingSessionId(session.session_id)
+    try {
+      const response = await deleteSession(session.session_id)
+      setSessions((current) =>
+        current.filter((item) => item.session_id !== session.session_id)
+      )
+      if (
+        window.localStorage.getItem(LAST_SESSION_KEY) === session.session_id
+      ) {
+        window.localStorage.removeItem(LAST_SESSION_KEY)
+      }
+      if (response.storage_cleanup_errors.length > 0) {
+        toast.warning(
+          "Đã xóa session nhưng không thể dọn hết một số tệp lưu trữ."
+        )
+      } else {
+        toast.success("Đã xóa session.")
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Không thể xóa session."
+      toast.error(message)
+    } finally {
+      setDeletingSessionId(null)
+    }
   }
 
   return (
@@ -130,6 +170,8 @@ export function SessionsPage() {
                 index={index}
                 onOpen={() => openSession(session.session_id)}
                 onArtifacts={() => openArtifacts(session.session_id)}
+                onDelete={() => void removeSession(session)}
+                deleting={deletingSessionId === session.session_id}
               />
             ))}
           </div>
@@ -160,11 +202,15 @@ function SessionCard({
   index,
   onOpen,
   onArtifacts,
+  onDelete,
+  deleting,
 }: {
   session: SessionSummary
   index: number
   onOpen: () => void
   onArtifacts: () => void
+  onDelete: () => void
+  deleting: boolean
 }) {
   const hasPlan = Boolean(session.active_plan_version_id)
   const hasClusters = Boolean(session.active_cluster_version_id)
@@ -265,16 +311,32 @@ function SessionCard({
           Mở phông
           <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
         </button>
-        {hasClusters && (
+        <div className="flex items-center justify-end gap-2">
+          {hasClusters && (
+            <button
+              type="button"
+              onClick={onArtifacts}
+              disabled={deleting}
+              className="flex items-center justify-center gap-1.5 rounded-lg border border-[#CBD5E1] px-2.5 py-1 text-xs font-semibold text-[#475569] transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Archive className="size-3.5" />
+              Tạo mục lục
+            </button>
+          )}
           <button
             type="button"
-            onClick={onArtifacts}
-            className="flex items-center justify-center gap-1.5 rounded-lg border border-[#CBD5E1] px-2.5 py-1 text-xs font-semibold text-[#475569] transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF]"
+            onClick={onDelete}
+            disabled={deleting}
+            className="flex items-center justify-center gap-1.5 rounded-lg border border-red-200 px-2.5 py-1 text-xs font-semibold text-red-600 transition-colors hover:border-red-300 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <Archive className="size-3.5" />
-            Tạo mục lục
+            {deleting ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Trash2 className="size-3.5" />
+            )}
+            {deleting ? "Đang xóa" : "Xóa"}
           </button>
-        )}
+        </div>
       </div>
     </motion.div>
   )

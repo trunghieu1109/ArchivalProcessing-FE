@@ -41,6 +41,16 @@ export interface SessionListResponse {
   sessions: SessionSummary[]
 }
 
+export interface DeleteSessionResponse {
+  session_id: string
+  deleted: boolean
+  deleted_storage_paths: string[]
+  storage_cleanup_errors: Array<{
+    path: string
+    error: string
+  }>
+}
+
 export interface SessionDetailResponse extends SessionSummary {
   files: SessionInputUploadResponse[]
 }
@@ -545,6 +555,15 @@ export async function patchSessionMetadata(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }
+  )
+}
+
+export async function deleteSession(
+  sessionId: string
+): Promise<DeleteSessionResponse> {
+  return requestJson<DeleteSessionResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}`,
+    { method: "DELETE" }
   )
 }
 
