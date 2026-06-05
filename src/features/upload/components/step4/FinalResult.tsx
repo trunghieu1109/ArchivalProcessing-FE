@@ -2689,11 +2689,7 @@ function buildResultTree(groups: ClusterGroup[]): ResultTreeNode[] {
     })
 
   roots.forEach(updateTreeCounts)
-  return roots.sort((a, b) => {
-    if (a.type === "temporary") return -1
-    if (b.type === "temporary") return 1
-    return a.label.localeCompare(b.label, "vi")
-  })
+  return sortResultTreeNodes(roots)
 }
 
 function resultTreePath(group: ClusterGroup): string[] {
@@ -2764,6 +2760,40 @@ function updateTreeCounts(node: ResultTreeNode): ResultTreeNode {
     0
   )
   return node
+}
+
+function sortResultTreeNodes(nodes: ResultTreeNode[]): ResultTreeNode[] {
+  nodes.forEach((node) => {
+    node.children = sortResultTreeNodes(node.children)
+  })
+  return nodes.sort(compareResultTreeNodes)
+}
+
+function compareResultTreeNodes(
+  a: ResultTreeNode,
+  b: ResultTreeNode
+): number {
+  if (a.type === "temporary" && b.type !== "temporary") return -1
+  if (b.type === "temporary" && a.type !== "temporary") return 1
+
+  const aIsYearNode = a.type === "year" || isYearPathSegment(a.label)
+  const bIsYearNode = b.type === "year" || isYearPathSegment(b.label)
+  if (aIsYearNode && bIsYearNode) {
+    const aYear = resultTreeYearValue(a.label)
+    const bYear = resultTreeYearValue(b.label)
+    if (aYear !== null && bYear !== null && aYear !== bYear) {
+      return aYear - bYear
+    }
+    if (aYear !== null && bYear === null) return -1
+    if (aYear === null && bYear !== null) return 1
+  }
+
+  return a.label.localeCompare(b.label, "vi")
+}
+
+function resultTreeYearValue(value: string): number | null {
+  const match = normalizePathSegment(value).match(/\b(?:19|20)\d{2}\b/)
+  return match ? Number(match[0]) : null
 }
 
 function flattenNodeIds(nodes: ResultTreeNode[]): string[] {
