@@ -30,6 +30,8 @@ import {
   enqueueClusterBuild,
   enqueuePlanAnalysis,
   getActivePlan,
+  getActiveClusters,
+  getClusterBuildStatus,
   getSession,
   listSessionEvents,
   normalizeDocumentReviewStatus,
@@ -38,6 +40,8 @@ import {
   uploadSessionInput,
   waitForActivePlan,
   type ActivePlanResponse,
+  type ClusterVersionResponse,
+  type DossierBuildStrategy,
   type SessionInputFileType,
   type SessionInputUploadResponse,
   type UploadProgressSnapshot,
@@ -58,6 +62,7 @@ import type {
 import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
 
 const easeOut = [0.16, 1, 0.3, 1] as const
+const DEFAULT_DOSSIER_BUILD_STRATEGY: DossierBuildStrategy = "incremental"
 
 const EMPTY_PARSED_PLAN: ParsedPlan = {
   summary: "",
@@ -99,9 +104,7 @@ function treeToPlanGroups(nodes: FolderNode[], depth = 1): PlanGroup[] {
 }
 
 function treeToFlatGroups(
-  nodes: FolderNode[],
-  depth = 1,
-  parentId: string | null = null
+  nodes: FolderNode[]
 ): Array<{
   id: string
   name: string
@@ -109,17 +112,61 @@ function treeToFlatGroups(
   parent: Array<string | number>
   definition: string
 }> {
-  return nodes.flatMap((node) => {
-    const type = node.type || `level-${depth}`
-    const current = {
-      id: node.id || nid(),
-      name: node.name,
-      type,
-      parent: parentId ? [`level-${depth - 1}-${parentId}`] : [-1],
-      definition: node.definition ?? "",
-    }
-    return [current, ...treeToFlatGroups(node.children, depth + 1, current.id)]
-  })
+  type FlatGroupDraft = {
+    id: string
+    name: string
+    type: string
+    depth: number
+    parentRefs: Set<string | number>
+    definition: string
+  }
+  const byGroup = new Map<string, FlatGroupDraft>()
+
+  const visit = (
+    values: FolderNode[],
+    depth = 1,
+    parentId: string | null = null
+  ) => {
+    values.forEach((node) => {
+      const type = node.type || `level-${depth}`
+      const id = node.id || nid()
+      const key = `${type}:${id}`
+      const parentRef: string | number = parentId
+        ? `level-${depth - 1}-${parentId}`
+        : -1
+      const existing = byGroup.get(key)
+      if (existing) {
+        existing.parentRefs.add(parentRef)
+        if (node.name) existing.name = node.name
+        if (node.definition !== undefined) {
+          existing.definition = node.definition ?? ""
+        }
+      } else {
+        byGroup.set(key, {
+          id,
+          name: node.name,
+          type,
+          depth,
+          parentRefs: new Set([parentRef]),
+          definition: node.definition ?? "",
+        })
+      }
+      visit(node.children, depth + 1, id)
+    })
+  }
+
+  visit(nodes)
+
+  return Array.from(byGroup.values()).map((group) => ({
+    id: group.id,
+    name: group.name,
+    type: group.type,
+    parent:
+      group.depth > 1 && group.parentRefs.size > 1
+        ? [-1]
+        : Array.from(group.parentRefs),
+    definition: group.definition,
+  }))
 }
 
 function activePlanToParsedPlan(plan: ActivePlanResponse): ParsedPlan {
@@ -186,55 +233,324 @@ function normalizePlanGroups(values: unknown[] | undefined): PlanGroup[] {
     .filter((group): group is PlanGroup => Boolean(group?.name))
 }
 
+type PlanParentRef = string | number
+
+type FlatPlanGroupDraft = {
+  id: string
+  name: string
+  type: string
+  definition: string
+  candidates: PlanLeafCandidate[]
+  depth: number
+  parentRefs: PlanParentRef[]
+  order: number
+}
+
 function flatGroupsToNested(values: unknown[] | undefined): PlanGroup[] {
   if (!Array.isArray(values)) return []
   const records = values
     .map(asRecord)
     .filter((item): item is Record<string, unknown> => Boolean(item))
-  const groups = records
-    .map((record) => ({
-      id: stringValue(record.group_id || record.id),
-      name: stringValue(record.name || record.group_name),
-      type: stringValue(record.type) || "level-1",
+
+  const draftsByKey = new Map<string, FlatPlanGroupDraft>()
+  records.forEach((record, index) => {
+    const type = normalizePlanGroupType(record.type)
+    const depth = planGroupDepth(type) ?? 1
+    const id =
+      stringValue(record.group_id || record.id) || `flat-group-${index + 1}`
+    const name = stringValue(record.name || record.group_name)
+    if (!name) return
+
+    const key = `${depth}:${id}`
+    const parentRefs = planParentRefs(record.parent ?? record.parent_refs)
+    const candidates = normalizeLeafCandidates(
+      arrayValue(record.candidates || record.leaf_candidates)
+    )
+    const existing = draftsByKey.get(key)
+    if (existing) {
+      existing.parentRefs = mergePlanParentRefs(
+        existing.parentRefs,
+        parentRefs
+      )
+      if (name) existing.name = name
+      const definition = stringValue(record.definition)
+      if (definition) existing.definition = definition
+      if (candidates.length > 0) existing.candidates = candidates
+      return
+    }
+
+    draftsByKey.set(key, {
+      id,
+      name,
+      type,
       definition: stringValue(record.definition),
-      candidates: normalizeLeafCandidates(
-        arrayValue(record.candidates || record.leaf_candidates)
-      ),
-      children: [] as PlanGroup[],
-      parentRefs: arrayValue(record.parent || record.parent_refs).map(
-        stringValue
-      ),
-    }))
-    .filter((group) => group.name)
-  const byId = new Map(groups.map((group) => [group.id, group]))
-  const roots: typeof groups = []
-  groups.forEach((group) => {
-    const parentId = group.parentRefs.find((item) => item && item !== "-1")
-    const parent = parentId ? byId.get(parentId) : undefined
-    if (parent) parent.children.push(group)
-    else roots.push(group)
+      candidates,
+      depth,
+      parentRefs,
+      order: index,
+    })
   })
-  return roots.map((group) => ({
-    id: group.id,
-    name: group.name,
-    type: group.type,
-    definition: group.definition,
-    candidates: group.candidates,
-    children: group.children.map(stripFlatGroupMetadata),
-  }))
+
+  const groupsByDepth = new Map<number, FlatPlanGroupDraft[]>()
+  draftsByKey.forEach((group) => {
+    const groups = groupsByDepth.get(group.depth) ?? []
+    groups.push(group)
+    groupsByDepth.set(group.depth, groups)
+  })
+  groupsByDepth.forEach((groups) =>
+    groups.sort((left, right) => left.order - right.order)
+  )
+
+  const roots: PlanGroup[] = []
+  const nodesByDepth = new Map<number, Map<string, PlanGroup[]>>()
+  const availableDepths = Array.from(groupsByDepth.keys()).sort(
+    (left, right) => left - right
+  )
+
+  availableDepths.forEach((depth) => {
+    const previousDepth = depth - 1
+    const shouldRoot = depth === 1 || !nodesByDepth.has(previousDepth)
+    const depthGroups = groupsByDepth.get(depth) ?? []
+
+    depthGroups.forEach((group) => {
+      if (shouldRoot) {
+        const node = createPlanGroupNode(group)
+        roots.push(node)
+        addPlanGroupNode(nodesByDepth, depth, group.id, node)
+        return
+      }
+
+      const parents = uniquePlanGroupNodes(
+        targetPlanParentNodes(group.parentRefs, previousDepth, nodesByDepth)
+      )
+      if (parents.length === 0) {
+        const node = createPlanGroupNode(group)
+        roots.push(node)
+        addPlanGroupNode(nodesByDepth, depth, group.id, node)
+        return
+      }
+
+      parents.forEach((parent) => {
+        const node = createPlanGroupNode(group)
+        parent.children.push(node)
+        addPlanGroupNode(nodesByDepth, depth, group.id, node)
+      })
+    })
+  })
+
+  return roots
 }
 
-function stripFlatGroupMetadata(
-  group: PlanGroup & { parentRefs?: string[] }
-): PlanGroup {
+const LEGACY_PLAN_GROUP_DEPTHS: Record<string, number> = {
+  large: 1,
+  medium: 2,
+  small: 3,
+}
+
+function normalizePlanGroupType(value: unknown): string {
+  const raw = stringValue(value).toLowerCase()
+  if (!raw) return "level-1"
+  const depth = planGroupDepth(raw)
+  if (depth === null) return raw
+  if (LEGACY_PLAN_GROUP_DEPTHS[raw]) return raw
+  return `level-${depth}`
+}
+
+function planGroupDepth(value: unknown): number | null {
+  const normalized = stringValue(value).toLowerCase()
+  const legacyDepth = LEGACY_PLAN_GROUP_DEPTHS[normalized]
+  if (legacyDepth) return legacyDepth
+
+  const match = /^level-(\d+)$/i.exec(normalized)
+  if (!match) return null
+  const depth = Number(match[1])
+  return Number.isInteger(depth) && depth >= 1 ? depth : null
+}
+
+function planParentRefs(value: unknown): PlanParentRef[] {
+  const rawValues =
+    value === undefined || value === null
+      ? [-1]
+      : Array.isArray(value)
+        ? value
+        : [value]
+  const refs: PlanParentRef[] = []
+  rawValues.forEach((item) => {
+    if (typeof item === "number") {
+      refs.push(item)
+      return
+    }
+    const text = stringValue(item)
+    if (text === "-1") refs.push(-1)
+    else if (text) refs.push(text)
+  })
+  return refs.length > 0 ? refs : [-1]
+}
+
+function mergePlanParentRefs(
+  left: PlanParentRef[],
+  right: PlanParentRef[]
+): PlanParentRef[] {
+  const merged = [...left]
+  right.forEach((ref) => {
+    if (!merged.some((item) => String(item) === String(ref))) {
+      merged.push(ref)
+    }
+  })
+  return merged.length > 0 ? merged : [-1]
+}
+
+function createPlanGroupNode(group: FlatPlanGroupDraft): PlanGroup {
   return {
     id: group.id,
     name: group.name,
     type: group.type,
     definition: group.definition,
     candidates: group.candidates,
-    children: group.children.map(stripFlatGroupMetadata),
+    children: [],
   }
+}
+
+function addPlanGroupNode(
+  nodesByDepth: Map<number, Map<string, PlanGroup[]>>,
+  depth: number,
+  id: string,
+  node: PlanGroup
+) {
+  const nodesById = nodesByDepth.get(depth) ?? new Map<string, PlanGroup[]>()
+  const nodes = nodesById.get(id) ?? []
+  nodes.push(node)
+  nodesById.set(id, nodes)
+  nodesByDepth.set(depth, nodesById)
+}
+
+function targetPlanParentNodes(
+  parentRefs: PlanParentRef[],
+  previousDepth: number,
+  nodesByDepth: Map<number, Map<string, PlanGroup[]>>
+): PlanGroup[] {
+  if (parentRefs.some(isPlanRootParentRef)) {
+    return allPlanGroupNodes(nodesByDepth.get(previousDepth)?.values())
+  }
+
+  const targetNodes: PlanGroup[] = []
+  parentRefs.forEach((ref) => {
+    const parsed = parsePlanParentRef(ref, previousDepth)
+    if (!parsed) return
+
+    if (parsed.depth === previousDepth) {
+      targetNodes.push(
+        ...(nodesByDepth.get(parsed.depth)?.get(parsed.id) ?? [])
+      )
+      return
+    }
+
+    if (parsed.depth < previousDepth) {
+      const ancestors = nodesByDepth.get(parsed.depth)?.get(parsed.id) ?? []
+      ancestors.forEach((ancestor) => {
+        targetNodes.push(...descendantPlanGroupsByDepth(ancestor, previousDepth))
+      })
+    }
+  })
+  return targetNodes
+}
+
+function isPlanRootParentRef(ref: PlanParentRef): boolean {
+  return ref === -1 || stringValue(ref) === "-1"
+}
+
+function parsePlanParentRef(
+  ref: PlanParentRef,
+  fallbackDepth: number
+): { depth: number; id: string } | null {
+  if (typeof ref === "number") return null
+
+  const text = stringValue(ref)
+  if (!text || text === "-1") return null
+
+  const levelMatch = /^level-(\d+)-(.+)$/i.exec(text)
+  if (levelMatch) {
+    const depth = Number(levelMatch[1])
+    const id = levelMatch[2].trim()
+    return Number.isInteger(depth) && depth >= 1 && id ? { depth, id } : null
+  }
+
+  const lowered = text.toLowerCase()
+  for (const [groupType, depth] of Object.entries(LEGACY_PLAN_GROUP_DEPTHS)) {
+    const prefix = `${groupType}-`
+    if (lowered.startsWith(prefix)) {
+      const id = text.slice(prefix.length).trim()
+      return id ? { depth, id } : null
+    }
+  }
+
+  return fallbackDepth >= 1 ? { depth: fallbackDepth, id: text } : null
+}
+
+function allPlanGroupNodes(
+  values: Iterable<PlanGroup[]> | undefined
+): PlanGroup[] {
+  if (!values) return []
+  const collected: PlanGroup[] = []
+  for (const groups of values) {
+    collected.push(...groups)
+  }
+  return collected
+}
+
+function uniquePlanGroupNodes(groups: PlanGroup[]): PlanGroup[] {
+  const seen = new Set<PlanGroup>()
+  const unique: PlanGroup[] = []
+  groups.forEach((group) => {
+    if (seen.has(group)) return
+    seen.add(group)
+    unique.push(group)
+  })
+  return unique
+}
+
+function descendantPlanGroupsByDepth(
+  root: PlanGroup,
+  depth: number
+): PlanGroup[] {
+  const matches: PlanGroup[] = []
+  root.children.forEach((child) => {
+    if (planGroupDepth(child.type) === depth) matches.push(child)
+    matches.push(...descendantPlanGroupsByDepth(child, depth))
+  })
+  return matches
+}
+
+function activePlanBuildStrategy(
+  plan: ActivePlanResponse
+): DossierBuildStrategy {
+  return (
+    dossierBuildStrategyValue(plan.dossier_build_strategy) ??
+    DEFAULT_DOSSIER_BUILD_STRATEGY
+  )
+}
+
+function activeClusterBuildStrategy(
+  clusterVersion: ClusterVersionResponse | null
+): DossierBuildStrategy | null {
+  if (!clusterVersion) return null
+
+  const summary = clusterVersion.summary
+  const selectedStrategy =
+    dossierBuildStrategyValue(summary.selected_dossier_build_strategy) ??
+    dossierBuildStrategyValue(summary.requested_dossier_build_strategy)
+  if (selectedStrategy) return selectedStrategy
+
+  const executedStrategy = stringValue(summary.dossier_build_strategy)
+  if (executedStrategy === "chronological_page_split") return "file_register"
+  if (executedStrategy === "clustering") return "incremental"
+  return null
+}
+
+function dossierBuildStrategyValue(
+  value: unknown
+): DossierBuildStrategy | null {
+  return value === "incremental" || value === "file_register" ? value : null
 }
 
 function normalizeLeafGroupCandidates(
@@ -246,16 +562,16 @@ function normalizeLeafGroupCandidates(
       const record = asRecord(value)
       if (!record) return null
       const leafGroupRef = stringValue(
-        record.leaf_group_ref || record.group_ref || record.group_id || record.id
+        record.leaf_group_ref ||
+          record.group_ref ||
+          record.group_id ||
+          record.id
       )
       const candidates = normalizeLeafCandidates(arrayValue(record.candidates))
-      return leafGroupRef
-        ? { leaf_group_ref: leafGroupRef, candidates }
-        : null
+      return leafGroupRef ? { leaf_group_ref: leafGroupRef, candidates } : null
     })
-    .filter(
-      (item): item is PlanLeafGroupCandidates =>
-        Boolean(item && item.candidates.length > 0)
+    .filter((item): item is PlanLeafGroupCandidates =>
+      Boolean(item && item.candidates.length > 0)
     )
 }
 
@@ -382,6 +698,9 @@ let _doc1State: ProcessState = "idle"
 let _doc2State: ProcessState = "idle"
 let _zipState: ProcessState = "idle"
 let _planAnalysisState: ProcessState = "idle"
+let _dossierBuildStrategy: DossierBuildStrategy = DEFAULT_DOSSIER_BUILD_STRATEGY
+let _persistedDossierBuildStrategy: DossierBuildStrategy =
+  DEFAULT_DOSSIER_BUILD_STRATEGY
 let _sessionId: string | null = null
 let _sessionMetadata: SessionMetadataValues = {
   archive_name: null,
@@ -393,6 +712,7 @@ let _retentionUpload: SessionInputUploadResponse | null = null
 let _zipFolderPath = ""
 let _zipMaxFiles = ""
 let _activePlanVersionId = ""
+let _activeClusterVersionId: string | null | undefined = undefined
 let _draftArrangementPlanFile: File | null = null
 let _draftRetentionFile: File | null = null
 let _draftZipFile: File | null = null
@@ -434,6 +754,8 @@ export function UploadPage() {
   const [zipState, setZipState] = useState<ProcessState>(_zipState)
   const [planAnalysisState, setPlanAnalysisState] =
     useState<ProcessState>(_planAnalysisState)
+  const [dossierBuildStrategy, setDossierBuildStrategy] =
+    useState<DossierBuildStrategy>(_dossierBuildStrategy)
 
   const [doc1Has, setDoc1Has] = useState(_doc1Has)
   const [doc2Has, setDoc2Has] = useState(_doc2Has)
@@ -452,6 +774,7 @@ export function UploadPage() {
   const [zipUploadProgress, setZipUploadProgress] =
     useState<UploadProgressSnapshot | null>(_zipUploadProgress)
   const [sessionLoading, setSessionLoading] = useState(false)
+  const [confirmingPlan, setConfirmingPlan] = useState(false)
   const [planProgressPhase, setPlanProgressPhase] = useState<string | null>(
     null
   )
@@ -469,6 +792,7 @@ export function UploadPage() {
     setDoc2State(_doc2State)
     setZipState(_zipState)
     setPlanAnalysisState(_planAnalysisState)
+    setDossierBuildStrategy(_dossierBuildStrategy)
     setDoc1Has(_doc1Has)
     setDoc2Has(_doc2Has)
     setZipHas(_zipHas)
@@ -504,6 +828,8 @@ export function UploadPage() {
     _doc2State = "idle"
     _zipState = "idle"
     _planAnalysisState = "idle"
+    _dossierBuildStrategy = DEFAULT_DOSSIER_BUILD_STRATEGY
+    _persistedDossierBuildStrategy = DEFAULT_DOSSIER_BUILD_STRATEGY
     _sessionId = nextSessionId
     _sessionMetadata = {
       archive_name: null,
@@ -515,6 +841,7 @@ export function UploadPage() {
     _zipFolderPath = ""
     _zipMaxFiles = ""
     _activePlanVersionId = ""
+    _activeClusterVersionId = undefined
     _draftArrangementPlanFile = null
     _draftRetentionFile = null
     _draftZipFile = null
@@ -611,7 +938,8 @@ export function UploadPage() {
                 return next
               })
             }
-            if (phase) setPlanProgressMessage(planProgressMessageForPhase(phase))
+            if (phase)
+              setPlanProgressMessage(planProgressMessageForPhase(phase))
           }
           if (event.event_type === "plan.analysis.completed") {
             setPlanProgressPhase(null)
@@ -658,6 +986,7 @@ export function UploadPage() {
         if (cancelled) return
 
         syncSessionMetadata(sessionDetail)
+        _activeClusterVersionId = sessionDetail.active_cluster_version_id ?? null
         const files = sessionDetail.files ?? []
         const arrangementPlanFile = files.find(
           (file) => file.file_type === "arrangement_plan"
@@ -689,13 +1018,17 @@ export function UploadPage() {
 
         if (activePlan) {
           const plan = activePlanToParsedPlan(activePlan)
+          const buildStrategy = activePlanBuildStrategy(activePlan)
           _activePlanVersionId = activePlan.id ?? ""
           _parsedPlan = plan
           _folderTree = planToTree(plan)
           _planAnalysisState = "done"
+          _dossierBuildStrategy = buildStrategy
+          _persistedDossierBuildStrategy = buildStrategy
           setParsedPlan(plan)
           setFolderTree(_folderTree)
           setPlanAnalysisState("done")
+          setDossierBuildStrategy(buildStrategy)
         }
         window.localStorage.setItem(LAST_SESSION_KEY, routeSessionId)
       } catch (err) {
@@ -720,6 +1053,7 @@ export function UploadPage() {
     if (_sessionId) return _sessionId
     const created = await createSession()
     _sessionId = created.session_id
+    _activeClusterVersionId = null
     setSessionId(created.session_id)
     syncSessionMetadata(created)
     window.localStorage.setItem(LAST_SESSION_KEY, created.session_id)
@@ -837,6 +1171,17 @@ export function UploadPage() {
   const syncPlanAnalysisState = (s: ProcessState) => {
     _planAnalysisState = s
     setPlanAnalysisState(s)
+  }
+  const applyPersistedDossierBuildStrategy = (
+    strategy: DossierBuildStrategy
+  ) => {
+    _dossierBuildStrategy = strategy
+    _persistedDossierBuildStrategy = strategy
+    setDossierBuildStrategy(strategy)
+  }
+  const selectDossierBuildStrategy = (strategy: DossierBuildStrategy) => {
+    _dossierBuildStrategy = strategy
+    setDossierBuildStrategy(strategy)
   }
   const syncDoc1Has = (v: boolean) => {
     _doc1Has = v
@@ -1018,14 +1363,16 @@ export function UploadPage() {
       return
     }
     if (!planReanalysisReady) {
-      toast.error(
-        "Vui lòng tải lại phương án chỉnh lý hoặc thời hạn bảo quản."
-      )
+      toast.error("Vui lòng tải lại phương án chỉnh lý hoặc thời hạn bảo quản.")
       return
     }
 
-    const planFile = _arrangementPlanUpload?.local_cached_path
-    const retentionFile = _retentionUpload?.local_cached_path
+    const planFile = planReuploadState.arrangement
+      ? _arrangementPlanUpload?.local_cached_path
+      : undefined
+    const retentionFile = planReuploadState.retention
+      ? _retentionUpload?.local_cached_path
+      : undefined
     if (planReuploadState.arrangement && !planFile) {
       toast.error(
         "Backend chưa trả về đường dẫn local cho file phương án vừa tải lại."
@@ -1057,6 +1404,7 @@ export function UploadPage() {
       await enqueuePlanAnalysis(currentSessionId, {
         ...(planFile ? { plan_file: planFile } : {}),
         ...(retentionFile ? { retention_file: retentionFile } : {}),
+        dossier_build_strategy: dossierBuildStrategy,
       })
       const planResponse = await waitForActivePlan(
         currentSessionId,
@@ -1066,11 +1414,14 @@ export function UploadPage() {
       )
       const plan = activePlanToParsedPlan(planResponse)
       _activePlanVersionId = planResponse.id ?? ""
+      applyPersistedDossierBuildStrategy(activePlanBuildStrategy(planResponse))
       _parsedPlan = plan
       _folderTree = planToTree(plan)
       setParsedPlan(plan)
       setFolderTree(_folderTree)
       const sessionAfterPlan = await getSession(currentSessionId)
+      _activeClusterVersionId =
+        sessionAfterPlan.active_cluster_version_id ?? null
       syncSessionMetadata(sessionAfterPlan)
       await syncLatestPlanProgress(currentSessionId)
       syncPlanAnalysisState("done")
@@ -1084,6 +1435,7 @@ export function UploadPage() {
       try {
         await enqueueClusterBuild(currentSessionId, {
           source: "plan_reanalysis",
+          dossier_build_strategy: dossierBuildStrategy,
         })
       } catch (err) {
         toast.error(
@@ -1096,9 +1448,7 @@ export function UploadPage() {
       }
       _clusterGroups = []
       setClusterGroups([])
-      toast.success(
-        "Đã phân tích lại phương án và gửi task lập lại hồ sơ."
-      )
+      toast.success("Đã phân tích lại phương án và gửi task lập lại hồ sơ.")
       goTo(4, currentSessionId)
     } catch (err) {
       syncPlanAnalysisState("idle")
@@ -1190,8 +1540,11 @@ export function UploadPage() {
       const planJob = enqueuePlanAnalysis(currentSessionId, {
         plan_file: planFile,
         retention_file: retentionFile,
+        dossier_build_strategy: dossierBuildStrategy,
       })
-      setPlanCompletedPhases((previous) => addSetValue(previous, "upload_inputs"))
+      setPlanCompletedPhases((previous) =>
+        addSetValue(previous, "upload_inputs")
+      )
       setPlanProgressPhase("preparing_plan_file")
       setPlanProgressMessage(planProgressMessageForPhase("preparing_plan_file"))
       await Promise.all([...documentTasks, planJob])
@@ -1206,11 +1559,14 @@ export function UploadPage() {
       )
       const plan = activePlanToParsedPlan(planResponse)
       _activePlanVersionId = planResponse.id ?? ""
+      applyPersistedDossierBuildStrategy(activePlanBuildStrategy(planResponse))
       _parsedPlan = plan
       _folderTree = planToTree(plan)
       setParsedPlan(plan)
       setFolderTree(_folderTree)
       const sessionAfterPlan = await getSession(currentSessionId)
+      _activeClusterVersionId =
+        sessionAfterPlan.active_cluster_version_id ?? null
       syncSessionMetadata(sessionAfterPlan)
       await syncLatestPlanProgress(currentSessionId)
       syncPlanAnalysisState("done")
@@ -1241,6 +1597,7 @@ export function UploadPage() {
   }
 
   const handleConfirmPlan = async () => {
+    if (confirmingPlan) return
     if (!_sessionId) {
       toast.error("Chưa có session xử lý.")
       return
@@ -1255,41 +1612,105 @@ export function UploadPage() {
       toast.error("Chưa có phương án chỉnh lý để xác nhận.")
       return
     }
-    const confirmedPlanVersionId = _activePlanVersionId.trim()
+    let confirmedPlanVersionId = _activePlanVersionId.trim()
     if (!confirmedPlanVersionId) {
       toast.error("Chưa có phiên bản phương án đã xác nhận.")
       return
     }
-    const folderPath =
-      zipFolderPath || _zipUpload?.folder_path || _zipUpload?.data_path || ""
-    if (!folderPath) {
-      if (existingSessionMode) {
-        toast.info(
-          "Session này chưa có dữ liệu ZIP mới. Bạn có thể tiếp tục xem lại phương án chỉnh lý."
+
+    setConfirmingPlan(true)
+    let folderPath = ""
+    let maxFilesToProcess: number | undefined
+    try {
+      const selectedStrategy = dossierBuildStrategy
+      const strategyChangedBeforeSave =
+        selectedStrategy !== _persistedDossierBuildStrategy
+      if (strategyChangedBeforeSave) {
+        const planResponse = await patchActivePlan(_sessionId, {
+          dossier_build_strategy: selectedStrategy,
+        })
+        const plan = activePlanToParsedPlan(planResponse)
+        confirmedPlanVersionId = planResponse.id ?? ""
+        _activePlanVersionId = confirmedPlanVersionId
+        applyPersistedDossierBuildStrategy(
+          activePlanBuildStrategy(planResponse)
+        )
+        _parsedPlan = plan
+        _folderTree = planToTree(plan)
+        setParsedPlan(plan)
+        setFolderTree(_folderTree)
+      }
+
+      let activeClusterVersionId = _activeClusterVersionId
+      if (!activeClusterVersionId) {
+        const sessionDetail = await getSession(_sessionId)
+        activeClusterVersionId = sessionDetail.active_cluster_version_id ?? null
+        _activeClusterVersionId = activeClusterVersionId
+      }
+
+      if (activeClusterVersionId) {
+        const [activeClusters, clusterBuildStatus] = await Promise.all([
+          getActiveClusters(_sessionId),
+          getClusterBuildStatus(_sessionId),
+        ])
+        const activeStrategy = activeClusterBuildStrategy(activeClusters)
+        const queuedStrategy = dossierBuildStrategyValue(
+          clusterBuildStatus.job?.payload.dossier_build_strategy
+        )
+        const matchingBuildActive =
+          clusterBuildStatus.active && queuedStrategy === selectedStrategy
+        const rebuildRequired =
+          strategyChangedBeforeSave ||
+          activeStrategy === null ||
+          activeStrategy !== selectedStrategy
+
+        if (rebuildRequired) {
+          if (!matchingBuildActive) {
+            await enqueueClusterBuild(_sessionId, {
+              source: "plan_reanalysis",
+              dossier_build_strategy: selectedStrategy,
+            })
+          }
+          _clusterGroups = []
+          setClusterGroups([])
+          toast.success(
+            matchingBuildActive
+              ? "Task lập lại hồ sơ đang được xử lý."
+              : "Đã lưu cách thức lập hồ sơ và gửi task lập lại hồ sơ."
+          )
+          goTo(4, _sessionId)
+          return
+        }
+      }
+
+      folderPath =
+        zipFolderPath || _zipUpload?.folder_path || _zipUpload?.data_path || ""
+      if (!folderPath) {
+        if (existingSessionMode) {
+          toast.info(
+            "Session này chưa có dữ liệu ZIP mới. Bạn có thể tiếp tục xem lại phương án chỉnh lý."
+          )
+          return
+        }
+        toast.error("Chưa có folder_path để bắt đầu lấy metadata.")
+        return
+      }
+      if (_zipUpload && !_zipUpload.remote_batch_id) {
+        toast.error(
+          "File ZIP chưa được upload lên Chỉnh Lý/MinIO. Vui lòng tải lại file ZIP."
         )
         return
       }
-      toast.error("Chưa có folder_path để bắt đầu lấy metadata.")
-      return
-    }
-    if (_zipUpload && !_zipUpload.remote_batch_id) {
-      toast.error(
-        "File ZIP chưa được upload lên Chỉnh Lý/MinIO. Vui lòng tải lại file ZIP."
-      )
-      return
-    }
 
-    let maxFilesToProcess: number | undefined
-    try {
-      maxFilesToProcess = parseZipMaxFiles()
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Số lượng tài liệu không hợp lệ."
-      )
-      return
-    }
+      try {
+        maxFilesToProcess = parseZipMaxFiles()
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "Số lượng tài liệu không hợp lệ."
+        )
+        return
+      }
 
-    try {
       const existingStatus = ocr.status ?? (await ocr.refresh())
       if ((existingStatus?.jobs.length ?? 0) > 0) {
         const hasReadyMetadata = existingStatus?.jobs.some(
@@ -1306,9 +1727,11 @@ export function UploadPage() {
       toast.error(
         err instanceof Error
           ? err.message
-          : "Không thể kiểm tra metadata hiện có."
+          : "Không thể xác nhận phương án chỉnh lý."
       )
       return
+    } finally {
+      setConfirmingPlan(false)
     }
 
     syncZipState("processing")
@@ -1568,9 +1991,7 @@ export function UploadPage() {
                   onProcessStateChange={syncDoc1State}
                   onHasFileChange={syncDoc1Has}
                   onUploadFile={(file) =>
-                    uploadInput("arrangement_plan", file).then(
-                      () => undefined
-                    )
+                    uploadInput("arrangement_plan", file).then(() => undefined)
                   }
                 />
                 <DocxSection
@@ -1708,12 +2129,12 @@ export function UploadPage() {
                         : allProcessing
                           ? "Đang xử lý..."
                           : planInputsReuploaded
-                              ? "Phân tích lại và lập hồ sơ"
-                          : allDone
-                            ? "Tiếp tục"
-                            : existingSessionMode
+                            ? "Phân tích lại và lập hồ sơ"
+                            : allDone
                               ? "Tiếp tục"
-                              : "Bắt đầu phân tích"}
+                              : existingSessionMode
+                                ? "Tiếp tục"
+                                : "Bắt đầu phân tích"}
                   </span>
                   {!primaryActionDisabled && (
                     <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
@@ -1754,10 +2175,13 @@ export function UploadPage() {
                 tree={folderTree}
                 parsedPlan={parsedPlan}
                 readOnly={false}
+                dossierBuildStrategy={dossierBuildStrategy}
+                onDossierBuildStrategyChange={selectDossierBuildStrategy}
                 onChange={syncFolderTree}
                 onSaveTree={saveFolderTree}
                 onCriteriaChange={savePlanCriterias}
                 onConfirm={handleConfirmPlan}
+                confirming={confirmingPlan}
               />
             </motion.div>
           )}
@@ -1857,10 +2281,7 @@ function normalizePlanProgressPhase(value: unknown): string {
   ) {
     return "preparing_plan_file"
   }
-  if (
-    phase === "classification_criteria" ||
-    phase === "normalizing_tree"
-  ) {
+  if (phase === "classification_criteria" || phase === "normalizing_tree") {
     return "classification_criteria"
   }
   if (phase === "group_definitions") return "group_definitions"

@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react"
 import {
+  Archive,
   Check,
   ChevronDown,
   ChevronRight,
   Edit2,
   FileText,
   Folder,
+  FolderKanban,
   FolderOpen,
   Plus,
   RotateCcw,
@@ -15,6 +17,8 @@ import {
 import { AnimatePresence, motion } from "framer-motion"
 import { toast } from "sonner"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { cn } from "@/shared/lib/utils"
+import type { DossierBuildStrategy } from "@/features/upload/api/sessionApi"
 import type {
   FolderNode,
   ParsedPlan,
@@ -42,7 +46,11 @@ interface PlanSummaryProps {
   onCriteriaChange: (criterias: PlanCriterionSet[]) => void | Promise<void>
 }
 
-function PlanSummary({ plan, readOnly = false, onCriteriaChange }: PlanSummaryProps) {
+function PlanSummary({
+  plan,
+  readOnly = false,
+  onCriteriaChange,
+}: PlanSummaryProps) {
   const [criteriaDrafts, setCriteriaDrafts] = useState<CriteriaDraft[]>(() =>
     planCriteriasToDrafts(plan.criterias)
   )
@@ -76,7 +84,7 @@ function PlanSummary({ plan, readOnly = false, onCriteriaChange }: PlanSummaryPr
   return (
     <div className="flex flex-col gap-3">
       <div className="rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] px-4 py-3">
-        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
+        <p className="mb-1 text-[11px] font-semibold tracking-wider text-[#64748B] uppercase">
           Tóm tắt phương án
         </p>
         <p className="text-sm leading-6 text-[#0F172A]">
@@ -86,29 +94,31 @@ function PlanSummary({ plan, readOnly = false, onCriteriaChange }: PlanSummaryPr
 
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
+          <p className="text-[11px] font-semibold tracking-wider text-[#64748B] uppercase">
             Tiêu chí phân nhóm
           </p>
-          {!readOnly && <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-3">
-            <button
-              onClick={handleResetCriteria}
-              className="flex items-center justify-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-3 py-1.5 text-xs font-semibold text-[#0F172A] shadow-sm transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF]"
-            >
-              <RotateCcw className="size-3.5" /> Áp dụng lại
-            </button>
-            <button
-              onClick={handleAddCriteriaLevel}
-              className="flex items-center justify-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-3 py-1.5 text-xs font-semibold text-[#0F172A] shadow-sm transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF]"
-            >
-              <Plus className="size-3.5" /> Thêm cấp
-            </button>
-            <button
-              onClick={handleSaveCriteria}
-              className="flex items-center justify-center gap-1.5 rounded-xl bg-[#0052FF] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#0047D6]"
-            >
-              <Check className="size-3.5" /> Lưu tiêu chí
-            </button>
-          </div>}
+          {!readOnly && (
+            <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-3">
+              <button
+                onClick={handleResetCriteria}
+                className="flex items-center justify-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-3 py-1.5 text-xs font-semibold text-[#0F172A] shadow-sm transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF]"
+              >
+                <RotateCcw className="size-3.5" /> Áp dụng lại
+              </button>
+              <button
+                onClick={handleAddCriteriaLevel}
+                className="flex items-center justify-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-3 py-1.5 text-xs font-semibold text-[#0F172A] shadow-sm transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF]"
+              >
+                <Plus className="size-3.5" /> Thêm cấp
+              </button>
+              <button
+                onClick={handleSaveCriteria}
+                className="flex items-center justify-center gap-1.5 rounded-xl bg-[#0052FF] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#0047D6]"
+              >
+                <Check className="size-3.5" /> Lưu tiêu chí
+              </button>
+            </div>
+          )}
         </div>
 
         {criteriaDrafts.map((criterion, index) => (
@@ -123,10 +133,10 @@ function PlanSummary({ plan, readOnly = false, onCriteriaChange }: PlanSummaryPr
               >
                 {criterion.groupLevel.trim().charAt(0).toUpperCase() || "N"}
               </span>
-                <input
-                  value={criterion.groupLevel}
-                  readOnly={readOnly}
-                  onChange={(event) =>
+              <input
+                value={criterion.groupLevel}
+                readOnly={readOnly}
+                onChange={(event) =>
                   setCriteriaDrafts((current) =>
                     current.map((item) =>
                       item.id === criterion.id
@@ -135,9 +145,9 @@ function PlanSummary({ plan, readOnly = false, onCriteriaChange }: PlanSummaryPr
                     )
                   )
                 }
-                className="h-8 min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-1 text-sm font-bold text-[#0F172A] outline-none transition-colors focus:border-[#CBD5E1] focus:bg-[#F8FAFC]"
+                className="h-8 min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-1 text-sm font-bold text-[#0F172A] transition-colors outline-none focus:border-[#CBD5E1] focus:bg-[#F8FAFC]"
               />
-                {!readOnly && criteriaDrafts.length > 1 && (
+              {!readOnly && criteriaDrafts.length > 1 && (
                 <button
                   onClick={() =>
                     setCriteriaDrafts((current) =>
@@ -151,10 +161,10 @@ function PlanSummary({ plan, readOnly = false, onCriteriaChange }: PlanSummaryPr
                 </button>
               )}
             </div>
-              <textarea
-                value={criterion.criteriaText}
-                readOnly={readOnly}
-                onChange={(event) =>
+            <textarea
+              value={criterion.criteriaText}
+              readOnly={readOnly}
+              onChange={(event) =>
                 setCriteriaDrafts((current) =>
                   current.map((item) =>
                     item.id === criterion.id
@@ -165,8 +175,8 @@ function PlanSummary({ plan, readOnly = false, onCriteriaChange }: PlanSummaryPr
               }
               rows={3}
               placeholder="Mô tả tiêu chí phân nhóm..."
-                className="min-h-14 w-full resize-y rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] px-3 py-2 text-sm leading-6 text-[#0F172A] outline-none transition-colors focus:border-[#0052FF]/60 focus:bg-white read-only:resize-none"
-              />
+              className="min-h-14 w-full resize-y rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] px-3 py-2 text-sm leading-6 text-[#0F172A] transition-colors outline-none read-only:resize-none focus:border-[#0052FF]/60 focus:bg-white"
+            />
           </div>
         ))}
       </div>
@@ -235,8 +245,15 @@ function FolderNodeItem({
           onClick={() => setOpen((value) => !value)}
           className="shrink-0 text-[#64748B]"
         >
-          {node.children.length > 0 || hasDefinition || editingDefinition || hasCandidates ? (
-            open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />
+          {node.children.length > 0 ||
+          hasDefinition ||
+          editingDefinition ||
+          hasCandidates ? (
+            open ? (
+              <ChevronDown className="size-3.5" />
+            ) : (
+              <ChevronRight className="size-3.5" />
+            )
           ) : (
             <span className="block size-3.5" />
           )}
@@ -263,14 +280,17 @@ function FolderNodeItem({
             <button onClick={commitRename} className="text-[#0052FF]">
               <Check className="size-3.5" />
             </button>
-            <button onClick={() => setEditingName(false)} className="text-[#64748B]">
+            <button
+              onClick={() => setEditingName(false)}
+              className="text-[#64748B]"
+            >
               <X className="size-3.5" />
             </button>
           </div>
         ) : (
           <button
             onClick={startDefinitionEdit}
-            className="min-w-0 flex-1 text-left text-sm leading-5 break-words whitespace-normal text-[#0F172A] [overflow-wrap:anywhere]"
+            className="min-w-0 flex-1 text-left text-sm leading-5 [overflow-wrap:anywhere] break-words whitespace-normal text-[#0F172A]"
             title={readOnly ? "Xem định nghĩa nhóm" : "Sửa định nghĩa nhóm"}
           >
             {node.name}
@@ -325,85 +345,91 @@ function FolderNodeItem({
       </div>
 
       <AnimatePresence initial={false}>
-        {open && (editingDefinition || hasDefinition || hasCandidates || node.children.length > 0) && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="overflow-hidden"
-          >
-            {(editingDefinition || hasDefinition) && (
-              <div
-                className="mb-1.5 mr-2 rounded-lg border border-[#CBD5E1] bg-[#F8FAFC] px-3 py-2"
-                style={{ marginLeft: `${28 + depth * 20}px` }}
-              >
-                <div className="mb-1.5 flex items-center justify-between gap-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#64748B]">
-                    Định nghĩa nhóm
-                  </p>
-                  {!readOnly && !editingDefinition && (
-                    <button
-                      onClick={startDefinitionEdit}
-                      className="rounded p-1 text-[#64748B] hover:bg-[#E2E8F0] hover:text-[#0052FF]"
-                    >
-                      <Edit2 className="size-3" />
-                    </button>
+        {open &&
+          (editingDefinition ||
+            hasDefinition ||
+            hasCandidates ||
+            node.children.length > 0) && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden"
+            >
+              {(editingDefinition || hasDefinition) && (
+                <div
+                  className="mr-2 mb-1.5 rounded-lg border border-[#CBD5E1] bg-[#F8FAFC] px-3 py-2"
+                  style={{ marginLeft: `${28 + depth * 20}px` }}
+                >
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <p className="text-[10px] font-semibold tracking-[0.12em] text-[#64748B] uppercase">
+                      Định nghĩa nhóm
+                    </p>
+                    {!readOnly && !editingDefinition && (
+                      <button
+                        onClick={startDefinitionEdit}
+                        className="rounded p-1 text-[#64748B] hover:bg-[#E2E8F0] hover:text-[#0052FF]"
+                      >
+                        <Edit2 className="size-3" />
+                      </button>
+                    )}
+                  </div>
+                  {editingDefinition ? (
+                    <div className="flex flex-col gap-2">
+                      <textarea
+                        autoFocus
+                        value={definitionDraft}
+                        onChange={(event) =>
+                          setDefinitionDraft(event.target.value)
+                        }
+                        rows={4}
+                        className="min-h-24 w-full resize-y rounded-lg border border-[#CBD5E1] bg-white px-3 py-2 text-sm leading-5 text-[#0F172A] outline-none focus:border-[#0052FF]/60"
+                      />
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => setEditingDefinition(false)}
+                          className="rounded-lg border border-[#CBD5E1] bg-white px-3 py-1.5 text-xs font-semibold text-[#475569] hover:bg-[#F8FAFC]"
+                        >
+                          Hủy
+                        </button>
+                        <button
+                          onClick={commitDefinition}
+                          className="rounded-lg bg-[#0052FF] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0047D6]"
+                        >
+                          Lưu định nghĩa
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm leading-5 whitespace-pre-wrap text-[#475569]">
+                      {node.definition}
+                    </p>
                   )}
                 </div>
-                {editingDefinition ? (
-                  <div className="flex flex-col gap-2">
-                    <textarea
-                      autoFocus
-                      value={definitionDraft}
-                      onChange={(event) => setDefinitionDraft(event.target.value)}
-                      rows={4}
-                      className="min-h-24 w-full resize-y rounded-lg border border-[#CBD5E1] bg-white px-3 py-2 text-sm leading-5 text-[#0F172A] outline-none focus:border-[#0052FF]/60"
-                    />
-                    <div className="flex justify-end gap-2">
-                      <button
-                        onClick={() => setEditingDefinition(false)}
-                        className="rounded-lg border border-[#CBD5E1] bg-white px-3 py-1.5 text-xs font-semibold text-[#475569] hover:bg-[#F8FAFC]"
-                      >
-                        Hủy
-                      </button>
-                      <button
-                        onClick={commitDefinition}
-                        className="rounded-lg bg-[#0052FF] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0047D6]"
-                      >
-                        Lưu định nghĩa
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="whitespace-pre-wrap text-sm leading-5 text-[#475569]">
-                    {node.definition}
-                  </p>
-                )}
-              </div>
-            )}
+              )}
 
-            {hasCandidates && (
-              <LeafCandidateList
-                candidates={candidates}
-                marginLeft={28 + depth * 20}
-              />
-            )}
+              {hasCandidates && (
+                <LeafCandidateList
+                  candidates={candidates}
+                  marginLeft={28 + depth * 20}
+                />
+              )}
 
-            {node.children.map((child) => (
-              <FolderNodeItem
-                key={child.id}
-                node={child}
-                depth={depth + 1}
-                readOnly={readOnly}
-                onAdd={onAdd}
-                onRename={onRename}
-                onDefinitionChange={onDefinitionChange}
-                onDelete={onDelete}
-              />
-            ))}
-          </motion.div>
-        )}
+              {node.children.map((child) => (
+                <FolderNodeItem
+                  key={child.id}
+                  node={child}
+                  depth={depth + 1}
+                  readOnly={readOnly}
+                  onAdd={onAdd}
+                  onRename={onRename}
+                  onDefinitionChange={onDefinitionChange}
+                  onDelete={onDelete}
+                />
+              ))}
+            </motion.div>
+          )}
       </AnimatePresence>
     </div>
   )
@@ -417,11 +443,11 @@ interface LeafCandidateListProps {
 function LeafCandidateList({ candidates, marginLeft }: LeafCandidateListProps) {
   return (
     <div
-      className="mb-2 mr-2 border-l border-[#CBD5E1] py-1 pl-3"
+      className="mr-2 mb-2 border-l border-[#CBD5E1] py-1 pl-3"
       style={{ marginLeft: `${marginLeft}px` }}
     >
       <div className="mb-1.5 flex items-center gap-2">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#64748B]">
+        <p className="text-[10px] font-semibold tracking-[0.12em] text-[#64748B] uppercase">
           Giá trị tiềm năng
         </p>
         <span className="rounded-full bg-[#E0F2FE] px-1.5 py-0.5 text-[10px] font-semibold text-[#0369A1]">
@@ -433,7 +459,9 @@ function LeafCandidateList({ candidates, marginLeft }: LeafCandidateListProps) {
           <div
             key={`${candidate.title}-${index}`}
             className="flex items-start gap-2 rounded-lg border border-[#E2E8F0] bg-white px-2.5 py-1.5"
-            title={candidate.evidence ? `Nguồn: ${candidate.evidence}` : undefined}
+            title={
+              candidate.evidence ? `Nguồn: ${candidate.evidence}` : undefined
+            }
           >
             <span
               className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${candidateKindClass(
@@ -480,12 +508,17 @@ function addNode(
   newNode: FolderNode
 ): FolderNode[] {
   return nodes.map((node) => {
-    if (node.id === parentId) return { ...node, children: [...node.children, newNode] }
+    if (node.id === parentId)
+      return { ...node, children: [...node.children, newNode] }
     return { ...node, children: addNode(node.children, parentId, newNode) }
   })
 }
 
-function renameNode(nodes: FolderNode[], id: string, name: string): FolderNode[] {
+function renameNode(
+  nodes: FolderNode[],
+  id: string,
+  name: string
+): FolderNode[] {
   return nodes.map((node) => {
     if (node.id === id) return { ...node, name }
     return { ...node, children: renameNode(node.children, id, name) }
@@ -499,7 +532,10 @@ function updateDefinition(
 ): FolderNode[] {
   return nodes.map((node) => {
     if (node.id === id) return { ...node, definition }
-    return { ...node, children: updateDefinition(node.children, id, definition) }
+    return {
+      ...node,
+      children: updateDefinition(node.children, id, definition),
+    }
   })
 }
 
@@ -534,20 +570,26 @@ interface FolderTreeProps {
   tree: FolderNode[]
   parsedPlan: ParsedPlan
   readOnly?: boolean
+  dossierBuildStrategy: DossierBuildStrategy
+  onDossierBuildStrategyChange: (strategy: DossierBuildStrategy) => void
   onChange: (tree: FolderNode[]) => void
   onSaveTree?: (tree: FolderNode[]) => void | Promise<void>
   onCriteriaChange: (criterias: PlanCriterionSet[]) => void | Promise<void>
-  onConfirm: () => void
+  onConfirm: () => void | Promise<void>
+  confirming?: boolean
 }
 
 export function FolderTree({
   tree,
   parsedPlan,
   readOnly = false,
+  dossierBuildStrategy,
+  onDossierBuildStrategyChange,
   onChange,
   onSaveTree,
   onCriteriaChange,
   onConfirm,
+  confirming = false,
 }: FolderTreeProps) {
   const handleAdd = (parentId: string) => {
     const newNode: FolderNode = {
@@ -573,14 +615,13 @@ export function FolderTree({
     onChange([...tree, newNode])
   }
 
-
   const handleConfirm = () => {
+    if (confirming) return
     if (tree.length === 0) {
       toast.error("Vui lòng thêm ít nhất một thư mục.")
       return
     }
-    toast.success("Phương án chỉnh lý đã được xác nhận.")
-    onConfirm()
+    void onConfirm()
   }
 
   return (
@@ -597,24 +638,127 @@ export function FolderTree({
         >
           Phương án chỉnh lý
         </h2>
-        <p className="mt-0.5 text-sm font-semibold uppercase text-[#0052FF]">
+        <p className="mt-0.5 text-sm font-semibold text-[#0052FF] uppercase">
           {parsedPlan.fonds_name}
         </p>
         <p className="mt-1 text-sm text-[#475569]">
-          Xem lại tiêu chí phân loại, chỉnh sửa nếu cần rồi áp dụng lại trước khi xác nhận.
+          Xem lại tiêu chí phân loại, chỉnh sửa nếu cần rồi áp dụng lại trước
+          khi xác nhận.
         </p>
       </div>
 
-      <PlanSummary plan={parsedPlan} readOnly={readOnly} onCriteriaChange={onCriteriaChange} />
+      <PlanSummary
+        plan={parsedPlan}
+        readOnly={readOnly}
+        onCriteriaChange={onCriteriaChange}
+      />
+
+      <section
+        className="rounded-2xl border border-[#D8E1EC] bg-white px-5 py-5 shadow-sm"
+        aria-labelledby="dossier-build-strategy-title"
+      >
+        <div>
+          <p
+            id="dossier-build-strategy-title"
+            className="text-sm font-semibold text-[#0F172A]"
+          >
+            Cách thức lập hồ sơ
+          </p>
+          <p className="mt-1 text-sm text-[#64748B]">
+            Lựa chọn này sẽ quyết định cách hệ thống gom nhóm tài liệu khi lập
+            hồ sơ.
+          </p>
+        </div>
+        <div
+          className="mt-4 grid gap-3 md:grid-cols-2"
+          role="radiogroup"
+          aria-label="Cách thức lập hồ sơ"
+        >
+          <button
+            type="button"
+            role="radio"
+            aria-checked={dossierBuildStrategy === "incremental"}
+            disabled={readOnly}
+            onClick={() => onDossierBuildStrategyChange("incremental")}
+            className={cn(
+              "flex min-h-32 items-start gap-4 rounded-2xl border p-4 text-left transition-all focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60",
+              dossierBuildStrategy === "incremental"
+                ? "border-[#0052FF] bg-[#EEF4FF] shadow-[0_8px_24px_rgba(0,82,255,0.10)]"
+                : "border-[#D8E1EC] bg-white hover:border-[#0052FF]/40 hover:bg-[#F8FAFC]"
+            )}
+          >
+            <span
+              className={cn(
+                "flex size-11 shrink-0 items-center justify-center rounded-xl",
+                dossierBuildStrategy === "incremental"
+                  ? "bg-[#0052FF] text-white"
+                  : "bg-[#EEF2F7] text-[#475569]"
+              )}
+            >
+              <FolderKanban className="size-5" />
+            </span>
+            <span className="min-w-0">
+              <span className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold text-[#0F172A]">
+                  Lập hồ sơ theo vụ việc
+                </span>
+                <span className="rounded-full bg-[#DBEAFE] px-2 py-0.5 text-[10px] font-bold tracking-wide text-[#1D4ED8] uppercase">
+                  Mặc định
+                </span>
+              </span>
+              <span className="mt-1.5 block text-sm leading-6 text-[#64748B]">
+                Gom tài liệu theo chủ đề, nội dung và vụ việc bằng incremental
+                clustering.
+              </span>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            role="radio"
+            aria-checked={dossierBuildStrategy === "file_register"}
+            disabled={readOnly}
+            onClick={() => onDossierBuildStrategyChange("file_register")}
+            className={cn(
+              "flex min-h-32 items-start gap-4 rounded-2xl border p-4 text-left transition-all focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60",
+              dossierBuildStrategy === "file_register"
+                ? "border-[#0052FF] bg-[#EEF4FF] shadow-[0_8px_24px_rgba(0,82,255,0.10)]"
+                : "border-[#D8E1EC] bg-white hover:border-[#0052FF]/40 hover:bg-[#F8FAFC]"
+            )}
+          >
+            <span
+              className={cn(
+                "flex size-11 shrink-0 items-center justify-center rounded-xl",
+                dossierBuildStrategy === "file_register"
+                  ? "bg-[#0052FF] text-white"
+                  : "bg-[#EEF2F7] text-[#475569]"
+              )}
+            >
+              <Archive className="size-5" />
+            </span>
+            <span className="min-w-0">
+              <span className="font-semibold text-[#0F172A]">
+                Lập hồ sơ theo dạng tập lưu
+              </span>
+              <span className="mt-1.5 block text-sm leading-6 text-[#64748B]">
+                Gom theo loại văn bản, năm ban hành, sắp xếp theo thời gian và
+                chia thành các tập hồ sơ.
+              </span>
+            </span>
+          </button>
+        </div>
+      </section>
 
       <div className="mt-1 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm font-semibold text-[#0F172A]">Cấu trúc thư mục</p>
-        {!readOnly && <button
-          onClick={handleAddRoot}
-          className="flex items-center justify-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-3 py-1.5 text-xs font-semibold text-[#0F172A] shadow-sm transition-all hover:border-[#0052FF]/30 hover:text-[#0052FF]"
-        >
-          <Plus className="size-3.5" /> Thêm thư mục
-        </button>}
+        {!readOnly && (
+          <button
+            onClick={handleAddRoot}
+            className="flex items-center justify-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-3 py-1.5 text-xs font-semibold text-[#0F172A] shadow-sm transition-all hover:border-[#0052FF]/30 hover:text-[#0052FF]"
+          >
+            <Plus className="size-3.5" /> Thêm thư mục
+          </button>
+        )}
       </div>
 
       <AnimatePresence mode="wait">
@@ -647,17 +791,18 @@ export function FolderTree({
         </motion.div>
       </AnimatePresence>
 
-
       <div className="flex justify-stretch sm:justify-end">
         <button
           onClick={handleConfirm}
-          className="flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-white transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] sm:w-auto"
+          disabled={confirming}
+          className="flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-white transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] disabled:cursor-wait disabled:opacity-70 sm:w-auto"
           style={{
             background: "linear-gradient(to right, #0052FF, #4D7CFF)",
             boxShadow: "0 4px 14px rgba(0,82,255,0.25)",
           }}
         >
-          <Check className="size-4" /> {readOnly ? "Tiếp tục" : "Xác nhận phương án"}
+          <Check className="size-4" />{" "}
+          {readOnly ? "Tiếp tục" : "Xác nhận phương án"}
         </button>
       </div>
     </motion.div>

@@ -12,6 +12,8 @@ export type SessionInputFileType =
   | "retention_schedule"
   | "raw_zip"
 
+export type DossierBuildStrategy = "incremental" | "file_register"
+
 export interface CreateSessionResponse {
   session_id: string
   status: string
@@ -184,6 +186,7 @@ export interface ActivePlanResponse {
   id?: string
   version_number?: number
   summary: string
+  dossier_build_strategy?: DossierBuildStrategy
   archive_name?: string
   fonds_name: string
   groups?: unknown[]
@@ -995,7 +998,11 @@ export async function registerSessionInput(
 
 export async function enqueuePlanAnalysis(
   sessionId: string,
-  payload: { plan_file?: string; retention_file?: string }
+  payload: {
+    plan_file?: string
+    retention_file?: string
+    dossier_build_strategy?: DossierBuildStrategy
+  }
 ): Promise<void> {
   await requestJson<unknown>(
     `/sessions/${encodeURIComponent(sessionId)}/plan/analyze`,
@@ -1202,7 +1209,7 @@ export async function enqueueClusterBuild(
   payload: {
     source?: string
     batch_size?: number
-    dossier_build_strategy?: "file_register"
+    dossier_build_strategy?: DossierBuildStrategy
   } = {}
 ): Promise<Record<string, unknown>> {
   return requestJson<Record<string, unknown>>(
