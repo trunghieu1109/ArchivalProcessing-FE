@@ -26,6 +26,7 @@ import {
   DocumentPdfPreview,
   type DocumentPreviewTarget,
 } from "@/features/upload/components/DocumentPdfPreview"
+import { DocumentDownloadDialog } from "./DocumentDownloadDialog"
 import { MetadataCard } from "./MetadataCard"
 import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
 import type { PdfMetadata } from "@/features/upload/types"
@@ -352,7 +353,10 @@ export function ProcessStep({
           <div className="grid w-full grid-cols-2 gap-2 text-center sm:w-auto sm:grid-cols-4">
             <ProgressMetric label="Tài liệu" value={expectedCount} />
             <ProgressMetric label="Đã extract" value={readyItems.length} />
-            <ProgressMetric label="Chữ ký xong" value={signatureStatus.extracted} />
+            <ProgressMetric
+              label="Chữ ký xong"
+              value={signatureStatus.extracted}
+            />
             <ProgressMetric label="Đã xác nhận" value={verifiedItems.length} />
           </div>
         </div>
@@ -389,6 +393,7 @@ export function ProcessStep({
               Metadata tài liệu
             </span>
             <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              <DocumentDownloadDialog sessionId={sessionId} items={items} />
               {metadataLoading && (
                 <span className="flex items-center gap-1.5 text-xs text-[#64748B]">
                   <Loader2 className="size-3 animate-spin text-[#0052FF]" />
@@ -538,7 +543,8 @@ function mergeIncomingMetadata(
       local?.review_status === "verified" &&
       item.review_status !== "verified"
     ) {
-      const normalizedMetadata = item.normalized_metadata ?? local.normalized_metadata
+      const normalizedMetadata =
+        item.normalized_metadata ?? local.normalized_metadata
       const rawMetadata = item.raw_metadata ?? local.raw_metadata
       return {
         ...local,

@@ -6,6 +6,7 @@ import {
   buildDisplayMetadata,
   hasMetadataWarning,
 } from "@/features/upload/lib/metadata"
+import type { FileRegisterConfig } from "@/features/upload/types"
 
 export type SessionInputFileType =
   | "arrangement_plan"
@@ -194,6 +195,7 @@ export interface ActivePlanResponse {
   classification_groups?: unknown[]
   criterias?: unknown[]
   leaf_group_candidates?: unknown[]
+  file_register_config?: FileRegisterConfig
 }
 
 export interface DigitizationDocument {
@@ -383,6 +385,11 @@ export interface DocumentPreviewUrlResponse {
   download_url?: string | null
   expires_in?: number | null
   expires_at?: string | null
+}
+
+export interface DocumentArchiveDownload {
+  blob: Blob
+  fileName: string
 }
 
 export interface ClusterPlacement {
@@ -1154,6 +1161,29 @@ export async function getDocumentPreviewUrl(
   return requestJson<DocumentPreviewUrlResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/documents/${encodeURIComponent(String(documentId))}/preview-url`
   )
+}
+
+export async function downloadSessionDocuments(
+  sessionId: string,
+  documentIds: number[]
+): Promise<DocumentArchiveDownload> {
+  const response = await fetch(
+    apiUrl(`/sessions/${encodeURIComponent(sessionId)}/documents/download`),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ document_ids: documentIds }),
+    }
+  )
+  if (!response.ok) {
+    throw new Error(await responseErrorMessage(response))
+  }
+  return {
+    blob: await response.blob(),
+    fileName:
+      downloadFileName(response.headers.get("content-disposition")) ||
+      `${sessionId}-documents.zip`,
+  }
 }
 
 export async function getActiveClusters(
@@ -1949,6 +1979,22 @@ function responseTextErrorMessage(status: number, text: string): string {
     return text
   }
   return text
+}
+
+function downloadFileName(contentDisposition: string | null): string {
+  if (!contentDisposition) return ""
+  const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1].trim())
+    } catch {
+      return utf8Match[1].trim()
+    }
+  }
+  const quotedMatch = contentDisposition.match(/filename="([^"]+)"/i)
+  if (quotedMatch?.[1]) return quotedMatch[1]
+  const plainMatch = contentDisposition.match(/filename=([^;]+)/i)
+  return plainMatch?.[1]?.trim() ?? ""
 }
 
 function presignedUploadErrorMessage(status: number, text: string): string {

@@ -55,6 +55,7 @@ import type {
   PlanCriterionSet,
   PlanLeafCandidate,
   PlanLeafGroupCandidates,
+  FileRegisterConfig,
   ParsedPlan,
   PdfMetadata,
   AppStep,
@@ -63,6 +64,16 @@ import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
 
 const easeOut = [0.16, 1, 0.3, 1] as const
 const DEFAULT_DOSSIER_BUILD_STRATEGY: DossierBuildStrategy = "incremental"
+const DEFAULT_FILE_REGISTER_CONFIG: FileRegisterConfig = {
+  analysis_status: "not_detected",
+  summary: "",
+  evidence: [],
+  steps: [
+    { criterion: "document_type" },
+    { criterion: "issued_date", granularity: "year" },
+  ],
+  merge_small_dossiers: true,
+}
 
 const EMPTY_PARSED_PLAN: ParsedPlan = {
   summary: "",
@@ -70,6 +81,7 @@ const EMPTY_PARSED_PLAN: ParsedPlan = {
   groups: [],
   criterias: [],
   leaf_group_candidates: [],
+  file_register_config: DEFAULT_FILE_REGISTER_CONFIG,
 }
 
 let _nodeId = 1000
@@ -189,6 +201,39 @@ function activePlanToParsedPlan(plan: ActivePlanResponse): ParsedPlan {
     groups: attachLeafCandidates(flatGroups, leafCandidateMap),
     criterias: normalizePlanCriterias(plan.criterias),
     leaf_group_candidates: leafGroupCandidates,
+    file_register_config: normalizeFileRegisterConfig(plan.file_register_config),
+  }
+}
+
+function normalizeFileRegisterConfig(
+  value: ActivePlanResponse["file_register_config"]
+): FileRegisterConfig {
+  if (!value) return { ...DEFAULT_FILE_REGISTER_CONFIG }
+  const issuedDateStep = value.steps?.find(
+    (step) => step.criterion === "issued_date"
+  )
+  const granularity =
+    issuedDateStep?.granularity === "month" ||
+    issuedDateStep?.granularity === "quarter"
+      ? issuedDateStep.granularity
+      : "year"
+  const groupByDocumentType =
+    value.steps?.[0]?.criterion === "document_type"
+  return {
+    analysis_status:
+      value.analysis_status === "detected" ||
+      value.analysis_status === "ambiguous"
+        ? value.analysis_status
+        : "not_detected",
+    summary: value.summary || "",
+    evidence: Array.isArray(value.evidence) ? value.evidence : [],
+    steps: groupByDocumentType
+      ? [
+          { criterion: "document_type" },
+          { criterion: "issued_date", granularity },
+        ]
+      : [{ criterion: "issued_date", granularity }],
+    merge_small_dossiers: value.merge_small_dossiers !== false,
   }
 }
 
@@ -682,6 +727,7 @@ const PLAN_PROGRESS_PHASES = [
   { id: "upload_inputs", label: "Nạp dữ liệu đầu vào" },
   { id: "preparing_plan_file", label: "Chuẩn bị file phương án chỉnh lý" },
   { id: "classification_criteria", label: "Phân tích tiêu chí phân loại" },
+  { id: "file_register_analysis", label: "Phân tích quy tắc tập lưu" },
   { id: "group_definitions", label: "Xác định định nghĩa nhóm" },
   { id: "retention_period", label: "Xác định thời hạn bảo quản" },
 ]
@@ -1259,6 +1305,23 @@ export function UploadPage() {
     _parsedPlan = { ..._parsedPlan, criterias }
     setParsedPlan(_parsedPlan)
     await savePlanChanges(_folderTree, criterias)
+  }
+
+  const saveFileRegisterConfig = async (config: FileRegisterConfig) => {
+    _parsedPlan = { ..._parsedPlan, file_register_config: config }
+    setParsedPlan(_parsedPlan)
+    if (!_sessionId) return
+
+    const planResponse = await patchActivePlan(_sessionId, {
+      file_register_config: config,
+    })
+    const updatedPlan = activePlanToParsedPlan(planResponse)
+    _activePlanVersionId = planResponse.id ?? ""
+    _parsedPlan = updatedPlan
+    _folderTree = planToTree(updatedPlan)
+    setParsedPlan(updatedPlan)
+    setFolderTree(_folderTree)
+    toast.success("Đã lưu cấu hình lập hồ sơ tập lưu.")
   }
 
   const saveFolderTree = async (tree: FolderNode[]) => {
@@ -2177,6 +2240,7 @@ export function UploadPage() {
                 readOnly={false}
                 dossierBuildStrategy={dossierBuildStrategy}
                 onDossierBuildStrategyChange={selectDossierBuildStrategy}
+                onFileRegisterConfigChange={saveFileRegisterConfig}
                 onChange={syncFolderTree}
                 onSaveTree={saveFolderTree}
                 onCriteriaChange={savePlanCriterias}
@@ -2284,6 +2348,7 @@ function normalizePlanProgressPhase(value: unknown): string {
   if (phase === "classification_criteria" || phase === "normalizing_tree") {
     return "classification_criteria"
   }
+  if (phase === "file_register_analysis") return "file_register_analysis"
   if (phase === "group_definitions") return "group_definitions"
   if (phase === "persisting_plan" || phase === "validating_result") {
     return "retention_period"
@@ -2299,6 +2364,8 @@ function planProgressMessageForPhase(phase: string): string {
       return "Đang chuẩn bị file phương án chỉnh lý để phân tích."
     case "classification_criteria":
       return "Đang phân tích tiêu chí phân loại trong phương án."
+    case "file_register_analysis":
+      return "Đang phân tích thứ tự và đơn vị thời gian lập hồ sơ tập lưu."
     case "group_definitions":
       return "Đang xác định định nghĩa cho các nhóm phân loại."
     case "retention_period":

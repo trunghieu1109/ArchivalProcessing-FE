@@ -147,6 +147,7 @@ const PHASE_ICONS: Record<string, LucideIcon> = {
   plan_text: BookOpen,
   extracting_outline: FileText,
   classification_criteria: ListTree,
+  file_register_analysis: FileText,
   normalizing_tree: Network,
   group_definitions: Search,
   validating_result: BadgeCheck,

@@ -2788,11 +2788,123 @@ function compareResultTreeNodes(
     if (aYear === null && bYear !== null) return 1
   }
 
+  if (a.type === "dossier" && b.type === "dossier") {
+    const periodComparison = compareResultTreePeriodSortValues(
+      resultTreePeriodSortValue(a),
+      resultTreePeriodSortValue(b)
+    )
+    if (periodComparison !== 0) return periodComparison
+
+    const aDossierNumber = resultTreeDossierNumberValue(a.group?.dossierNumber)
+    const bDossierNumber = resultTreeDossierNumberValue(b.group?.dossierNumber)
+    if (
+      aDossierNumber !== null &&
+      bDossierNumber !== null &&
+      aDossierNumber !== bDossierNumber
+    ) {
+      return aDossierNumber - bDossierNumber
+    }
+  }
+
   return a.label.localeCompare(b.label, "vi")
 }
 
 function resultTreeYearValue(value: string): number | null {
   const match = normalizePathSegment(value).match(/\b(?:19|20)\d{2}\b/)
+  return match ? Number(match[0]) : null
+}
+
+interface ResultTreePeriodSortValue {
+  year: number
+  month: number
+  day: number
+}
+
+function compareResultTreePeriodSortValues(
+  a: ResultTreePeriodSortValue | null,
+  b: ResultTreePeriodSortValue | null
+): number {
+  if (!a && !b) return 0
+  if (a && !b) return -1
+  if (!a && b) return 1
+  if (!a || !b) return 0
+  if (a.year !== b.year) return a.year - b.year
+  if (a.month !== b.month) return a.month - b.month
+  return a.day - b.day
+}
+
+function resultTreePeriodSortValue(
+  node: ResultTreeNode
+): ResultTreePeriodSortValue | null {
+  return (
+    resultTreePeriodSortValueFromDate(node.group?.startDate) ??
+    resultTreePeriodSortValueFromDate(node.group?.endDate) ??
+    resultTreePeriodSortValueFromLabel(node.label)
+  )
+}
+
+function resultTreePeriodSortValueFromDate(
+  value: string | null | undefined
+): ResultTreePeriodSortValue | null {
+  const text = String(value ?? "").trim()
+  if (!text) return null
+  const match = text.match(/\b((?:19|20)\d{2})(?:[-/](\d{1,2}))?(?:[-/](\d{1,2}))?\b/)
+  if (!match) return null
+  const year = Number(match[1])
+  const month = clampPeriodNumber(Number(match[2] ?? 0), 0, 12)
+  const day = clampPeriodNumber(Number(match[3] ?? 0), 0, 31)
+  return { year, month, day }
+}
+
+function resultTreePeriodSortValueFromLabel(
+  value: string
+): ResultTreePeriodSortValue | null {
+  const year = resultTreeYearValue(value)
+  if (year === null) return null
+  const normalized = normalizePathSegment(value)
+  const monthMatch = normalized.match(/\bthang\s+(\d{1,2})\b/)
+  if (monthMatch) {
+    return {
+      year,
+      month: clampPeriodNumber(Number(monthMatch[1]), 1, 12),
+      day: 0,
+    }
+  }
+
+  const quarterMatch = normalized.match(/\bquy\s+([ivxlcdm]+|\d{1,2})\b/)
+  if (quarterMatch) {
+    const quarter = quarterValue(quarterMatch[1])
+    if (quarter !== null) {
+      return {
+        year,
+        month: (quarter - 1) * 3 + 1,
+        day: 0,
+      }
+    }
+  }
+
+  return { year, month: 0, day: 0 }
+}
+
+function quarterValue(value: string): number | null {
+  const normalized = value.toLowerCase()
+  const numeric = Number(normalized)
+  if (Number.isInteger(numeric) && numeric >= 1 && numeric <= 4) {
+    return numeric
+  }
+  const roman: Record<string, number> = { i: 1, ii: 2, iii: 3, iv: 4 }
+  return roman[normalized] ?? null
+}
+
+function clampPeriodNumber(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min
+  return Math.min(Math.max(value, min), max)
+}
+
+function resultTreeDossierNumberValue(
+  value: string | null | undefined
+): number | null {
+  const match = String(value ?? "").match(/\d+/)
   return match ? Number(match[0]) : null
 }
 

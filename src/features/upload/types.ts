@@ -44,12 +44,31 @@ export interface PlanCriterionSet {
   criteria: string[]
 }
 
+export type FileRegisterAnalysisStatus =
+  | "detected"
+  | "not_detected"
+  | "ambiguous"
+
+export type FileRegisterTimeGranularity = "year" | "quarter" | "month"
+
+export interface FileRegisterConfig {
+  analysis_status: FileRegisterAnalysisStatus
+  summary: string
+  evidence: string[]
+  steps: Array<{
+    criterion: "document_type" | "issued_date"
+    granularity?: FileRegisterTimeGranularity
+  }>
+  merge_small_dossiers: boolean
+}
+
 export interface ParsedPlan {
   summary: string
   fonds_name: string
   groups: PlanGroup[]
   criterias: PlanCriterionSet[]
   leaf_group_candidates: PlanLeafGroupCandidates[]
+  file_register_config: FileRegisterConfig
 }
 
 export interface FolderNode {
