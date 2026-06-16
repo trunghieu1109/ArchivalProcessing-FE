@@ -501,16 +501,35 @@ export interface ClusterVersionResponse {
   clusters: SessionClusterSummary[]
 }
 
-export interface TemporaryFolderPromoteResponse {
+export interface DossierPromoteResponse {
   session_id: string
   target_cluster_id: string
-  temporary_cluster_id: string
+  temporary_cluster_id?: string
   promoted_document_ids: string[]
   promoted_session_document_ids: number[]
   feedback_count: number
   feedback_event_id?: number
   recompute_status?: string
   worker_required?: boolean
+  action?: string
+}
+
+export interface TemporaryFolderPromoteResponse extends DossierPromoteResponse {
+  temporary_cluster_id: string
+}
+
+export type SelectedDocumentsPromoteResponse = DossierPromoteResponse
+
+export interface SelectedDocumentsMoveResponse {
+  session_id: string
+  target_cluster_id: string
+  moved_document_ids: string[]
+  moved_session_document_ids: number[]
+  feedback_count: number
+  feedback_event_id?: number
+  recompute_status?: string
+  worker_required?: boolean
+  action?: string
 }
 
 const API_BASE = (import.meta.env.VITE_ARCHIVAL_API_BASE_URL ?? "/api").replace(
@@ -1289,6 +1308,47 @@ export async function promoteTemporaryFolderDocuments(
 ): Promise<TemporaryFolderPromoteResponse> {
   return requestJson<TemporaryFolderPromoteResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/clusters/temporary-folder/promote`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        created_by: "ui",
+        ...payload,
+      }),
+    }
+  )
+}
+
+export async function promoteSelectedDocumentsToDossier(
+  sessionId: string,
+  payload: {
+    session_document_ids: number[]
+    created_by?: string
+  }
+): Promise<SelectedDocumentsPromoteResponse> {
+  return requestJson<SelectedDocumentsPromoteResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/clusters/selected-documents/promote`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        created_by: "ui",
+        ...payload,
+      }),
+    }
+  )
+}
+
+export async function moveSelectedDocumentsToCluster(
+  sessionId: string,
+  payload: {
+    session_document_ids: number[]
+    target_cluster_id: string
+    created_by?: string
+  }
+): Promise<SelectedDocumentsMoveResponse> {
+  return requestJson<SelectedDocumentsMoveResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/clusters/selected-documents/move`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },

@@ -50,7 +50,9 @@ import {
   importMetadataBoxNumbers,
   listSessionEvents,
   moveDocumentBetweenClusters,
+  moveSelectedDocumentsToCluster,
   patchSessionDossier,
+  promoteSelectedDocumentsToDossier,
   promoteTemporaryFolderDocuments,
   type ClusterVersionResponse,
   type MetadataSnapshotGroup,
@@ -212,12 +214,19 @@ export function FinalResult({
   const [restoringClusterVersion, setRestoringClusterVersion] = useState(false)
   const [promotingTemporaryFolder, setPromotingTemporaryFolder] =
     useState(false)
+  const [promotingSelectedDocuments, setPromotingSelectedDocuments] =
+    useState(false)
+  const [movingSelectedDocumentsTargetId, setMovingSelectedDocumentsTargetId] =
+    useState<string | null>(null)
   const [metadataExporting, setMetadataExporting] = useState(false)
   const [metadataImporting, setMetadataImporting] = useState(false)
   const [savingDossierMetadataId, setSavingDossierMetadataId] = useState<
     string | null
   >(null)
   const [pendingFeedbackCount, setPendingFeedbackCount] = useState(0)
+  const [selectedSessionDocumentIds, setSelectedSessionDocumentIds] = useState<
+    Set<number>
+  >(() => new Set())
   const [selectedPreviewDocumentId, setSelectedPreviewDocumentId] = useState<
     number | null
   >(null)
@@ -275,6 +284,11 @@ export function FinalResult({
       ),
     [groups]
   )
+  const selectableSessionDocumentIdSet = useMemo(
+    () => new Set(previewDocuments.map((entry) => entry.sessionDocumentId)),
+    [previewDocuments]
+  )
+  const selectedDocumentCount = selectedSessionDocumentIds.size
   const selectedPreviewEntry = useMemo(
     () =>
       previewDocuments.find(
@@ -314,6 +328,21 @@ export function FinalResult({
       (previous) => new Set([...previous, ...flattenNodeIds(tree)])
     )
   }, [tree])
+
+  useEffect(() => {
+    setSelectedSessionDocumentIds((current) => {
+      let changed = false
+      const next = new Set<number>()
+      current.forEach((sessionDocumentId) => {
+        if (selectableSessionDocumentIdSet.has(sessionDocumentId)) {
+          next.add(sessionDocumentId)
+        } else {
+          changed = true
+        }
+      })
+      return changed ? next : current
+    })
+  }, [selectableSessionDocumentIdSet])
 
   useEffect(() => {
     if (
@@ -707,6 +736,42 @@ export function FinalResult({
     resultTreeDragYRef.current = event.clientY
   }
 
+  const handleToggleDocumentSelection = (
+    sessionDocumentId: number,
+    checked: boolean
+  ) => {
+    setSelectedSessionDocumentIds((current) => {
+      const next = new Set(current)
+      if (checked) {
+        next.add(sessionDocumentId)
+      } else {
+        next.delete(sessionDocumentId)
+      }
+      return next
+    })
+  }
+
+  const handleToggleGroupSelection = (
+    group: ClusterGroup,
+    checked: boolean
+  ) => {
+    const sessionDocumentIds = group.documents
+      .map((document) => document.sessionDocumentId)
+      .filter((id): id is number => id !== null)
+    if (sessionDocumentIds.length === 0) return
+    setSelectedSessionDocumentIds((current) => {
+      const next = new Set(current)
+      sessionDocumentIds.forEach((sessionDocumentId) => {
+        if (checked) {
+          next.add(sessionDocumentId)
+        } else {
+          next.delete(sessionDocumentId)
+        }
+      })
+      return next
+    })
+  }
+
   const handleDropOnDossier = async (targetClusterId: string) => {
     if (!draggedDocument) return
     if (draggedDocument.fromClusterId === targetClusterId) {
@@ -815,6 +880,119 @@ export function FinalResult({
     }
   }
 
+  const handleCreateDossierFromSelection = async () => {
+    if (!sessionId) {
+      toast.error("Chưa có session để tạo hồ sơ từ tài liệu đã chọn.")
+      return
+    }
+    if (pendingClusterVersion) {
+      toast.error("Có phiên bản hồ sơ mới. Hãy áp dụng trước khi tạo hồ sơ khác.")
+      return
+    }
+    if (
+      loading ||
+      rebuildSubmitting ||
+      rebuildBaselineVersionId ||
+      promotingTemporaryFolder ||
+      promotingSelectedDocuments ||
+      movingSelectedDocumentsTargetId
+    ) {
+      toast.error("Đang cập nhật hồ sơ. Vui lòng chờ xong rồi thử lại.")
+      return
+    }
+    const sessionDocumentIds = Array.from(selectedSessionDocumentIds).filter(
+      (sessionDocumentId) =>
+        selectableSessionDocumentIdSet.has(sessionDocumentId)
+    )
+    if (sessionDocumentIds.length === 0) {
+      toast.error("Chưa chọn tài liệu hợp lệ để tạo hồ sơ mới.")
+      return
+    }
+
+    setPromotingSelectedDocuments(true)
+    try {
+      const response = await promoteSelectedDocumentsToDossier(sessionId, {
+        session_document_ids: sessionDocumentIds,
+      })
+      setPendingFeedbackCount(
+        (count) => count + Math.max(1, response.feedback_count)
+      )
+      setSelectedSessionDocumentIds(new Set())
+      setStatus(
+        `Đã ghi nhận ${response.promoted_document_ids.length} tài liệu thành hồ sơ mới. Đang gửi job cập nhật hồ sơ.`
+      )
+      toast.success("Đã ghi nhận hồ sơ mới từ tài liệu đã chọn.")
+      await handleRebuildClusters("update")
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Không thể tạo hồ sơ mới từ tài liệu đã chọn."
+      )
+    } finally {
+      setPromotingSelectedDocuments(false)
+    }
+  }
+
+  const handleMoveSelectionToDossier = async (group: ClusterGroup) => {
+    if (!sessionId) {
+      toast.error("Chưa có session để chuyển tài liệu đã chọn.")
+      return
+    }
+    if (group.isTemporary) {
+      toast.error("Chỉ có thể chuyển lựa chọn tới một hồ sơ.")
+      return
+    }
+    if (pendingClusterVersion) {
+      toast.error("Có phiên bản hồ sơ mới. Hãy áp dụng trước khi chuyển tài liệu.")
+      return
+    }
+    if (
+      loading ||
+      rebuildSubmitting ||
+      rebuildBaselineVersionId ||
+      promotingTemporaryFolder ||
+      promotingSelectedDocuments ||
+      movingSelectedDocumentsTargetId
+    ) {
+      toast.error("Đang cập nhật hồ sơ. Vui lòng chờ xong rồi thử lại.")
+      return
+    }
+    const sessionDocumentIds = Array.from(selectedSessionDocumentIds).filter(
+      (sessionDocumentId) =>
+        selectableSessionDocumentIdSet.has(sessionDocumentId)
+    )
+    if (sessionDocumentIds.length === 0) {
+      toast.error("Chưa chọn tài liệu hợp lệ để chuyển.")
+      return
+    }
+
+    setMovingSelectedDocumentsTargetId(group.id)
+    try {
+      const response = await moveSelectedDocumentsToCluster(sessionId, {
+        session_document_ids: sessionDocumentIds,
+        target_cluster_id: group.id,
+      })
+      setPendingFeedbackCount(
+        (count) => count + Math.max(1, response.feedback_count)
+      )
+      setSelectedSessionDocumentIds(new Set())
+      setStatus(
+        `Đã ghi nhận ${response.moved_document_ids.length} tài liệu chuyển tới hồ sơ "${group.label}". Đang gửi job cập nhật hồ sơ.`
+      )
+      toast.success("Đã ghi nhận chuyển tài liệu tới hồ sơ.")
+      await handleRebuildClusters("update")
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Không thể chuyển tài liệu đã chọn tới hồ sơ."
+      )
+    } finally {
+      setMovingSelectedDocumentsTargetId(null)
+    }
+  }
+
   const handlePromoteTemporaryFolder = async (group: ClusterGroup) => {
     if (!sessionId) {
       toast.error("Chưa có session để cập nhật Thư mục tạm.")
@@ -828,7 +1006,9 @@ export function FinalResult({
       loading ||
       rebuildSubmitting ||
       rebuildBaselineVersionId ||
-      promotingTemporaryFolder
+      promotingTemporaryFolder ||
+      promotingSelectedDocuments ||
+      movingSelectedDocumentsTargetId
     ) {
       toast.error("Đang cập nhật hồ sơ. Vui lòng chờ xong rồi thử lại.")
       return
@@ -1165,6 +1345,8 @@ export function FinalResult({
       rebuildSubmitting ||
       restoringClusterVersion ||
       promotingTemporaryFolder ||
+      promotingSelectedDocuments ||
+      Boolean(movingSelectedDocumentsTargetId) ||
       rebuildBaselineVersionId ||
       metadataImporting
     ) {
@@ -1207,15 +1389,21 @@ export function FinalResult({
     rebuildSubmitting ||
     restoringClusterVersion ||
     promotingTemporaryFolder ||
+    promotingSelectedDocuments ||
+    Boolean(movingSelectedDocumentsTargetId) ||
     metadataImporting ||
     Boolean(rebuildBaselineVersionId) ||
     Boolean(pendingClusterVersion)
+  const selectedDocumentsActionDisabled =
+    temporaryFolderUpdateDisabled || selectedDocumentCount === 0
   const feedbackActionsPanel = (
     <div className="flex flex-col gap-3 rounded-2xl border border-[#D8E1EC] bg-white px-4 py-3 shadow-sm xl:flex-row xl:items-center xl:justify-between">
       <p className="min-w-0 flex-1 text-sm text-[#64748B]">
-        {pendingFeedbackCount > 0
+        {selectedDocumentCount > 0
+          ? `Đã chọn ${selectedDocumentCount} tài liệu.`
+          : pendingFeedbackCount > 0
           ? `Có ${pendingFeedbackCount} feedback đã lưu và đang chờ cập nhật hồ sơ.`
-          : "Kéo tài liệu chưa thuộc hồ sơ vào Thư mục tạm để xử lý sau."}
+          : "Chọn tài liệu bằng checkbox hoặc kéo tài liệu vào Thư mục tạm để xử lý sau."}
       </p>
       <input
         ref={metadataImportInputRef}
@@ -1228,7 +1416,7 @@ export function FinalResult({
           void handleImportMetadataBoxNumbers(file)
         }}
       />
-      <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5 xl:flex xl:w-auto xl:flex-wrap xl:items-center xl:justify-end">
+      <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-6 xl:flex xl:w-auto xl:flex-wrap xl:items-center xl:justify-end">
         <Button
           variant="outline"
           onClick={() => void handleExportMetadataSnapshot()}
@@ -1284,6 +1472,8 @@ export function FinalResult({
             rebuildSubmitting ||
             restoringClusterVersion ||
             promotingTemporaryFolder ||
+            promotingSelectedDocuments ||
+            Boolean(movingSelectedDocumentsTargetId) ||
             loading ||
             metadataImporting ||
             !sessionId ||
@@ -1305,12 +1495,27 @@ export function FinalResult({
         </Button>
         <Button
           variant="outline"
+          onClick={() => void handleCreateDossierFromSelection()}
+          className="w-full xl:w-auto"
+          disabled={selectedDocumentsActionDisabled}
+        >
+          {promotingSelectedDocuments ? (
+            <Loader2 data-icon="inline-start" className="animate-spin" />
+          ) : (
+            <FolderPlus data-icon="inline-start" />
+          )}
+          Tạo hồ sơ từ lựa chọn
+        </Button>
+        <Button
+          variant="outline"
           onClick={() => void handleRebuildClusters()}
           className="w-full xl:w-auto"
           disabled={
             rebuildSubmitting ||
             restoringClusterVersion ||
             promotingTemporaryFolder ||
+            promotingSelectedDocuments ||
+            Boolean(movingSelectedDocumentsTargetId) ||
             loading ||
             metadataImporting ||
             !sessionId ||
@@ -1335,6 +1540,8 @@ export function FinalResult({
             rebuildSubmitting ||
             restoringClusterVersion ||
             promotingTemporaryFolder ||
+            promotingSelectedDocuments ||
+            Boolean(movingSelectedDocumentsTargetId) ||
             metadataImporting ||
             Boolean(rebuildBaselineVersionId) ||
             Boolean(pendingClusterVersion)
@@ -1489,9 +1696,16 @@ export function FinalResult({
                   compact={sidePreviewOpen}
                   selectedPreviewDocumentId={selectedPreviewDocumentId}
                   selectedMetadataGroupId={selectedMetadataGroupId}
+                  selectedSessionDocumentIds={selectedSessionDocumentIds}
+                  selectedDocumentCount={selectedDocumentCount}
+                  selectedDocumentsActionDisabled={selectedDocumentsActionDisabled}
+                  movingSelectedDocumentsTargetId={movingSelectedDocumentsTargetId}
                   promotingTemporaryFolder={promotingTemporaryFolder}
                   temporaryFolderUpdateDisabled={temporaryFolderUpdateDisabled}
                   onToggle={toggleNode}
+                  onToggleDocumentSelection={handleToggleDocumentSelection}
+                  onToggleGroupSelection={handleToggleGroupSelection}
+                  onMoveSelectionToDossier={handleMoveSelectionToDossier}
                   onDragStart={(document, fromClusterId) =>
                     setDraggedDocument({ document, fromClusterId })
                   }
@@ -1585,6 +1799,46 @@ function clampScrollIntensity(value: number): number {
   return Math.min(1, Math.max(0.15, value))
 }
 
+function SelectionCheckbox({
+  checked,
+  indeterminate = false,
+  disabled = false,
+  ariaLabel,
+  title,
+  onChange,
+}: {
+  checked: boolean
+  indeterminate?: boolean
+  disabled?: boolean
+  ariaLabel: string
+  title: string
+  onChange: (checked: boolean) => void
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.indeterminate = indeterminate
+    }
+  }, [indeterminate])
+
+  return (
+    <input
+      ref={inputRef}
+      type="checkbox"
+      checked={checked}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      title={title}
+      draggable={false}
+      className="mt-1 size-4 shrink-0 cursor-pointer accent-[#0052FF] disabled:cursor-not-allowed disabled:opacity-40"
+      onClick={(event) => event.stopPropagation()}
+      onChange={(event) => onChange(event.currentTarget.checked)}
+      onDragStart={(event) => event.stopPropagation()}
+    />
+  )
+}
+
 function ResultNode({
   node,
   depth,
@@ -1594,9 +1848,16 @@ function ResultNode({
   compact,
   selectedPreviewDocumentId,
   selectedMetadataGroupId,
+  selectedSessionDocumentIds,
+  selectedDocumentCount,
+  selectedDocumentsActionDisabled,
+  movingSelectedDocumentsTargetId,
   promotingTemporaryFolder,
   temporaryFolderUpdateDisabled,
   onToggle,
+  onToggleDocumentSelection,
+  onToggleGroupSelection,
+  onMoveSelectionToDossier,
   onDragStart,
   onDragEnd,
   onDragEnter,
@@ -1613,9 +1874,19 @@ function ResultNode({
   compact: boolean
   selectedPreviewDocumentId: number | null
   selectedMetadataGroupId: string | null
+  selectedSessionDocumentIds: Set<number>
+  selectedDocumentCount: number
+  selectedDocumentsActionDisabled: boolean
+  movingSelectedDocumentsTargetId: string | null
   promotingTemporaryFolder: boolean
   temporaryFolderUpdateDisabled: boolean
   onToggle: (nodeId: string) => void
+  onToggleDocumentSelection: (
+    sessionDocumentId: number,
+    checked: boolean
+  ) => void
+  onToggleGroupSelection: (group: ClusterGroup, checked: boolean) => void
+  onMoveSelectionToDossier: (group: ClusterGroup) => void
   onDragStart: (document: ClusterDocument, fromClusterId: string) => void
   onDragEnd: () => void
   onDragEnter: (nodeId: string | null) => void
@@ -1632,6 +1903,19 @@ function ResultNode({
   const canDrop = Boolean(
     draggedDocument && group && draggedDocument.fromClusterId !== group.id
   )
+  const groupSessionDocumentIds =
+    group?.documents
+      .map((document) => document.sessionDocumentId)
+      .filter((id): id is number => id !== null) ?? []
+  const selectedGroupDocumentCount = groupSessionDocumentIds.filter(
+    (sessionDocumentId) => selectedSessionDocumentIds.has(sessionDocumentId)
+  ).length
+  const groupSelectionChecked =
+    groupSessionDocumentIds.length > 0 &&
+    selectedGroupDocumentCount === groupSessionDocumentIds.length
+  const groupSelectionIndeterminate =
+    selectedGroupDocumentCount > 0 &&
+    selectedGroupDocumentCount < groupSessionDocumentIds.length
   const indentStep = compact ? 14 : 20
   const displayLabel = node.label
   const selectedDossierMetadata =
@@ -1677,6 +1961,17 @@ function ResultNode({
             <span className="size-3.5" />
           )}
         </button>
+
+        {isDropFolder && group && (
+          <SelectionCheckbox
+            checked={groupSelectionChecked}
+            indeterminate={groupSelectionIndeterminate}
+            disabled={groupSessionDocumentIds.length === 0}
+            ariaLabel={`Chọn toàn bộ tài liệu trong ${group.label}`}
+            title="Chọn toàn bộ tài liệu trong hồ sơ"
+            onChange={(checked) => onToggleGroupSelection(group, checked)}
+          />
+        )}
 
         {isTemporary ? (
           <FolderClock className="size-4 shrink-0 text-amber-600" />
@@ -1769,6 +2064,28 @@ function ResultNode({
               </span>
             </span>
           )}
+          {isDossier && group && selectedDocumentCount > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              title="Chuyển các tài liệu đã chọn tới hồ sơ này"
+              disabled={selectedDocumentsActionDisabled}
+              onClick={(event) => {
+                event.stopPropagation()
+                onMoveSelectionToDossier(group)
+              }}
+            >
+              {movingSelectedDocumentsTargetId === group.id ? (
+                <Loader2 data-icon="inline-start" className="animate-spin" />
+              ) : (
+                <MoveRight data-icon="inline-start" />
+              )}
+              <span className={cn(compact && "hidden 2xl:inline")}>
+                Chuyển tới hồ sơ này
+              </span>
+            </Button>
+          )}
           {isTemporary && group && group.documents.length > 0 && (
             <Button
               type="button"
@@ -1822,6 +2139,12 @@ function ResultNode({
                 document.sessionDocumentId !== null &&
                 document.sessionDocumentId === selectedPreviewDocumentId
               }
+              selectionChecked={
+                document.sessionDocumentId !== null &&
+                selectedSessionDocumentIds.has(document.sessionDocumentId)
+              }
+              selectionDisabled={document.sessionDocumentId === null}
+              onToggleSelection={onToggleDocumentSelection}
               onDragStart={onDragStart}
               onDragEnd={onDragEnd}
               onSelectPreview={onSelectPreview}
@@ -1838,9 +2161,16 @@ function ResultNode({
               compact={compact}
               selectedPreviewDocumentId={selectedPreviewDocumentId}
               selectedMetadataGroupId={selectedMetadataGroupId}
+              selectedSessionDocumentIds={selectedSessionDocumentIds}
+              selectedDocumentCount={selectedDocumentCount}
+              selectedDocumentsActionDisabled={selectedDocumentsActionDisabled}
+              movingSelectedDocumentsTargetId={movingSelectedDocumentsTargetId}
               promotingTemporaryFolder={promotingTemporaryFolder}
               temporaryFolderUpdateDisabled={temporaryFolderUpdateDisabled}
               onToggle={onToggle}
+              onToggleDocumentSelection={onToggleDocumentSelection}
+              onToggleGroupSelection={onToggleGroupSelection}
+              onMoveSelectionToDossier={onMoveSelectionToDossier}
               onDragStart={onDragStart}
               onDragEnd={onDragEnd}
               onDragEnter={onDragEnter}
@@ -2053,6 +2383,9 @@ function DocumentRow({
   depth,
   compact,
   selected,
+  selectionChecked,
+  selectionDisabled,
+  onToggleSelection,
   onDragStart,
   onDragEnd,
   onSelectPreview,
@@ -2062,6 +2395,9 @@ function DocumentRow({
   depth: number
   compact: boolean
   selected: boolean
+  selectionChecked: boolean
+  selectionDisabled: boolean
+  onToggleSelection: (sessionDocumentId: number, checked: boolean) => void
   onDragStart: (document: ClusterDocument, fromClusterId: string) => void
   onDragEnd: () => void
   onSelectPreview: (document: ClusterDocument) => void
@@ -2144,6 +2480,17 @@ function DocumentRow({
         title="Nhấn để xem chi tiết tài liệu"
       >
         <GripVertical className="mt-1.5 size-3 shrink-0 cursor-grab text-[#94A3B8]" />
+        <SelectionCheckbox
+          checked={selectionChecked}
+          disabled={selectionDisabled}
+          ariaLabel={`Chọn tài liệu ${document.fileName}`}
+          title="Chọn tài liệu để tạo hồ sơ mới"
+          onChange={(checked) => {
+            if (document.sessionDocumentId !== null) {
+              onToggleSelection(document.sessionDocumentId, checked)
+            }
+          }}
+        />
         <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-[#0052FF] shadow-[0_4px_12px_rgba(0,82,255,0.24)]">
           <FileText className="size-3.5 text-white" />
         </div>
