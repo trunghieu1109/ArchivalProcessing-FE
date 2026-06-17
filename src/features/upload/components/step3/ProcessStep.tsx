@@ -5,8 +5,15 @@ import {
   useState,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
 } from "react"
-import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react"
+import {
+  AlertTriangle,
+  CheckCircle2,
+  FolderOpen,
+  List,
+  Loader2,
+} from "lucide-react"
 import { motion } from "framer-motion"
 import { toast } from "sonner"
 import { cn } from "@/shared/lib/utils"
@@ -30,6 +37,28 @@ import { DocumentDownloadDialog } from "./DocumentDownloadDialog"
 import { MetadataCard } from "./MetadataCard"
 import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
 import type { PdfMetadata } from "@/features/upload/types"
+
+type MetadataReviewMode = "list" | "batch"
+
+interface MetadataBatchGroup {
+  index: number
+  label: string
+  start: number
+  end: number
+  items: PdfMetadata[]
+  readyCount: number
+  verifiedCount: number
+  warningCount: number
+  pendingReadyCount: number
+}
+
+const DEFAULT_METADATA_BATCH_SIZE = 25
+const MIN_METADATA_BATCH_SIZE = 5
+const MAX_METADATA_BATCH_SIZE = 1000
+const METADATA_BATCH_SIZE_OPTIONS = [25, 50, 100, 200, 500, 1000]
+const MAX_LOADING_PLACEHOLDERS = 12
+const REVIEW_MODE_STORAGE_KEY = "archival-processing.metadata-review-mode"
+const BATCH_SIZE_STORAGE_KEY = "archival-processing.metadata-review-batch-size"
 
 interface ProcessStepProps {
   sessionId: string | null
@@ -66,6 +95,11 @@ export function ProcessStep({
     null
   )
   const [previewWidthPercent, setPreviewWidthPercent] = useState(48)
+  const [reviewMode, setReviewMode] = useState<MetadataReviewMode>(() =>
+    readStoredReviewMode()
+  )
+  const [batchSize, setBatchSize] = useState(() => readStoredBatchSize())
+  const [activeBatchIndex, setActiveBatchIndex] = useState(0)
   const previewLayoutRef = useRef<HTMLDivElement | null>(null)
   const didAutoSelectRef = useRef(false)
 
@@ -109,6 +143,22 @@ export function ProcessStep({
       [...items].sort((a, b) => metadataSortScore(a) - metadataSortScore(b)),
     [items]
   )
+  const batchGroups = useMemo(
+    () => buildMetadataBatchGroups(sortedItems, batchSize),
+    [batchSize, sortedItems]
+  )
+  const activeBatch = batchGroups[activeBatchIndex] ?? batchGroups[0] ?? null
+  const displayedItems =
+    reviewMode === "batch" ? (activeBatch?.items ?? []) : sortedItems
+  const displayedPendingReadyItems = useMemo(
+    () =>
+      displayedItems.filter(
+        (item) => item.metadata_ready && item.review_status !== "verified"
+      ),
+    [displayedItems]
+  )
+  const bulkVerifyItems =
+    reviewMode === "batch" ? displayedPendingReadyItems : pendingReadyItems
   const selectedItem = useMemo(
     () => sortedItems.find((item) => item.id === selectedDocumentId) ?? null,
     [selectedDocumentId, sortedItems]
@@ -126,6 +176,40 @@ export function ProcessStep({
   )
 
   useEffect(() => {
+    writeStoredReviewMode(reviewMode)
+  }, [reviewMode])
+
+  useEffect(() => {
+    writeStoredBatchSize(batchSize)
+  }, [batchSize])
+
+  useEffect(() => {
+    if (batchGroups.length === 0) {
+      if (activeBatchIndex !== 0) {
+        setActiveBatchIndex(0)
+      }
+      return
+    }
+    if (activeBatchIndex > batchGroups.length - 1) {
+      setActiveBatchIndex(batchGroups.length - 1)
+    }
+  }, [activeBatchIndex, batchGroups.length])
+
+  useEffect(() => {
+    if (reviewMode !== "batch" || !activeBatch) return
+    if (
+      selectedDocumentId !== null &&
+      activeBatch.items.some((item) => item.id === selectedDocumentId)
+    ) {
+      return
+    }
+    setSelectedDocumentId(
+      firstPreferredMetadataItem(activeBatch.items)?.id ?? null
+    )
+  }, [activeBatch, reviewMode, selectedDocumentId])
+
+  useEffect(() => {
+    if (reviewMode !== "list") return
     if (sortedItems.length === 0) {
       setSelectedDocumentId(null)
       didAutoSelectRef.current = false
@@ -150,7 +234,7 @@ export function ProcessStep({
       ) ?? sortedItems[0]
     setSelectedDocumentId(firstWarning.id)
     didAutoSelectRef.current = true
-  }, [selectedDocumentId, sortedItems])
+  }, [reviewMode, selectedDocumentId, sortedItems])
 
   const handleApply = async (
     dataPath: string,
@@ -179,17 +263,17 @@ export function ProcessStep({
       toast.error("Chưa có session để xác nhận metadata.")
       return
     }
-    if (pendingReadyItems.length === 0) return
+    if (bulkVerifyItems.length === 0) return
 
     setBulkVerifying(true)
     setVerifyingIds((previous) => {
       const next = new Set(previous)
-      pendingReadyItems.forEach((item) => next.add(item.id))
+      bulkVerifyItems.forEach((item) => next.add(item.id))
       return next
     })
     try {
       const results = await Promise.allSettled(
-        pendingReadyItems.map((item) =>
+        bulkVerifyItems.map((item) =>
           verifyDocumentMetadata(sessionId, item.id)
         )
       )
@@ -218,10 +302,34 @@ export function ProcessStep({
       setBulkVerifying(false)
       setVerifyingIds((previous) => {
         const next = new Set(previous)
-        pendingReadyItems.forEach((item) => next.delete(item.id))
+        bulkVerifyItems.forEach((item) => next.delete(item.id))
         return next
       })
     }
+  }
+
+  const handleReviewModeChange = (mode: MetadataReviewMode) => {
+    setReviewMode(mode)
+    if (mode === "batch" && activeBatch) {
+      setSelectedDocumentId(
+        firstPreferredMetadataItem(activeBatch.items)?.id ?? null
+      )
+    }
+  }
+
+  const handleBatchSizeChange = (value: number) => {
+    const nextBatchSize = normalizeBatchSize(value)
+    setBatchSize(nextBatchSize)
+    setActiveBatchIndex(0)
+    setSelectedDocumentId(
+      firstPreferredMetadataItem(sortedItems.slice(0, nextBatchSize))?.id ??
+        null
+    )
+  }
+
+  const handleSelectBatch = (group: MetadataBatchGroup) => {
+    setActiveBatchIndex(group.index)
+    setSelectedDocumentId(firstPreferredMetadataItem(group.items)?.id ?? null)
   }
 
   const handleRetryMetadata = async (item: PdfMetadata) => {
@@ -287,6 +395,10 @@ export function ProcessStep({
   const loadingPlaceholderCount = Math.max(
     metadataLoading && items.length === 0 ? 1 : 0,
     Math.max(paths.length - items.length, 0)
+  )
+  const visibleLoadingPlaceholderCount = Math.min(
+    loadingPlaceholderCount,
+    MAX_LOADING_PLACEHOLDERS
   )
   const expectedCount = Math.max(paths.length, items.length)
   const readyPercent =
@@ -400,7 +512,7 @@ export function ProcessStep({
                   Đã extract {readyItems.length}/{expectedCount || "..."}
                 </span>
               )}
-              {pendingReadyItems.length > 0 && (
+              {bulkVerifyItems.length > 0 && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -413,14 +525,98 @@ export function ProcessStep({
                   ) : (
                     <CheckCircle2 className="size-3" />
                   )}
-                  Xác nhận tất cả
+                  {reviewMode === "batch" ? "Xác nhận lô" : "Xác nhận tất cả"}
                 </Button>
               )}
             </div>
           </div>
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-2">
+            <div className="inline-flex rounded-lg border border-[#CBD5E1] bg-white p-1">
+              <ReviewModeButton
+                active={reviewMode === "list"}
+                icon={<List className="size-3.5" />}
+                label="Danh sách"
+                onClick={() => handleReviewModeChange("list")}
+              />
+              <ReviewModeButton
+                active={reviewMode === "batch"}
+                icon={<FolderOpen className="size-3.5" />}
+                label="Theo lô"
+                onClick={() => handleReviewModeChange("batch")}
+              />
+            </div>
+            {reviewMode === "batch" && (
+              <label className="flex items-center gap-2 text-xs font-medium text-[#475569]">
+                Cỡ lô
+                <input
+                  type="number"
+                  min={MIN_METADATA_BATCH_SIZE}
+                  max={MAX_METADATA_BATCH_SIZE}
+                  step={5}
+                  value={batchSize}
+                  onChange={(event) => {
+                    if (event.target.value.trim() === "") return
+                    handleBatchSizeChange(Number(event.target.value))
+                  }}
+                  className="h-8 w-20 rounded-lg border border-[#CBD5E1] bg-white px-2 text-xs text-[#0F172A] transition-colors outline-none focus-visible:border-[#0052FF] focus-visible:ring-3 focus-visible:ring-[#0052FF]/20"
+                  list="metadata-batch-size-options"
+                />
+                <datalist id="metadata-batch-size-options">
+                  {METADATA_BATCH_SIZE_OPTIONS.map((value) => (
+                    <option key={value} value={value} />
+                  ))}
+                </datalist>
+              </label>
+            )}
+            {reviewMode === "batch" && activeBatch && (
+              <span className="text-xs text-[#64748B]">
+                {activeBatch.label}: {activeBatch.verifiedCount}/
+                {activeBatch.items.length} đã xác nhận
+              </span>
+            )}
+          </div>
+          {reviewMode === "batch" && batchGroups.length > 0 && activeBatch && (
+            <div className="flex flex-col gap-2 rounded-xl border border-[#D8E1EC] bg-white p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-[#0F172A]">
+                    {activeBatch.label}
+                  </p>
+                  <p className="text-[11px] text-[#64748B]">
+                    Tài liệu {activeBatch.start}-{activeBatch.end} /{" "}
+                    {sortedItems.length}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2 text-[11px] text-[#475569]">
+                  <BatchMetric
+                    label="Sẵn sàng"
+                    value={activeBatch.readyCount}
+                  />
+                  <BatchMetric
+                    label="Cảnh báo"
+                    value={activeBatch.warningCount}
+                  />
+                  <BatchMetric
+                    label="Còn lại"
+                    value={activeBatch.pendingReadyCount}
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {batchGroups.map((group) => (
+                  <MetadataBatchButton
+                    key={group.index}
+                    group={group}
+                    active={group.index === activeBatch.index}
+                    onClick={() => handleSelectBatch(group)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
           <ScrollArea className="h-[min(70svh,640px)] min-h-[360px]">
             <div className="flex flex-col gap-2 pr-1">
-              {sortedItems.map((item) => (
+              {displayedItems.map((item) => (
                 <MetadataCard
                   key={item.id}
                   item={item}
@@ -436,12 +632,14 @@ export function ProcessStep({
                   onRetry={() => void handleRetryMetadata(item)}
                 />
               ))}
-              {Array.from({ length: loadingPlaceholderCount }).map((_, i) => (
-                <div
-                  key={`skel-${i}`}
-                  className="h-14 animate-pulse rounded-xl border border-[#E2E8F0] bg-[#F8FAFC]"
-                />
-              ))}
+              {Array.from({ length: visibleLoadingPlaceholderCount }).map(
+                (_, i) => (
+                  <div
+                    key={`skel-${i}`}
+                    className="h-14 animate-pulse rounded-xl border border-[#E2E8F0] bg-[#F8FAFC]"
+                  />
+                )
+              )}
               {!metadataLoading && items.length === 0 && (
                 <div className="rounded-xl border border-dashed border-[#CBD5E1] bg-white p-6 text-center text-sm text-muted-foreground">
                   Chưa có metadata từ backend.
@@ -517,6 +715,96 @@ export function ProcessStep({
         </button>
       </div>
     </motion.div>
+  )
+}
+
+function ReviewModeButton({
+  active,
+  icon,
+  label,
+  onClick,
+}: {
+  active: boolean
+  icon: ReactNode
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-semibold transition-colors",
+        active
+          ? "bg-[#0052FF] text-white shadow-sm"
+          : "text-[#475569] hover:bg-[#EFF6FF] hover:text-[#0F172A]"
+      )}
+    >
+      {icon}
+      {label}
+    </button>
+  )
+}
+
+function BatchMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <span className="rounded-full border border-[#D8E1EC] bg-[#F8FAFC] px-2 py-1">
+      {label}: <strong className="text-[#0F172A]">{value}</strong>
+    </span>
+  )
+}
+
+function MetadataBatchButton({
+  group,
+  active,
+  onClick,
+}: {
+  group: MetadataBatchGroup
+  active: boolean
+  onClick: () => void
+}) {
+  const progress =
+    group.items.length > 0
+      ? (group.verifiedCount / group.items.length) * 100
+      : 0
+  const done = group.verifiedCount === group.items.length
+  const needsReview = group.warningCount > 0 || group.pendingReadyCount > 0
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={`${group.label}: ${group.verifiedCount}/${group.items.length} đã xác nhận`}
+      className={cn(
+        "min-w-[9.5rem] rounded-lg border px-3 py-2 text-left transition-colors",
+        active
+          ? "border-[#0052FF] bg-[#EFF6FF] text-[#0F172A] shadow-sm"
+          : done
+            ? "border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-300"
+            : needsReview
+              ? "border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300"
+              : "border-[#D8E1EC] bg-[#F8FAFC] text-[#475569] hover:border-[#BFD3FF]"
+      )}
+    >
+      <span className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold">{group.label}</span>
+        <span className="text-[10px]">
+          {group.verifiedCount}/{group.items.length}
+        </span>
+      </span>
+      <span className="mt-1 block text-[10px] opacity-80">
+        {group.start}-{group.end}
+      </span>
+      <span className="mt-2 block h-1.5 overflow-hidden rounded-full bg-white/70">
+        <span
+          className={cn(
+            "block h-full rounded-full",
+            done ? "bg-emerald-500" : "bg-[#0052FF]"
+          )}
+          style={{ width: `${progress}%` }}
+        />
+      </span>
+    </button>
   )
 }
 
@@ -646,6 +934,106 @@ function metadataSortScore(item: PdfMetadata): number {
   if (hasMetadataWarning(item)) return 0
   if (item.metadata_ready) return 1
   return 2
+}
+
+function buildMetadataBatchGroups(
+  items: PdfMetadata[],
+  batchSize: number
+): MetadataBatchGroup[] {
+  const normalizedBatchSize = normalizeBatchSize(batchSize)
+  const groups: MetadataBatchGroup[] = []
+
+  for (let start = 0; start < items.length; start += normalizedBatchSize) {
+    const groupItems = items.slice(start, start + normalizedBatchSize)
+    const index = groups.length
+    const verifiedCount = groupItems.filter(
+      (item) => item.review_status === "verified"
+    ).length
+    const readyCount = groupItems.filter((item) => item.metadata_ready).length
+    const warningCount = groupItems.filter(
+      (item) => item.review_status !== "verified" && hasMetadataWarning(item)
+    ).length
+    const pendingReadyCount = groupItems.filter(
+      (item) => item.metadata_ready && item.review_status !== "verified"
+    ).length
+
+    groups.push({
+      index,
+      label: `Lô ${String(index + 1).padStart(2, "0")}`,
+      start: start + 1,
+      end: start + groupItems.length,
+      items: groupItems,
+      readyCount,
+      verifiedCount,
+      warningCount,
+      pendingReadyCount,
+    })
+  }
+
+  return groups
+}
+
+function firstPreferredMetadataItem(items: PdfMetadata[]): PdfMetadata | null {
+  return (
+    items.find(
+      (item) => item.review_status !== "verified" && hasMetadataWarning(item)
+    ) ??
+    items.find(
+      (item) => item.metadata_ready && item.review_status !== "verified"
+    ) ??
+    items[0] ??
+    null
+  )
+}
+
+function normalizeBatchSize(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_METADATA_BATCH_SIZE
+  return Math.min(
+    MAX_METADATA_BATCH_SIZE,
+    Math.max(MIN_METADATA_BATCH_SIZE, Math.round(value))
+  )
+}
+
+function readStoredReviewMode(): MetadataReviewMode {
+  if (typeof window === "undefined") return "list"
+  try {
+    return window.localStorage.getItem(REVIEW_MODE_STORAGE_KEY) === "batch"
+      ? "batch"
+      : "list"
+  } catch {
+    return "list"
+  }
+}
+
+function writeStoredReviewMode(value: MetadataReviewMode) {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.setItem(REVIEW_MODE_STORAGE_KEY, value)
+  } catch {
+    // localStorage can be unavailable in private or restricted browser contexts.
+  }
+}
+
+function readStoredBatchSize(): number {
+  if (typeof window === "undefined") return DEFAULT_METADATA_BATCH_SIZE
+  try {
+    const value = Number(window.localStorage.getItem(BATCH_SIZE_STORAGE_KEY))
+    return normalizeBatchSize(value)
+  } catch {
+    return DEFAULT_METADATA_BATCH_SIZE
+  }
+}
+
+function writeStoredBatchSize(value: number) {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.setItem(
+      BATCH_SIZE_STORAGE_KEY,
+      String(normalizeBatchSize(value))
+    )
+  } catch {
+    // localStorage can be unavailable in private or restricted browser contexts.
+  }
 }
 
 function addId(values: Set<number>, id: number): Set<number> {
