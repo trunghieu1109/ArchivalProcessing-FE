@@ -99,6 +99,9 @@ export function ProcessStep({
     readStoredReviewMode()
   )
   const [batchSize, setBatchSize] = useState(() => readStoredBatchSize())
+  const [batchSizeInput, setBatchSizeInput] = useState(() =>
+    String(readStoredBatchSize())
+  )
   const [activeBatchIndex, setActiveBatchIndex] = useState(0)
   const previewLayoutRef = useRef<HTMLDivElement | null>(null)
   const didAutoSelectRef = useRef(false)
@@ -327,6 +330,24 @@ export function ProcessStep({
     )
   }
 
+  const handleBatchSizeInputChange = (value: string) => {
+    setBatchSizeInput(value)
+    const trimmed = value.trim()
+    if (!/^\d+$/.test(trimmed)) return
+    handleBatchSizeChange(Number(trimmed))
+  }
+
+  const handleBatchSizeInputBlur = () => {
+    const trimmed = batchSizeInput.trim()
+    if (!/^\d+$/.test(trimmed)) {
+      setBatchSizeInput(String(batchSize))
+      return
+    }
+    const nextBatchSize = normalizeBatchSize(Number(trimmed))
+    handleBatchSizeChange(nextBatchSize)
+    setBatchSizeInput(String(nextBatchSize))
+  }
+
   const handleSelectBatch = (group: MetadataBatchGroup) => {
     setActiveBatchIndex(group.index)
     setSelectedDocumentId(firstPreferredMetadataItem(group.items)?.id ?? null)
@@ -549,15 +570,13 @@ export function ProcessStep({
               <label className="flex items-center gap-2 text-xs font-medium text-[#475569]">
                 Cỡ lô
                 <input
-                  type="number"
-                  min={MIN_METADATA_BATCH_SIZE}
-                  max={MAX_METADATA_BATCH_SIZE}
-                  step={5}
-                  value={batchSize}
-                  onChange={(event) => {
-                    if (event.target.value.trim() === "") return
-                    handleBatchSizeChange(Number(event.target.value))
-                  }}
+                  type="text"
+                  inputMode="numeric"
+                  value={batchSizeInput}
+                  onChange={(event) =>
+                    handleBatchSizeInputChange(event.target.value)
+                  }
+                  onBlur={handleBatchSizeInputBlur}
                   className="h-8 w-20 rounded-lg border border-[#CBD5E1] bg-white px-2 text-xs text-[#0F172A] transition-colors outline-none focus-visible:border-[#0052FF] focus-visible:ring-3 focus-visible:ring-[#0052FF]/20"
                   list="metadata-batch-size-options"
                 />

@@ -498,7 +498,12 @@ export interface ClusterVersionResponse {
   affected_clusters: string[]
   batch_snapshot_count: number
   created_at: string
-  clusters: SessionClusterSummary[]
+  clusters?: SessionClusterSummary[]
+}
+
+export interface ClusterVersionListResponse {
+  session_id: string
+  versions: ClusterVersionResponse[]
 }
 
 export interface DossierPromoteResponse {
@@ -1210,6 +1215,23 @@ export async function getActiveClusters(
 ): Promise<ClusterVersionResponse | null> {
   return requestJsonOrNull<ClusterVersionResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/clusters`
+  )
+}
+
+export async function listClusterVersions(
+  sessionId: string
+): Promise<ClusterVersionListResponse> {
+  return requestJson<ClusterVersionListResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/clusters/versions`
+  )
+}
+
+export async function getClusterVersion(
+  sessionId: string,
+  clusterVersionId: string
+): Promise<ClusterVersionResponse> {
+  return requestJson<ClusterVersionResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/clusters/versions/${encodeURIComponent(clusterVersionId)}`
   )
 }
 

@@ -14,6 +14,7 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Edit2,
   Eye,
@@ -47,7 +48,9 @@ import {
   exportMetadataSnapshot,
   getActiveClusters,
   getClusterBuildStatus,
+  getClusterVersion,
   importMetadataBoxNumbers,
+  listClusterVersions,
   listSessionEvents,
   moveDocumentBetweenClusters,
   moveSelectedDocumentsToCluster,
@@ -204,6 +207,12 @@ export function FinalResult({
   >(null)
   const [displayedClusterVersion, setDisplayedClusterVersion] =
     useState<ClusterVersionResponse | null>(null)
+  const [clusterVersions, setClusterVersions] = useState<
+    ClusterVersionResponse[]
+  >([])
+  const [loadingClusterVersionId, setLoadingClusterVersionId] = useState<
+    string | null
+  >(null)
   const [pendingClusterVersion, setPendingClusterVersion] =
     useState<ClusterVersionResponse | null>(null)
   const [rebuildBaselineVersionId, setRebuildBaselineVersionId] = useState<
@@ -306,9 +315,10 @@ export function FinalResult({
   const selectedMetadataGroup = useMemo(
     () =>
       selectedMetadataGroupId
-        ? groups.find(
-            (group) => !group.isTemporary && group.id === selectedMetadataGroupId
-          ) ?? null
+        ? (groups.find(
+            (group) =>
+              !group.isTemporary && group.id === selectedMetadataGroupId
+          ) ?? null)
         : null,
     [groups, selectedMetadataGroupId]
   )
@@ -322,6 +332,30 @@ export function FinalResult({
     0
   )
   const pendingDossierCount = regularDossierCount(pendingClusterGroups)
+  const sortedClusterVersions = useMemo(
+    () =>
+      [...clusterVersions].sort((a, b) => a.version_number - b.version_number),
+    [clusterVersions]
+  )
+  const displayedClusterVersionIndex = displayedClusterVersionId
+    ? sortedClusterVersions.findIndex(
+        (version) => version.id === displayedClusterVersionId
+      )
+    : -1
+  const previousDisplayVersion =
+    displayedClusterVersionIndex > 0
+      ? sortedClusterVersions[displayedClusterVersionIndex - 1]
+      : null
+  const nextDisplayVersion =
+    displayedClusterVersionIndex >= 0 &&
+    displayedClusterVersionIndex < sortedClusterVersions.length - 1
+      ? sortedClusterVersions[displayedClusterVersionIndex + 1]
+      : null
+  const viewingHistoricalClusterVersion = Boolean(
+    displayedClusterVersionId &&
+    activeClusterVersionId &&
+    displayedClusterVersionId !== activeClusterVersionId
+  )
 
   useEffect(() => {
     setOpenNodeIds(
@@ -365,6 +399,37 @@ export function FinalResult({
       setSelectedMetadataGroupId(null)
     }
   }, [groups, selectedMetadataGroupId])
+
+  useEffect(() => {
+    let cancelled = false
+    if (!sessionId) {
+      setClusterVersions([])
+      return
+    }
+
+    const refreshVersions = async () => {
+      try {
+        const response = await listClusterVersions(sessionId)
+        if (!cancelled) {
+          setClusterVersions(response.versions ?? [])
+        }
+      } catch {
+        if (!cancelled) {
+          setClusterVersions([])
+        }
+      }
+    }
+
+    void refreshVersions()
+    return () => {
+      cancelled = true
+    }
+  }, [
+    activeClusterVersionId,
+    displayedClusterVersionId,
+    pendingClusterVersion?.id,
+    sessionId,
+  ])
 
   useEffect(() => {
     let cancelled = false
@@ -462,14 +527,12 @@ export function FinalResult({
               "Đang chờ backend lập lại hồ sơ theo phương án chỉnh lý và thời hạn bảo quản mới."
             )
           } else if (activeJobMode === "file_register") {
-            setStatus(
-              "Đang chờ backend lập lại hồ sơ theo phương án tập lưu."
-            )
+            setStatus("Đang chờ backend lập lại hồ sơ theo phương án tập lưu.")
           } else {
             setStatus(
-            activeJobMode === "update"
-              ? "Đang chờ backend tạo phiên bản hồ sơ mới từ feedback đã lưu."
-              : "Đang chờ backend lập hồ sơ từ tài liệu đã xác nhận."
+              activeJobMode === "update"
+                ? "Đang chờ backend tạo phiên bản hồ sơ mới từ feedback đã lưu."
+                : "Đang chờ backend lập hồ sơ từ tài liệu đã xác nhận."
             )
           }
           schedule()
@@ -774,6 +837,15 @@ export function FinalResult({
 
   const handleDropOnDossier = async (targetClusterId: string) => {
     if (!draggedDocument) return
+    if (viewingHistoricalClusterVersion) {
+      stopResultTreeAutoScroll()
+      setDraggedDocument(null)
+      setDropTargetId(null)
+      toast.error(
+        "Bạn đang xem phiên bản cũ. Hãy kích hoạt phiên bản này trước khi chỉnh hồ sơ."
+      )
+      return
+    }
     if (draggedDocument.fromClusterId === targetClusterId) {
       stopResultTreeAutoScroll()
       setDraggedDocument(null)
@@ -844,6 +916,12 @@ export function FinalResult({
     group: ClusterGroup,
     draft: DossierMetadataDraft
   ) => {
+    if (viewingHistoricalClusterVersion) {
+      toast.error(
+        "Bạn đang xem phiên bản cũ. Hãy kích hoạt phiên bản này trước khi sửa metadata hồ sơ."
+      )
+      throw new Error("Cannot edit a historical cluster version")
+    }
     if (!sessionId) {
       toast.error("Chưa có session để cập nhật metadata hồ sơ.")
       throw new Error("Missing session id")
@@ -881,12 +959,20 @@ export function FinalResult({
   }
 
   const handleCreateDossierFromSelection = async () => {
+    if (viewingHistoricalClusterVersion) {
+      toast.error(
+        "Bạn đang xem phiên bản cũ. Hãy kích hoạt phiên bản này trước khi tạo hồ sơ."
+      )
+      return
+    }
     if (!sessionId) {
       toast.error("Chưa có session để tạo hồ sơ từ tài liệu đã chọn.")
       return
     }
     if (pendingClusterVersion) {
-      toast.error("Có phiên bản hồ sơ mới. Hãy áp dụng trước khi tạo hồ sơ khác.")
+      toast.error(
+        "Có phiên bản hồ sơ mới. Hãy áp dụng trước khi tạo hồ sơ khác."
+      )
       return
     }
     if (
@@ -935,6 +1021,12 @@ export function FinalResult({
   }
 
   const handleMoveSelectionToDossier = async (group: ClusterGroup) => {
+    if (viewingHistoricalClusterVersion) {
+      toast.error(
+        "Bạn đang xem phiên bản cũ. Hãy kích hoạt phiên bản này trước khi chuyển tài liệu."
+      )
+      return
+    }
     if (!sessionId) {
       toast.error("Chưa có session để chuyển tài liệu đã chọn.")
       return
@@ -944,7 +1036,9 @@ export function FinalResult({
       return
     }
     if (pendingClusterVersion) {
-      toast.error("Có phiên bản hồ sơ mới. Hãy áp dụng trước khi chuyển tài liệu.")
+      toast.error(
+        "Có phiên bản hồ sơ mới. Hãy áp dụng trước khi chuyển tài liệu."
+      )
       return
     }
     if (
@@ -994,12 +1088,20 @@ export function FinalResult({
   }
 
   const handlePromoteTemporaryFolder = async (group: ClusterGroup) => {
+    if (viewingHistoricalClusterVersion) {
+      toast.error(
+        "Bạn đang xem phiên bản cũ. Hãy kích hoạt phiên bản này trước khi cập nhật Thư mục tạm."
+      )
+      return
+    }
     if (!sessionId) {
       toast.error("Chưa có session để cập nhật Thư mục tạm.")
       return
     }
     if (pendingClusterVersion) {
-      toast.error("Có phiên bản hồ sơ mới. Hãy áp dụng trước khi cập nhật Thư mục tạm.")
+      toast.error(
+        "Có phiên bản hồ sơ mới. Hãy áp dụng trước khi cập nhật Thư mục tạm."
+      )
       return
     }
     if (
@@ -1054,6 +1156,12 @@ export function FinalResult({
   ) => {
     const forceFileRegister = mode === "file_register"
     const previousJobMode = clusterJobMode
+    if (viewingHistoricalClusterVersion) {
+      toast.error(
+        "Bạn đang xem phiên bản cũ. Hãy kích hoạt phiên bản này trước khi cập nhật hồ sơ."
+      )
+      return
+    }
     if (!sessionId) {
       toast.error("Chưa có session để cập nhật hồ sơ.")
       return
@@ -1086,10 +1194,7 @@ export function FinalResult({
       setClusterJobMode(mode)
       setClusterProgressPhase(FIRST_CLUSTER_PROGRESS_PHASE_ID)
       setClusterProgressMessage(
-        clusterProgressMessageForPhase(
-          FIRST_CLUSTER_PROGRESS_PHASE_ID,
-          mode
-        )
+        clusterProgressMessageForPhase(FIRST_CLUSTER_PROGRESS_PHASE_ID, mode)
       )
       setClusterCompletedPhases(new Set())
       setStatus(
@@ -1158,6 +1263,93 @@ export function FinalResult({
     toast.success("Đã áp dụng phiên bản hồ sơ mới.")
   }
 
+  const handleViewClusterVersion = async (clusterVersionId: string) => {
+    if (!sessionId) {
+      toast.error("Chưa có session để xem phiên bản hồ sơ.")
+      return
+    }
+    if (!clusterVersionId || clusterVersionId === displayedClusterVersionId) {
+      return
+    }
+
+    setLoadingClusterVersionId(clusterVersionId)
+    try {
+      const version = await getClusterVersion(sessionId, clusterVersionId)
+      const nextGroups = versionToGroups(version, metadataItems)
+      setGroups(nextGroups)
+      setDisplayedClusterVersionId(version.id)
+      setDisplayedClusterVersion(version)
+      setSelectedSessionDocumentIds(new Set())
+      setSelectedPreviewDocumentId(null)
+      setSelectedMetadataGroupId(null)
+      setDraggedDocument(null)
+      setDropTargetId(null)
+      setClusterJobMode(clusterJobModeFromSource(version.source))
+      setClusterProgressPhase(null)
+      setClusterCompletedPhases(completedClusterPhaseSet())
+      setClusterProgressMessage(
+        version.id === activeClusterVersionId
+          ? "Đang xem phiên bản hồ sơ đang dùng."
+          : "Đang xem phiên bản hồ sơ cũ. Các thao tác chỉnh sửa đang tạm khóa."
+      )
+      setStatus(
+        `Đang xem phiên bản ${version.version_number} với ${regularDossierCount(nextGroups)} hồ sơ.`
+      )
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Không thể tải phiên bản hồ sơ."
+      )
+    } finally {
+      setLoadingClusterVersionId(null)
+    }
+  }
+
+  const handleActivateDisplayedClusterVersion = async () => {
+    if (!sessionId || !displayedClusterVersionId) {
+      toast.error("Chưa có phiên bản hồ sơ để kích hoạt.")
+      return
+    }
+    if (displayedClusterVersionId === activeClusterVersionId) return
+    if (pendingClusterVersion) {
+      toast.error("Hãy xử lý phiên bản hồ sơ đang chờ áp dụng trước.")
+      return
+    }
+
+    setRestoringClusterVersion(true)
+    try {
+      const version = await activateClusterVersion(
+        sessionId,
+        displayedClusterVersionId
+      )
+      const nextGroups = versionToGroups(version, metadataItems)
+      setGroups(nextGroups)
+      setActiveClusterVersionId(version.id)
+      setDisplayedClusterVersionId(version.id)
+      setDisplayedClusterVersion(version)
+      setSelectedSessionDocumentIds(new Set())
+      setPendingClusterVersion(null)
+      setRebuildBaselineVersionId(null)
+      setClusterJobMode(clusterJobModeFromSource(version.source))
+      setClusterProgressPhase(null)
+      setClusterCompletedPhases(completedClusterPhaseSet())
+      setClusterProgressMessage(
+        "Đã đặt phiên bản đang xem làm phiên bản đang dùng."
+      )
+      setStatus(
+        `Đã đặt phiên bản ${version.version_number} làm phiên bản đang dùng.`
+      )
+      toast.success("Đã kích hoạt phiên bản hồ sơ đang xem.")
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Không thể kích hoạt phiên bản hồ sơ đang xem."
+      )
+    } finally {
+      setRestoringClusterVersion(false)
+    }
+  }
+
   const handleRestorePreviousClusterVersion = async () => {
     const previousVersionId = displayedClusterVersion?.previous_version_id
     if (!sessionId || !previousVersionId) {
@@ -1199,6 +1391,12 @@ export function FinalResult({
   }
 
   const handleExportMetadataSnapshot = async () => {
+    if (viewingHistoricalClusterVersion) {
+      toast.error(
+        "Bạn đang xem phiên bản cũ. Hãy kích hoạt phiên bản này trước khi xuất metadata."
+      )
+      return
+    }
     if (!sessionId) {
       toast.error("Chưa có session để xuất metadata.")
       return
@@ -1233,6 +1431,12 @@ export function FinalResult({
 
   const handleImportMetadataBoxNumbers = async (file: File | null) => {
     if (!file) return
+    if (viewingHistoricalClusterVersion) {
+      toast.error(
+        "Bạn đang xem phiên bản cũ. Hãy kích hoạt phiên bản này trước khi nhập số hộp."
+      )
+      return
+    }
     if (!sessionId) {
       toast.error("Chưa có session để nhập số hộp.")
       return
@@ -1330,6 +1534,12 @@ export function FinalResult({
   }
 
   const handleFinish = () => {
+    if (viewingHistoricalClusterVersion) {
+      toast.error(
+        "Bạn đang xem phiên bản cũ. Hãy kích hoạt phiên bản này trước khi tạo mục lục."
+      )
+      return
+    }
     if (pendingFeedbackCount > 0) {
       toast.error(
         "Hãy cập nhật hồ sơ để áp dụng các tài liệu đã di chuyển trước khi tạo mục lục."
@@ -1348,7 +1558,8 @@ export function FinalResult({
       promotingSelectedDocuments ||
       Boolean(movingSelectedDocumentsTargetId) ||
       rebuildBaselineVersionId ||
-      metadataImporting
+      metadataImporting ||
+      viewingHistoricalClusterVersion
     ) {
       toast.error("Đang cập nhật hồ sơ. Vui lòng chờ xong rồi tạo mục lục.")
       return
@@ -1367,9 +1578,9 @@ export function FinalResult({
           ? `Đang lập lại hồ sơ theo phương án mới. ${status}`
           : clusterJobMode === "file_register"
             ? `Đang lập lại hồ sơ theo tập lưu. ${status}`
-          : clusterJobMode === "update"
-          ? `Đang cập nhật hồ sơ. ${status}`
-          : `Đang lập hồ sơ mới. ${status}`
+            : clusterJobMode === "update"
+              ? `Đang cập nhật hồ sơ. ${status}`
+              : `Đang lập hồ sơ mới. ${status}`
       : status
   const showClusterProgress =
     loading ||
@@ -1377,17 +1588,19 @@ export function FinalResult({
     Boolean(clusterProgressMessage) ||
     hasClusterData
   const updatingClusterVersion =
-    clusterJobMode !== "new" &&
-    (loading || Boolean(rebuildBaselineVersionId))
+    clusterJobMode !== "new" && (loading || Boolean(rebuildBaselineVersionId))
   const canRestoreFileRegisterVersion =
     displayedClusterVersion?.source === "user_file_register" &&
     Boolean(displayedClusterVersion.previous_version_id)
+  const clusterVersionNavigationBusy =
+    Boolean(loadingClusterVersionId) || restoringClusterVersion
   const temporaryFolderUpdateDisabled =
     !sessionId ||
     loading ||
     checkingClusters ||
     rebuildSubmitting ||
     restoringClusterVersion ||
+    viewingHistoricalClusterVersion ||
     promotingTemporaryFolder ||
     promotingSelectedDocuments ||
     Boolean(movingSelectedDocumentsTargetId) ||
@@ -1402,8 +1615,8 @@ export function FinalResult({
         {selectedDocumentCount > 0
           ? `Đã chọn ${selectedDocumentCount} tài liệu.`
           : pendingFeedbackCount > 0
-          ? `Có ${pendingFeedbackCount} feedback đã lưu và đang chờ cập nhật hồ sơ.`
-          : "Chọn tài liệu bằng checkbox hoặc kéo tài liệu vào Thư mục tạm để xử lý sau."}
+            ? `Có ${pendingFeedbackCount} feedback đã lưu và đang chờ cập nhật hồ sơ.`
+            : "Chọn tài liệu bằng checkbox hoặc kéo tài liệu vào Thư mục tạm để xử lý sau."}
       </p>
       <input
         ref={metadataImportInputRef}
@@ -1425,6 +1638,7 @@ export function FinalResult({
             metadataExporting ||
             metadataImporting ||
             restoringClusterVersion ||
+            viewingHistoricalClusterVersion ||
             !sessionId ||
             totalDossiers === 0
           }
@@ -1444,6 +1658,7 @@ export function FinalResult({
             metadataExporting ||
             metadataImporting ||
             restoringClusterVersion ||
+            viewingHistoricalClusterVersion ||
             !sessionId ||
             totalDossiers === 0
           }
@@ -1478,6 +1693,7 @@ export function FinalResult({
             metadataImporting ||
             !sessionId ||
             totalFiles === 0 ||
+            viewingHistoricalClusterVersion ||
             Boolean(pendingClusterVersion)
           }
         >
@@ -1520,6 +1736,7 @@ export function FinalResult({
             metadataImporting ||
             !sessionId ||
             totalFiles === 0 ||
+            viewingHistoricalClusterVersion ||
             Boolean(pendingClusterVersion)
           }
         >
@@ -1543,6 +1760,7 @@ export function FinalResult({
             promotingSelectedDocuments ||
             Boolean(movingSelectedDocumentsTargetId) ||
             metadataImporting ||
+            viewingHistoricalClusterVersion ||
             Boolean(rebuildBaselineVersionId) ||
             Boolean(pendingClusterVersion)
           }
@@ -1589,6 +1807,91 @@ export function FinalResult({
         </div>
       </div>
 
+      {sortedClusterVersions.length > 0 && displayedClusterVersion && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-[#D8E1EC] bg-white px-4 py-3 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-[#0F172A]">
+              Phiên bản hồ sơ
+            </p>
+            <p className="mt-1 text-xs text-[#64748B]">
+              Đang xem phiên bản {displayedClusterVersion.version_number}
+              {displayedClusterVersion.id === activeClusterVersionId
+                ? " · đang dùng"
+                : " · chỉ xem"}
+              {" · "}
+              {clusterVersionSourceLabel(displayedClusterVersion.source)}
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                previousDisplayVersion &&
+                void handleViewClusterVersion(previousDisplayVersion.id)
+              }
+              disabled={!previousDisplayVersion || clusterVersionNavigationBusy}
+              className="h-9 gap-1.5"
+            >
+              {loadingClusterVersionId === previousDisplayVersion?.id ? (
+                <Loader2 data-icon="inline-start" className="animate-spin" />
+              ) : (
+                <ChevronLeft data-icon="inline-start" />
+              )}
+              Lùi
+            </Button>
+            <select
+              value={displayedClusterVersionId ?? ""}
+              onChange={(event) =>
+                void handleViewClusterVersion(event.target.value)
+              }
+              disabled={clusterVersionNavigationBusy}
+              className="h-9 min-w-[15rem] rounded-lg border border-[#CBD5E1] bg-white px-3 text-sm text-[#0F172A] transition-colors outline-none focus-visible:border-[#0052FF] focus-visible:ring-3 focus-visible:ring-[#0052FF]/20"
+            >
+              {[...sortedClusterVersions].reverse().map((version) => (
+                <option key={version.id} value={version.id}>
+                  {clusterVersionOptionLabel(version, activeClusterVersionId)}
+                </option>
+              ))}
+            </select>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                nextDisplayVersion &&
+                void handleViewClusterVersion(nextDisplayVersion.id)
+              }
+              disabled={!nextDisplayVersion || clusterVersionNavigationBusy}
+              className="h-9 gap-1.5"
+            >
+              {loadingClusterVersionId === nextDisplayVersion?.id ? (
+                <Loader2 data-icon="inline-start" className="animate-spin" />
+              ) : (
+                <ChevronRight data-icon="inline-start" />
+              )}
+              Tiến
+            </Button>
+            {viewingHistoricalClusterVersion && (
+              <Button
+                size="sm"
+                onClick={() => void handleActivateDisplayedClusterVersion()}
+                disabled={
+                  clusterVersionNavigationBusy || Boolean(pendingClusterVersion)
+                }
+                className="h-9"
+              >
+                {restoringClusterVersion ? (
+                  <Loader2 data-icon="inline-start" className="animate-spin" />
+                ) : (
+                  <Check data-icon="inline-start" />
+                )}
+                Đặt làm đang dùng
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
       {showClusterProgress && (
         <ProgressTimeline
           phases={CLUSTER_PROGRESS_PHASES}
@@ -1599,9 +1902,9 @@ export function FinalResult({
               ? "Tiến độ lập lại hồ sơ"
               : clusterJobMode === "file_register"
                 ? "Tiến độ lập hồ sơ theo tập lưu"
-              : clusterJobMode === "update"
-              ? "Tiến độ cập nhật hồ sơ"
-              : "Tiến độ lập hồ sơ"
+                : clusterJobMode === "update"
+                  ? "Tiến độ cập nhật hồ sơ"
+                  : "Tiến độ lập hồ sơ"
           }
           message={
             clusterProgressMessage ||
@@ -1619,19 +1922,19 @@ export function FinalResult({
             {clusterJobMode === "plan_reanalysis" ? (
               <p className="mt-1 text-sm text-[#475569]">
                 Backend đang lập lại hồ sơ và phân loại theo phương án chỉnh lý
-                cùng thời hạn bảo quản mới. Nút áp dụng sẽ bật khi phiên bản
-                mới sẵn sàng.
+                cùng thời hạn bảo quản mới. Nút áp dụng sẽ bật khi phiên bản mới
+                sẵn sàng.
               </p>
             ) : clusterJobMode === "file_register" ? (
               <p className="mt-1 text-sm text-[#475569]">
-                Backend đang bỏ qua cách lập hồ sơ của phương án hiện tại và
-                sắp xếp tài liệu theo dạng tập lưu. Nút áp dụng sẽ bật khi
-                phiên bản mới sẵn sàng.
+                Backend đang bỏ qua cách lập hồ sơ của phương án hiện tại và sắp
+                xếp tài liệu theo dạng tập lưu. Nút áp dụng sẽ bật khi phiên bản
+                mới sẵn sàng.
               </p>
             ) : (
               <p className="mt-1 text-sm text-[#475569]">
-              Backend đang tạo phiên bản hồ sơ mới từ feedback đã lưu. Nút áp
-              dụng sẽ bật khi phiên bản mới sẵn sàng.
+                Backend đang tạo phiên bản hồ sơ mới từ feedback đã lưu. Nút áp
+                dụng sẽ bật khi phiên bản mới sẵn sàng.
               </p>
             )}
           </div>
@@ -1698,17 +2001,27 @@ export function FinalResult({
                   selectedMetadataGroupId={selectedMetadataGroupId}
                   selectedSessionDocumentIds={selectedSessionDocumentIds}
                   selectedDocumentCount={selectedDocumentCount}
-                  selectedDocumentsActionDisabled={selectedDocumentsActionDisabled}
-                  movingSelectedDocumentsTargetId={movingSelectedDocumentsTargetId}
+                  selectedDocumentsActionDisabled={
+                    selectedDocumentsActionDisabled
+                  }
+                  movingSelectedDocumentsTargetId={
+                    movingSelectedDocumentsTargetId
+                  }
                   promotingTemporaryFolder={promotingTemporaryFolder}
                   temporaryFolderUpdateDisabled={temporaryFolderUpdateDisabled}
                   onToggle={toggleNode}
                   onToggleDocumentSelection={handleToggleDocumentSelection}
                   onToggleGroupSelection={handleToggleGroupSelection}
                   onMoveSelectionToDossier={handleMoveSelectionToDossier}
-                  onDragStart={(document, fromClusterId) =>
+                  onDragStart={(document, fromClusterId) => {
+                    if (viewingHistoricalClusterVersion) {
+                      toast.error(
+                        "Bạn đang xem phiên bản cũ. Hãy kích hoạt phiên bản này trước khi kéo thả tài liệu."
+                      )
+                      return
+                    }
                     setDraggedDocument({ document, fromClusterId })
-                  }
+                  }}
                   onDragEnd={() => {
                     stopResultTreeAutoScroll()
                     setDraggedDocument(null)
@@ -1922,11 +2235,18 @@ function ResultNode({
     Boolean(group) && selectedMetadataGroupId === group?.id
 
   return (
-    <div className={cn("max-w-full min-w-0", isDossier ? "overflow-visible" : "overflow-hidden")}>
+    <div
+      className={cn(
+        "max-w-full min-w-0",
+        isDossier ? "overflow-visible" : "overflow-hidden"
+      )}
+    >
       <div
         className={cn(
           "group flex min-h-10 max-w-full min-w-0 gap-2 rounded-xl px-2 py-1.5 transition-all",
-          isDossier ? "items-start overflow-visible" : "items-center overflow-hidden",
+          isDossier
+            ? "items-start overflow-visible"
+            : "items-center overflow-hidden",
           isDropFolder ? "border border-transparent" : "",
           isTemporary && "bg-amber-50/60",
           canDrop && dropTargetId === node.id
@@ -1981,21 +2301,28 @@ function ResultNode({
           <Folder className="size-4 shrink-0 text-[#0052FF]" />
         )}
 
-        <div className={cn("min-w-0 flex-1", isDossier ? "overflow-visible" : "overflow-hidden")}>
+        <div
+          className={cn(
+            "min-w-0 flex-1",
+            isDossier ? "overflow-visible" : "overflow-hidden"
+          )}
+        >
           <div
             className={cn(
               "flex min-w-0 gap-2",
-              isDossier ? "items-start overflow-visible" : "items-center overflow-hidden"
+              isDossier
+                ? "items-start overflow-visible"
+                : "items-center overflow-hidden"
             )}
           >
             <span
               className={cn(
                 "min-w-0 flex-1 text-sm",
                 isDossier
-                  ? "leading-5 break-words whitespace-normal [overflow-wrap:anywhere]"
+                  ? "leading-5 [overflow-wrap:anywhere] break-words whitespace-normal"
                   : compact
                     ? "line-clamp-2 leading-5 break-words whitespace-normal"
-                  : "truncate",
+                    : "truncate",
                 isDropFolder
                   ? "font-semibold text-[#0F172A]"
                   : "font-medium text-[#0F172A]"
@@ -2282,9 +2609,7 @@ function DossierMetadataSidePanel({
             <p className="truncate text-sm font-semibold text-[#0F172A]">
               Metadata hồ sơ
             </p>
-            <p className="truncate text-[11px] text-[#64748B]">
-              {group.label}
-            </p>
+            <p className="truncate text-[11px] text-[#64748B]">{group.label}</p>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -2920,10 +3245,10 @@ function clusterProgressMessageForPhase(
       return mode === "plan_reanalysis"
         ? "Đang lập lại hồ sơ theo phương án chỉnh lý và thời hạn bảo quản mới."
         : mode === "file_register"
-        ? "Đang sắp xếp tài liệu theo loại văn bản, thời gian và giới hạn số trang của tập lưu."
-        : mode === "update"
-        ? "Đang áp dụng feedback và cập nhật cấu trúc hồ sơ."
-        : "Đang gom tài liệu đã xác nhận vào hồ sơ."
+          ? "Đang sắp xếp tài liệu theo loại văn bản, thời gian và giới hạn số trang của tập lưu."
+          : mode === "update"
+            ? "Đang áp dụng feedback và cập nhật cấu trúc hồ sơ."
+            : "Đang gom tài liệu đã xác nhận vào hồ sơ."
     case "naming_dossiers":
       return "Đang đặt tiêu đề hồ sơ từ nội dung tài liệu."
     case "classifying_dossiers":
@@ -2936,10 +3261,10 @@ function clusterProgressMessageForPhase(
       return mode === "plan_reanalysis"
         ? "Đang lập lại hồ sơ theo phương án chỉnh lý mới."
         : mode === "file_register"
-        ? "Đang lập lại hồ sơ theo phương án tập lưu."
-        : mode === "update"
-        ? "Đang cập nhật hồ sơ từ feedback đã lưu."
-        : "Đang lập hồ sơ mới từ các tài liệu đã xác nhận."
+          ? "Đang lập lại hồ sơ theo phương án tập lưu."
+          : mode === "update"
+            ? "Đang cập nhật hồ sơ từ feedback đã lưu."
+            : "Đang lập hồ sơ mới từ các tài liệu đã xác nhận."
   }
 }
 
@@ -2970,6 +3295,29 @@ function clusterJobModeFromSource(source: unknown): ClusterJobMode {
   if (source === "plan_reanalysis") return "plan_reanalysis"
   if (source === "user_file_register") return "file_register"
   return source === "user_feedback" ? "update" : "new"
+}
+
+function clusterVersionSourceLabel(source: unknown): string {
+  if (source === "plan_reanalysis") return "theo phương án mới"
+  if (source === "user_file_register") return "theo tập lưu"
+  if (source === "user_feedback") return "từ feedback"
+  if (source === "user_metadata_import") return "nhập metadata"
+  if (source === "system") return "tự động"
+  const text = String(source || "").trim()
+  return text || "không rõ nguồn"
+}
+
+function clusterVersionOptionLabel(
+  version: ClusterVersionResponse,
+  activeClusterVersionId: string | null
+): string {
+  const status =
+    version.id === activeClusterVersionId
+      ? "đang dùng"
+      : version.status === "active"
+        ? "active"
+        : "cũ"
+  return `Phiên bản ${version.version_number} - ${status} - ${clusterVersionSourceLabel(version.source)}`
 }
 
 function buildResultTree(groups: ClusterGroup[]): ResultTreeNode[] {
@@ -3044,7 +3392,8 @@ function resultTreePath(group: ClusterGroup): string[] {
     .map((segment) => segment.trim())
     .filter(Boolean)
   const yearLabel = dossierYearLabel(group)
-  const hasKnownYear = normalizePathSegment(yearLabel) !== normalizePathSegment(UNKNOWN_YEAR_LABEL)
+  const hasKnownYear =
+    normalizePathSegment(yearLabel) !== normalizePathSegment(UNKNOWN_YEAR_LABEL)
   const hasClassificationYear = classificationPath.some(isYearPathSegment)
 
   if (hasClassificationYear) {
@@ -3058,7 +3407,8 @@ function resultTreePath(group: ClusterGroup): string[] {
     return deduped.length > 0 ? deduped : [UNCLASSIFIED_LABEL]
   }
 
-  const tail = classificationPath.length > 0 ? classificationPath : [UNCLASSIFIED_LABEL]
+  const tail =
+    classificationPath.length > 0 ? classificationPath : [UNCLASSIFIED_LABEL]
   return [yearLabel, ...tail]
 }
 
@@ -3116,10 +3466,7 @@ function sortResultTreeNodes(nodes: ResultTreeNode[]): ResultTreeNode[] {
   return nodes.sort(compareResultTreeNodes)
 }
 
-function compareResultTreeNodes(
-  a: ResultTreeNode,
-  b: ResultTreeNode
-): number {
+function compareResultTreeNodes(a: ResultTreeNode, b: ResultTreeNode): number {
   if (a.type === "temporary" && b.type !== "temporary") return -1
   if (b.type === "temporary" && a.type !== "temporary") return 1
 
@@ -3195,7 +3542,9 @@ function resultTreePeriodSortValueFromDate(
 ): ResultTreePeriodSortValue | null {
   const text = String(value ?? "").trim()
   if (!text) return null
-  const match = text.match(/\b((?:19|20)\d{2})(?:[-/](\d{1,2}))?(?:[-/](\d{1,2}))?\b/)
+  const match = text.match(
+    /\b((?:19|20)\d{2})(?:[-/](\d{1,2}))?(?:[-/](\d{1,2}))?\b/
+  )
   if (!match) return null
   const year = Number(match[1])
   const month = clampPeriodNumber(Number(match[2] ?? 0), 0, 12)
