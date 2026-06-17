@@ -14,6 +14,7 @@ export type SessionInputFileType =
   | "raw_zip"
 
 export type DossierBuildStrategy = "incremental" | "file_register"
+export type DocumentNumberingMode = "page" | "sheet"
 
 export interface CreateSessionResponse {
   session_id: string
@@ -167,6 +168,19 @@ export interface ClusterBuildStatusResponse {
   job: ActiveJobSummary | null
 }
 
+export interface EnsureClusterBuildResponse {
+  session_id: string
+  pending_document_count: number
+  pending_document_ids: number[]
+  oldest_pending_age_seconds?: number | null
+  reason: string
+  should_enqueue: boolean
+  created: boolean
+  status: "queued" | "already_queued_or_running" | "not_needed"
+  job_id?: number | null
+  payload?: Record<string, unknown>
+}
+
 interface SessionEventResponse {
   events: Array<{
     id: number
@@ -188,6 +202,7 @@ export interface ActivePlanResponse {
   version_number?: number
   summary: string
   dossier_build_strategy?: DossierBuildStrategy
+  document_numbering_mode?: DocumentNumberingMode
   archive_name?: string
   fonds_name: string
   groups?: unknown[]
@@ -200,6 +215,7 @@ export interface ActivePlanResponse {
 
 export interface DigitizationDocument {
   id: number
+  ocr_batch_id?: number | null
   document_id: string
   data_path: string
   remote_metadata_status?: string | null
@@ -213,6 +229,7 @@ export interface DigitizationDocument {
   raw_metadata?: Record<string, unknown>
   metadata?: Record<string, unknown>
   normalized_metadata?: Record<string, unknown>
+  pdf_preprocessing?: Record<string, unknown> | null
   error?: string | null
 }
 
@@ -225,6 +242,8 @@ export interface DigitizationBatch {
   missing_files: string[]
   status_counts: Record<string, number>
   status: string
+  document_numbering_mode?: DocumentNumberingMode | null
+  pdf_preprocessing?: Record<string, unknown> | null
 }
 
 export interface DigitizationStatusResponse {
@@ -351,6 +370,7 @@ export interface SessionDocumentResponse {
   metadata?: Record<string, unknown>
   normalized_metadata?: Record<string, unknown>
   raw_metadata?: Record<string, unknown>
+  pdf_preprocessing?: Record<string, unknown> | null
   error?: string | null
 }
 
@@ -381,10 +401,33 @@ export function documentHasUserMetadataEdit(document: {
 export interface DocumentPreviewUrlResponse {
   session_id: string
   document_id: number
+  document_numbering_mode?: DocumentNumberingMode | null
   data_path: string
   download_url?: string | null
   expires_in?: number | null
   expires_at?: string | null
+  active_variant_key?: string | null
+  preview_variants?: DocumentPreviewVariantResponse[]
+}
+
+export interface DocumentPreviewVariantResponse {
+  key: string
+  label: string
+  data_path: string
+  download_url?: string | null
+  expires_in?: number | null
+  expires_at?: string | null
+  status?: string | null
+  processing_status?: string | null
+  version_id?: string | number | null
+  version_type?: string | null
+  blank_pages?: number[]
+  removed_pages?: number[]
+  source_page_count?: number | null
+  output_page_count?: number | null
+  same_as_original?: boolean
+  error?: string | null
+  note?: string | null
 }
 
 export interface DocumentArchiveDownload {
@@ -1033,6 +1076,7 @@ export async function enqueuePlanAnalysis(
     plan_file?: string
     retention_file?: string
     dossier_build_strategy?: DossierBuildStrategy
+    document_numbering_mode?: DocumentNumberingMode
   }
 ): Promise<void> {
   await requestJson<unknown>(
@@ -1121,6 +1165,7 @@ export async function startDigitization(
     force?: boolean
     max_files?: number
     confirmed_plan_version_id: string
+    document_numbering_mode?: DocumentNumberingMode
   }
 ): Promise<void> {
   await requestJson<unknown>(
@@ -1296,6 +1341,27 @@ export async function enqueueClusterBuild(
   )
 }
 
+export async function ensureClusterBuild(
+  sessionId: string,
+  payload: {
+    source?: string
+    batch_size?: number
+    dossier_build_strategy?: DossierBuildStrategy
+  } = {}
+): Promise<EnsureClusterBuildResponse> {
+  return requestJson<EnsureClusterBuildResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/clustering/ensure-build`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source: "user_view_results",
+        ...payload,
+      }),
+    }
+  )
+}
+
 export async function moveDocumentBetweenClusters(
   sessionId: string,
   payload: {
@@ -1387,7 +1453,7 @@ export function digitizationToFolderStatus(
   fallbackFolderPath: string
 ): FolderStatusResponse {
   const batch = response?.batches[0]
-  const documents = response?.documents ?? []
+  const documents = latestBatchDocuments(response)
   const jobs: JobSummary[] = documents.map((document) => {
     const lightMetadata = buildDisplayMetadata(document)
     return {
@@ -1405,9 +1471,11 @@ export function digitizationToFolderStatus(
       light_metadata: lightMetadata,
       normalized_metadata: document.normalized_metadata,
       raw_metadata: document.raw_metadata,
+      pdf_preprocessing: document.pdf_preprocessing,
     }
   })
   return {
+    batch_id: batch?.id ?? null,
     folder_path: batch?.folder_path ?? fallbackFolderPath,
     recursive: batch?.recursive ?? true,
     total_files: batch?.total_files ?? documents.length,
@@ -1415,21 +1483,18 @@ export function digitizationToFolderStatus(
     missing_files: batch?.missing_files ?? [],
     status_counts:
       batch?.status_counts ?? response?.summary.status_counts ?? {},
-    signature_extracted_documents:
-      response?.summary.signature_extracted_documents ??
-      documents.filter(
-        (document) => documentSignatureStatus(document) === "done"
-      ).length,
-    signature_pending_documents:
-      response?.summary.signature_pending_documents ??
-      documents.filter(
-        (document) => documentSignatureStatus(document) === "signature_pending"
-      ).length,
-    signature_failed_documents:
-      response?.summary.signature_failed_documents ??
-      documents.filter(
-        (document) => documentSignatureStatus(document) === "signature_failed"
-      ).length,
+    document_numbering_mode: batch?.document_numbering_mode ?? null,
+    reextracting: false,
+    pdf_preprocessing: batch?.pdf_preprocessing ?? null,
+    signature_extracted_documents: documents.filter(
+      (document) => documentSignatureStatus(document) === "done"
+    ).length,
+    signature_pending_documents: documents.filter(
+      (document) => documentSignatureStatus(document) === "signature_pending"
+    ).length,
+    signature_failed_documents: documents.filter(
+      (document) => documentSignatureStatus(document) === "signature_failed"
+    ).length,
     jobs,
   }
 }
@@ -1469,17 +1534,25 @@ export function isDigitizationComplete(
   ) {
     return false
   }
-  const documents = response?.documents ?? []
+  const documents = latestBatchDocuments(response)
   const expectedDocuments = Math.max(
     batch.total_jobs ?? 0,
     batch.total_files ?? 0,
-    response?.summary.total_documents ?? 0,
     documents.length
   )
   if (expectedDocuments > 0 && documents.length < expectedDocuments) {
     return false
   }
   return documents.every(isDigitizationDocumentComplete)
+}
+
+function latestBatchDocuments(
+  response: DigitizationStatusResponse | null
+): DigitizationDocument[] {
+  const documents = response?.documents ?? []
+  const latestBatchId = response?.batches[0]?.id
+  if (latestBatchId === undefined || latestBatchId === null) return documents
+  return documents.filter((document) => document.ocr_batch_id === latestBatchId)
 }
 
 function isDigitizationDocumentComplete(

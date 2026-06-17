@@ -11,6 +11,7 @@ import {
   normalizeDocumentReviewStatus,
   restartDocumentMetadata,
   startDigitization,
+  type DocumentNumberingMode,
   type SessionDocumentResponse,
 } from "@/features/upload/api/sessionApi"
 import { buildDisplayMetadata } from "@/features/upload/lib/metadata"
@@ -19,12 +20,28 @@ export type OcrFolderState = "idle" | "starting" | "polling" | "done" | "error"
 
 const OCR_POLL_INTERVAL_MS = 2_000
 const OCR_POLL_RETRY_INTERVAL_MS = 5_000
+const DEFAULT_DOCUMENT_NUMBERING_MODE: DocumentNumberingMode = "page"
+
+interface PendingStartContext {
+  previousBatchId: number | null
+  expectedMode: DocumentNumberingMode
+}
 
 export interface UseOcrFolderResult {
   state: OcrFolderState
   status: FolderStatusResponse | null
   error: string
-  start: (folderPath: string, options: { maxFiles?: number; confirmedPlanVersionId: string }) => Promise<void>
+  start: (
+    folderPath: string,
+    options: {
+      maxFiles?: number
+      confirmedPlanVersionId: string
+      documentNumberingMode?: DocumentNumberingMode
+      force?: boolean
+      reextract?: boolean
+      previousStatus?: FolderStatusResponse | null
+    }
+  ) => Promise<void>
   refresh: () => Promise<FolderStatusResponse | null>
   restartMetadata: (documentId: number) => Promise<SessionDocumentResponse>
   mergeVerifiedDocuments: (documents: SessionDocumentResponse[]) => void
@@ -38,6 +55,7 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const tokenRef = useRef(0)
   const rejectRef = useRef<((error: Error) => void) | null>(null)
+  const pendingStartRef = useRef<PendingStartContext | null>(null)
 
   const stop = useCallback(() => {
     if (timeoutRef.current) {
@@ -96,6 +114,7 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
     tokenRef.current += 1
     rejectRef.current?.(new Error("Đã hủy quá trình chờ kết quả OCR."))
     rejectRef.current = null
+    pendingStartRef.current = null
     setState("idle")
     setStatus(null)
     setError("")
@@ -103,6 +122,7 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
 
   const refresh = useCallback(async () => {
     if (!sessionId) {
+      pendingStartRef.current = null
       setState("idle")
       setStatus(null)
       setError("")
@@ -115,6 +135,7 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
       result && (result.batches.length > 0 || result.documents.length > 0)
     )
     if (!hasExistingWork) {
+      pendingStartRef.current = null
       setState("idle")
       setStatus(null)
       setError("")
@@ -203,6 +224,7 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
     const token = tokenRef.current
 
     if (!sessionId) {
+      pendingStartRef.current = null
       setState("idle")
       setStatus(null)
       setError("")
@@ -220,6 +242,7 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
           result && (result.batches.length > 0 || result.documents.length > 0)
         )
         if (!hasExistingWork) {
+          pendingStartRef.current = null
           setState("idle")
           setStatus(null)
           setError("")
@@ -261,7 +284,14 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
   const start = useCallback(
     async (
       folderPath: string,
-      options: { maxFiles?: number; confirmedPlanVersionId: string }
+      options: {
+        maxFiles?: number
+        confirmedPlanVersionId: string
+        documentNumberingMode?: DocumentNumberingMode
+        force?: boolean
+        reextract?: boolean
+        previousStatus?: FolderStatusResponse | null
+      }
     ) => {
       if (!sessionId) {
         throw new Error("Chưa có session để bắt đầu OCR.")
@@ -276,27 +306,57 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
       rejectRef.current = null
       const token = tokenRef.current + 1
       tokenRef.current = token
+      const previousStatus = options.previousStatus ?? status
+      const expectedMode =
+        options.documentNumberingMode ?? DEFAULT_DOCUMENT_NUMBERING_MODE
+      const shouldShowReextractingState =
+        options.reextract === true &&
+        previousStatus !== null &&
+        (previousStatus?.jobs.length ?? 0) > 0
+      pendingStartRef.current =
+        shouldShowReextractingState && previousStatus
+          ? {
+              previousBatchId: previousStatus.batch_id ?? null,
+              expectedMode,
+            }
+          : null
       setState("starting")
-      setStatus(null)
+      setStatus(
+        shouldShowReextractingState && previousStatus
+          ? buildReextractingStatus(previousStatus, folderPath, expectedMode)
+          : null
+      )
       setError("")
 
-      await startDigitization(sessionId, {
-        folder_path: folderPath,
-        recursive: true,
-        force: false,
-        max_files: options.maxFiles,
-        confirmed_plan_version_id: options.confirmedPlanVersionId,
-      })
+      try {
+        await startDigitization(sessionId, {
+          folder_path: folderPath,
+          recursive: true,
+          force: options.force ?? false,
+          max_files: options.maxFiles,
+          confirmed_plan_version_id: options.confirmedPlanVersionId,
+          document_numbering_mode: options.documentNumberingMode,
+        })
+      } catch (err) {
+        pendingStartRef.current = null
+        setState("error")
+        setError(
+          err instanceof Error ? err.message : "KhÃ´ng thá»ƒ báº¯t Ä‘áº§u OCR."
+        )
+        throw err
+      }
       setState("polling")
 
       await new Promise<void>((resolve, reject) => {
         rejectRef.current = reject
         const resolvePolling = () => {
           rejectRef.current = null
+          pendingStartRef.current = null
           resolve()
         }
         const rejectPolling = (error: Error) => {
           rejectRef.current = null
+          pendingStartRef.current = null
           reject(error)
         }
         const poll = async () => {
@@ -308,7 +368,20 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
           }
           try {
             const result = await getDigitizationStatus(sessionId)
-            setStatus(digitizationToFolderStatus(result, folderPath))
+            const pendingStart = pendingStartRef.current
+            if (pendingStart && !hasExpectedStartedBatch(result, pendingStart)) {
+              setError("")
+              setState("polling")
+              timeoutRef.current = setTimeout(poll, OCR_POLL_INTERVAL_MS)
+              return
+            }
+            pendingStartRef.current = null
+            const nextStatus = digitizationToFolderStatus(result, folderPath)
+            setStatus((current) =>
+              current?.reextracting && !isDigitizationComplete(result)
+                ? mergeReextractingStatus(current, nextStatus)
+                : nextStatus
+            )
             setError("")
             if (isDigitizationComplete(result)) {
               stop()
@@ -332,7 +405,7 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
         void poll()
       })
     },
-    [schedulePollRetry, sessionId, stop]
+    [schedulePollRetry, sessionId, status, stop]
   )
 
   return {
@@ -367,4 +440,106 @@ function sessionDocumentToJobSummary(
     normalized_metadata: document.normalized_metadata,
     raw_metadata: document.raw_metadata,
   }
+}
+
+function buildReextractingStatus(
+  previousStatus: FolderStatusResponse,
+  folderPath: string,
+  expectedMode: DocumentNumberingMode
+): FolderStatusResponse {
+  const jobs = previousStatus.jobs.map((job) => ({
+    ...job,
+    status: "processing",
+    remote_metadata_status: "processing",
+    review_status: "pending",
+    metadata_ready: false,
+    metadata_final: false,
+    metadata_user_edited: false,
+    error: null,
+    light_metadata: {},
+    normalized_metadata: {},
+    raw_metadata: {},
+    pdf_preprocessing: null,
+  }))
+  const totalJobs = Math.max(previousStatus.total_jobs, previousStatus.jobs.length)
+  const totalFiles = Math.max(previousStatus.total_files, jobs.length)
+  return {
+    ...previousStatus,
+    folder_path: folderPath || previousStatus.folder_path,
+    total_files: totalFiles,
+    total_jobs: totalJobs,
+    status_counts: { processing: jobs.length || totalJobs || totalFiles },
+    document_numbering_mode: expectedMode,
+    reextracting: true,
+    pdf_preprocessing: null,
+    signature_extracted_documents: 0,
+    signature_pending_documents: 0,
+    signature_failed_documents: 0,
+    jobs,
+  }
+}
+
+function mergeReextractingStatus(
+  currentStatus: FolderStatusResponse,
+  nextStatus: FolderStatusResponse
+): FolderStatusResponse {
+  const jobsByPath = new Map(nextStatus.jobs.map((job) => [job.data_path, job]))
+  const jobs = currentStatus.jobs.map(
+    (job) => jobsByPath.get(job.data_path) ?? job
+  )
+  nextStatus.jobs.forEach((job) => {
+    if (!jobs.some((currentJob) => currentJob.data_path === job.data_path)) {
+      jobs.push(job)
+    }
+  })
+  const totalJobs = Math.max(currentStatus.total_jobs, nextStatus.total_jobs, jobs.length)
+  const totalFiles = Math.max(
+    currentStatus.total_files,
+    nextStatus.total_files,
+    jobs.length
+  )
+  return {
+    ...currentStatus,
+    ...nextStatus,
+    total_files: totalFiles,
+    total_jobs: totalJobs,
+    status_counts: countJobStatuses(jobs),
+    reextracting: true,
+    jobs,
+  }
+}
+
+function hasExpectedStartedBatch(
+  result: {
+    batches: Array<{ id: number; document_numbering_mode?: string | null }>
+  } | null,
+  pendingStart: PendingStartContext
+): boolean {
+  const latestBatch = result?.batches[0]
+  if (!latestBatch) return false
+  if (
+    pendingStart.previousBatchId !== null &&
+    latestBatch.id === pendingStart.previousBatchId
+  ) {
+    return false
+  }
+  const latestMode = normalizeDocumentNumberingMode(
+    latestBatch.document_numbering_mode
+  )
+  return latestMode === pendingStart.expectedMode
+}
+
+function normalizeDocumentNumberingMode(
+  value: string | null | undefined
+): DocumentNumberingMode | null {
+  return value === "page" || value === "sheet" ? value : null
+}
+
+function countJobStatuses(jobs: JobSummary[]): Record<string, number> {
+  const counts: Record<string, number> = {}
+  jobs.forEach((job) => {
+    const status = String(job.status || "unknown").trim() || "unknown"
+    counts[status] = (counts[status] ?? 0) + 1
+  })
+  return counts
 }

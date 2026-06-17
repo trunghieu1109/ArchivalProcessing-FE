@@ -98,6 +98,7 @@ export interface PdfMetadata {
   light_metadata: Record<string, unknown>
   normalized_metadata?: Record<string, unknown>
   raw_metadata?: Record<string, unknown>
+  pdf_preprocessing?: Record<string, unknown> | null
   error?: string | null
   applied: boolean
 }

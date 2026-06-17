@@ -65,6 +65,7 @@ interface ProcessStepProps {
   pdfPaths: string[]
   metadataItems?: PdfMetadata[]
   metadataLoading?: boolean
+  metadataReloading?: boolean
   metadataMessage?: string
   signatureStatus?: {
     extracted: number
@@ -81,6 +82,7 @@ export function ProcessStep({
   pdfPaths,
   metadataItems = [],
   metadataLoading = false,
+  metadataReloading = false,
   metadataMessage = "Đang chờ kết quả số hóa từ backend...",
   signatureStatus = { extracted: 0, pending: 0, failed: 0 },
   onDocumentsVerified,
@@ -465,7 +467,11 @@ export function ProcessStep({
             </p>
             <p className="mt-1 text-sm text-[#0F172A]">
               {metadataLoading
-                ? `Đang trích xuất metadata: đã extract ${readyItems.length}/${expectedCount || "..."} tài liệu.`
+                ? `${
+                    metadataReloading
+                      ? "Đang trích xuất lại metadata"
+                      : "Đang trích xuất metadata"
+                  }: đã extract ${readyItems.length}/${expectedCount || "..."} tài liệu.`
                 : readyItems.length > 0
                   ? `Có ${readyItems.length} tài liệu sẵn sàng, ${verifiedItems.length} đã xác nhận.`
                   : metadataMessage}
@@ -530,7 +536,8 @@ export function ProcessStep({
               {metadataLoading && (
                 <span className="flex items-center gap-1.5 text-xs text-[#64748B]">
                   <Loader2 className="size-3 animate-spin text-[#0052FF]" />
-                  Đã extract {readyItems.length}/{expectedCount || "..."}
+                  {metadataReloading ? "Đang extract lại" : "Đã extract"}{" "}
+                  {readyItems.length}/{expectedCount || "..."}
                 </span>
               )}
               {bulkVerifyItems.length > 0 && (

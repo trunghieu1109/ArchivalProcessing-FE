@@ -23,6 +23,7 @@ export interface JobSummary {
   light_metadata?: Record<string, unknown>
   normalized_metadata?: Record<string, unknown>
   raw_metadata?: Record<string, unknown>
+  pdf_preprocessing?: Record<string, unknown> | null
 }
 
 export interface FolderPreviewResponse {
@@ -34,12 +35,16 @@ export interface FolderPreviewResponse {
 }
 
 export interface FolderStatusResponse {
+  batch_id?: number | null
   folder_path: string
   recursive: boolean
   total_files: number
   total_jobs: number
   missing_files: string[]
   status_counts: Record<string, number>
+  document_numbering_mode?: string | null
+  reextracting?: boolean
+  pdf_preprocessing?: Record<string, unknown> | null
   signature_extracted_documents: number
   signature_pending_documents: number
   signature_failed_documents: number

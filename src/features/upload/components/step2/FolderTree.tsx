@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronRight,
   Edit2,
+  Files,
   FileText,
   Folder,
   FolderKanban,
@@ -19,6 +20,7 @@ import { toast } from "sonner"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/shared/lib/utils"
 import type { DossierBuildStrategy } from "@/features/upload/api/sessionApi"
+import type { DocumentNumberingMode } from "@/features/upload/api/sessionApi"
 import type {
   FolderNode,
   FileRegisterConfig,
@@ -574,6 +576,10 @@ interface FolderTreeProps {
   readOnly?: boolean
   dossierBuildStrategy: DossierBuildStrategy
   onDossierBuildStrategyChange: (strategy: DossierBuildStrategy) => void
+  documentNumberingMode: DocumentNumberingMode
+  onDocumentNumberingModeChange: (
+    mode: DocumentNumberingMode
+  ) => void | Promise<void>
   onFileRegisterConfigChange: (
     config: FileRegisterConfig
   ) => void | Promise<void>
@@ -590,6 +596,8 @@ export function FolderTree({
   readOnly = false,
   dossierBuildStrategy,
   onDossierBuildStrategyChange,
+  documentNumberingMode,
+  onDocumentNumberingModeChange,
   onFileRegisterConfigChange,
   onChange,
   onSaveTree,
@@ -922,6 +930,101 @@ export function FolderTree({
             )}
           </div>
         )}
+      </section>
+
+      <section
+        className="rounded-2xl border border-[#D8E1EC] bg-white px-5 py-5 shadow-sm"
+        aria-labelledby="document-numbering-mode-title"
+      >
+        <div>
+          <p
+            id="document-numbering-mode-title"
+            className="text-sm font-semibold text-[#0F172A]"
+          >
+            Cách xử lý trang PDF
+          </p>
+          <p className="mt-1 text-sm text-[#64748B]">
+            Lựa chọn này quyết định bản PDF được dùng cho OCR và trích xuất
+            metadata.
+          </p>
+        </div>
+        <div
+          className="mt-4 grid gap-3 md:grid-cols-2"
+          role="radiogroup"
+          aria-label="Cách xử lý trang PDF"
+        >
+          <button
+            type="button"
+            role="radio"
+            aria-checked={documentNumberingMode === "page"}
+            disabled={readOnly}
+            onClick={() => void onDocumentNumberingModeChange("page")}
+            className={cn(
+              "flex min-h-28 items-start gap-4 rounded-2xl border p-4 text-left transition-all focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60",
+              documentNumberingMode === "page"
+                ? "border-[#0052FF] bg-[#EEF4FF] shadow-[0_8px_24px_rgba(0,82,255,0.10)]"
+                : "border-[#D8E1EC] bg-white hover:border-[#0052FF]/40 hover:bg-[#F8FAFC]"
+            )}
+          >
+            <span
+              className={cn(
+                "flex size-11 shrink-0 items-center justify-center rounded-xl",
+                documentNumberingMode === "page"
+                  ? "bg-[#0052FF] text-white"
+                  : "bg-[#EEF2F7] text-[#475569]"
+              )}
+            >
+              <FileText className="size-5" />
+            </span>
+            <span className="min-w-0">
+              <span className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold text-[#0F172A]">
+                  Đánh số theo trang
+                </span>
+                <span className="rounded-full bg-[#DBEAFE] px-2 py-0.5 text-[10px] font-bold tracking-wide text-[#1D4ED8] uppercase">
+                  Mặc định
+                </span>
+              </span>
+              <span className="mt-1.5 block text-sm leading-6 text-[#64748B]">
+                OCR và metadata chạy trên PDF gốc sau khi extract từ ZIP.
+              </span>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            role="radio"
+            aria-checked={documentNumberingMode === "sheet"}
+            disabled={readOnly}
+            onClick={() => void onDocumentNumberingModeChange("sheet")}
+            className={cn(
+              "flex min-h-28 items-start gap-4 rounded-2xl border p-4 text-left transition-all focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60",
+              documentNumberingMode === "sheet"
+                ? "border-[#0052FF] bg-[#EEF4FF] shadow-[0_8px_24px_rgba(0,82,255,0.10)]"
+                : "border-[#D8E1EC] bg-white hover:border-[#0052FF]/40 hover:bg-[#F8FAFC]"
+            )}
+          >
+            <span
+              className={cn(
+                "flex size-11 shrink-0 items-center justify-center rounded-xl",
+                documentNumberingMode === "sheet"
+                  ? "bg-[#0052FF] text-white"
+                  : "bg-[#EEF2F7] text-[#475569]"
+              )}
+            >
+              <Files className="size-5" />
+            </span>
+            <span className="min-w-0">
+              <span className="font-semibold text-[#0F172A]">
+                Đánh số theo số tờ
+              </span>
+              <span className="mt-1.5 block text-sm leading-6 text-[#64748B]">
+                Hệ thống scan trang trắng, tạo bản PDF đã bỏ trang trắng rồi
+                dùng bản đó cho OCR và metadata.
+              </span>
+            </span>
+          </button>
+        </div>
       </section>
 
       <div className="mt-1 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

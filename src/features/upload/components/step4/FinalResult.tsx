@@ -44,7 +44,7 @@ import {
 import {
   activateClusterVersion,
   artifactDownloadUrl,
-  enqueueClusterBuild,
+  ensureClusterBuild,
   exportMetadataSnapshot,
   getActiveClusters,
   getClusterBuildStatus,
@@ -1181,7 +1181,7 @@ export function FinalResult({
       setActiveClusterVersionId(
         currentVersion?.id ?? activeClusterVersionId ?? null
       )
-      const response = await enqueueClusterBuild(sessionId, {
+      const response = await ensureClusterBuild(sessionId, {
         source: forceFileRegister ? "user_file_register" : "user_feedback",
         ...(forceFileRegister
           ? { dossier_build_strategy: "file_register" as const }

@@ -27,6 +27,7 @@ import { useOcrFolder } from "@/features/upload/hooks/useOcrFolder"
 import { buildDisplayMetadata } from "@/features/upload/lib/metadata"
 import {
   createSession,
+  ensureClusterBuild,
   enqueueClusterBuild,
   enqueuePlanAnalysis,
   getActivePlan,
@@ -42,6 +43,7 @@ import {
   type ActivePlanResponse,
   type ClusterVersionResponse,
   type DossierBuildStrategy,
+  type DocumentNumberingMode,
   type SessionInputFileType,
   type SessionInputUploadResponse,
   type UploadProgressSnapshot,
@@ -64,6 +66,7 @@ import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
 
 const easeOut = [0.16, 1, 0.3, 1] as const
 const DEFAULT_DOSSIER_BUILD_STRATEGY: DossierBuildStrategy = "incremental"
+const DEFAULT_DOCUMENT_NUMBERING_MODE: DocumentNumberingMode = "page"
 const DEFAULT_FILE_REGISTER_CONFIG: FileRegisterConfig = {
   analysis_status: "not_detected",
   summary: "",
@@ -575,6 +578,15 @@ function activePlanBuildStrategy(
   )
 }
 
+function activePlanDocumentNumberingMode(
+  plan: ActivePlanResponse
+): DocumentNumberingMode {
+  return (
+    documentNumberingModeValue(plan.document_numbering_mode) ??
+    DEFAULT_DOCUMENT_NUMBERING_MODE
+  )
+}
+
 function activeClusterBuildStrategy(
   clusterVersion: ClusterVersionResponse | null
 ): DossierBuildStrategy | null {
@@ -596,6 +608,12 @@ function dossierBuildStrategyValue(
   value: unknown
 ): DossierBuildStrategy | null {
   return value === "incremental" || value === "file_register" ? value : null
+}
+
+function documentNumberingModeValue(
+  value: unknown
+): DocumentNumberingMode | null {
+  return value === "page" || value === "sheet" ? value : null
 }
 
 function normalizeLeafGroupCandidates(
@@ -747,6 +765,11 @@ let _planAnalysisState: ProcessState = "idle"
 let _dossierBuildStrategy: DossierBuildStrategy = DEFAULT_DOSSIER_BUILD_STRATEGY
 let _persistedDossierBuildStrategy: DossierBuildStrategy =
   DEFAULT_DOSSIER_BUILD_STRATEGY
+let _documentNumberingMode: DocumentNumberingMode =
+  DEFAULT_DOCUMENT_NUMBERING_MODE
+let _persistedDocumentNumberingMode: DocumentNumberingMode =
+  DEFAULT_DOCUMENT_NUMBERING_MODE
+let _documentNumberingModeSavePromise: Promise<ActivePlanResponse> | null = null
 let _sessionId: string | null = null
 let _sessionMetadata: SessionMetadataValues = {
   archive_name: null,
@@ -785,6 +808,37 @@ export function UploadPage() {
     else navigate(`/sessions/new/step/${s}`)
   }
 
+  const handleContinueToResults = async (groups: ClusterGroup[]) => {
+    _clusterGroups = groups
+    setClusterGroups(groups)
+    const currentSessionId = sessionId ?? routeSessionId ?? _sessionId
+    if (!currentSessionId) {
+      toast.error("Chưa có session để lập hồ sơ.")
+      return
+    }
+
+    try {
+      const response = await ensureClusterBuild(currentSessionId, {
+        source: "user_view_results",
+        dossier_build_strategy: dossierBuildStrategy,
+      })
+      if (response.status === "queued") {
+        toast.success("Đã gửi task lập hồ sơ từ tài liệu đã xác nhận.")
+      } else if (response.status === "already_queued_or_running") {
+        toast.info("Task lập hồ sơ đang được xử lý.")
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? `Không gửi được task lập hồ sơ: ${err.message}`
+          : "Không gửi được task lập hồ sơ."
+      )
+      return
+    }
+
+    goTo(4, currentSessionId)
+  }
+
   const handleFinalizeAutoStartHandled = useCallback(() => {
     const nextParams = new URLSearchParams(searchParams)
     nextParams.delete("start")
@@ -802,6 +856,8 @@ export function UploadPage() {
     useState<ProcessState>(_planAnalysisState)
   const [dossierBuildStrategy, setDossierBuildStrategy] =
     useState<DossierBuildStrategy>(_dossierBuildStrategy)
+  const [documentNumberingMode, setDocumentNumberingMode] =
+    useState<DocumentNumberingMode>(_documentNumberingMode)
 
   const [doc1Has, setDoc1Has] = useState(_doc1Has)
   const [doc2Has, setDoc2Has] = useState(_doc2Has)
@@ -839,6 +895,7 @@ export function UploadPage() {
     setZipState(_zipState)
     setPlanAnalysisState(_planAnalysisState)
     setDossierBuildStrategy(_dossierBuildStrategy)
+    setDocumentNumberingMode(_documentNumberingMode)
     setDoc1Has(_doc1Has)
     setDoc2Has(_doc2Has)
     setZipHas(_zipHas)
@@ -876,6 +933,9 @@ export function UploadPage() {
     _planAnalysisState = "idle"
     _dossierBuildStrategy = DEFAULT_DOSSIER_BUILD_STRATEGY
     _persistedDossierBuildStrategy = DEFAULT_DOSSIER_BUILD_STRATEGY
+    _documentNumberingMode = DEFAULT_DOCUMENT_NUMBERING_MODE
+    _persistedDocumentNumberingMode = DEFAULT_DOCUMENT_NUMBERING_MODE
+    _documentNumberingModeSavePromise = null
     _sessionId = nextSessionId
     _sessionMetadata = {
       archive_name: null,
@@ -926,6 +986,7 @@ export function UploadPage() {
           light_metadata: lightMetadata,
           normalized_metadata: job.normalized_metadata,
           raw_metadata: job.raw_metadata,
+          pdf_preprocessing: job.pdf_preprocessing,
           applied: reviewStatus === "verified",
         }
       }) ?? [],
@@ -943,9 +1004,12 @@ export function UploadPage() {
     }),
     [ocr.status]
   )
+  const ocrIsReextracting = ocr.status?.reextracting === true
   const ocrMessage =
     ocr.state === "error"
       ? ocr.error || "Không thể lấy kết quả số hóa."
+      : ocrIsReextracting
+        ? "Đang trích xuất lại metadata theo cách đánh số mới."
       : ocr.state === "done"
         ? ocrMetadataItems.length > 0
           ? `Đã nhận ${ocrMetadataItems.length} tài liệu từ backend.`
@@ -1065,16 +1129,20 @@ export function UploadPage() {
         if (activePlan) {
           const plan = activePlanToParsedPlan(activePlan)
           const buildStrategy = activePlanBuildStrategy(activePlan)
+          const numberingMode = activePlanDocumentNumberingMode(activePlan)
           _activePlanVersionId = activePlan.id ?? ""
           _parsedPlan = plan
           _folderTree = planToTree(plan)
           _planAnalysisState = "done"
           _dossierBuildStrategy = buildStrategy
           _persistedDossierBuildStrategy = buildStrategy
+          _documentNumberingMode = numberingMode
+          _persistedDocumentNumberingMode = numberingMode
           setParsedPlan(plan)
           setFolderTree(_folderTree)
           setPlanAnalysisState("done")
           setDossierBuildStrategy(buildStrategy)
+          setDocumentNumberingMode(numberingMode)
         }
         window.localStorage.setItem(LAST_SESSION_KEY, routeSessionId)
       } catch (err) {
@@ -1228,6 +1296,46 @@ export function UploadPage() {
   const selectDossierBuildStrategy = (strategy: DossierBuildStrategy) => {
     _dossierBuildStrategy = strategy
     setDossierBuildStrategy(strategy)
+  }
+  const applyPersistedDocumentNumberingMode = (
+    mode: DocumentNumberingMode
+  ) => {
+    _documentNumberingMode = mode
+    _persistedDocumentNumberingMode = mode
+    setDocumentNumberingMode(mode)
+  }
+  const applyActivePlanResponse = (planResponse: ActivePlanResponse) => {
+    _activePlanVersionId = planResponse.id ?? ""
+    applyPersistedDossierBuildStrategy(activePlanBuildStrategy(planResponse))
+    applyPersistedDocumentNumberingMode(
+      activePlanDocumentNumberingMode(planResponse)
+    )
+  }
+  const selectDocumentNumberingMode = async (
+    mode: DocumentNumberingMode
+  ) => {
+    _documentNumberingMode = mode
+    setDocumentNumberingMode(mode)
+    if (!_sessionId || mode === _persistedDocumentNumberingMode) return
+    const savePromise = patchActivePlan(_sessionId, {
+      document_numbering_mode: mode,
+    })
+    _documentNumberingModeSavePromise = savePromise
+    try {
+      const planResponse = await savePromise
+      applyActivePlanResponse(planResponse)
+      toast.success("Đã lưu cách xử lý trang PDF.")
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? `Không lưu được cách xử lý trang PDF: ${err.message}`
+          : "Không lưu được cách xử lý trang PDF."
+      )
+    } finally {
+      if (_documentNumberingModeSavePromise === savePromise) {
+        _documentNumberingModeSavePromise = null
+      }
+    }
   }
   const syncDoc1Has = (v: boolean) => {
     _doc1Has = v
@@ -1478,6 +1586,9 @@ export function UploadPage() {
       const plan = activePlanToParsedPlan(planResponse)
       _activePlanVersionId = planResponse.id ?? ""
       applyPersistedDossierBuildStrategy(activePlanBuildStrategy(planResponse))
+      applyPersistedDocumentNumberingMode(
+        activePlanDocumentNumberingMode(planResponse)
+      )
       _parsedPlan = plan
       _folderTree = planToTree(plan)
       setParsedPlan(plan)
@@ -1623,6 +1734,9 @@ export function UploadPage() {
       const plan = activePlanToParsedPlan(planResponse)
       _activePlanVersionId = planResponse.id ?? ""
       applyPersistedDossierBuildStrategy(activePlanBuildStrategy(planResponse))
+      applyPersistedDocumentNumberingMode(
+        activePlanDocumentNumberingMode(planResponse)
+      )
       _parsedPlan = plan
       _folderTree = planToTree(plan)
       setParsedPlan(plan)
@@ -1684,19 +1798,33 @@ export function UploadPage() {
     setConfirmingPlan(true)
     let folderPath = ""
     let maxFilesToProcess: number | undefined
+    let forceDigitization = false
+    let existingStatus = ocr.status
     try {
+      if (_documentNumberingModeSavePromise) {
+        const planResponse = await _documentNumberingModeSavePromise
+        applyActivePlanResponse(planResponse)
+        confirmedPlanVersionId = _activePlanVersionId.trim()
+      }
       const selectedStrategy = dossierBuildStrategy
+      const selectedNumberingMode = documentNumberingMode
       const strategyChangedBeforeSave =
         selectedStrategy !== _persistedDossierBuildStrategy
-      if (strategyChangedBeforeSave) {
+      const numberingModeChangedBeforeSave =
+        selectedNumberingMode !== _persistedDocumentNumberingMode
+      if (strategyChangedBeforeSave || numberingModeChangedBeforeSave) {
         const planResponse = await patchActivePlan(_sessionId, {
           dossier_build_strategy: selectedStrategy,
+          document_numbering_mode: selectedNumberingMode,
         })
         const plan = activePlanToParsedPlan(planResponse)
         confirmedPlanVersionId = planResponse.id ?? ""
         _activePlanVersionId = confirmedPlanVersionId
         applyPersistedDossierBuildStrategy(
           activePlanBuildStrategy(planResponse)
+        )
+        applyPersistedDocumentNumberingMode(
+          activePlanDocumentNumberingMode(planResponse)
         )
         _parsedPlan = plan
         _folderTree = planToTree(plan)
@@ -1774,17 +1902,25 @@ export function UploadPage() {
         return
       }
 
-      const existingStatus = ocr.status ?? (await ocr.refresh())
+      existingStatus = ocr.status ?? (await ocr.refresh())
       if ((existingStatus?.jobs.length ?? 0) > 0) {
-        const hasReadyMetadata = existingStatus?.jobs.some(
-          (job) => job.metadata_ready
+        const existingMode = documentNumberingModeValue(
+          existingStatus?.document_numbering_mode
         )
-        syncZipState(hasReadyMetadata ? "done" : "processing")
-        toast.info(
-          "Session đã có dữ liệu metadata. Không gọi lại bước lấy metadata."
-        )
-        goTo(3)
-        return
+        if (existingMode && existingMode !== documentNumberingMode) {
+          forceDigitization = true
+          toast.info("Cách xử lý PDF đã thay đổi. Hệ thống sẽ lấy lại metadata.")
+        } else {
+          const hasReadyMetadata = existingStatus?.jobs.some(
+            (job) => job.metadata_ready
+          )
+          syncZipState(hasReadyMetadata ? "done" : "processing")
+          toast.info(
+            "Session đã có dữ liệu metadata. Không gọi lại bước lấy metadata."
+          )
+          goTo(3)
+          return
+        }
       }
     } catch (err) {
       toast.error(
@@ -1803,6 +1939,10 @@ export function UploadPage() {
       .start(folderPath, {
         maxFiles: maxFilesToProcess,
         confirmedPlanVersionId,
+        documentNumberingMode,
+        force: forceDigitization,
+        reextract: forceDigitization,
+        previousStatus: existingStatus ?? null,
       })
       .then(() => {
         syncZipState("done")
@@ -2240,6 +2380,8 @@ export function UploadPage() {
                 readOnly={false}
                 dossierBuildStrategy={dossierBuildStrategy}
                 onDossierBuildStrategyChange={selectDossierBuildStrategy}
+                documentNumberingMode={documentNumberingMode}
+                onDocumentNumberingModeChange={selectDocumentNumberingMode}
                 onFileRegisterConfigChange={saveFileRegisterConfig}
                 onChange={syncFolderTree}
                 onSaveTree={saveFolderTree}
@@ -2264,15 +2406,12 @@ export function UploadPage() {
                 pdfPaths={ocrPdfPaths}
                 metadataItems={ocrMetadataItems}
                 metadataLoading={ocrLoading}
+                metadataReloading={ocrIsReextracting}
                 metadataMessage={ocrMessage}
                 signatureStatus={ocrSignatureStatus}
                 onDocumentsVerified={ocr.mergeVerifiedDocuments}
                 onRetryMetadata={ocr.restartMetadata}
-                onContinue={(groups) => {
-                  _clusterGroups = groups
-                  setClusterGroups(groups)
-                  goTo(4)
-                }}
+                onContinue={handleContinueToResults}
               />
             </motion.div>
           )}
