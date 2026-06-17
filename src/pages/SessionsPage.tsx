@@ -18,6 +18,7 @@ import {
 import { motion } from "framer-motion"
 import { toast } from "sonner"
 import { cn } from "@/shared/lib/utils"
+import { UserMenu } from "@/features/auth/components/UserMenu"
 import {
   deleteSession,
   listSessions,
@@ -114,9 +115,12 @@ export function SessionsPage() {
               </p>
             </div>
           </div>
-          <div className="hidden items-center gap-3 md:flex">
-            <SummaryPill label="Tổng session" value={sessions.length} />
-            <SummaryPill label="Đã có phương án" value={readyCount} />
+          <div className="flex items-center gap-3 md:flex">
+            <div className="hidden items-center gap-3 lg:flex">
+              <SummaryPill label="Tổng session" value={sessions.length} />
+              <SummaryPill label="Đã có phương án" value={readyCount} />
+            </div>
+            <UserMenu />
           </div>
         </div>
       </header>

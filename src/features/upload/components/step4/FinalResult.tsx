@@ -260,7 +260,10 @@ export function FinalResult({
   >(() => (initialDossierCount > 0 ? completedClusterPhaseSet() : new Set()))
 
   const verifiedItems = useMemo(
-    () => metadataItems.filter((item) => item.review_status === "verified"),
+    () =>
+      metadataItems.filter(
+        (item) => item.is_reviewed === true || item.review_status === "verified"
+      ),
     [metadataItems]
   )
   const tree = useMemo(() => buildResultTree(groups), [groups])

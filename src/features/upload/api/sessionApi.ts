@@ -6,6 +6,7 @@ import {
   buildDisplayMetadata,
   hasMetadataWarning,
 } from "@/features/upload/lib/metadata"
+import { authHeaderValue } from "@/features/auth/lib/authStorage"
 import type { FileRegisterConfig } from "@/features/upload/types"
 
 export type SessionInputFileType =
@@ -219,9 +220,18 @@ export interface DigitizationDocument {
   document_id: string
   data_path: string
   metadata_batch_id?: string | null
+  metadata_batch_assigned_to_user_id?: string | number | null
+  metadata_batch_assigned_to_email?: string | null
+  metadata_batch_assigned_to_name?: string | null
+  metadata_batch_assigned_at?: string | null
+  metadata_verified_by_user_id?: string | number | null
+  metadata_verified_by_email?: string | null
+  metadata_verified_by_name?: string | null
+  metadata_verified_at?: string | null
   remote_metadata_status?: string | null
   ocr_status: string
   review_status: string
+  is_reviewed?: boolean
   metadata_ready: boolean
   metadata_final: boolean
   metadata_version_count?: number
@@ -256,6 +266,7 @@ export interface DigitizationStatusResponse {
     metadata_ready?: number
     metadata_final?: number
     verified?: number
+    reviewed?: number
     warning?: number
     signature_extracted_documents?: number
     signature_pending_documents?: number
@@ -426,9 +437,18 @@ export interface SessionDocumentResponse {
   data_path: string
   file_name: string
   metadata_batch_id?: string | null
+  metadata_batch_assigned_to_user_id?: string | number | null
+  metadata_batch_assigned_to_email?: string | null
+  metadata_batch_assigned_to_name?: string | null
+  metadata_batch_assigned_at?: string | null
+  metadata_verified_by_user_id?: string | number | null
+  metadata_verified_by_email?: string | null
+  metadata_verified_by_name?: string | null
+  metadata_verified_at?: string | null
   remote_metadata_status?: string | null
   ocr_status: string
   review_status: string
+  is_reviewed?: boolean
   metadata_ready: boolean
   metadata_final: boolean
   metadata_version_count?: number
@@ -445,6 +465,9 @@ export interface CreateMetadataBatchResponse {
   session_id: string
   batch_id: string
   metadata_batch_id?: string
+  assigned_to_user_id?: string | number | null
+  assigned_to_email?: string | null
+  assigned_to_name?: string | null
   updated_count: number
   documents: SessionDocumentResponse[]
 }
@@ -452,8 +475,10 @@ export interface CreateMetadataBatchResponse {
 export interface CloseMetadataBatchResponse {
   session_id: string
   batch_id: string
-  verified_batch_id: string
-  verified_count: number
+  reviewed_batch_id?: string
+  reviewed_count?: number
+  verified_batch_id?: string
+  verified_count?: number
   unassigned_count: number
   updated_count: number
   documents: SessionDocumentResponse[]
@@ -1088,14 +1113,14 @@ async function proxyChunkedPartUpload(
     apiUrl(
       `/sessions/${encodeURIComponent(sessionId)}/inputs/remote-upload/chunked/${encodeURIComponent(uploadId)}/parts/${encodeURIComponent(String(part.part_number))}/proxy?${query.toString()}`
     ),
-    {
+    withAuth({
       method: "POST",
       headers: {
         Accept: "application/json",
         "Content-Type": "application/octet-stream",
       },
       body: blob,
-    }
+    })
   )
   if (!response.ok) {
     throw new Error(await responseErrorMessage(response))
@@ -1292,14 +1317,18 @@ export async function verifyDocumentMetadata(
 
 export async function createMetadataBatch(
   sessionId: string,
-  documentIds: number[]
+  documentIds: number[],
+  assignedToUserId: string | number
 ): Promise<CreateMetadataBatchResponse> {
   return requestJson<CreateMetadataBatchResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/metadata-batches`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ document_ids: documentIds }),
+      body: JSON.stringify({
+        document_ids: documentIds,
+        assigned_to_user_id: assignedToUserId,
+      }),
     }
   )
 }
@@ -1350,11 +1379,11 @@ export async function downloadSessionDocuments(
 ): Promise<DocumentArchiveDownload> {
   const response = await fetch(
     apiUrl(`/sessions/${encodeURIComponent(sessionId)}/documents/download`),
-    {
+    withAuth({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ document_ids: documentIds }),
-    }
+    })
   )
   if (!response.ok) {
     throw new Error(await responseErrorMessage(response))
@@ -1364,6 +1393,24 @@ export async function downloadSessionDocuments(
     fileName:
       downloadFileName(response.headers.get("content-disposition")) ||
       `${sessionId}-documents.zip`,
+  }
+}
+
+export async function downloadSessionMetadataReviewXlsx(
+  sessionId: string
+): Promise<DocumentArchiveDownload> {
+  const response = await fetch(
+    apiUrl(`/sessions/${encodeURIComponent(sessionId)}/documents/metadata-export`),
+    withAuth()
+  )
+  if (!response.ok) {
+    throw new Error(await responseErrorMessage(response))
+  }
+  return {
+    blob: await response.blob(),
+    fileName:
+      downloadFileName(response.headers.get("content-disposition")) ||
+      `${sessionId}-metadata-review.xlsx`,
   }
 }
 
@@ -1573,9 +1620,21 @@ export function digitizationToFolderStatus(
       document_id: document.document_id,
       data_path: document.data_path,
       metadata_batch_id: document.metadata_batch_id,
+      metadata_batch_assigned_to_user_id:
+        document.metadata_batch_assigned_to_user_id,
+      metadata_batch_assigned_to_email:
+        document.metadata_batch_assigned_to_email,
+      metadata_batch_assigned_to_name:
+        document.metadata_batch_assigned_to_name,
+      metadata_batch_assigned_at: document.metadata_batch_assigned_at,
+      metadata_verified_by_user_id: document.metadata_verified_by_user_id,
+      metadata_verified_by_email: document.metadata_verified_by_email,
+      metadata_verified_by_name: document.metadata_verified_by_name,
+      metadata_verified_at: document.metadata_verified_at,
       status: document.ocr_status,
       remote_metadata_status: document.remote_metadata_status,
       review_status: normalizeDocumentReviewStatus(document, lightMetadata),
+      is_reviewed: document.is_reviewed === true,
       metadata_ready: document.metadata_ready,
       metadata_final: document.metadata_final,
       metadata_version_count: document.metadata_version_count,
@@ -1830,7 +1889,7 @@ export function artifactDownloadAllUrl(sessionId: string): string {
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(apiUrl(path), init)
+  const response = await fetch(apiUrl(path), withAuth(init))
   if (!response.ok) {
     throw new Error(await responseErrorMessage(response))
   }
@@ -1934,6 +1993,7 @@ function requestJsonWithUploadProgress<T>(
     const xhr = new XMLHttpRequest()
     let lastProgress: UploadProgressSnapshot | null = null
     xhr.open("POST", apiUrl(path), true)
+    setXhrAuthHeader(xhr)
 
     xhr.upload.onprogress = (event) => {
       const totalBytes = event.lengthComputable ? event.total : 0
@@ -2033,6 +2093,7 @@ function requestJsonWithBinaryUploadProgress<T>(
       file.size
     )
     xhr.open("POST", apiUrl(path), true)
+    setXhrAuthHeader(xhr)
     xhr.setRequestHeader("Accept", "application/json")
     if (contentType) xhr.setRequestHeader("Content-Type", contentType)
 
@@ -2270,7 +2331,7 @@ async function requestJsonOrNull<T>(
   path: string,
   init?: RequestInit
 ): Promise<T | null> {
-  const response = await fetch(apiUrl(path), init)
+  const response = await fetch(apiUrl(path), withAuth(init))
   if (response.status === 404) return null
   if (!response.ok) {
     throw new Error(await responseErrorMessage(response))
@@ -2351,6 +2412,23 @@ function defaultContentType(fileName: string): string {
 
 function apiUrl(path: string): string {
   return API_BASE ? `${API_BASE}${path}` : path
+}
+
+function withAuth(init?: RequestInit): RequestInit {
+  const authorization = authHeaderValue()
+  if (!authorization) return init ?? {}
+  const headers = new Headers(init?.headers)
+  if (!headers.has("Authorization")) {
+    headers.set("Authorization", authorization)
+  }
+  return { ...init, headers }
+}
+
+function setXhrAuthHeader(xhr: XMLHttpRequest): void {
+  const authorization = authHeaderValue()
+  if (authorization) {
+    xhr.setRequestHeader("Authorization", authorization)
+  }
 }
 
 function delay(ms: number): Promise<void> {

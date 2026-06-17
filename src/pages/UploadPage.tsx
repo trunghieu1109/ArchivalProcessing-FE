@@ -12,6 +12,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion"
 import { toast } from "sonner"
 import { cn } from "@/shared/lib/utils"
+import { UserMenu } from "@/features/auth/components/UserMenu"
 import { DocxSection } from "@/features/upload/components/step1/DocxSection"
 import { ZipSection } from "@/features/upload/components/step1/ZipSection"
 import { FolderTree } from "@/features/upload/components/step2/FolderTree"
@@ -979,14 +980,25 @@ export function UploadPage() {
       ocr.status?.jobs.map((job) => {
         const lightMetadata = buildDisplayMetadata(job)
         const reviewStatus = normalizeDocumentReviewStatus(job, lightMetadata)
+        const reviewed = job.is_reviewed === true
         return {
           id: job.id,
           document_id: job.document_id,
           data_path: job.data_path,
           metadata_batch_id: job.metadata_batch_id,
+          metadata_batch_assigned_to_user_id:
+            job.metadata_batch_assigned_to_user_id,
+          metadata_batch_assigned_to_email: job.metadata_batch_assigned_to_email,
+          metadata_batch_assigned_to_name: job.metadata_batch_assigned_to_name,
+          metadata_batch_assigned_at: job.metadata_batch_assigned_at,
+          metadata_verified_by_user_id: job.metadata_verified_by_user_id,
+          metadata_verified_by_email: job.metadata_verified_by_email,
+          metadata_verified_by_name: job.metadata_verified_by_name,
+          metadata_verified_at: job.metadata_verified_at,
           status: job.status,
           remote_metadata_status: job.remote_metadata_status,
           review_status: reviewStatus,
+          is_reviewed: reviewed,
           metadata_ready: job.metadata_ready,
           metadata_final: job.metadata_final,
           metadata_version_count: job.metadata_version_count,
@@ -996,7 +1008,7 @@ export function UploadPage() {
           normalized_metadata: job.normalized_metadata,
           raw_metadata: job.raw_metadata,
           pdf_preprocessing: job.pdf_preprocessing,
-          applied: reviewStatus === "verified",
+          applied: reviewed || reviewStatus === "verified",
         }
       }) ?? [],
     [ocr.status]
@@ -1978,7 +1990,7 @@ export function UploadPage() {
           }}
         />
         <div className="relative mx-auto max-w-[1560px]">
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between md:gap-8">
+          <div className="grid items-center gap-4 md:grid-cols-[auto_minmax(0,1fr)_auto] md:gap-6">
             {/* Left: badge + title + description */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -2029,71 +2041,77 @@ export function UploadPage() {
               </div>
             </div>
 
-            {/* Right: step indicators */}
+            {/* Center: step indicators */}
             <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, ease: easeOut, delay: 0.15 }}
-              className="hidden max-w-full shrink-0 items-center overflow-x-auto pt-2 md:flex"
+              className="hidden min-w-0 justify-center overflow-x-auto md:flex"
             >
-              {STEP_LABELS.map((label, i) => {
-                const s = (i + 1) as AppStep
-                const isActive = currentStep === s
-                const isDone = currentStep > s
-                const canNav = isDone
-                return (
-                  <div key={i} className="flex items-center">
-                    <div className="flex flex-col items-center gap-1.5">
-                      <button
-                        onClick={() => canNav && goTo(s)}
-                        className={cn(
-                          "flex size-10 items-center justify-center rounded-full text-sm font-bold transition-all duration-300",
-                          isDone
-                            ? "text-white hover:scale-105"
-                            : isActive
-                              ? "text-white"
-                              : "border-2 border-[#CBD5E1] bg-white text-[#94A3B8]",
-                          canNav ? "cursor-pointer" : "cursor-default"
-                        )}
-                        style={
-                          isDone
-                            ? {
-                                background:
-                                  "linear-gradient(135deg, #0052FF, #4D7CFF)",
-                                boxShadow: "0 4px 12px rgba(0,82,255,0.3)",
-                              }
-                            : isActive
+              <div className="flex min-w-max items-center">
+                {STEP_LABELS.map((label, i) => {
+                  const s = (i + 1) as AppStep
+                  const isActive = currentStep === s
+                  const isDone = currentStep > s
+                  const canNav = isDone
+                  return (
+                    <div key={i} className="flex items-center">
+                      <div className="flex flex-col items-center gap-1.5">
+                        <button
+                          onClick={() => canNav && goTo(s)}
+                          className={cn(
+                            "flex size-10 items-center justify-center rounded-full text-sm font-bold transition-all duration-300",
+                            isDone
+                              ? "text-white hover:scale-105"
+                              : isActive
+                                ? "text-white"
+                                : "border-2 border-[#CBD5E1] bg-white text-[#94A3B8]",
+                            canNav ? "cursor-pointer" : "cursor-default"
+                          )}
+                          style={
+                            isDone
                               ? {
                                   background:
                                     "linear-gradient(135deg, #0052FF, #4D7CFF)",
                                   boxShadow: "0 4px 12px rgba(0,82,255,0.3)",
                                 }
-                              : {}
-                        }
-                      >
-                        {isDone ? "✓" : s}
-                      </button>
-                      <span
-                        className={cn(
-                          "text-[11px] font-medium",
-                          isActive
-                            ? "font-semibold text-[#0052FF]"
-                            : isDone
-                              ? "text-[#64748B]"
-                              : "text-[#94A3B8]"
-                        )}
-                      >
-                        {label}
-                      </span>
+                              : isActive
+                                ? {
+                                    background:
+                                      "linear-gradient(135deg, #0052FF, #4D7CFF)",
+                                    boxShadow: "0 4px 12px rgba(0,82,255,0.3)",
+                                  }
+                                : {}
+                          }
+                        >
+                          {isDone ? "✓" : s}
+                        </button>
+                        <span
+                          className={cn(
+                            "text-[11px] font-medium",
+                            isActive
+                              ? "font-semibold text-[#0052FF]"
+                              : isDone
+                                ? "text-[#64748B]"
+                                : "text-[#94A3B8]"
+                          )}
+                        >
+                          {label}
+                        </span>
+                      </div>
+                      {i < STEP_LABELS.length - 1 && (
+                        <div className="mx-2 mb-5 h-px w-5 bg-[#CBD5E1] lg:w-8" />
+                      )}
                     </div>
-                    {i < STEP_LABELS.length - 1 && (
-                      <div className="mx-2 mb-5 h-px w-5 bg-[#CBD5E1] lg:w-8" />
-                    )}
-                  </div>
-                )
-              })}
+                  )
+                })}
+              </div>
             </motion.div>
+
+            {/* Right: auth */}
+            <UserMenu className="hidden justify-self-end md:flex" />
           </div>
+          <UserMenu className="mt-3 ml-auto w-fit md:hidden" />
         </div>
       </div>
 

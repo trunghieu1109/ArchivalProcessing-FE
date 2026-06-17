@@ -113,6 +113,15 @@ function signatureTagClass(kind: SignatureTagKind): string {
   return "border-slate-300 bg-slate-50 text-slate-600"
 }
 
+function reviewerDisplayName(item: PdfMetadata): string {
+  return String(
+    item.metadata_verified_by_name ||
+      item.metadata_verified_by_email ||
+      item.metadata_verified_by_user_id ||
+      ""
+  ).trim()
+}
+
 function fieldHasWarning(
   warningFields: Set<string>,
   aliases: readonly string[]
@@ -160,7 +169,10 @@ export function MetadataCard({
   const warningFields = getWarningFields(item.light_metadata)
   const warningEntries = getWarningEntries(item.light_metadata)
   const hasWarnings = hasMetadataWarning(item)
-  const verified = item.review_status === "verified" || (item.metadata_ready && !hasWarnings)
+  const expertReviewed = item.is_reviewed === true
+  const expertReviewerName = reviewerDisplayName(item)
+  const autoVerified =
+    item.review_status === "verified" || (item.metadata_ready && !hasWarnings)
   const metadataFailed = isMetadataFailed(item.status)
   const metadataUnavailable = item.status === "failed" && !item.metadata_ready
   const hasMetadataEdits = item.metadata_user_edited === true
@@ -218,8 +230,10 @@ export function MetadataCard({
         "overflow-hidden rounded-xl border bg-card transition-all duration-200",
         selected
           ? "border-[#0052FF] shadow-[0_6px_18px_rgba(0,82,255,0.14)]"
-          : verified
+          : expertReviewed
             ? "border-primary/30 shadow-[0_2px_12px_rgba(0,82,255,0.08)]"
+            : autoVerified
+              ? "border-emerald-200 shadow-[0_2px_12px_rgba(16,185,129,0.08)]"
             : hasWarnings
               ? "border-amber-300"
               : "border-border"
@@ -272,6 +286,11 @@ export function MetadataCard({
           <p className="truncate font-roboto text-[10px] text-muted-foreground">
             {item.data_path}
           </p>
+          {expertReviewed && expertReviewerName && (
+            <p className="mt-0.5 truncate text-[10px] font-semibold text-[#0052FF]">
+              Chuyên gia xác thực: {expertReviewerName}
+            </p>
+          )}
         </div>
         <div className="flex max-w-[18rem] shrink-0 flex-wrap items-center justify-end gap-2">
           {signatureTag && (
@@ -290,14 +309,18 @@ export function MetadataCard({
               <Edit2 className="size-2.5" /> Đã sửa
             </span>
           )}
-          {verified ? (
+          {expertReviewed ? (
             <span
               className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold text-primary-foreground"
               style={{
                 background: "linear-gradient(to right, #0052FF, #4D7CFF)",
               }}
             >
-              <Check className="size-2.5" /> Xác nhận
+              <Check className="size-2.5" /> Chuyên gia xác thực
+            </span>
+          ) : autoVerified ? (
+            <span className="flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+              <CheckCircle2 className="size-2.5" /> Tự động xác thực
             </span>
           ) : metadataFailed ? (
             <span className="flex items-center gap-1 rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700">
@@ -493,7 +516,7 @@ export function MetadataCard({
                         Chạy lại metadata
                       </Button>
                     )}
-                    {!verified && (
+                    {!expertReviewed && (
                       <Button
                         size="sm"
                         disabled={

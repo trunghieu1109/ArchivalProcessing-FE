@@ -89,9 +89,18 @@ export interface PdfMetadata {
   document_id: string
   data_path: string
   metadata_batch_id?: string | null
+  metadata_batch_assigned_to_user_id?: string | number | null
+  metadata_batch_assigned_to_email?: string | null
+  metadata_batch_assigned_to_name?: string | null
+  metadata_batch_assigned_at?: string | null
+  metadata_verified_by_user_id?: string | number | null
+  metadata_verified_by_email?: string | null
+  metadata_verified_by_name?: string | null
+  metadata_verified_at?: string | null
   status: string
   remote_metadata_status?: string | null
   review_status: string
+  is_reviewed?: boolean
   metadata_ready: boolean
   metadata_final: boolean
   metadata_version_count?: number

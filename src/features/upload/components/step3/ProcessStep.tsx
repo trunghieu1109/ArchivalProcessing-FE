@@ -10,11 +10,13 @@ import {
 import {
   AlertTriangle,
   CheckCircle2,
+  Download,
   FolderOpen,
   List,
   Loader2,
   Plus,
   Scissors,
+  UserRound,
   X,
 } from "lucide-react"
 import { motion } from "framer-motion"
@@ -23,9 +25,15 @@ import { cn } from "@/shared/lib/utils"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import {
+  listChinhlyUsers,
+  type ChinhlyUser,
+} from "@/features/auth/api/authApi"
+import { useAuth } from "@/features/auth/lib/AuthContext"
+import {
   closeMetadataBatch,
   documentHasUserMetadataEdit,
   createMetadataBatch,
+  downloadSessionMetadataReviewXlsx,
   normalizeDocumentReviewStatus,
   verifyDocumentMetadata,
   type SessionDocumentResponse,
@@ -48,16 +56,19 @@ type MetadataBatchMode = "auto" | "manual"
 
 interface MetadataBatchGroup {
   index: number
-  kind: "auto" | "manual" | "verified" | "unassigned"
+  kind: "auto" | "manual" | "reviewed" | "unassigned"
   batchId?: string | null
   label: string
   start: number
   end: number
   items: PdfMetadata[]
   readyCount: number
-  verifiedCount: number
+  reviewedCount: number
   warningCount: number
   pendingReadyCount: number
+  assigneeName?: string | null
+  assigneeEmail?: string | null
+  assigneeUserId?: string | number | null
 }
 
 const DEFAULT_METADATA_BATCH_SIZE = 25
@@ -68,7 +79,8 @@ const MAX_LOADING_PLACEHOLDERS = 12
 const REVIEW_MODE_STORAGE_KEY = "archival-processing.metadata-review-mode"
 const BATCH_SIZE_STORAGE_KEY = "archival-processing.metadata-review-batch-size"
 const EMPTY_METADATA_ITEMS: PdfMetadata[] = []
-const METADATA_VERIFIED_BATCH_ID = "metadata-verified"
+const METADATA_REVIEWED_BATCH_ID = "metadata-reviewed"
+const LEGACY_METADATA_VERIFIED_BATCH_ID = "metadata-verified"
 
 interface ProcessStepProps {
   sessionId: string | null
@@ -99,6 +111,7 @@ export function ProcessStep({
   onRetryMetadata,
   onContinue,
 }: ProcessStepProps) {
+  const { user } = useAuth()
   const [items, setItems] = useState<PdfMetadata[]>([])
   const [verifyingIds, setVerifyingIds] = useState<Set<number>>(() => new Set())
   const [retryingIds, setRetryingIds] = useState<Set<number>>(() => new Set())
@@ -121,17 +134,25 @@ export function ProcessStep({
   const [manualSelectedIds, setManualSelectedIds] = useState<Set<number>>(
     () => new Set()
   )
+  const [exportingMetadataReview, setExportingMetadataReview] = useState(false)
+  const [workers, setWorkers] = useState<ChinhlyUser[]>([])
+  const [workersLoading, setWorkersLoading] = useState(false)
+  const [selectedAssigneeId, setSelectedAssigneeId] = useState("")
   const [activeBatchIndex, setActiveBatchIndex] = useState(0)
   const previewLayoutRef = useRef<HTMLDivElement | null>(null)
   const didAutoSelectRef = useRef(false)
   const manualLastSelectedIdRef = useRef<number | null>(null)
+  const canManageMetadataBatches =
+    String(user?.role ?? "").trim().toLowerCase() === "coordinator"
+  const canExportMetadataReview =
+    String(user?.role ?? "").trim().toLowerCase() === "coordinator"
 
   const metadataKey = useMemo(
     () =>
       metadataItems
         .map(
           (item) =>
-            `${item.id}:${item.status}:${item.remote_metadata_status ?? ""}:${item.review_status}:${String(item.metadata_ready)}:${String(item.metadata_final)}:${String(item.metadata_user_edited ?? false)}:${item.metadata_batch_id ?? ""}`
+            `${item.id}:${item.status}:${item.remote_metadata_status ?? ""}:${item.review_status}:${String(item.is_reviewed ?? false)}:${String(item.metadata_ready)}:${String(item.metadata_final)}:${String(item.metadata_user_edited ?? false)}:${item.metadata_batch_id ?? ""}:${item.metadata_batch_assigned_to_user_id ?? ""}:${item.metadata_batch_assigned_to_email ?? ""}:${item.metadata_batch_assigned_to_name ?? ""}:${item.metadata_verified_by_user_id ?? ""}:${item.metadata_verified_by_email ?? ""}:${item.metadata_verified_by_name ?? ""}`
         )
         .join("\n"),
     [metadataItems]
@@ -153,12 +174,19 @@ export function ProcessStep({
     () => items.filter((item) => item.metadata_ready),
     [items]
   )
-  const verifiedItems = useMemo(
-    () => items.filter((item) => item.review_status === "verified"),
+  const reviewedItems = useMemo(
+    () => items.filter((item) => item.is_reviewed === true),
+    [items]
+  )
+  const dossierReadyItems = useMemo(
+    () =>
+      items.filter(
+        (item) => item.is_reviewed === true || item.review_status === "verified"
+      ),
     [items]
   )
   const pendingReadyItems = useMemo(
-    () => readyItems.filter((item) => item.review_status !== "verified"),
+    () => readyItems.filter((item) => item.is_reviewed !== true),
     [readyItems]
   )
   const sortedItems = useMemo(
@@ -195,7 +223,7 @@ export function ProcessStep({
   const displayedPendingReadyItems = useMemo(
     () =>
       displayedItems.filter(
-        (item) => item.metadata_ready && item.review_status !== "verified"
+        (item) => item.metadata_ready && item.is_reviewed !== true
       ),
     [displayedItems]
   )
@@ -224,6 +252,49 @@ export function ProcessStep({
   useEffect(() => {
     writeStoredBatchSize(batchSize)
   }, [batchSize])
+
+  useEffect(() => {
+    if (!canManageMetadataBatches) {
+      setManualSplitActive(false)
+      setManualSelectedIds(new Set())
+      setSelectedAssigneeId("")
+      setWorkers([])
+      return
+    }
+
+    let cancelled = false
+    setWorkersLoading(true)
+    listChinhlyUsers({ role: "worker", active: true, limit: 500 })
+      .then((nextWorkers) => {
+        if (cancelled) return
+        setWorkers(nextWorkers)
+        setSelectedAssigneeId((current) => {
+          if (
+            current &&
+            nextWorkers.some((worker) => chinhlyUserId(worker) === current)
+          ) {
+            return current
+          }
+          return ""
+        })
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setWorkers([])
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : "Khong the tai danh sach nhan vien."
+        )
+      })
+      .finally(() => {
+        if (!cancelled) setWorkersLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [canManageMetadataBatches])
 
   useEffect(() => {
     const availableItems = manualSplitActive ? displayedItems : sortedItems
@@ -333,7 +404,7 @@ export function ProcessStep({
     }
     const firstWarning =
       sortedItems.find(
-        (item) => item.review_status !== "verified" && hasMetadataWarning(item)
+        (item) => item.is_reviewed !== true && hasMetadataWarning(item)
       ) ?? sortedItems[0]
     setSelectedDocumentId(firstWarning.id)
     didAutoSelectRef.current = true
@@ -454,6 +525,7 @@ export function ProcessStep({
     setActiveBatchIndex(group.index)
     setManualSplitActive(false)
     setManualSelectedIds(new Set())
+    setSelectedAssigneeId("")
     setSelectedDocumentId(firstPreferredMetadataItem(group.items)?.id ?? null)
   }
 
@@ -461,6 +533,7 @@ export function ProcessStep({
     setBatchMode(mode)
     setManualSplitActive(false)
     setManualSelectedIds(new Set())
+    setSelectedAssigneeId("")
     setActiveBatchIndex(0)
     const nextGroups =
       mode === "manual"
@@ -473,6 +546,7 @@ export function ProcessStep({
   }
 
   const startManualSplit = () => {
+    if (!canManageMetadataBatches) return
     setReviewMode("batch")
     setBatchMode("manual")
     setManualSplitActive(true)
@@ -490,6 +564,7 @@ export function ProcessStep({
   const cancelManualSplit = () => {
     setManualSplitActive(false)
     setManualSelectedIds(new Set())
+    setSelectedAssigneeId("")
     manualLastSelectedIdRef.current = null
   }
 
@@ -538,6 +613,10 @@ export function ProcessStep({
       toast.error("Chọn ít nhất một tài liệu để tạo lô mới.")
       return
     }
+    if (!selectedAssigneeId) {
+      toast.error("Chon nhan vien phu trach lo truoc khi tao.")
+      return
+    }
     const selectedIds = new Set(manualSelectedIds)
     const orderedSelectedIds = displayedItems
       .filter((item) => selectedIds.has(item.id))
@@ -546,13 +625,18 @@ export function ProcessStep({
 
     setCreatingManualBatch(true)
     try {
-      const response = await createMetadataBatch(sessionId, orderedSelectedIds)
+      const response = await createMetadataBatch(
+        sessionId,
+        orderedSelectedIds,
+        selectedAssigneeId
+      )
       const updatedDocuments = response.documents ?? []
       if (updatedDocuments.length > 0) {
         setItems((previous) => replaceDocuments(previous, updatedDocuments))
         onDocumentsVerified?.(updatedDocuments)
       }
       setManualSelectedIds(new Set())
+      setSelectedAssigneeId("")
       manualLastSelectedIdRef.current = null
       setManualSplitActive(true)
       setBatchMode("manual")
@@ -574,6 +658,7 @@ export function ProcessStep({
       toast.error("Chưa có session để kết thúc lô metadata.")
       return
     }
+    if (!canManageMetadataBatches) return
     const batchId = normalizedMetadataBatchId(group.batchId)
     if (!batchId || group.kind !== "manual") return
 
@@ -591,7 +676,7 @@ export function ProcessStep({
       setBatchMode("manual")
       setSelectedDocumentId(null)
       toast.success(
-        `Đã kết thúc lô: ${response.verified_count} tài liệu đã xác thực, ${response.unassigned_count} tài liệu quay lại chưa chia.`
+        `Đã kết thúc lô: ${response.reviewed_count ?? response.verified_count ?? 0} tài liệu đã review, ${response.unassigned_count} tài liệu quay lại chưa chia.`
       )
     } catch (err) {
       toast.error(
@@ -620,6 +705,24 @@ export function ProcessStep({
       )
     } finally {
       setRetryingIds((previous) => removeId(previous, item.id))
+    }
+  }
+
+  const handleExportMetadataReview = async () => {
+    if (!sessionId || !canExportMetadataReview) return
+    setExportingMetadataReview(true)
+    try {
+      const result = await downloadSessionMetadataReviewXlsx(sessionId)
+      saveBlob(result.blob, result.fileName)
+      toast.success("Đã xuất XLSX metadata và người xác thực.")
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Không thể xuất XLSX metadata và người xác thực."
+      )
+    } finally {
+      setExportingMetadataReview(false)
     }
   }
 
@@ -660,7 +763,7 @@ export function ProcessStep({
   }
 
   const warningCount = items.filter(
-    (item) => item.review_status !== "verified" && hasMetadataWarning(item)
+    (item) => item.is_reviewed !== true && hasMetadataWarning(item)
   ).length
   const loadingPlaceholderCount = Math.max(
     metadataLoading && items.length === 0 ? 1 : 0,
@@ -675,11 +778,11 @@ export function ProcessStep({
     expectedCount > 0
       ? Math.min(100, (readyItems.length / expectedCount) * 100)
       : 0
-  const verifiedPercent =
+  const reviewedPercent =
     expectedCount > 0
-      ? Math.min(100, (verifiedItems.length / expectedCount) * 100)
+      ? Math.min(100, (reviewedItems.length / expectedCount) * 100)
       : 0
-  const canContinue = verifiedItems.length > 0
+  const canContinue = dossierReadyItems.length > 0
 
   return (
     <motion.div
@@ -720,7 +823,7 @@ export function ProcessStep({
                       : "Đang trích xuất metadata"
                   }: đã extract ${readyItems.length}/${expectedCount || "..."} tài liệu.`
                 : readyItems.length > 0
-                  ? `Có ${readyItems.length} tài liệu sẵn sàng, ${verifiedItems.length} đã xác nhận.`
+                  ? `Có ${readyItems.length} tài liệu sẵn sàng, ${reviewedItems.length} đã review.`
                   : metadataMessage}
             </p>
             {(signatureStatus.pending > 0 || signatureStatus.failed > 0) && (
@@ -743,7 +846,7 @@ export function ProcessStep({
               label="Chữ ký xong"
               value={signatureStatus.extracted}
             />
-            <ProgressMetric label="Đã xác nhận" value={verifiedItems.length} />
+            <ProgressMetric label="Đã review" value={reviewedItems.length} />
           </div>
         </div>
         <div className="mt-4 h-2 overflow-hidden rounded-full bg-[#E2E8F0]">
@@ -756,7 +859,7 @@ export function ProcessStep({
           <motion.div
             className="-mt-2 h-full rounded-full bg-[#0052FF]"
             initial={false}
-            animate={{ width: `${verifiedPercent}%` }}
+            animate={{ width: `${reviewedPercent}%` }}
             transition={{ duration: 0.35 }}
           />
         </div>
@@ -786,6 +889,23 @@ export function ProcessStep({
                   {readyItems.length}/{expectedCount || "..."}
                 </span>
               )}
+              {canExportMetadataReview && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void handleExportMetadataReview()}
+                  disabled={!sessionId || exportingMetadataReview}
+                  className="h-8 gap-1.5 text-xs"
+                >
+                  {exportingMetadataReview ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : (
+                    <Download className="size-3" />
+                  )}
+                  Xuất metadata review
+                </Button>
+              )}
               <DocumentDownloadDialog sessionId={sessionId} items={items} />
             </div>
           </div>
@@ -806,7 +926,7 @@ export function ProcessStep({
                     onClick={() => handleReviewModeChange("batch")}
                   />
                 </div>
-                {reviewMode === "batch" && (
+                {canManageMetadataBatches && reviewMode === "batch" && (
                   <div className="inline-flex rounded-lg border border-[#CBD5E1] bg-[#F8FAFC] p-1">
                     <ReviewModeButton
                       active={batchMode === "manual"}
@@ -820,7 +940,9 @@ export function ProcessStep({
                     />
                   </div>
                 )}
-                {reviewMode === "batch" && batchMode === "auto" && (
+                {canManageMetadataBatches &&
+                  reviewMode === "batch" &&
+                  batchMode === "auto" && (
                   <label className="flex h-8 items-center gap-2 rounded-lg border border-[#CBD5E1] bg-[#F8FAFC] px-2 text-xs font-medium text-[#475569]">
                     Cỡ lô
                     <input
@@ -843,8 +965,8 @@ export function ProcessStep({
                 )}
                 {reviewMode === "batch" && activeBatch && (
                   <span className="rounded-full bg-[#EFF6FF] px-2.5 py-1 text-xs font-medium text-[#475569]">
-                    {activeBatch.label}: {activeBatch.verifiedCount}/
-                    {activeBatch.items.length} đã xác nhận
+                    {activeBatch.label}: {activeBatch.reviewedCount}/
+                    {activeBatch.items.length} đã review
                   </span>
                 )}
               </div>
@@ -866,6 +988,7 @@ export function ProcessStep({
                   </Button>
                 )}
                 {reviewMode === "batch" &&
+                  canManageMetadataBatches &&
                   batchMode === "manual" &&
                   !manualSplitActive &&
                   activeBatch?.kind === "manual" &&
@@ -887,6 +1010,7 @@ export function ProcessStep({
                     </Button>
                   )}
                 {reviewMode === "batch" &&
+                  canManageMetadataBatches &&
                   batchMode === "manual" &&
                   !manualSplitActive && (
                     <Button
@@ -901,6 +1025,7 @@ export function ProcessStep({
                     </Button>
                   )}
                 {reviewMode === "batch" &&
+                  canManageMetadataBatches &&
                   batchMode === "manual" &&
                   manualSplitActive && (
                     <>
@@ -924,12 +1049,40 @@ export function ProcessStep({
                       >
                         Bỏ chọn
                       </Button>
+                      <label className="flex h-8 min-w-[13rem] items-center gap-1.5 rounded-lg border border-[#CBD5E1] bg-white px-2 text-xs font-medium text-[#475569]">
+                        {workersLoading ? (
+                          <Loader2 className="size-3 animate-spin text-[#0052FF]" />
+                        ) : (
+                          <UserRound className="size-3 text-[#0052FF]" />
+                        )}
+                        <select
+                          value={selectedAssigneeId}
+                          onChange={(event) =>
+                            setSelectedAssigneeId(event.target.value)
+                          }
+                          disabled={workersLoading || creatingManualBatch}
+                          className="min-w-0 flex-1 bg-transparent text-xs text-[#0F172A] outline-none"
+                        >
+                          <option value="">Chọn nhân viên</option>
+                          {workers.map((worker) => {
+                            const id = chinhlyUserId(worker)
+                            if (!id) return null
+                            return (
+                              <option key={id} value={id}>
+                                {chinhlyUserLabel(worker)}
+                              </option>
+                            )
+                          })}
+                        </select>
+                      </label>
                       <Button
                         type="button"
                         size="sm"
                         onClick={() => void createManualBatchFromSelection()}
                         disabled={
-                          manualSelectedIds.size === 0 || creatingManualBatch
+                          manualSelectedIds.size === 0 ||
+                          !selectedAssigneeId ||
+                          creatingManualBatch
                         }
                         className="h-8 gap-1.5 text-xs"
                       >
@@ -955,6 +1108,7 @@ export function ProcessStep({
               </div>
             </div>
             {reviewMode === "batch" &&
+              canManageMetadataBatches &&
               batchMode === "manual" &&
               manualSplitActive && (
                 <div className="rounded-lg border border-[#BFD3FF] bg-[#EFF6FF] px-3 py-2 text-xs font-medium text-[#0F172A]">
@@ -973,12 +1127,21 @@ export function ProcessStep({
                   <p className="text-[11px] text-[#64748B]">
                     {activeBatch.kind === "manual"
                       ? `${activeBatch.items.length} tài liệu trong lô thủ công`
-                      : activeBatch.kind === "verified"
-                        ? `${activeBatch.items.length} tài liệu đã xác thực`
+                      : activeBatch.kind === "reviewed"
+                        ? `${activeBatch.items.length} tài liệu đã review`
                       : activeBatch.kind === "unassigned"
                         ? `${activeBatch.items.length} tài liệu chưa chia`
                         : `Tài liệu ${activeBatch.start}-${activeBatch.end} / ${sortedItems.length}`}
                   </p>
+                  {activeBatch.assigneeName || activeBatch.assigneeEmail ? (
+                    <p className="mt-0.5 text-[11px] text-[#475569]">
+                      Phụ trách:{" "}
+                      <span className="font-semibold text-[#0F172A]">
+                        {activeBatch.assigneeName ??
+                          activeBatch.assigneeEmail}
+                      </span>
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-[11px] text-[#475569]">
                   <BatchMetric label="Sẵn sàng" value={activeBatch.readyCount} />
@@ -1062,21 +1225,21 @@ export function ProcessStep({
 
       <div className="flex flex-col gap-4 rounded-2xl border border-[#CBD5E1] bg-white px-4 py-4 shadow-sm sm:px-6 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0 text-sm text-[#475569]">
-          {pendingReadyItems.length > 0 && verifiedItems.length === 0 ? (
+          {pendingReadyItems.length > 0 && dossierReadyItems.length === 0 ? (
             <span className="flex items-center gap-2 text-amber-700">
               <AlertTriangle className="size-4" />
-              Còn {pendingReadyItems.length} tài liệu cần xác nhận metadata.
+              Còn {pendingReadyItems.length} tài liệu cần review metadata.
             </span>
           ) : pendingReadyItems.length > 0 ? (
             <span className="flex items-center gap-2 text-[#475569]">
               <CheckCircle2 className="size-4 text-emerald-600" />
-              Có thể lập hồ sơ với {verifiedItems.length} tài liệu đã xác nhận;
+              Có thể lập hồ sơ với {dossierReadyItems.length} tài liệu đủ điều kiện;
               {` ${pendingReadyItems.length}`} tài liệu còn lại có thể cập nhật
               hồ sơ sau.
             </span>
           ) : readyItems.length > 0 ? (
             <span className="flex items-center gap-2 text-emerald-700">
-              <CheckCircle2 className="size-4" /> Metadata đã được xác nhận.
+              <CheckCircle2 className="size-4" /> Metadata đã được review.
             </span>
           ) : (
             <span className="flex items-center gap-2">
@@ -1104,7 +1267,7 @@ export function ProcessStep({
           }
         >
           {canContinue
-            ? `Xem kết quả (${verifiedItems.length} tài liệu)`
+            ? `Xem kết quả (${dossierReadyItems.length} tài liệu)`
             : "Xem kết quả"}
         </button>
       </div>
@@ -1159,16 +1322,16 @@ function MetadataBatchButton({
 }) {
   const progress =
     group.items.length > 0
-      ? (group.verifiedCount / group.items.length) * 100
+      ? (group.reviewedCount / group.items.length) * 100
       : 0
-  const done = group.verifiedCount === group.items.length
+  const done = group.reviewedCount === group.items.length
   const needsReview = group.warningCount > 0 || group.pendingReadyCount > 0
 
   return (
     <button
       type="button"
       onClick={onClick}
-      title={`${group.label}: ${group.verifiedCount}/${group.items.length} đã xác nhận`}
+      title={`${group.label}: ${group.reviewedCount}/${group.items.length} đã review`}
       className={cn(
         "min-w-[9.5rem] rounded-lg border px-3 py-2 text-left transition-colors",
         active
@@ -1183,14 +1346,16 @@ function MetadataBatchButton({
       <span className="flex items-center justify-between gap-2">
         <span className="text-xs font-semibold">{group.label}</span>
         <span className="text-[10px]">
-          {group.verifiedCount}/{group.items.length}
+          {group.reviewedCount}/{group.items.length}
         </span>
       </span>
       <span className="mt-1 block text-[10px] opacity-80">
         {group.kind === "manual"
-          ? `${group.items.length} tài liệu`
-          : group.kind === "verified"
-            ? "Đã xác thực"
+          ? group.assigneeName || group.assigneeEmail
+            ? group.assigneeName ?? group.assigneeEmail
+            : `${group.items.length} tài liệu`
+          : group.kind === "reviewed"
+            ? "Đã review"
           : group.kind === "unassigned"
             ? "Chưa chia"
             : `${group.start}-${group.end}`}
@@ -1228,8 +1393,8 @@ function mergeIncomingMetadata(
     const item = normalizePdfMetadata(rawItem)
     const local = previousById.get(item.id)
     if (
-      local?.review_status === "verified" &&
-      item.review_status !== "verified"
+      local?.is_reviewed === true &&
+      item.is_reviewed !== true
     ) {
       const normalizedMetadata =
         item.normalized_metadata ?? local.normalized_metadata
@@ -1239,6 +1404,18 @@ function mergeIncomingMetadata(
         status: item.status,
         remote_metadata_status: item.remote_metadata_status,
         metadata_batch_id: item.metadata_batch_id,
+        metadata_batch_assigned_to_user_id:
+          item.metadata_batch_assigned_to_user_id,
+        metadata_batch_assigned_to_email:
+          item.metadata_batch_assigned_to_email,
+        metadata_batch_assigned_to_name:
+          item.metadata_batch_assigned_to_name,
+        metadata_batch_assigned_at: item.metadata_batch_assigned_at,
+        metadata_verified_by_user_id: item.metadata_verified_by_user_id,
+        metadata_verified_by_email: item.metadata_verified_by_email,
+        metadata_verified_by_name: item.metadata_verified_by_name,
+        metadata_verified_at: item.metadata_verified_at,
+        is_reviewed: local.is_reviewed,
         metadata_ready: item.metadata_ready,
         metadata_final: item.metadata_final,
         normalized_metadata: normalizedMetadata,
@@ -1302,9 +1479,19 @@ function documentResponseToPdfMetadata(
     document_id: document.document_id,
     data_path: document.data_path,
     metadata_batch_id: document.metadata_batch_id,
+    metadata_batch_assigned_to_user_id:
+      document.metadata_batch_assigned_to_user_id,
+    metadata_batch_assigned_to_email: document.metadata_batch_assigned_to_email,
+    metadata_batch_assigned_to_name: document.metadata_batch_assigned_to_name,
+    metadata_batch_assigned_at: document.metadata_batch_assigned_at,
+    metadata_verified_by_user_id: document.metadata_verified_by_user_id,
+    metadata_verified_by_email: document.metadata_verified_by_email,
+    metadata_verified_by_name: document.metadata_verified_by_name,
+    metadata_verified_at: document.metadata_verified_at,
     status: document.ocr_status,
     remote_metadata_status: document.remote_metadata_status,
     review_status: reviewStatus,
+    is_reviewed: document.is_reviewed === true,
     metadata_ready: document.metadata_ready,
     metadata_final: document.metadata_final,
     metadata_version_count: document.metadata_version_count,
@@ -1313,7 +1500,7 @@ function documentResponseToPdfMetadata(
     light_metadata: lightMetadata,
     normalized_metadata: document.normalized_metadata,
     raw_metadata: document.raw_metadata,
-    applied: reviewStatus === "verified",
+    applied: document.is_reviewed === true || reviewStatus === "verified",
   }
 }
 
@@ -1325,21 +1512,19 @@ function normalizePdfMetadata(item: PdfMetadata): PdfMetadata {
     },
     item.light_metadata
   )
-  if (
-    reviewStatus === item.review_status &&
-    item.applied === (reviewStatus === "verified")
-  ) {
+  const applied = item.is_reviewed === true || reviewStatus === "verified"
+  if (reviewStatus === item.review_status && item.applied === applied) {
     return item
   }
   return {
     ...item,
     review_status: reviewStatus,
-    applied: reviewStatus === "verified",
+    applied,
   }
 }
 
 function metadataSortScore(item: PdfMetadata): number {
-  if (item.review_status === "verified") return 3
+  if (item.is_reviewed === true) return 3
   if (hasMetadataWarning(item)) return 0
   if (item.metadata_ready) return 1
   return 2
@@ -1386,25 +1571,33 @@ function buildManualMetadataBatchGroups(
     itemsByBatchId.set(batchId, groupItems)
   })
 
-  const verifiedItems = itemsByBatchId.get(METADATA_VERIFIED_BATCH_ID) ?? []
-  if (verifiedItems.length > 0) {
-    verifiedItems.forEach((item) => assignedIds.add(item.id))
+  const reviewedItems = [
+    ...(itemsByBatchId.get(METADATA_REVIEWED_BATCH_ID) ?? []),
+    ...(itemsByBatchId.get(LEGACY_METADATA_VERIFIED_BATCH_ID) ?? []),
+  ]
+  if (reviewedItems.length > 0) {
+    reviewedItems.forEach((item) => assignedIds.add(item.id))
     groups.push(
       buildMetadataBatchGroup({
-        kind: "verified",
+        kind: "reviewed",
         index: groups.length,
-        label: "Tài liệu đã xác thực",
+        label: "Tài liệu đã review",
         start: 0,
         end: 0,
-        batchId: METADATA_VERIFIED_BATCH_ID,
-        items: verifiedItems,
+        batchId: METADATA_REVIEWED_BATCH_ID,
+        items: reviewedItems,
       })
     )
   }
 
   let manualGroupNumber = 1
   itemsByBatchId.forEach((groupItems, batchId) => {
-    if (batchId === METADATA_VERIFIED_BATCH_ID) return
+    if (
+      batchId === METADATA_REVIEWED_BATCH_ID ||
+      batchId === LEGACY_METADATA_VERIFIED_BATCH_ID
+    ) {
+      return
+    }
     if (groupItems.length === 0) return
     groupItems.forEach((item) => assignedIds.add(item.id))
     const index = groups.length
@@ -1449,6 +1642,17 @@ function findUnassignedBatchIndex(groups: MetadataBatchGroup[]): number {
   return groups.findIndex((group) => group.kind === "unassigned")
 }
 
+function chinhlyUserId(user: ChinhlyUser): string {
+  return String(user.id ?? user.user_id ?? "").trim()
+}
+
+function chinhlyUserLabel(user: ChinhlyUser): string {
+  const name = String(user.display_name ?? user.name ?? "").trim()
+  const email = String(user.email ?? user.username ?? "").trim()
+  if (name && email) return `${name} (${email})`
+  return name || email || chinhlyUserId(user)
+}
+
 function buildMetadataBatchGroup({
   kind,
   index,
@@ -1466,16 +1670,20 @@ function buildMetadataBatchGroup({
   batchId?: string | null
   items: PdfMetadata[]
 }): MetadataBatchGroup {
-  const verifiedCount = items.filter(
-    (item) => item.review_status === "verified"
-  ).length
+  const reviewedCount = items.filter((item) => item.is_reviewed === true).length
   const readyCount = items.filter((item) => item.metadata_ready).length
   const warningCount = items.filter(
-    (item) => item.review_status !== "verified" && hasMetadataWarning(item)
+    (item) => item.is_reviewed !== true && hasMetadataWarning(item)
   ).length
   const pendingReadyCount = items.filter(
-    (item) => item.metadata_ready && item.review_status !== "verified"
+    (item) => item.metadata_ready && item.is_reviewed !== true
   ).length
+  const assignedItem = items.find(
+    (item) =>
+      item.metadata_batch_assigned_to_user_id ||
+      item.metadata_batch_assigned_to_email ||
+      item.metadata_batch_assigned_to_name
+  )
 
   return {
     kind,
@@ -1486,9 +1694,12 @@ function buildMetadataBatchGroup({
     batchId: batchId ?? null,
     items,
     readyCount,
-    verifiedCount,
+    reviewedCount,
     warningCount,
     pendingReadyCount,
+    assigneeName: assignedItem?.metadata_batch_assigned_to_name ?? null,
+    assigneeEmail: assignedItem?.metadata_batch_assigned_to_email ?? null,
+    assigneeUserId: assignedItem?.metadata_batch_assigned_to_user_id ?? null,
   }
 }
 
@@ -1510,10 +1721,10 @@ function selectedRange(
 function firstPreferredMetadataItem(items: PdfMetadata[]): PdfMetadata | null {
   return (
     items.find(
-      (item) => item.review_status !== "verified" && hasMetadataWarning(item)
+      (item) => item.is_reviewed !== true && hasMetadataWarning(item)
     ) ??
     items.find(
-      (item) => item.metadata_ready && item.review_status !== "verified"
+      (item) => item.metadata_ready && item.is_reviewed !== true
     ) ??
     items[0] ??
     null
@@ -1528,15 +1739,15 @@ function normalizeBatchSize(value: number): number {
   )
 }
 
-function readStoredReviewMode(): MetadataReviewMode {
-  if (typeof window === "undefined") return "list"
-  try {
-    return window.localStorage.getItem(REVIEW_MODE_STORAGE_KEY) === "batch"
-      ? "batch"
-      : "list"
-  } catch {
-    return "list"
-  }
+function saveBlob(blob: Blob, fileName: string) {
+  const objectUrl = URL.createObjectURL(blob)
+  const anchor = document.createElement("a")
+  anchor.href = objectUrl
+  anchor.download = fileName
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000)
 }
 
 function writeStoredReviewMode(value: MetadataReviewMode) {

@@ -6,13 +6,16 @@ import "@/styles/globals.css"
 import { App } from "@/app/App.tsx"
 import { ThemeProvider } from "@/app/providers/theme-provider.tsx"
 import { Toaster } from "@/components/ui/sonner"
+import { AuthProvider } from "@/features/auth/lib/AuthContext"
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter>
       <ThemeProvider>
-        <App />
-        <Toaster position="top-center" richColors />
+        <AuthProvider>
+          <App />
+          <Toaster position="top-center" richColors />
+        </AuthProvider>
       </ThemeProvider>
     </BrowserRouter>
   </StrictMode>

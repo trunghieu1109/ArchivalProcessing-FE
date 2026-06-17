@@ -24,6 +24,7 @@ import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/shared/lib/utils"
+import { UserMenu } from "@/features/auth/components/UserMenu"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import {
   artifactDownloadAllUrl,
@@ -391,9 +392,12 @@ export function FinalizeArtifactsStep({
                 </p>
               </div>
             </div>
-            <div className="hidden items-center gap-3 md:flex">
-              <SummaryPill label="Tệp" value={visibleArtifacts.length} />
-              <SummaryPill label="Định dạng" value={fileTypeCount} />
+            <div className="flex items-center gap-3 md:flex">
+              <div className="hidden items-center gap-3 lg:flex">
+                <SummaryPill label="Tệp" value={visibleArtifacts.length} />
+                <SummaryPill label="Định dạng" value={fileTypeCount} />
+              </div>
+              <UserMenu />
             </div>
           </div>
         </header>
