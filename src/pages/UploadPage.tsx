@@ -983,6 +983,7 @@ export function UploadPage() {
           id: job.id,
           document_id: job.document_id,
           data_path: job.data_path,
+          metadata_batch_id: job.metadata_batch_id,
           status: job.status,
           remote_metadata_status: job.remote_metadata_status,
           review_status: reviewStatus,

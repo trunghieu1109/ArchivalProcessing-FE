@@ -131,6 +131,9 @@ interface MetadataCardProps {
   submitting?: boolean
   retrying?: boolean
   selected?: boolean
+  selectionMode?: boolean
+  selectionChecked?: boolean
+  onSelectionChange?: (checked: boolean, shiftKey: boolean) => void
   onSelect?: (expanded: boolean) => void
   onRetry?: () => void
   onApply: (
@@ -144,6 +147,9 @@ export function MetadataCard({
   submitting = false,
   retrying = false,
   selected = false,
+  selectionMode = false,
+  selectionChecked = false,
+  onSelectionChange,
   onSelect,
   onRetry,
   onApply,
@@ -233,6 +239,26 @@ export function MetadataCard({
         role="button"
         tabIndex={0}
       >
+        {selectionMode && (
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={selectionChecked}
+            title="Chọn tài liệu"
+            onClick={(event) => {
+              event.stopPropagation()
+              onSelectionChange?.(!selectionChecked, event.shiftKey)
+            }}
+            className={cn(
+              "flex size-5 shrink-0 items-center justify-center rounded border transition-colors",
+              selectionChecked
+                ? "border-[#0052FF] bg-[#0052FF] text-white"
+                : "border-[#CBD5E1] bg-white text-transparent hover:border-[#0052FF]/50"
+            )}
+          >
+            <Check className="size-3.5" />
+          </button>
+        )}
         <div
           className="flex size-8 shrink-0 items-center justify-center rounded-lg shadow-[0_4px_14px_rgba(0,82,255,0.2)]"
           style={{ background: "linear-gradient(135deg, #0052FF, #4D7CFF)" }}

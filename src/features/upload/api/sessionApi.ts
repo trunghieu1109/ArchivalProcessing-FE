@@ -218,6 +218,7 @@ export interface DigitizationDocument {
   ocr_batch_id?: number | null
   document_id: string
   data_path: string
+  metadata_batch_id?: string | null
   remote_metadata_status?: string | null
   ocr_status: string
   review_status: string
@@ -424,6 +425,7 @@ export interface SessionDocumentResponse {
   document_id: string
   data_path: string
   file_name: string
+  metadata_batch_id?: string | null
   remote_metadata_status?: string | null
   ocr_status: string
   review_status: string
@@ -437,6 +439,24 @@ export interface SessionDocumentResponse {
   raw_metadata?: Record<string, unknown>
   pdf_preprocessing?: Record<string, unknown> | null
   error?: string | null
+}
+
+export interface CreateMetadataBatchResponse {
+  session_id: string
+  batch_id: string
+  metadata_batch_id?: string
+  updated_count: number
+  documents: SessionDocumentResponse[]
+}
+
+export interface CloseMetadataBatchResponse {
+  session_id: string
+  batch_id: string
+  verified_batch_id: string
+  verified_count: number
+  unassigned_count: number
+  updated_count: number
+  documents: SessionDocumentResponse[]
 }
 
 export interface MetadataVersionSummary {
@@ -1270,6 +1290,33 @@ export async function verifyDocumentMetadata(
   )
 }
 
+export async function createMetadataBatch(
+  sessionId: string,
+  documentIds: number[]
+): Promise<CreateMetadataBatchResponse> {
+  return requestJson<CreateMetadataBatchResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/metadata-batches`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ document_ids: documentIds }),
+    }
+  )
+}
+
+export async function closeMetadataBatch(
+  sessionId: string,
+  batchId: string
+): Promise<CloseMetadataBatchResponse> {
+  return requestJson<CloseMetadataBatchResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/metadata-batches/${encodeURIComponent(batchId)}/close`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    }
+  )
+}
+
 export async function restartDocumentMetadata(
   sessionId: string,
   documentId: number,
@@ -1525,6 +1572,7 @@ export function digitizationToFolderStatus(
       id: document.id,
       document_id: document.document_id,
       data_path: document.data_path,
+      metadata_batch_id: document.metadata_batch_id,
       status: document.ocr_status,
       remote_metadata_status: document.remote_metadata_status,
       review_status: normalizeDocumentReviewStatus(document, lightMetadata),

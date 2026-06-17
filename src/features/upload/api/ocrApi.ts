@@ -12,6 +12,7 @@ export interface JobSummary {
   id: number
   document_id: string
   data_path: string
+  metadata_batch_id?: string | null
   status: string
   remote_metadata_status?: string | null
   review_status: string
