@@ -1766,7 +1766,7 @@ export function FinalResult({
           }
         >
           <CheckCircle2 data-icon="inline-start" />
-          Tạo mục lục
+          Đánh số trang
         </Button>
       </div>
     </div>

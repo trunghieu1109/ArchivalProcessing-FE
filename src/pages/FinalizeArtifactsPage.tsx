@@ -103,7 +103,7 @@ export function FinalizeArtifactsPage() {
   const query = searchParams.toString()
   return (
     <Navigate
-      to={`/sessions/${encodeURIComponent(sessionId)}/step/5${query ? `?${query}` : ""}`}
+      to={`/sessions/${encodeURIComponent(sessionId)}/step/6${query ? `?${query}` : ""}`}
       replace
     />
   )

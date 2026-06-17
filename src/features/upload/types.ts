@@ -103,4 +103,4 @@ export interface PdfMetadata {
   applied: boolean
 }
 
-export type AppStep = 1 | 2 | 3 | 4 | 5
+export type AppStep = 1 | 2 | 3 | 4 | 5 | 6

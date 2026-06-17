@@ -17,6 +17,7 @@ import { ZipSection } from "@/features/upload/components/step1/ZipSection"
 import { FolderTree } from "@/features/upload/components/step2/FolderTree"
 import { ProcessStep } from "@/features/upload/components/step3/ProcessStep"
 import { FinalResult } from "@/features/upload/components/step4/FinalResult"
+import { NumberingStep } from "@/features/upload/components/step5/NumberingStep"
 import { FinalizeArtifactsStep } from "@/pages/FinalizeArtifactsPage"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import {
@@ -738,7 +739,14 @@ function folderPathFromZipName(fileName: string): string {
     .join("/")
 }
 
-const STEP_LABELS = ["Tải lên", "Cấu trúc", "Xử lý", "Kết quả", "Tạo mục lục"]
+const STEP_LABELS = [
+  "Tải lên",
+  "Cấu trúc",
+  "Xử lý",
+  "Kết quả",
+  "Đánh số trang",
+  "Tạo mục lục",
+]
 const PLAN_ANALYSIS_TIMEOUT_MS = 10 * 60 * 1000
 const LAST_SESSION_KEY = "archival-processing:last-session-id"
 const PLAN_PROGRESS_PHASES = [
@@ -799,7 +807,7 @@ export function UploadPage() {
   const existingSessionMode = Boolean(routeSessionId)
   const currentStep = Math.min(
     Math.max(parseInt(step ?? "1", 10), 1),
-    5
+    6
   ) as AppStep
 
   const goTo = (s: AppStep, targetSessionId = routeSessionId ?? _sessionId) => {
@@ -1995,7 +2003,7 @@ export function UploadPage() {
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-[11px] font-semibold tracking-[0.14em] text-[#64748B] uppercase">
-                    Bước {currentStep}/5
+                    Bước {currentStep}/6
                   </p>
                   <p className="truncate text-sm font-semibold text-[#0F172A]">
                     {STEP_LABELS[currentStep - 1]}
@@ -2432,7 +2440,7 @@ export function UploadPage() {
                 onFinish={() => {
                   const currentSessionId = sessionId ?? routeSessionId
                   if (!currentSessionId) {
-                    toast.error("Chưa có session để tạo mục lục.")
+                    toast.error("Chưa có session để đánh số trang.")
                     return
                   }
                   navigate(
@@ -2443,10 +2451,37 @@ export function UploadPage() {
             </motion.div>
           )}
 
-          {/* Bước 5: Tạo mục lục */}
+          {/* Bước 5: Đánh số trang */}
           {currentStep === 5 && (
             <motion.div
               key="step5"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -16 }}
+              transition={{ duration: 0.4, ease: easeOut }}
+            >
+              <NumberingStep
+                sessionId={sessionId ?? routeSessionId ?? null}
+                autoStart={searchParams.get("start") === "1"}
+                onAutoStartHandled={handleFinalizeAutoStartHandled}
+                onContinue={() => {
+                  const currentSessionId = sessionId ?? routeSessionId
+                  if (!currentSessionId) {
+                    toast.error("Chưa có session để tạo mục lục.")
+                    return
+                  }
+                  navigate(
+                    `/sessions/${encodeURIComponent(currentSessionId)}/step/6`
+                  )
+                }}
+              />
+            </motion.div>
+          )}
+
+          {/* Bước 6: Tạo mục lục */}
+          {currentStep === 6 && (
+            <motion.div
+              key="step6"
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -16 }}

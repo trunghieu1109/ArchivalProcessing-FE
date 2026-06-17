@@ -276,6 +276,71 @@ export interface SessionArtifact {
   generated_at?: string
 }
 
+export interface NumberingDocumentStatus {
+  session_document_id: number
+  document_id: string
+  file_name: string
+  data_path: string
+  cluster_id: string
+  dossier_id: string
+  dossier_title: string
+  position_index: number
+  status: string
+  mode: DocumentNumberingMode
+  document_number_start: number
+  document_number_end: number
+  entry_count: number
+  source_page_count: number
+  output_page_count: number
+  blank_pages: number[]
+  numbering_pages?: number[]
+  numbering_entries?: Array<{
+    page_number: number
+    label: string
+  }>
+  source_version_id?: string | null
+  numbered_pdf_version_id?: string | number | null
+  download_url?: string | null
+  expires_at?: string | number | null
+  error?: string | null
+  updated_at?: string | null
+}
+
+export interface NumberingDossierStatus {
+  dossier_id: string
+  title: string
+  document_count: number
+  status_counts: Record<string, number>
+}
+
+export interface NumberingStatusResponse {
+  session_id: string
+  cluster_version_id: string
+  document_numbering_mode: DocumentNumberingMode
+  active: boolean
+  job: ActiveJobSummary | null
+  summary: {
+    total_documents: number
+    status_counts: Record<string, number>
+    done: number
+    failed: number
+    pending: number
+    running: number
+  }
+  documents: NumberingDocumentStatus[]
+  dossiers: NumberingDossierStatus[]
+}
+
+export interface EnqueueNumberingResponse {
+  session_id: string
+  job_id: number
+  job_type: string
+  status: string
+  created: boolean
+  payload: Record<string, unknown>
+  worker_required: boolean
+}
+
 export interface ArtifactListResponse {
   session_id: string
   artifacts: SessionArtifact[]
@@ -1584,6 +1649,52 @@ export async function enqueueFinalizeArtifacts(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }
+  )
+}
+
+export async function enqueueDocumentNumbering(
+  sessionId: string,
+  payload: { created_by?: string; force?: boolean } = {}
+): Promise<EnqueueNumberingResponse> {
+  return requestJson<EnqueueNumberingResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/numbering/start`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
+}
+
+export async function updateDocumentNumberingFromPage(
+  sessionId: string,
+  sessionDocumentId: number,
+  payload: {
+    anchor_page_number: number
+    new_number: number
+    created_by?: string
+    force?: boolean
+  }
+): Promise<EnqueueNumberingResponse> {
+  return requestJson<EnqueueNumberingResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/numbering/documents/${encodeURIComponent(String(sessionDocumentId))}/start`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        created_by: "ui",
+        force: true,
+        ...payload,
+      }),
+    }
+  )
+}
+
+export async function getDocumentNumberingStatus(
+  sessionId: string
+): Promise<NumberingStatusResponse> {
+  return requestJson<NumberingStatusResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/numbering/status`
   )
 }
 
