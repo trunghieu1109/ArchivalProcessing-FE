@@ -1,5 +1,6 @@
 import type { ReactNode } from "react"
 import { Routes, Route, Navigate, useLocation } from "react-router-dom"
+import { AdminAccessPage } from "@/pages/AdminAccessPage"
 import { FinalizeArtifactsPage } from "@/pages/FinalizeArtifactsPage"
 import { LoginPage } from "@/pages/LoginPage"
 import { SessionsPage } from "@/pages/SessionsPage"
@@ -11,6 +12,14 @@ export function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<LoginPage />} />
+      <Route
+        path="/admin/access"
+        element={
+          <RequireAuth>
+            <AdminAccessPage />
+          </RequireAuth>
+        }
+      />
       <Route
         path="/sessions"
         element={

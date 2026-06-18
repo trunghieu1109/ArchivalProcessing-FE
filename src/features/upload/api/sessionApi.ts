@@ -21,7 +21,12 @@ export interface CreateSessionResponse {
   session_id: string
   status: string
   archive_name?: string | null
+  archive_code?: string | null
   fonds_name?: string | null
+  fonds_creator_code?: string | null
+  coordinator_user_id?: string | null
+  remote_ingestion_batch_id?: string | null
+  remote_ingestion_status?: string | null
   created_at: string
 }
 
@@ -29,7 +34,12 @@ export interface SessionSummary {
   session_id: string
   status: string
   archive_name?: string | null
+  archive_code?: string | null
   fonds_name?: string | null
+  fonds_creator_code?: string | null
+  coordinator_user_id?: string | null
+  remote_ingestion_batch_id?: string | null
+  remote_ingestion_status?: string | null
   created_at: string
   updated_at?: string
   active_plan_version_id?: string | null
@@ -173,6 +183,8 @@ export interface EnsureClusterBuildResponse {
   session_id: string
   pending_document_count: number
   pending_document_ids: number[]
+  pending_feedback_count?: number
+  pending_feedback_ids?: number[]
   oldest_pending_age_seconds?: number | null
   reason: string
   should_enqueue: boolean
@@ -296,6 +308,11 @@ export interface NumberingDocumentStatus {
   cluster_id: string
   dossier_id: string
   dossier_title: string
+  session_dossier_id?: number | null
+  dossier_number?: string | null
+  box_number?: string | null
+  hoso_id?: string | null
+  hop_id?: string | null
   position_index: number
   status: string
   mode: DocumentNumberingMode
@@ -321,6 +338,11 @@ export interface NumberingDocumentStatus {
 export interface NumberingDossierStatus {
   dossier_id: string
   title: string
+  session_dossier_id?: number | null
+  dossier_number?: string | null
+  box_number?: string | null
+  hoso_id?: string | null
+  hop_id?: string | null
   document_count: number
   status_counts: Record<string, number>
 }
@@ -345,12 +367,13 @@ export interface NumberingStatusResponse {
 
 export interface EnqueueNumberingResponse {
   session_id: string
-  job_id: number
+  job_id: number | null
   job_type: string
-  status: string
+  status: "queued" | "already_queued_or_running" | "not_needed"
   created: boolean
   payload: Record<string, unknown>
   worker_required: boolean
+  result?: NumberingStatusResponse
 }
 
 export interface ArtifactListResponse {
@@ -733,7 +756,12 @@ export async function createSession(
 
 export async function patchSessionMetadata(
   sessionId: string,
-  payload: { archive_name?: string | null; fonds_name?: string | null }
+  payload: {
+    archive_name?: string | null
+    archive_code?: string | null
+    fonds_name?: string | null
+    fonds_creator_code?: string | null
+  }
 ): Promise<SessionSummary> {
   return requestJson<SessionSummary>(
     `/sessions/${encodeURIComponent(sessionId)}`,
@@ -741,6 +769,20 @@ export async function patchSessionMetadata(
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+    }
+  )
+}
+
+export async function assignSessionCoordinator(
+  sessionId: string,
+  coordinatorUserId: string | null
+): Promise<SessionSummary> {
+  return requestJson<SessionSummary>(
+    `/sessions/${encodeURIComponent(sessionId)}/coordinator`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ coordinator_user_id: coordinatorUserId }),
     }
   )
 }
@@ -1873,6 +1915,25 @@ export function artifactDownloadUrl(
   )
 }
 
+export async function downloadArtifact(
+  sessionId: string,
+  artifactId: number
+): Promise<DocumentArchiveDownload> {
+  const response = await fetch(
+    artifactDownloadUrl(sessionId, artifactId),
+    withAuth()
+  )
+  if (!response.ok) {
+    throw new Error(await responseErrorMessage(response))
+  }
+  return {
+    blob: await response.blob(),
+    fileName:
+      downloadFileName(response.headers.get("content-disposition")) ||
+      `${sessionId}-artifact-${artifactId}`,
+  }
+}
+
 export function artifactPreviewUrl(
   sessionId: string,
   artifactId: number
@@ -1882,10 +1943,39 @@ export function artifactPreviewUrl(
   )
 }
 
+export async function getArtifactPreviewHtml(
+  sessionId: string,
+  artifactId: number
+): Promise<string> {
+  const response = await fetch(
+    artifactPreviewUrl(sessionId, artifactId),
+    withAuth()
+  )
+  if (!response.ok) {
+    throw new Error(await responseErrorMessage(response))
+  }
+  return response.text()
+}
+
 export function artifactDownloadAllUrl(sessionId: string): string {
   return apiUrl(
     `/sessions/${encodeURIComponent(sessionId)}/artifacts/download-all`
   )
+}
+
+export async function downloadAllArtifacts(
+  sessionId: string
+): Promise<DocumentArchiveDownload> {
+  const response = await fetch(artifactDownloadAllUrl(sessionId), withAuth())
+  if (!response.ok) {
+    throw new Error(await responseErrorMessage(response))
+  }
+  return {
+    blob: await response.blob(),
+    fileName:
+      downloadFileName(response.headers.get("content-disposition")) ||
+      `${sessionId}-finalize-artifacts.zip`,
+  }
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {

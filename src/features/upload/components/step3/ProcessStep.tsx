@@ -152,7 +152,8 @@ export function ProcessStep({
   const currentUserId = String(user?.id ?? user?.user_id ?? "").trim()
   const currentUserEmail = String(user?.email ?? user?.username ?? "").trim()
   const currentUserName = String(user?.display_name ?? user?.name ?? "").trim()
-  const isCoordinator = currentUserRole === "coordinator"
+  const isCoordinator =
+    currentUserRole === "admin" || currentUserRole === "coordinator"
   const currentUserIdentity = useMemo<MetadataActorIdentity>(
     () => ({
       id: currentUserId,
@@ -261,8 +262,9 @@ export function ProcessStep({
         )
       : EMPTY_METADATA_ITEMS
   const selectedItem = useMemo(
-    () => sortedItems.find((item) => item.id === selectedDocumentId) ?? null,
-    [selectedDocumentId, sortedItems]
+    () =>
+      displayedItems.find((item) => item.id === selectedDocumentId) ?? null,
+    [displayedItems, selectedDocumentId]
   )
   const previewDocument = useMemo<DocumentPreviewTarget | null>(
     () =>
@@ -328,7 +330,7 @@ export function ProcessStep({
   }, [canManageMetadataBatches])
 
   useEffect(() => {
-    const availableItems = manualSplitActive ? displayedItems : sortedItems
+    const availableItems = manualSplitActive ? displayedItems : batchScopeItems
     const availableIds = new Set(availableItems.map((item) => item.id))
     setManualSelectedIds((previous) => {
       const next = new Set<number>()
@@ -346,7 +348,7 @@ export function ProcessStep({
     displayedItems,
     displayedItemIdsKey,
     manualSplitActive,
-    sortedItems,
+    batchScopeItems,
     sortedItemIdsKey,
   ])
 
@@ -827,7 +829,8 @@ export function ProcessStep({
     expectedCount > 0
       ? Math.min(100, (reviewedItems.length / expectedCount) * 100)
       : 0
-  const canContinue = dossierReadyItems.length > 0
+  const canBuildDossiers = isCoordinator
+  const canContinue = canBuildDossiers && dossierReadyItems.length > 0
 
   return (
     <motion.div
@@ -1327,7 +1330,10 @@ export function ProcessStep({
         </div>
         <button
           disabled={!canContinue}
-          onClick={() => onContinue([])}
+          onClick={() => {
+            if (!canContinue) return
+            onContinue([])
+          }}
           className={cn(
             "group flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold transition-all duration-200 sm:w-auto",
             canContinue
@@ -1344,8 +1350,8 @@ export function ProcessStep({
           }
         >
           {canContinue
-            ? `Xem kết quả (${dossierReadyItems.length} tài liệu)`
-            : "Xem kết quả"}
+            ? `Lập hồ sơ (${dossierReadyItems.length} tài liệu)`
+            : "Lập hồ sơ"}
         </button>
       </div>
     </motion.div>

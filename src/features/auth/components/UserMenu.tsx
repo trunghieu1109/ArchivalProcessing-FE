@@ -1,4 +1,4 @@
-import { LogOut, ShieldCheck, UserPlus, UserRound } from "lucide-react"
+import { LogOut, ShieldCheck, UserCog, UserPlus, UserRound } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 
@@ -10,6 +10,7 @@ export function UserMenu({ className = "" }: { className?: string }) {
   const { user, logout } = useAuth()
   const displayName = displayUserName(user)
   const role = displayRole(user?.role)
+  const isAdmin = String(user?.role || "").trim().toLowerCase() === "admin"
 
   const handleLogout = () => {
     logout()
@@ -44,6 +45,19 @@ export function UserMenu({ className = "" }: { className?: string }) {
       >
         <UserPlus className="size-4" />
       </Button>
+      {isAdmin && (
+        <Button
+          type="button"
+          variant="outline"
+          size="icon-sm"
+          onClick={() => navigate("/admin/access")}
+          title="Phân quyền coordinator"
+          aria-label="Phân quyền coordinator"
+          className="ml-1 rounded-lg"
+        >
+          <UserCog className="size-4" />
+        </Button>
+      )}
       <Button
         type="button"
         variant="outline"
@@ -67,6 +81,7 @@ function displayUserName(user: ReturnType<typeof useAuth>["user"]): string {
 
 function displayRole(role: unknown): string {
   const value = String(role || "").trim().toLowerCase()
+  if (value === "admin") return "Quản trị viên"
   if (value === "coordinator") return "Điều phối viên"
   if (value === "worker") return "Nhân viên"
   return value || "Đã xác thực"

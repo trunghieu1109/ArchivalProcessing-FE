@@ -1,74 +1,119 @@
 import { useEffect, useState } from "react"
 import type { KeyboardEvent, ReactNode } from "react"
-import { Archive, BookOpenText, Loader2, Pencil } from "lucide-react"
+import {
+  Archive,
+  BookOpenText,
+  Building2,
+  Hash,
+  Loader2,
+  Pencil,
+} from "lucide-react"
 import { cn } from "@/shared/lib/utils"
 
 export interface SessionMetadataValues {
   archive_name?: string | null
+  archive_code?: string | null
   fonds_name?: string | null
+  fonds_creator_code?: string | null
 }
 
 interface SessionMetadataBarProps {
   sessionId: string | null
   metadata: SessionMetadataValues
   onSave: (metadata: SessionMetadataValues) => Promise<void>
+  readOnly?: boolean
   className?: string
 }
 
-type MetadataField = "archive_name" | "fonds_name"
+type MetadataField =
+  | "archive_name"
+  | "archive_code"
+  | "fonds_name"
+  | "fonds_creator_code"
+
+const METADATA_FIELDS: Array<{
+  field: MetadataField
+  label: string
+  icon: ReactNode
+}> = [
+  {
+    field: "archive_name",
+    label: "Tên đơn vị lưu trữ",
+    icon: <Archive className="size-3.5" />,
+  },
+  {
+    field: "archive_code",
+    label: "Mã đơn vị lưu trữ",
+    icon: <Hash className="size-3.5" />,
+  },
+  {
+    field: "fonds_name",
+    label: "Tên phông",
+    icon: <BookOpenText className="size-3.5" />,
+  },
+  {
+    field: "fonds_creator_code",
+    label: "Mã đơn vị hình thành phông",
+    icon: <Building2 className="size-3.5" />,
+  },
+]
 
 export function SessionMetadataBar({
   sessionId,
   metadata,
   onSave,
+  readOnly = false,
   className,
 }: SessionMetadataBarProps) {
-  const currentArchiveName = normalizeText(metadata.archive_name)
-  const currentFondsName = normalizeText(metadata.fonds_name)
-  const [archiveName, setArchiveName] = useState(currentArchiveName)
-  const [fondsName, setFondsName] = useState(currentFondsName)
+  const currentValues = metadataValues(metadata)
+  const [drafts, setDrafts] = useState(currentValues)
   const [editingField, setEditingField] = useState<MetadataField | null>(null)
   const [savingField, setSavingField] = useState<MetadataField | null>(null)
   const [error, setError] = useState("")
 
   useEffect(() => {
-    setArchiveName(currentArchiveName)
-    setFondsName(currentFondsName)
+    setDrafts(currentValues)
     setError("")
-  }, [currentArchiveName, currentFondsName, sessionId])
+  }, [
+    currentValues.archive_code,
+    currentValues.archive_name,
+    currentValues.fonds_creator_code,
+    currentValues.fonds_name,
+    sessionId,
+  ])
 
   const startEditing = (field: MetadataField) => {
-    if (!sessionId || savingField) return
-    if (field === "archive_name") setArchiveName(currentArchiveName)
-    if (field === "fonds_name") setFondsName(currentFondsName)
+    if (readOnly || !sessionId || savingField) return
+    setDrafts((current) => ({
+      ...current,
+      [field]: currentValues[field],
+    }))
     setError("")
     setEditingField(field)
   }
 
   const cancelEditing = (field: MetadataField) => {
-    if (field === "archive_name") setArchiveName(currentArchiveName)
-    if (field === "fonds_name") setFondsName(currentFondsName)
+    setDrafts((current) => ({
+      ...current,
+      [field]: currentValues[field],
+    }))
     setEditingField(null)
   }
 
   const saveField = async (field: MetadataField) => {
     if (!sessionId || savingField) return
-    const nextArchiveName = archiveName.trim()
-    const nextFondsName = fondsName.trim()
-    const changed =
-      field === "archive_name"
-        ? nextArchiveName !== currentArchiveName
-        : nextFondsName !== currentFondsName
-
+    const nextValue = drafts[field].trim()
     setEditingField(null)
-    if (!changed) return
+    if (nextValue === currentValues[field]) return
 
     setSavingField(field)
     setError("")
     try {
       await onSave({
-        archive_name: textOrNull(nextArchiveName),
-        fonds_name: textOrNull(nextFondsName),
+        archive_name: textOrNull(drafts.archive_name),
+        archive_code: textOrNull(drafts.archive_code),
+        fonds_name: textOrNull(drafts.fonds_name),
+        fonds_creator_code: textOrNull(drafts.fonds_creator_code),
       })
     } catch (err) {
       cancelEditing(field)
@@ -92,42 +137,37 @@ export function SessionMetadataBar({
     }
   }
 
-  const fallbackValue = sessionId ?? "Chưa có thông tin"
-
   return (
-    <div className={cn("grid w-full gap-5 px-1 sm:grid-cols-2", className)}>
-      <InlineMetadataField
-        label="Kho lưu trữ"
-        icon={<Archive className="size-3.5" />}
-        value={currentArchiveName || fallbackValue}
-        draftValue={archiveName}
-        emptyValue={!currentArchiveName}
-        editing={editingField === "archive_name"}
-        saving={savingField === "archive_name"}
-        disabled={!sessionId || Boolean(savingField)}
-        onStartEditing={() => startEditing("archive_name")}
-        onChange={setArchiveName}
-        onBlur={() => void saveField("archive_name")}
-        onKeyDown={(event) => handleKeyDown(event, "archive_name")}
-      />
-
-      <InlineMetadataField
-        label="Phông tài liệu"
-        icon={<BookOpenText className="size-3.5" />}
-        value={currentFondsName || fallbackValue}
-        draftValue={fondsName}
-        emptyValue={!currentFondsName}
-        editing={editingField === "fonds_name"}
-        saving={savingField === "fonds_name"}
-        disabled={!sessionId || Boolean(savingField)}
-        onStartEditing={() => startEditing("fonds_name")}
-        onChange={setFondsName}
-        onBlur={() => void saveField("fonds_name")}
-        onKeyDown={(event) => handleKeyDown(event, "fonds_name")}
-      />
+    <div
+      className={cn(
+        "grid w-full gap-x-6 gap-y-4 px-1 sm:grid-cols-2 xl:grid-cols-4",
+        className
+      )}
+    >
+      {METADATA_FIELDS.map(({ field, label, icon }) => (
+        <InlineMetadataField
+          key={field}
+          label={label}
+          icon={icon}
+          value={currentValues[field] || "Chưa nhập"}
+          draftValue={drafts[field]}
+          emptyValue={!currentValues[field]}
+          editing={editingField === field}
+          saving={savingField === field}
+          disabled={readOnly || !sessionId || Boolean(savingField)}
+          onStartEditing={() => startEditing(field)}
+          onChange={(value) =>
+            setDrafts((current) => ({ ...current, [field]: value }))
+          }
+          onBlur={() => void saveField(field)}
+          onKeyDown={(event) => handleKeyDown(event, field)}
+        />
+      ))}
 
       {error && (
-        <p className="text-xs font-medium text-red-600 sm:col-span-2">{error}</p>
+        <p className="text-xs font-medium text-red-600 sm:col-span-2 xl:col-span-4">
+          {error}
+        </p>
       )}
     </div>
   )
@@ -162,7 +202,7 @@ function InlineMetadataField({
 }) {
   return (
     <div className="min-w-0">
-      <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-[#64748B]">
+      <p className="flex items-center gap-1.5 text-xs font-semibold tracking-[0.12em] text-[#64748B] uppercase">
         {icon}
         {label}
       </p>
@@ -173,7 +213,7 @@ function InlineMetadataField({
           onChange={(event) => onChange(event.target.value)}
           onBlur={onBlur}
           onKeyDown={onKeyDown}
-          className="mt-1 h-9 w-full border-0 border-b border-[#0052FF] bg-transparent px-0 text-xl font-semibold text-[#0F172A] outline-none"
+          className="mt-1 h-9 w-full border-0 border-b border-[#0052FF] bg-transparent px-0 text-base font-semibold text-[#0F172A] outline-none"
           aria-label={label}
         />
       ) : (
@@ -182,25 +222,36 @@ function InlineMetadataField({
           onClick={onStartEditing}
           disabled={disabled}
           className="group mt-1 flex min-h-8 max-w-full items-start gap-2 text-left disabled:cursor-default"
-          title={`Chỉnh sửa ${label.toLowerCase()}`}
+          title={disabled ? label : `Chỉnh sửa ${label.toLowerCase()}`}
         >
           <span
             className={cn(
-              "min-w-0 text-xl leading-7 font-semibold break-words whitespace-normal transition-colors [overflow-wrap:anywhere] group-hover:text-[#0052FF]",
+              "min-w-0 text-base leading-6 font-semibold break-words whitespace-normal transition-colors [overflow-wrap:anywhere] group-hover:text-[#0052FF]",
               emptyValue ? "text-[#64748B]" : "text-[#0F172A]"
             )}
           >
             {value}
           </span>
           {saving ? (
-            <Loader2 className="mt-1.5 size-4 shrink-0 animate-spin text-[#0052FF]" />
+            <Loader2 className="mt-1 size-4 shrink-0 animate-spin text-[#0052FF]" />
           ) : (
-            <Pencil className="mt-2 size-3.5 shrink-0 text-[#94A3B8] opacity-0 transition-opacity group-hover:opacity-100" />
+            <Pencil className="mt-1.5 size-3.5 shrink-0 text-[#94A3B8] opacity-0 transition-opacity group-hover:opacity-100" />
           )}
         </button>
       )}
     </div>
   )
+}
+
+function metadataValues(
+  metadata: SessionMetadataValues
+): Record<MetadataField, string> {
+  return {
+    archive_name: normalizeText(metadata.archive_name),
+    archive_code: normalizeText(metadata.archive_code),
+    fonds_name: normalizeText(metadata.fonds_name),
+    fonds_creator_code: normalizeText(metadata.fonds_creator_code),
+  }
 }
 
 function normalizeText(value: unknown): string {

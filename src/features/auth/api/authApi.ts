@@ -15,7 +15,8 @@ export interface RegisterPayload {
   email: string
   password: string
   display_name: string
-  role?: "worker" | "coordinator"
+  name?: string
+  role?: "worker" | "coordinator" | "admin"
 }
 
 export interface ChinhlyUser {
@@ -27,6 +28,8 @@ export interface ChinhlyUser {
   name?: string | null
   role?: string | null
   active?: boolean | null
+  is_active?: boolean | null
+  managed_batch_ids?: Array<string | number> | null
   [key: string]: unknown
 }
 
@@ -71,7 +74,7 @@ export async function listChinhlyUsers(
   } = {}
 ): Promise<ChinhlyUser[]> {
   const query = new URLSearchParams()
-  query.set("role", options.role ?? "worker")
+  if (options.role) query.set("role", options.role)
   query.set("active", String(options.active ?? true))
   query.set("limit", String(Math.min(options.limit ?? 500, 500)))
   query.set("offset", String(options.offset ?? 0))
@@ -86,6 +89,80 @@ export async function listChinhlyUsers(
     throw new Error(await responseErrorMessage(response))
   }
   return normalizeUserList(await response.json())
+}
+
+export async function updateChinhlyUser(
+  userId: string | number,
+  payload: {
+    display_name?: string
+    name?: string
+    role?: "admin" | "coordinator" | "worker"
+    is_active?: boolean
+  }
+): Promise<ChinhlyUser> {
+  const headers = new Headers({ "Content-Type": "application/json" })
+  const authorization = authHeaderValue()
+  if (authorization) headers.set("Authorization", authorization)
+
+  const response = await fetch(apiUrl(`/auth/users/${encodeURIComponent(String(userId))}`), {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    throw new Error(await responseErrorMessage(response))
+  }
+  return response.json() as Promise<ChinhlyUser>
+}
+
+export async function updateChinhlyUserRole(
+  userId: string | number,
+  payload: {
+    role: "admin" | "coordinator" | "worker"
+    is_active?: boolean
+  }
+): Promise<ChinhlyUser> {
+  const headers = new Headers({ "Content-Type": "application/json" })
+  const authorization = authHeaderValue()
+  if (authorization) headers.set("Authorization", authorization)
+
+  const response = await fetch(
+    apiUrl(`/auth/users/${encodeURIComponent(String(userId))}/role`),
+    {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify(payload),
+    }
+  )
+  if (!response.ok) {
+    throw new Error(await responseErrorMessage(response))
+  }
+  return response.json() as Promise<ChinhlyUser>
+}
+
+export async function updateChinhlyUserBatchAssignments(
+  userId: string | number,
+  payload: {
+    mode: "replace" | "add" | "remove"
+    batch_ids: Array<string | number>
+  }
+): Promise<ChinhlyUser> {
+  const headers = new Headers({ "Content-Type": "application/json" })
+  const authorization = authHeaderValue()
+  if (authorization) headers.set("Authorization", authorization)
+
+  const response = await fetch(
+    apiUrl(`/auth/users/${encodeURIComponent(String(userId))}/batch-assignments`),
+    {
+      method: "PUT",
+      headers,
+      body: JSON.stringify(payload),
+    }
+  )
+  if (!response.ok) {
+    throw new Error(await responseErrorMessage(response))
+  }
+  return response.json() as Promise<ChinhlyUser>
 }
 
 function apiUrl(path: string): string {

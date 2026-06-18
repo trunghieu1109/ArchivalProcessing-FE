@@ -11,19 +11,24 @@ import {
   ArrowRight,
   Download,
   Eye,
+  FileSpreadsheet,
   FileText,
   Loader2,
   Play,
   RefreshCw,
   Save,
+  Upload,
   X,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import {
+  downloadArtifact,
   enqueueDocumentNumbering,
+  exportMetadataSnapshot,
   getDocumentNumberingStatus,
+  importMetadataBoxNumbers as importMetadataBoxNumbersApi,
   updateDocumentNumberingFromPage,
   type NumberingDocumentStatus,
   type NumberingStatusResponse,
@@ -63,6 +68,9 @@ export function NumberingStep({
   const [previewDocumentId, setPreviewDocumentId] = useState<number | null>(
     null
   )
+  const [metadataExporting, setMetadataExporting] = useState(false)
+  const [metadataImporting, setMetadataImporting] = useState(false)
+  const metadataImportInputRef = useRef<HTMLInputElement | null>(null)
   const [completedPhases, setCompletedPhases] = useState<Set<string>>(
     () => new Set()
   )
@@ -114,7 +122,15 @@ export function NumberingStep({
           created_by: "ui",
           force,
         })
-        if (response.created) {
+        if (response.status === "not_needed") {
+          if (response.result) setStatus(response.result)
+          setProgressPhase("completed")
+          setCompletedPhases(
+            new Set(NUMBERING_PROGRESS_PHASES.map((phase) => phase.id))
+          )
+          setProgressMessage("Đã lấy kết quả đánh số hiện có.")
+          toast.info("Tài liệu đã được đánh số theo chế độ hiện tại.")
+        } else if (response.created) {
           toast.success("Đã gửi task đánh số trang.")
         } else {
           toast.info("Task đánh số trang đang được xử lý.")
@@ -184,6 +200,78 @@ export function NumberingStep({
         toast.error(message)
       } finally {
         setUpdatingDocumentId(null)
+      }
+    },
+    [refreshStatus, sessionId]
+  )
+
+  const exportMetadata = useCallback(async () => {
+    if (!sessionId) {
+      toast.error("Chưa có session để xuất metadata.")
+      return
+    }
+    setMetadataExporting(true)
+    setError("")
+    try {
+      const result = await exportMetadataSnapshot(sessionId, {
+        created_by: "ui",
+      })
+      const artifact = result.artifact ?? result.artifacts[0]
+      if (!artifact) {
+        throw new Error("Backend chưa trả về artifact metadata.")
+      }
+      toast.success("Đã tạo snapshot metadata. Đang tải file.")
+      const download = await downloadArtifact(sessionId, artifact.id)
+      saveBlob(download.blob, download.fileName)
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Không thể xuất metadata tại thời điểm hiện tại."
+      setError(message)
+      toast.error(message)
+    } finally {
+      setMetadataExporting(false)
+    }
+  }, [sessionId])
+
+  const importMetadataBoxNumbers = useCallback(
+    async (file: File | null) => {
+      if (!file) return
+      if (!sessionId) {
+        toast.error("Chưa có session để nhập số hộp.")
+        return
+      }
+      if (!file.name.toLowerCase().endsWith(".xlsx")) {
+        toast.error("File nhập số hộp phải là .xlsx.")
+        return
+      }
+
+      setMetadataImporting(true)
+      setError("")
+      try {
+        const result = await importMetadataBoxNumbersApi(sessionId, file, {
+          created_by: "ui",
+        })
+        toast.success(
+          `Đã cập nhật số hộp cho ${result.updated_dossiers} hồ sơ.`
+        )
+        const issueCount = result.unmatched_rows + result.conflict_count
+        if (issueCount > 0) {
+          toast.info(
+            `Có ${issueCount} dòng chưa cập nhật được do chưa khớp hồ sơ hoặc bị trùng số hộp.`
+          )
+        }
+        await refreshStatus({ silent: true })
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Không thể nhập số hộp từ metadata."
+        setError(message)
+        toast.error(message)
+      } finally {
+        setMetadataImporting(false)
       }
     },
     [refreshStatus, sessionId]
@@ -269,6 +357,7 @@ export function NumberingStep({
   const failedCount = status?.summary.failed ?? 0
   const complete = Boolean(status && isNumberingComplete(status))
   const active = starting || Boolean(status?.active)
+  const metadataBusy = metadataExporting || metadataImporting
   const canContinue = complete && failedCount === 0
   const modeLabel =
     status?.document_numbering_mode === "sheet"
@@ -303,7 +392,7 @@ export function NumberingStep({
             </Button>
             <Button
               type="button"
-              onClick={() => void startNumbering(complete)}
+              onClick={() => void startNumbering(false)}
               disabled={active}
             >
               {active ? (
@@ -311,7 +400,62 @@ export function NumberingStep({
               ) : (
                 <Play data-icon="inline-start" />
               )}
-              {complete ? "Đánh số lại" : "Bắt đầu đánh số"}
+              {complete ? "Lấy kết quả" : "Bắt đầu đánh số"}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-[#CBD5E1] bg-white px-5 py-4 shadow-sm">
+        <input
+          ref={metadataImportInputRef}
+          type="file"
+          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0] ?? null
+            event.currentTarget.value = ""
+            void importMetadataBoxNumbers(file)
+          }}
+        />
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-[#0F172A]">
+              Metadata snapshot & số hộp
+            </p>
+            <p className="mt-1 max-w-3xl text-sm text-[#64748B]">
+              Xuất snapshot metadata từ phiên bản hồ sơ hiện hành, điền số hộp
+              trong file Excel rồi nhập lại trước khi tạo mục lục.
+            </p>
+          </div>
+          <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:w-auto">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void exportMetadata()}
+              disabled={!sessionId || active || metadataBusy}
+              className="w-full lg:w-auto"
+            >
+              {metadataExporting ? (
+                <Loader2 data-icon="inline-start" className="animate-spin" />
+              ) : (
+                <FileSpreadsheet data-icon="inline-start" />
+              )}
+              Xuất metadata
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => metadataImportInputRef.current?.click()}
+              disabled={!sessionId || active || metadataBusy}
+              className="w-full lg:w-auto"
+            >
+              {metadataImporting ? (
+                <Loader2 data-icon="inline-start" className="animate-spin" />
+              ) : (
+                <Upload data-icon="inline-start" />
+              )}
+              Nhập số hộp
             </Button>
           </div>
         </div>
@@ -375,9 +519,17 @@ export function NumberingStep({
                       <p className="truncate text-sm font-semibold text-[#0F172A]">
                         {group.title || group.dossierId}
                       </p>
-                      <p className="text-xs text-[#64748B]">
-                        {group.documents.length} tài liệu
-                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-[#64748B]">
+                        <span>{group.documents.length} tài liệu</span>
+                        <DossierMetaChip
+                          label="Hồ sơ số"
+                          value={group.dossierNumber}
+                        />
+                        <DossierMetaChip
+                          label="Hộp số"
+                          value={group.boxNumber}
+                        />
+                      </div>
                     </div>
                   </div>
                   <div className="grid gap-1.5">
@@ -420,7 +572,9 @@ export function NumberingStep({
             <p className="text-sm font-semibold text-[#0F172A]">
               {active
                 ? "Đang đánh số tài liệu"
-                : canContinue
+                : metadataBusy
+                  ? "Đang cập nhật metadata"
+                  : canContinue
                   ? "Đã sẵn sàng tạo mục lục"
                   : "Hoàn tất đánh số trước khi tạo mục lục"}
             </p>
@@ -433,7 +587,7 @@ export function NumberingStep({
             type="button"
             variant="secondary"
             onClick={onContinue}
-            disabled={!canContinue}
+            disabled={!canContinue || metadataBusy}
             className="w-full sm:w-auto"
           >
             Tạo mục lục
@@ -479,6 +633,29 @@ function NumberingStat({
         {value}
       </p>
     </div>
+  )
+}
+
+function DossierMetaChip({
+  label,
+  value,
+}: {
+  label: string
+  value?: string | number | null
+}) {
+  const displayValue = textOrNull(value) ?? "Chưa có"
+  return (
+    <span className="inline-flex max-w-full items-center gap-1 rounded-full border border-[#D8E1EC] bg-[#F8FAFC] px-2 py-0.5">
+      <span className="font-medium text-[#64748B]">{label}:</span>
+      <span
+        className={cn(
+          "truncate font-semibold",
+          displayValue === "Chưa có" ? "text-[#94A3B8]" : "text-[#0F172A]"
+        )}
+      >
+        {displayValue}
+      </span>
+    </span>
   )
 }
 
@@ -773,6 +950,10 @@ function groupDocumentsByDossier(documents: NumberingDocumentStatus[]) {
   const groups: Array<{
     dossierId: string
     title: string
+    dossierNumber: string | null
+    boxNumber: string | null
+    hosoId: string | null
+    hopId: string | null
     documents: NumberingDocumentStatus[]
   }> = []
   const byId = new Map<string, (typeof groups)[number]>()
@@ -783,11 +964,20 @@ function groupDocumentsByDossier(documents: NumberingDocumentStatus[]) {
       group = {
         dossierId,
         title: document.dossier_title || dossierId,
+        dossierNumber: textOrNull(document.dossier_number),
+        boxNumber: textOrNull(document.box_number),
+        hosoId: textOrNull(document.hoso_id) ?? dossierId,
+        hopId: textOrNull(document.hop_id),
         documents: [],
       }
       byId.set(dossierId, group)
       groups.push(group)
     }
+    group.dossierNumber =
+      group.dossierNumber ?? textOrNull(document.dossier_number)
+    group.boxNumber = group.boxNumber ?? textOrNull(document.box_number)
+    group.hosoId = group.hosoId ?? textOrNull(document.hoso_id) ?? dossierId
+    group.hopId = group.hopId ?? textOrNull(document.hop_id)
     group.documents.push(document)
   }
   return groups
@@ -833,4 +1023,20 @@ function pdfEmbedUrl(url: string): string {
   if (!url) return ""
   const separator = url.includes("#") ? "&" : "#"
   return `${url}${separator}toolbar=1&navpanes=0`
+}
+
+function textOrNull(value: unknown): string | null {
+  const text = String(value ?? "").trim()
+  return text || null
+}
+
+function saveBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = fileName
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
 }

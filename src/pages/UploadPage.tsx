@@ -8,11 +8,13 @@ import {
   ArrowRight,
   ArrowLeft,
   Home,
+  Save,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { toast } from "sonner"
 import { cn } from "@/shared/lib/utils"
 import { UserMenu } from "@/features/auth/components/UserMenu"
+import { useAuth } from "@/features/auth/lib/AuthContext"
 import { DocxSection } from "@/features/upload/components/step1/DocxSection"
 import { ZipSection } from "@/features/upload/components/step1/ZipSection"
 import { FolderTree } from "@/features/upload/components/step2/FolderTree"
@@ -782,7 +784,9 @@ let _documentNumberingModeSavePromise: Promise<ActivePlanResponse> | null = null
 let _sessionId: string | null = null
 let _sessionMetadata: SessionMetadataValues = {
   archive_name: null,
+  archive_code: null,
   fonds_name: null,
+  fonds_creator_code: null,
 }
 let _zipUpload: SessionInputUploadResponse | null = null
 let _arrangementPlanUpload: SessionInputUploadResponse | null = null
@@ -800,6 +804,7 @@ let _retentionReuploaded = false
 
 export function UploadPage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const { step, sessionId: routeSessionId } = useParams<{
     step: string
     sessionId?: string
@@ -810,6 +815,8 @@ export function UploadPage() {
     Math.max(parseInt(step ?? "1", 10), 1),
     6
   ) as AppStep
+  const currentUserRole = String(user?.role ?? "").trim().toLowerCase()
+  const isWorkerUser = currentUserRole === "worker"
 
   const goTo = (s: AppStep, targetSessionId = routeSessionId ?? _sessionId) => {
     if (targetSessionId)
@@ -835,6 +842,8 @@ export function UploadPage() {
         toast.success("Đã gửi task lập hồ sơ từ tài liệu đã xác nhận.")
       } else if (response.status === "already_queued_or_running") {
         toast.info("Task lập hồ sơ đang được xử lý.")
+      } else {
+        toast.info("Hồ sơ đã được lập với dữ liệu mới nhất.")
       }
     } catch (err) {
       toast.error(
@@ -898,6 +907,15 @@ export function UploadPage() {
     retention: _retentionReuploaded,
   }))
 
+  useEffect(() => {
+    const targetSessionId = routeSessionId ?? sessionId ?? _sessionId
+    if (!isWorkerUser || currentStep === 3 || !targetSessionId) return
+    navigate(
+      `/sessions/${encodeURIComponent(targetSessionId)}/step/3`,
+      { replace: true }
+    )
+  }, [currentStep, isWorkerUser, navigate, routeSessionId, sessionId])
+
   const applyWorkflowState = (nextSessionId: string | null) => {
     setDoc1State(_doc1State)
     setDoc2State(_doc2State)
@@ -948,7 +966,9 @@ export function UploadPage() {
     _sessionId = nextSessionId
     _sessionMetadata = {
       archive_name: null,
+      archive_code: null,
       fonds_name: null,
+      fonds_creator_code: null,
     }
     _zipUpload = null
     _arrangementPlanUpload = null
@@ -969,7 +989,9 @@ export function UploadPage() {
   const syncSessionMetadata = (metadata: SessionMetadataValues) => {
     _sessionMetadata = {
       archive_name: metadata.archive_name ?? null,
+      archive_code: metadata.archive_code ?? null,
       fonds_name: metadata.fonds_name ?? null,
+      fonds_creator_code: metadata.fonds_creator_code ?? null,
     }
     setSessionMetadata(_sessionMetadata)
   }
@@ -2053,12 +2075,13 @@ export function UploadPage() {
                   const s = (i + 1) as AppStep
                   const isActive = currentStep === s
                   const isDone = currentStep > s
-                  const canNav = isDone
+                  const canNav = !isWorkerUser && isDone
                   return (
                     <div key={i} className="flex items-center">
                       <div className="flex flex-col items-center gap-1.5">
                         <button
                           onClick={() => canNav && goTo(s)}
+                          disabled={isWorkerUser && s !== 3}
                           className={cn(
                             "flex size-10 items-center justify-center rounded-full text-sm font-bold transition-all duration-300",
                             isDone
@@ -2132,7 +2155,7 @@ export function UploadPage() {
           >
             <Home className="size-4" /> Danh sách session
           </motion.button>
-          {currentStep > 1 && (
+          {currentStep > 1 && !isWorkerUser && (
             <motion.button
               initial={{ opacity: 0, x: -8 }}
               animate={{ opacity: 1, x: 0 }}
@@ -2145,18 +2168,41 @@ export function UploadPage() {
           )}
         </div>
 
-        {(sessionId || routeSessionId) && (
+        {(sessionId || routeSessionId) && currentStep === 1 && (
+          <UploadSessionMetadataForm
+            sessionId={sessionId ?? routeSessionId ?? null}
+            metadata={sessionMetadata}
+            onSave={saveSessionMetadata}
+            readOnly={isWorkerUser}
+            className="mb-5"
+          />
+        )}
+        {(sessionId || routeSessionId) && currentStep !== 1 && (
           <SessionMetadataBar
             sessionId={sessionId ?? routeSessionId ?? null}
             metadata={sessionMetadata}
             onSave={saveSessionMetadata}
+            readOnly={isWorkerUser}
             className="mb-5"
           />
         )}
 
         <AnimatePresence mode="wait">
+          {isWorkerUser && currentStep !== 3 && (
+            <motion.div
+              key="worker-redirect"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -16 }}
+              transition={{ duration: 0.25, ease: easeOut }}
+              className="rounded-2xl border border-[#D8E1EC] bg-white px-5 py-4 text-sm text-[#475569] shadow-sm"
+            >
+              Đang chuyển bạn về màn hình extract metadata được phân công...
+            </motion.div>
+          )}
+
           {/* Bước 1: Tải lên */}
-          {currentStep === 1 && (
+          {!isWorkerUser && currentStep === 1 && (
             <motion.div
               key="step1"
               initial={{ opacity: 0, y: 16 }}
@@ -2393,7 +2439,7 @@ export function UploadPage() {
           )}
 
           {/* Bước 2: Cây thư mục */}
-          {currentStep === 2 && (
+          {!isWorkerUser && currentStep === 2 && (
             <motion.div
               key="step2"
               initial={{ opacity: 0, y: 16 }}
@@ -2444,7 +2490,7 @@ export function UploadPage() {
           )}
 
           {/* Bước 4: Kết quả */}
-          {currentStep === 4 && (
+          {!isWorkerUser && currentStep === 4 && (
             <motion.div
               key="step4"
               initial={{ opacity: 0, y: 16 }}
@@ -2471,7 +2517,7 @@ export function UploadPage() {
           )}
 
           {/* Bước 5: Đánh số trang */}
-          {currentStep === 5 && (
+          {!isWorkerUser && currentStep === 5 && (
             <motion.div
               key="step5"
               initial={{ opacity: 0, y: 16 }}
@@ -2498,7 +2544,7 @@ export function UploadPage() {
           )}
 
           {/* Bước 6: Tạo mục lục */}
-          {currentStep === 6 && (
+          {!isWorkerUser && currentStep === 6 && (
             <motion.div
               key="step6"
               initial={{ opacity: 0, y: 16 }}
@@ -2524,6 +2570,171 @@ function addSetValue<T>(values: Set<T>, value: T): Set<T> {
   const next = new Set(values)
   next.add(value)
   return next
+}
+
+function UploadSessionMetadataForm({
+  sessionId,
+  metadata,
+  onSave,
+  readOnly,
+  className,
+}: {
+  sessionId: string | null
+  metadata: SessionMetadataValues
+  onSave: (metadata: SessionMetadataValues) => Promise<void>
+  readOnly: boolean
+  className?: string
+}) {
+  const [draft, setDraft] = useState<SessionMetadataValues>(() =>
+    normalizeSessionMetadataDraft(metadata)
+  )
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    setDraft(normalizeSessionMetadataDraft(metadata))
+  }, [
+    metadata.archive_code,
+    metadata.archive_name,
+    metadata.fonds_creator_code,
+    metadata.fonds_name,
+    sessionId,
+  ])
+
+  const updateDraft = (field: keyof SessionMetadataValues, value: string) => {
+    setDraft((current) => ({ ...current, [field]: value }))
+  }
+
+  const handleSubmit = async (event: { preventDefault: () => void }) => {
+    event.preventDefault()
+    if (!sessionId || readOnly || saving) return
+    setSaving(true)
+    try {
+      await onSave({
+        archive_name: textOrNull(draft.archive_name),
+        archive_code: textOrNull(draft.archive_code),
+        fonds_name: textOrNull(draft.fonds_name),
+        fonds_creator_code: textOrNull(draft.fonds_creator_code),
+      })
+      toast.success("Đã lưu thông tin kho/phông.")
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Không thể lưu thông tin kho/phông."
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className={cn(
+        "rounded-2xl border border-[#D8E1EC] bg-white px-4 py-4 shadow-sm sm:px-5",
+        className
+      )}
+    >
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-[#0F172A]">
+            Thông tin đơn vị lưu trữ / phông
+          </p>
+          <p className="mt-1 text-xs text-[#64748B]">
+            Nhập các thông tin nền cho session trước khi xử lý hồ sơ.
+          </p>
+        </div>
+        {!readOnly && (
+          <button
+            type="submit"
+            disabled={!sessionId || saving}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#0052FF] px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#0047D9] disabled:cursor-not-allowed disabled:bg-[#CBD5E1] disabled:text-[#475569]"
+          >
+            {saving ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Save className="size-4" />
+            )}
+            Lưu thông tin
+          </button>
+        )}
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <UploadMetadataInput
+          label="Tên đơn vị lưu trữ"
+          value={draft.archive_name ?? ""}
+          disabled={readOnly || saving}
+          onChange={(value) => updateDraft("archive_name", value)}
+        />
+        <UploadMetadataInput
+          label="Mã đơn vị lưu trữ"
+          value={draft.archive_code ?? ""}
+          disabled={readOnly || saving}
+          onChange={(value) => updateDraft("archive_code", value)}
+        />
+        <UploadMetadataInput
+          label="Tên phông"
+          value={draft.fonds_name ?? ""}
+          disabled={readOnly || saving}
+          onChange={(value) => updateDraft("fonds_name", value)}
+        />
+        <UploadMetadataInput
+          label="Mã đơn vị hình thành phông"
+          value={draft.fonds_creator_code ?? ""}
+          disabled={readOnly || saving}
+          onChange={(value) => updateDraft("fonds_creator_code", value)}
+        />
+      </div>
+    </form>
+  )
+}
+
+function UploadMetadataInput({
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string
+  value: string
+  disabled: boolean
+  onChange: (value: string) => void
+}) {
+  return (
+    <label className="block min-w-0">
+      <span className="text-xs font-semibold tracking-[0.08em] text-[#64748B] uppercase">
+        {label}
+      </span>
+      <input
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="Chưa nhập"
+        className="mt-1 h-10 w-full rounded-lg border border-[#CBD5E1] bg-white px-3 text-sm font-medium text-[#0F172A] outline-none transition-colors placeholder:text-[#94A3B8] focus:border-[#0052FF] focus:ring-2 focus:ring-[#0052FF]/10 disabled:bg-[#F1F5F9] disabled:text-[#64748B]"
+      />
+    </label>
+  )
+}
+
+function normalizeSessionMetadataDraft(
+  metadata: SessionMetadataValues
+): SessionMetadataValues {
+  return {
+    archive_name: normalizeDraftText(metadata.archive_name),
+    archive_code: normalizeDraftText(metadata.archive_code),
+    fonds_name: normalizeDraftText(metadata.fonds_name),
+    fonds_creator_code: normalizeDraftText(metadata.fonds_creator_code),
+  }
+}
+
+function normalizeDraftText(value: unknown): string {
+  return String(value ?? "").trim()
+}
+
+function textOrNull(value: unknown): string | null {
+  const text = String(value ?? "").trim()
+  return text || null
 }
 
 function normalizePlanProgressPhase(value: unknown): string {

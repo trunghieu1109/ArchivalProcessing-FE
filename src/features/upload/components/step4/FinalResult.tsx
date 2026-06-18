@@ -18,7 +18,6 @@ import {
   ChevronRight,
   Edit2,
   Eye,
-  FileSpreadsheet,
   FileText,
   Folder,
   FolderClock,
@@ -30,7 +29,6 @@ import {
   RefreshCw,
   Signature,
   Undo2,
-  Upload,
   X,
 } from "lucide-react"
 import { motion } from "framer-motion"
@@ -43,13 +41,10 @@ import {
 } from "@/features/upload/components/DocumentPdfPreview"
 import {
   activateClusterVersion,
-  artifactDownloadUrl,
   ensureClusterBuild,
-  exportMetadataSnapshot,
   getActiveClusters,
   getClusterBuildStatus,
   getClusterVersion,
-  importMetadataBoxNumbers,
   listClusterVersions,
   listSessionEvents,
   moveDocumentBetweenClusters,
@@ -58,7 +53,6 @@ import {
   promoteSelectedDocumentsToDossier,
   promoteTemporaryFolderDocuments,
   type ClusterVersionResponse,
-  type MetadataSnapshotGroup,
   type SessionDossierPatchPayload,
   type SessionDossierSummary,
 } from "@/features/upload/api/sessionApi"
@@ -227,8 +221,6 @@ export function FinalResult({
     useState(false)
   const [movingSelectedDocumentsTargetId, setMovingSelectedDocumentsTargetId] =
     useState<string | null>(null)
-  const [metadataExporting, setMetadataExporting] = useState(false)
-  const [metadataImporting, setMetadataImporting] = useState(false)
   const [savingDossierMetadataId, setSavingDossierMetadataId] = useState<
     string | null
   >(null)
@@ -244,7 +236,6 @@ export function FinalResult({
   >(null)
   const [previewWidthPercent, setPreviewWidthPercent] = useState(50)
   const previewLayoutRef = useRef<HTMLDivElement | null>(null)
-  const metadataImportInputRef = useRef<HTMLInputElement | null>(null)
   const resultTreeScrollRef = useRef<HTMLDivElement | null>(null)
   const resultTreeDragYRef = useRef<number | null>(null)
   const resultTreeAutoScrollFrameRef = useRef<number | null>(null)
@@ -1190,6 +1181,20 @@ export function FinalResult({
           ? { dossier_build_strategy: "file_register" as const }
           : {}),
       })
+      if (response.status === "not_needed") {
+        setClusterJobMode(previousJobMode)
+        setStatus(
+          forceFileRegister
+            ? "Hồ sơ theo tập lưu đã được cập nhật với dữ liệu mới nhất."
+            : "Hồ sơ đã được cập nhật với dữ liệu mới nhất."
+        )
+        toast.info(
+          forceFileRegister
+            ? "Không có thay đổi mới để lập lại hồ sơ theo tập lưu."
+            : "Không có tài liệu hoặc feedback mới để cập nhật hồ sơ."
+        )
+        return
+      }
       setRebuildBaselineVersionId(baselineVersionId)
       setRebuildPollKey((key) => key + 1)
       setLoading(true)
@@ -1393,97 +1398,6 @@ export function FinalResult({
     }
   }
 
-  const handleExportMetadataSnapshot = async () => {
-    if (viewingHistoricalClusterVersion) {
-      toast.error(
-        "Bạn đang xem phiên bản cũ. Hãy kích hoạt phiên bản này trước khi xuất metadata."
-      )
-      return
-    }
-    if (!sessionId) {
-      toast.error("Chưa có session để xuất metadata.")
-      return
-    }
-    if (totalDossiers === 0) {
-      toast.error("Chưa có dữ liệu hồ sơ để xuất metadata.")
-      return
-    }
-
-    setMetadataExporting(true)
-    try {
-      const result = await exportMetadataSnapshot(sessionId, {
-        created_by: "ui",
-        groups: metadataSnapshotGroups(groups),
-      })
-      const artifact = result.artifact ?? result.artifacts[0]
-      if (!artifact) {
-        throw new Error("Backend chưa trả về artifact metadata.")
-      }
-      toast.success("Đã tạo snapshot metadata. Đang tải file.")
-      window.location.assign(artifactDownloadUrl(sessionId, artifact.id))
-    } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : "Không thể xuất metadata tại thời điểm hiện tại."
-      )
-    } finally {
-      setMetadataExporting(false)
-    }
-  }
-
-  const handleImportMetadataBoxNumbers = async (file: File | null) => {
-    if (!file) return
-    if (viewingHistoricalClusterVersion) {
-      toast.error(
-        "Bạn đang xem phiên bản cũ. Hãy kích hoạt phiên bản này trước khi nhập số hộp."
-      )
-      return
-    }
-    if (!sessionId) {
-      toast.error("Chưa có session để nhập số hộp.")
-      return
-    }
-    if (!file.name.toLowerCase().endsWith(".xlsx")) {
-      toast.error("File nhập số hộp phải là .xlsx.")
-      return
-    }
-
-    setMetadataImporting(true)
-    try {
-      const result = await importMetadataBoxNumbers(sessionId, file, {
-        created_by: "ui",
-      })
-      const version = await getActiveClusters(sessionId)
-      if (!version) {
-        throw new Error(
-          "Backend chưa trả về phiên bản hồ sơ sau khi nhập số hộp."
-        )
-      }
-      const nextGroups = versionToGroups(version, metadataItems)
-      setGroups(nextGroups)
-      setActiveClusterVersionId(version.id)
-      setDisplayedClusterVersionId(version.id)
-      setDisplayedClusterVersion(version)
-      setPendingClusterVersion(null)
-      toast.success(`Đã cập nhật số hộp cho ${result.updated_dossiers} hồ sơ.`)
-      const issueCount = result.unmatched_rows + result.conflict_count
-      if (issueCount > 0) {
-        toast.info(
-          `Có ${issueCount} dòng chưa cập nhật được do chưa khớp hồ sơ hoặc bị trùng số hộp.`
-        )
-      }
-    } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : "Không thể nhập số hộp từ metadata."
-      )
-    } finally {
-      setMetadataImporting(false)
-    }
-  }
-
   const handleSelectPreviewDocument = (document: ClusterDocument) => {
     if (document.sessionDocumentId === null) {
       toast.error("Tài liệu này chưa có mã trong session để lấy preview.")
@@ -1561,7 +1475,6 @@ export function FinalResult({
       promotingSelectedDocuments ||
       Boolean(movingSelectedDocumentsTargetId) ||
       rebuildBaselineVersionId ||
-      metadataImporting ||
       viewingHistoricalClusterVersion
     ) {
       toast.error("Đang cập nhật hồ sơ. Vui lòng chờ xong rồi tạo mục lục.")
@@ -1607,7 +1520,6 @@ export function FinalResult({
     promotingTemporaryFolder ||
     promotingSelectedDocuments ||
     Boolean(movingSelectedDocumentsTargetId) ||
-    metadataImporting ||
     Boolean(rebuildBaselineVersionId) ||
     Boolean(pendingClusterVersion)
   const selectedDocumentsActionDisabled =
@@ -1621,58 +1533,7 @@ export function FinalResult({
             ? `Có ${pendingFeedbackCount} feedback đã lưu và đang chờ cập nhật hồ sơ.`
             : "Chọn tài liệu bằng checkbox hoặc kéo tài liệu vào Thư mục tạm để xử lý sau."}
       </p>
-      <input
-        ref={metadataImportInputRef}
-        type="file"
-        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        className="hidden"
-        onChange={(event) => {
-          const file = event.currentTarget.files?.[0] ?? null
-          event.currentTarget.value = ""
-          void handleImportMetadataBoxNumbers(file)
-        }}
-      />
-      <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-6 xl:flex xl:w-auto xl:flex-wrap xl:items-center xl:justify-end">
-        <Button
-          variant="outline"
-          onClick={() => void handleExportMetadataSnapshot()}
-          className="w-full xl:w-auto"
-          disabled={
-            metadataExporting ||
-            metadataImporting ||
-            restoringClusterVersion ||
-            viewingHistoricalClusterVersion ||
-            !sessionId ||
-            totalDossiers === 0
-          }
-        >
-          {metadataExporting ? (
-            <Loader2 data-icon="inline-start" className="animate-spin" />
-          ) : (
-            <FileSpreadsheet data-icon="inline-start" />
-          )}
-          Xuất metadata
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() => metadataImportInputRef.current?.click()}
-          className="w-full xl:w-auto"
-          disabled={
-            metadataExporting ||
-            metadataImporting ||
-            restoringClusterVersion ||
-            viewingHistoricalClusterVersion ||
-            !sessionId ||
-            totalDossiers === 0
-          }
-        >
-          {metadataImporting ? (
-            <Loader2 data-icon="inline-start" className="animate-spin" />
-          ) : (
-            <Upload data-icon="inline-start" />
-          )}
-          Nhập số hộp
-        </Button>
+      <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:flex xl:w-auto xl:flex-wrap xl:items-center xl:justify-end">
         <Button
           variant="outline"
           onClick={() =>
@@ -1693,7 +1554,6 @@ export function FinalResult({
             promotingSelectedDocuments ||
             Boolean(movingSelectedDocumentsTargetId) ||
             loading ||
-            metadataImporting ||
             !sessionId ||
             totalFiles === 0 ||
             viewingHistoricalClusterVersion ||
@@ -1736,7 +1596,6 @@ export function FinalResult({
             promotingSelectedDocuments ||
             Boolean(movingSelectedDocumentsTargetId) ||
             loading ||
-            metadataImporting ||
             !sessionId ||
             totalFiles === 0 ||
             viewingHistoricalClusterVersion ||
@@ -1762,7 +1621,6 @@ export function FinalResult({
             promotingTemporaryFolder ||
             promotingSelectedDocuments ||
             Boolean(movingSelectedDocumentsTargetId) ||
-            metadataImporting ||
             viewingHistoricalClusterVersion ||
             Boolean(rebuildBaselineVersionId) ||
             Boolean(pendingClusterVersion)
@@ -3725,52 +3583,6 @@ function updateDossierGroupFromResponse(
       label: dossier.title || dossier.generated_title || group.label,
     }
   })
-}
-
-function metadataSnapshotGroups(
-  groups: ClusterGroup[]
-): MetadataSnapshotGroup[] {
-  return groups
-    .filter((group) => !group.isTemporary)
-    .map((group) => ({
-      id: group.id,
-      label: group.label,
-      dossierId: group.dossierId ?? null,
-      dossierNumber: group.dossierNumber ?? null,
-      boxNumber: group.boxNumber ?? null,
-      folderName: group.folderName ?? null,
-      archiveName: group.archiveName ?? null,
-      fondsName: group.fondsName ?? null,
-      inventoryNumber: group.inventoryNumber ?? null,
-      informationSign: group.informationSign ?? null,
-      annotation: group.annotation ?? null,
-      classificationPath: group.classificationPath ?? [],
-      retentionPeriod: group.retentionPeriod ?? null,
-      language: group.language ?? null,
-      usageMode: group.usageMode ?? null,
-      physicalCondition: group.physicalCondition ?? null,
-      note: group.note ?? null,
-      confidence: group.confidence ?? null,
-      requiresReview: group.requiresReview ?? false,
-      pageCount: group.pageCount ?? null,
-      sheetCount: group.sheetCount ?? null,
-      startDate: group.startDate ?? null,
-      endDate: group.endDate ?? null,
-      documents: group.documents.map((document) => ({
-        documentId: document.documentId,
-        sessionDocumentId: document.sessionDocumentId,
-        filePath: document.filePath,
-        fileName: document.fileName,
-        positionIndex: document.positionIndex,
-        pageCount: document.pageCount,
-        sheetCount: document.sheetCount,
-        requiresReview: document.requiresReview,
-        metadata: document.metadata,
-        remoteMetadataStatus: document.remoteMetadataStatus,
-        ocrStatus: document.ocrStatus,
-        signatureStatus: document.signatureStatus,
-      })),
-    }))
 }
 
 function regularDossierCount(groups: ClusterGroup[]): number {

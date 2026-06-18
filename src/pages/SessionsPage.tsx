@@ -14,12 +14,19 @@ import {
   Plus,
   RefreshCw,
   Trash2,
+  UserCog,
 } from "lucide-react"
 import { motion } from "framer-motion"
 import { toast } from "sonner"
 import { cn } from "@/shared/lib/utils"
-import { UserMenu } from "@/features/auth/components/UserMenu"
 import {
+  listChinhlyUsers,
+  type ChinhlyUser,
+} from "@/features/auth/api/authApi"
+import { UserMenu } from "@/features/auth/components/UserMenu"
+import { useAuth } from "@/features/auth/lib/AuthContext"
+import {
+  assignSessionCoordinator,
   deleteSession,
   listSessions,
   type SessionSummary,
@@ -29,10 +36,14 @@ const LAST_SESSION_KEY = "archival-processing:last-session-id"
 
 export function SessionsPage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const isAdmin = normalizedRole(user?.role) === "admin"
   const [sessions, setSessions] = useState<SessionSummary[]>([])
+  const [coordinators, setCoordinators] = useState<ChinhlyUser[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null)
+  const [assigningSessionId, setAssigningSessionId] = useState<string | null>(null)
 
   const readyCount = useMemo(
     () => sessions.filter((session) => session.active_plan_version_id).length,
@@ -43,8 +54,14 @@ export function SessionsPage() {
     setLoading(true)
     setError("")
     try {
-      const response = await listSessions(200)
+      const [response, coordinatorUsers] = await Promise.all([
+        listSessions(200),
+        isAdmin
+          ? listChinhlyUsers({ role: "coordinator", active: true, limit: 500 })
+          : Promise.resolve([]),
+      ])
       setSessions(response.sessions)
+      setCoordinators(coordinatorUsers)
     } catch (err) {
       const message = err instanceof Error ? err.message : "Không thể tải danh sách session."
       setError(message)
@@ -56,7 +73,16 @@ export function SessionsPage() {
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [isAdmin])
+
+  const coordinatorById = useMemo(() => {
+    const map = new Map<string, ChinhlyUser>()
+    for (const coordinator of coordinators) {
+      const id = chinhlyUserId(coordinator)
+      if (id) map.set(id, coordinator)
+    }
+    return map
+  }, [coordinators])
 
   const openSession = (sessionId: string) => {
     window.localStorage.setItem(LAST_SESSION_KEY, sessionId)
@@ -102,6 +128,35 @@ export function SessionsPage() {
     }
   }
 
+  const assignCoordinator = async (
+    session: SessionSummary,
+    coordinatorUserId: string | null
+  ) => {
+    setAssigningSessionId(session.session_id)
+    try {
+      const updated = await assignSessionCoordinator(
+        session.session_id,
+        coordinatorUserId
+      )
+      setSessions((current) =>
+        current.map((item) =>
+          item.session_id === session.session_id ? { ...item, ...updated } : item
+        )
+      )
+      toast.success(
+        coordinatorUserId
+          ? "Đã phân công session cho coordinator."
+          : "Đã bỏ phân công coordinator khỏi session."
+      )
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Không thể phân công coordinator."
+      )
+    } finally {
+      setAssigningSessionId(null)
+    }
+  }
+
   return (
     <div className="min-h-svh bg-[#EEF3F8] text-[#0F172A]">
       <header className="border-b border-[#D8E1EC] bg-white/80 backdrop-blur">
@@ -119,6 +174,12 @@ export function SessionsPage() {
             <div className="hidden items-center gap-3 lg:flex">
               <SummaryPill label="Tổng session" value={sessions.length} />
               <SummaryPill label="Đã có phương án" value={readyCount} />
+              {isAdmin && (
+                <SummaryPill
+                  label="Đã phân công"
+                  value={sessions.filter((session) => session.coordinator_user_id).length}
+                />
+              )}
             </div>
             <UserMenu />
           </div>
@@ -176,6 +237,13 @@ export function SessionsPage() {
                 onArtifacts={() => openArtifacts(session.session_id)}
                 onDelete={() => void removeSession(session)}
                 deleting={deletingSessionId === session.session_id}
+                isAdmin={isAdmin}
+                coordinators={coordinators}
+                coordinator={coordinatorById.get(session.coordinator_user_id ?? "")}
+                assigning={assigningSessionId === session.session_id}
+                onAssignCoordinator={(coordinatorUserId) =>
+                  void assignCoordinator(session, coordinatorUserId)
+                }
               />
             ))}
           </div>
@@ -208,6 +276,11 @@ function SessionCard({
   onArtifacts,
   onDelete,
   deleting,
+  isAdmin,
+  coordinators,
+  coordinator,
+  assigning,
+  onAssignCoordinator,
 }: {
   session: SessionSummary
   index: number
@@ -215,7 +288,16 @@ function SessionCard({
   onArtifacts: () => void
   onDelete: () => void
   deleting: boolean
+  isAdmin: boolean
+  coordinators: ChinhlyUser[]
+  coordinator?: ChinhlyUser
+  assigning: boolean
+  onAssignCoordinator: (coordinatorUserId: string | null) => void
 }) {
+  const [assignmentOpen, setAssignmentOpen] = useState(false)
+  const [draftCoordinatorId, setDraftCoordinatorId] = useState(
+    session.coordinator_user_id ?? ""
+  )
   const hasPlan = Boolean(session.active_plan_version_id)
   const hasClusters = Boolean(session.active_cluster_version_id)
   const documentCount = session.document_count ?? 0
@@ -228,6 +310,21 @@ function SessionCard({
   const statusText = hasClusters ? "Đã lập hồ sơ" : hasPlan ? "Có phương án" : statusLabel(session.status)
   const displayName = session.fonds_name?.trim() || session.session_id
   const archiveName = session.archive_name?.trim()
+  const coordinatorLabel = coordinator
+    ? displayChinhlyUser(coordinator)
+    : session.coordinator_user_id
+      ? `User ${session.coordinator_user_id}`
+      : "Chưa phân công"
+
+  useEffect(() => {
+    setDraftCoordinatorId(session.coordinator_user_id ?? "")
+  }, [session.coordinator_user_id])
+
+  const saveAssignment = () => {
+    onAssignCoordinator(draftCoordinatorId.trim() || null)
+    setAssignmentOpen(false)
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -270,6 +367,50 @@ function SessionCard({
             {archiveName || "Chưa có kho lưu trữ"}
           </span>
         </div>
+        {isAdmin && (
+          <div className="mt-2 rounded-xl bg-[#F8FAFC] px-3 py-2 text-sm text-[#475569]">
+            <div className="flex min-w-0 items-center gap-2">
+              <UserCog className="size-4 shrink-0 text-[#0052FF]" />
+              <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#64748B]">
+                Coordinator
+              </span>
+              <span
+                className="truncate font-semibold text-[#0F172A]"
+                title={coordinatorLabel}
+              >
+                {coordinatorLabel}
+              </span>
+            </div>
+            {assignmentOpen && (
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <select
+                  value={draftCoordinatorId}
+                  onChange={(event) => setDraftCoordinatorId(event.target.value)}
+                  className="min-h-9 flex-1 rounded-lg border border-[#CBD5E1] bg-white px-3 text-sm font-medium text-[#0F172A] outline-none transition-colors focus:border-[#0052FF]"
+                >
+                  <option value="">Chưa phân công</option>
+                  {coordinators.map((item) => {
+                    const id = chinhlyUserId(item)
+                    if (!id) return null
+                    return (
+                      <option key={id} value={id}>
+                        {displayChinhlyUser(item)}
+                      </option>
+                    )
+                  })}
+                </select>
+                <button
+                  type="button"
+                  onClick={saveAssignment}
+                  disabled={assigning}
+                  className="rounded-lg bg-[#0052FF] px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#0047D6] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {assigning ? "Đang lưu" : "Lưu"}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
           <Metric
             icon={<Clock className="size-3.5" />}
@@ -316,6 +457,21 @@ function SessionCard({
           <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
         </button>
         <div className="flex items-center justify-end gap-2">
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setAssignmentOpen((current) => !current)}
+              disabled={assigning}
+              className="flex items-center justify-center gap-1.5 rounded-lg border border-[#CBD5E1] px-2.5 py-1 text-xs font-semibold text-[#475569] transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {assigning ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <UserCog className="size-3.5" />
+              )}
+              Phân công
+            </button>
+          )}
           {hasClusters && (
             <button
               type="button"
@@ -398,6 +554,23 @@ function shortDateTime(value: string): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date)
+}
+
+function chinhlyUserId(user: ChinhlyUser): string {
+  return String(user.id ?? user.user_id ?? "").trim()
+}
+
+function displayChinhlyUser(user: ChinhlyUser): string {
+  const id = chinhlyUserId(user)
+  const name = String(
+    user.display_name || user.name || user.email || user.username || id || "Coordinator"
+  ).trim()
+  const email = String(user.email || user.username || "").trim()
+  return email && email !== name ? `${name} (${email})` : name
+}
+
+function normalizedRole(role: unknown): string {
+  return String(role || "").trim().toLowerCase()
 }
 
 function statusLabel(value: string): string {

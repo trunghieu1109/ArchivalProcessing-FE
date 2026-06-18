@@ -27,10 +27,10 @@ import { cn } from "@/shared/lib/utils"
 import { UserMenu } from "@/features/auth/components/UserMenu"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import {
-  artifactDownloadAllUrl,
-  artifactDownloadUrl,
-  artifactPreviewUrl,
+  downloadAllArtifacts,
+  downloadArtifact,
   enqueueFinalizeArtifacts,
+  getArtifactPreviewHtml,
   listArtifacts,
   listSessionEvents,
   type SessionArtifact,
@@ -128,6 +128,13 @@ export function FinalizeArtifactsStep({
   const [selectedArtifactId, setSelectedArtifactId] = useState<number | null>(
     null
   )
+  const [downloadingAll, setDownloadingAll] = useState(false)
+  const [downloadingArtifactId, setDownloadingArtifactId] = useState<
+    number | null
+  >(null)
+  const [previewHtml, setPreviewHtml] = useState("")
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState("")
   const [progressPhase, setProgressPhase] = useState<string | null>(null)
   const [progressMessage, setProgressMessage] = useState("")
   const [completedPhases, setCompletedPhases] = useState<Set<string>>(
@@ -263,6 +270,38 @@ export function FinalizeArtifactsStep({
   }, [selectedArtifactId, visibleArtifacts])
 
   useEffect(() => {
+    const artifactId = selectedArtifact?.id ?? null
+    if (!sessionId || artifactId === null) {
+      setPreviewHtml("")
+      setPreviewError("")
+      setPreviewLoading(false)
+      return
+    }
+
+    let cancelled = false
+    setPreviewLoading(true)
+    setPreviewError("")
+    setPreviewHtml("")
+    getArtifactPreviewHtml(sessionId, artifactId)
+      .then((html) => {
+        if (!cancelled) setPreviewHtml(html)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        const message =
+          err instanceof Error ? err.message : "Không thể xem trước artifact."
+        setPreviewError(message)
+      })
+      .finally(() => {
+        if (!cancelled) setPreviewLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedArtifact?.id, sessionId])
+
+  useEffect(() => {
     if (!finalizing || !sessionId) return
     let cancelled = false
     let timeoutId: number | undefined
@@ -361,10 +400,40 @@ export function FinalizeArtifactsStep({
     }
   }, [finalizing, sessionId])
 
-  const handleDownloadAll = () => {
+  const handleDownloadAll = useCallback(async () => {
     if (!sessionId || visibleArtifacts.length === 0) return
-    window.location.assign(artifactDownloadAllUrl(sessionId))
-  }
+    setDownloadingAll(true)
+    try {
+      const result = await downloadAllArtifacts(sessionId)
+      saveBlob(result.blob, result.fileName)
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Không thể tải tất cả artifact."
+      setError(message)
+      toast.error(message)
+    } finally {
+      setDownloadingAll(false)
+    }
+  }, [sessionId, visibleArtifacts.length])
+
+  const handleDownloadArtifact = useCallback(
+    async (artifact: SessionArtifact) => {
+      if (!sessionId) return
+      setDownloadingArtifactId(artifact.id)
+      try {
+        const result = await downloadArtifact(sessionId, artifact.id)
+        saveBlob(result.blob, result.fileName || artifact.file_name)
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Không thể tải artifact."
+        setError(message)
+        toast.error(message)
+      } finally {
+        setDownloadingArtifactId(null)
+      }
+    },
+    [sessionId]
+  )
 
   return (
     <div
@@ -465,11 +534,17 @@ export function FinalizeArtifactsStep({
               {visibleArtifacts.length > 0 ? "Tạo lại" : "Tạo mục lục"}
             </Button>
             <Button
-              onClick={handleDownloadAll}
-              disabled={visibleArtifacts.length === 0 || !sessionId}
+              onClick={() => void handleDownloadAll()}
+              disabled={
+                visibleArtifacts.length === 0 || !sessionId || downloadingAll
+              }
               className="w-full lg:w-auto"
             >
-              <Archive data-icon="inline-start" />
+              {downloadingAll ? (
+                <Loader2 data-icon="inline-start" className="animate-spin" />
+              ) : (
+                <Archive data-icon="inline-start" />
+              )}
               Tải tất cả
             </Button>
           </div>
@@ -568,12 +643,9 @@ export function FinalizeArtifactsStep({
                           artifact={artifact}
                           index={index}
                           selected={artifact.id === selectedArtifactId}
-                          downloadUrl={
-                            sessionId
-                              ? artifactDownloadUrl(sessionId, artifact.id)
-                              : "#"
-                          }
+                          downloading={downloadingArtifactId === artifact.id}
                           onPreview={() => setSelectedArtifactId(artifact.id)}
+                          onDownload={() => void handleDownloadArtifact(artifact)}
                         />
                       ))}
                     </div>
@@ -583,11 +655,9 @@ export function FinalizeArtifactsStep({
             </div>
             <ArtifactPreviewPanel
               artifact={selectedArtifact}
-              previewUrl={
-                sessionId && selectedArtifact
-                  ? artifactPreviewUrl(sessionId, selectedArtifact.id)
-                  : ""
-              }
+              previewHtml={previewHtml}
+              loading={previewLoading}
+              error={previewError}
             />
           </div>
         ) : (
@@ -622,14 +692,16 @@ function ArtifactRow({
   artifact,
   index,
   selected,
-  downloadUrl,
+  downloading,
   onPreview,
+  onDownload,
 }: {
   artifact: SessionArtifact
   index: number
   selected: boolean
-  downloadUrl: string
+  downloading: boolean
   onPreview: () => void
+  onDownload: () => void
 }) {
   const extension = artifactExtension(artifact.file_name)
   return (
@@ -683,10 +755,21 @@ function ArtifactRow({
         >
           <Eye className="size-4" />
         </Button>
-        <Button variant="outline" size="icon-sm" asChild title="Tải xuống">
-          <a href={downloadUrl} onClick={(event) => event.stopPropagation()}>
+        <Button
+          variant="outline"
+          size="icon-sm"
+          title="Tải xuống"
+          disabled={downloading}
+          onClick={(event) => {
+            event.stopPropagation()
+            onDownload()
+          }}
+        >
+          {downloading ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
             <Download className="size-4" />
-          </a>
+          )}
         </Button>
       </div>
     </motion.div>
@@ -695,10 +778,14 @@ function ArtifactRow({
 
 function ArtifactPreviewPanel({
   artifact,
-  previewUrl,
+  previewHtml,
+  loading,
+  error,
 }: {
   artifact: SessionArtifact | null
-  previewUrl: string
+  previewHtml: string
+  loading: boolean
+  error: string
 }) {
   return (
     <section className="min-h-[420px] min-w-0 overflow-hidden rounded-2xl border border-[#D8E1EC] bg-white shadow-sm">
@@ -715,10 +802,20 @@ function ArtifactPreviewPanel({
           </Badge>
         )}
       </div>
-      {artifact && previewUrl ? (
+      {artifact && loading ? (
+        <div className="flex h-[min(72svh,760px)] min-h-[420px] flex-col items-center justify-center px-8 text-center text-sm text-[#64748B]">
+          <Loader2 className="mb-3 size-6 animate-spin text-[#0052FF]" />
+          <p className="font-medium text-[#0F172A]">Đang tải preview...</p>
+        </div>
+      ) : artifact && error ? (
+        <div className="flex h-[min(72svh,760px)] min-h-[420px] flex-col items-center justify-center px-8 text-center text-sm text-red-600">
+          <AlertCircle className="mb-3 size-6" />
+          <p className="font-medium">{error}</p>
+        </div>
+      ) : artifact && previewHtml ? (
         <iframe
           title={`Xem trước ${artifact.file_name}`}
-          src={previewUrl}
+          srcDoc={previewHtml}
           sandbox=""
           className="h-[min(72svh,760px)] min-h-[420px] w-full bg-white"
         />
@@ -881,4 +978,15 @@ function formatDate(value: string): string {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date)
+}
+
+function saveBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = fileName
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
 }

@@ -183,6 +183,7 @@ export function DocumentPdfPreview({
     if (documentKey) previewResponseCacheRef.current.delete(documentKey)
     setRefreshKey((key) => key + 1)
   }
+  const selectedVariantUrl = selectedVariant?.url ?? ""
 
   return (
     <div
@@ -220,6 +221,19 @@ export function DocumentPdfPreview({
               onSelect={setSelectedVariantKey}
             />
           ) : null}
+          <a
+            className={cn(
+              "inline-flex size-8 shrink-0 items-center justify-center rounded-lg border border-[#CBD5E1] bg-white text-[#475569] transition-colors hover:bg-[#F8FAFC] hover:text-[#0052FF]",
+              !selectedVariantUrl && "pointer-events-none opacity-50"
+            )}
+            href={selectedVariantUrl || undefined}
+            target="_blank"
+            rel="noreferrer"
+            title="Mở PDF trong tab mới"
+            aria-disabled={!selectedVariantUrl}
+          >
+            <ExternalLink className="size-3.5" />
+          </a>
           <Button
             type="button"
             variant="outline"
