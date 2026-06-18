@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   AlertTriangle,
   Check,
@@ -142,6 +142,7 @@ interface MetadataCardProps {
   selected?: boolean
   selectionMode?: boolean
   selectionChecked?: boolean
+  readOnly?: boolean
   onSelectionChange?: (checked: boolean, shiftKey: boolean) => void
   onSelect?: (expanded: boolean) => void
   onRetry?: () => void
@@ -158,6 +159,7 @@ export function MetadataCard({
   selected = false,
   selectionMode = false,
   selectionChecked = false,
+  readOnly = false,
   onSelectionChange,
   onSelect,
   onRetry,
@@ -178,7 +180,14 @@ export function MetadataCard({
   const hasMetadataEdits = item.metadata_user_edited === true
   const signatureTag = signatureTagInfo(item)
 
+  useEffect(() => {
+    if (readOnly && editing) {
+      setEditing(false)
+    }
+  }, [editing, readOnly])
+
   const startEdit = () => {
+    if (readOnly) return
     const nextDraft: Record<string, string> = {}
     METADATA_FIELDS.forEach((field) => {
       nextDraft[field.key] = metadataFieldText(
@@ -192,6 +201,7 @@ export function MetadataCard({
   }
 
   const commitEdit = async () => {
+    if (readOnly) return
     const updated: Record<string, unknown> = { ...item.light_metadata }
     METADATA_FIELDS.forEach((field) => {
       field.aliases.forEach((alias) => {
@@ -205,6 +215,7 @@ export function MetadataCard({
   }
 
   const applyMetadata = async (metadata?: Record<string, unknown>) => {
+    if (readOnly) return
     try {
       await onApply(item.data_path, metadata)
       toast.success("Metadata đã được xác nhận.")
@@ -234,9 +245,9 @@ export function MetadataCard({
             ? "border-primary/30 shadow-[0_2px_12px_rgba(0,82,255,0.08)]"
             : autoVerified
               ? "border-emerald-200 shadow-[0_2px_12px_rgba(16,185,129,0.08)]"
-            : hasWarnings
-              ? "border-amber-300"
-              : "border-border"
+              : hasWarnings
+                ? "border-amber-300"
+                : "border-border"
       )}
     >
       <div
@@ -386,33 +397,35 @@ export function MetadataCard({
                           }))
                         }
                         rows={metadataEditorRows(field.key)}
-                        className="min-h-9 w-full min-w-0 resize-y rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-xs leading-5 whitespace-pre-wrap outline-none transition-colors [overflow-wrap:anywhere] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50"
+                        className="min-h-9 w-full min-w-0 resize-y rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-xs leading-5 [overflow-wrap:anywhere] whitespace-pre-wrap transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50"
                       />
                     </div>
                   ))}
-                  <div className="flex justify-end gap-2 pt-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setEditing(false)}
-                      disabled={submitting || retrying || metadataUnavailable}
-                    >
-                      Hủy
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => void commitEdit()}
-                      disabled={submitting}
-                    >
-                      {submitting && (
-                        <Loader2
-                          data-icon="inline-start"
-                          className="animate-spin"
-                        />
-                      )}
-                      Lưu & xác nhận
-                    </Button>
-                  </div>
+                  {!readOnly && (
+                    <div className="flex justify-end gap-2 pt-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setEditing(false)}
+                        disabled={submitting || retrying || metadataUnavailable}
+                      >
+                        Hủy
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => void commitEdit()}
+                        disabled={submitting}
+                      >
+                        {submitting && (
+                          <Loader2
+                            data-icon="inline-start"
+                            className="animate-spin"
+                          />
+                        )}
+                        Lưu & xác nhận
+                      </Button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="flex flex-col gap-1.5">
@@ -440,7 +453,9 @@ export function MetadataCard({
                                   {warningLabel(warning.field)}:
                                 </span>
                               )}
-                              {warning.message && <span>{warning.message}</span>}
+                              {warning.message && (
+                                <span>{warning.message}</span>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -452,7 +467,10 @@ export function MetadataCard({
                       item.light_metadata,
                       field.aliases
                     )
-                    const isWarning = fieldHasWarning(warningFields, field.aliases)
+                    const isWarning = fieldHasWarning(
+                      warningFields,
+                      field.aliases
+                    )
                     return (
                       <div
                         key={field.key}
@@ -476,7 +494,7 @@ export function MetadataCard({
                         </span>
                         <span
                           className={cn(
-                            "min-h-4 min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]",
+                            "min-h-4 min-w-0 [overflow-wrap:anywhere] break-words whitespace-pre-wrap",
                             isWarning
                               ? "text-amber-900"
                               : display
@@ -489,56 +507,58 @@ export function MetadataCard({
                       </div>
                     )
                   })}
-                  <div className="flex justify-end gap-2 pt-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={startEdit}
-                      disabled={submitting || retrying || metadataUnavailable}
-                    >
-                      <Edit2 data-icon="inline-start" /> Sửa
-                    </Button>
-                    {metadataFailed && onRetry && (
+                  {!readOnly && (
+                    <div className="flex justify-end gap-2 pt-1">
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={onRetry}
-                        disabled={retrying}
+                        onClick={startEdit}
+                        disabled={submitting || retrying || metadataUnavailable}
                       >
-                        {retrying ? (
-                          <Loader2
-                            data-icon="inline-start"
-                            className="animate-spin"
-                          />
-                        ) : (
-                          <RefreshCw data-icon="inline-start" />
-                        )}
-                        Chạy lại metadata
+                        <Edit2 data-icon="inline-start" /> Sửa
                       </Button>
-                    )}
-                    {!expertReviewed && (
-                      <Button
-                        size="sm"
-                        disabled={
-                          submitting ||
-                          retrying ||
-                          !item.metadata_ready ||
-                          metadataUnavailable
-                        }
-                        onClick={() => void applyMetadata()}
-                      >
-                        {submitting ? (
-                          <Loader2
-                            data-icon="inline-start"
-                            className="animate-spin"
-                          />
-                        ) : (
-                          <Check data-icon="inline-start" />
-                        )}
-                        Xác nhận
-                      </Button>
-                    )}
-                  </div>
+                      {metadataFailed && onRetry && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={onRetry}
+                          disabled={retrying}
+                        >
+                          {retrying ? (
+                            <Loader2
+                              data-icon="inline-start"
+                              className="animate-spin"
+                            />
+                          ) : (
+                            <RefreshCw data-icon="inline-start" />
+                          )}
+                          Chạy lại metadata
+                        </Button>
+                      )}
+                      {!expertReviewed && (
+                        <Button
+                          size="sm"
+                          disabled={
+                            submitting ||
+                            retrying ||
+                            !item.metadata_ready ||
+                            metadataUnavailable
+                          }
+                          onClick={() => void applyMetadata()}
+                        >
+                          {submitting ? (
+                            <Loader2
+                              data-icon="inline-start"
+                              className="animate-spin"
+                            />
+                          ) : (
+                            <Check data-icon="inline-start" />
+                          )}
+                          Xác nhận
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

@@ -24,10 +24,7 @@ import { toast } from "sonner"
 import { cn } from "@/shared/lib/utils"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
-import {
-  listChinhlyUsers,
-  type ChinhlyUser,
-} from "@/features/auth/api/authApi"
+import { listChinhlyUsers, type ChinhlyUser } from "@/features/auth/api/authApi"
 import { useAuth } from "@/features/auth/lib/AuthContext"
 import {
   closeMetadataBatch,
@@ -69,6 +66,13 @@ interface MetadataBatchGroup {
   assigneeName?: string | null
   assigneeEmail?: string | null
   assigneeUserId?: string | number | null
+}
+
+interface MetadataActorIdentity {
+  id: string
+  email: string
+  name: string
+  isCoordinator: boolean
 }
 
 const DEFAULT_METADATA_BATCH_SIZE = 25
@@ -142,10 +146,24 @@ export function ProcessStep({
   const previewLayoutRef = useRef<HTMLDivElement | null>(null)
   const didAutoSelectRef = useRef(false)
   const manualLastSelectedIdRef = useRef<number | null>(null)
-  const canManageMetadataBatches =
-    String(user?.role ?? "").trim().toLowerCase() === "coordinator"
-  const canExportMetadataReview =
-    String(user?.role ?? "").trim().toLowerCase() === "coordinator"
+  const currentUserRole = String(user?.role ?? "")
+    .trim()
+    .toLowerCase()
+  const currentUserId = String(user?.id ?? user?.user_id ?? "").trim()
+  const currentUserEmail = String(user?.email ?? user?.username ?? "").trim()
+  const currentUserName = String(user?.display_name ?? user?.name ?? "").trim()
+  const isCoordinator = currentUserRole === "coordinator"
+  const currentUserIdentity = useMemo<MetadataActorIdentity>(
+    () => ({
+      id: currentUserId,
+      email: currentUserEmail,
+      name: currentUserName,
+      isCoordinator,
+    }),
+    [currentUserEmail, currentUserId, currentUserName, isCoordinator]
+  )
+  const canManageMetadataBatches = isCoordinator
+  const canExportMetadataReview = isCoordinator
 
   const metadataKey = useMemo(
     () =>
@@ -198,12 +216,21 @@ export function ProcessStep({
     () => sortedItems.map((item) => item.id).join("|"),
     [sortedItems]
   )
+  const batchScopeItems = useMemo(
+    () =>
+      isCoordinator
+        ? sortedItems
+        : sortedItems.filter((item) =>
+            isMetadataItemAssignedToUser(item, currentUserIdentity)
+          ),
+    [currentUserIdentity, isCoordinator, sortedItems]
+  )
   const batchGroups = useMemo(
     () =>
       batchMode === "manual"
-        ? buildManualMetadataBatchGroups(sortedItems)
-        : buildMetadataBatchGroups(sortedItems, batchSize),
-    [batchMode, batchSize, sortedItems]
+        ? buildManualMetadataBatchGroups(batchScopeItems)
+        : buildMetadataBatchGroups(batchScopeItems, batchSize),
+    [batchMode, batchSize, batchScopeItems]
   )
   const unassignedBatch = useMemo(
     () => batchGroups.find((group) => group.kind === "unassigned") ?? null,
@@ -228,7 +255,11 @@ export function ProcessStep({
     [displayedItems]
   )
   const bulkVerifyItems =
-    reviewMode === "batch" ? displayedPendingReadyItems : pendingReadyItems
+    reviewMode === "batch"
+      ? displayedPendingReadyItems.filter((item) =>
+          canUserEditMetadataItem(item, currentUserIdentity)
+        )
+      : EMPTY_METADATA_ITEMS
   const selectedItem = useMemo(
     () => sortedItems.find((item) => item.id === selectedDocumentId) ?? null,
     [selectedDocumentId, sortedItems]
@@ -347,16 +378,14 @@ export function ProcessStep({
     if (unassignedIndex < 0 && activeBatchIndex !== 0) {
       setActiveBatchIndex(0)
     }
-  }, [
-    activeBatchIndex,
-    batchGroups,
-    batchMode,
-    manualSplitActive,
-    reviewMode,
-  ])
+  }, [activeBatchIndex, batchGroups, batchMode, manualSplitActive, reviewMode])
 
   useEffect(() => {
-    if (reviewMode !== "batch" || !activeBatch) return
+    if (reviewMode !== "batch") return
+    if (!activeBatch) {
+      if (selectedDocumentId !== null) setSelectedDocumentId(null)
+      return
+    }
     if (batchMode === "manual" && manualSplitActive) {
       if (!unassignedBatch) {
         if (selectedDocumentId !== null) setSelectedDocumentId(null)
@@ -419,6 +448,15 @@ export function ProcessStep({
     if (!sessionId) throw new Error("Chưa có session để xác nhận metadata.")
     if (!item.metadata_ready) {
       throw new Error("Metadata của tài liệu này chưa sẵn sàng để xác nhận.")
+    }
+    if (
+      !isCoordinator &&
+      (reviewMode !== "batch" ||
+        !canUserEditMetadataItem(item, currentUserIdentity))
+    ) {
+      throw new Error(
+        "Bạn chỉ có thể sửa/xác nhận tài liệu trong lô được giao."
+      )
     }
 
     setVerifyingIds((previous) => addId(previous, item.id))
@@ -486,9 +524,10 @@ export function ProcessStep({
     setReviewMode(mode)
     setManualSplitActive(false)
     setManualSelectedIds(new Set())
-    if (mode === "batch" && activeBatch) {
+    if (mode === "batch") {
       setSelectedDocumentId(
-        firstPreferredMetadataItem(activeBatch.items)?.id ?? null
+        firstPreferredMetadataItem(activeBatch?.items ?? EMPTY_METADATA_ITEMS)
+          ?.id ?? null
       )
     }
   }
@@ -498,7 +537,7 @@ export function ProcessStep({
     setBatchSize(nextBatchSize)
     setActiveBatchIndex(0)
     setSelectedDocumentId(
-      firstPreferredMetadataItem(sortedItems.slice(0, nextBatchSize))?.id ??
+      firstPreferredMetadataItem(batchScopeItems.slice(0, nextBatchSize))?.id ??
         null
     )
   }
@@ -537,10 +576,10 @@ export function ProcessStep({
     setActiveBatchIndex(0)
     const nextGroups =
       mode === "manual"
-        ? buildManualMetadataBatchGroups(sortedItems)
-        : buildMetadataBatchGroups(sortedItems, batchSize)
+        ? buildManualMetadataBatchGroups(batchScopeItems)
+        : buildMetadataBatchGroups(batchScopeItems, batchSize)
     setSelectedDocumentId(
-      firstPreferredMetadataItem(nextGroups[0]?.items ?? sortedItems)?.id ??
+      firstPreferredMetadataItem(nextGroups[0]?.items ?? batchScopeItems)?.id ??
         null
     )
   }
@@ -641,9 +680,7 @@ export function ProcessStep({
       setManualSplitActive(true)
       setBatchMode("manual")
       setSelectedDocumentId(null)
-      toast.success(
-        `Đã tạo lô mới với ${response.updated_count} tài liệu.`
-      )
+      toast.success(`Đã tạo lô mới với ${response.updated_count} tài liệu.`)
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Không thể tạo lô metadata."
@@ -688,6 +725,14 @@ export function ProcessStep({
   }
 
   const handleRetryMetadata = async (item: PdfMetadata) => {
+    if (
+      !isCoordinator &&
+      (reviewMode !== "batch" ||
+        !canUserEditMetadataItem(item, currentUserIdentity))
+    ) {
+      toast.error("Bạn chỉ có thể chạy lại metadata trong lô được giao.")
+      return
+    }
     if (!onRetryMetadata) {
       toast.error("Backend chưa bật chức năng chạy lại metadata.")
       return
@@ -943,26 +988,26 @@ export function ProcessStep({
                 {canManageMetadataBatches &&
                   reviewMode === "batch" &&
                   batchMode === "auto" && (
-                  <label className="flex h-8 items-center gap-2 rounded-lg border border-[#CBD5E1] bg-[#F8FAFC] px-2 text-xs font-medium text-[#475569]">
-                    Cỡ lô
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={batchSizeInput}
-                      onChange={(event) =>
-                        handleBatchSizeInputChange(event.target.value)
-                      }
-                      onBlur={handleBatchSizeInputBlur}
-                      className="h-6 w-14 rounded-md border border-[#CBD5E1] bg-white px-2 text-xs text-[#0F172A] outline-none focus-visible:border-[#0052FF] focus-visible:ring-2 focus-visible:ring-[#0052FF]/20"
-                      list="metadata-batch-size-options"
-                    />
-                    <datalist id="metadata-batch-size-options">
-                      {METADATA_BATCH_SIZE_OPTIONS.map((value) => (
-                        <option key={value} value={value} />
-                      ))}
-                    </datalist>
-                  </label>
-                )}
+                    <label className="flex h-8 items-center gap-2 rounded-lg border border-[#CBD5E1] bg-[#F8FAFC] px-2 text-xs font-medium text-[#475569]">
+                      Cỡ lô
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={batchSizeInput}
+                        onChange={(event) =>
+                          handleBatchSizeInputChange(event.target.value)
+                        }
+                        onBlur={handleBatchSizeInputBlur}
+                        className="h-6 w-14 rounded-md border border-[#CBD5E1] bg-white px-2 text-xs text-[#0F172A] outline-none focus-visible:border-[#0052FF] focus-visible:ring-2 focus-visible:ring-[#0052FF]/20"
+                        list="metadata-batch-size-options"
+                      />
+                      <datalist id="metadata-batch-size-options">
+                        {METADATA_BATCH_SIZE_OPTIONS.map((value) => (
+                          <option key={value} value={value} />
+                        ))}
+                      </datalist>
+                    </label>
+                  )}
                 {reviewMode === "batch" && activeBatch && (
                   <span className="rounded-full bg-[#EFF6FF] px-2.5 py-1 text-xs font-medium text-[#475569]">
                     {activeBatch.label}: {activeBatch.reviewedCount}/
@@ -1129,24 +1174,32 @@ export function ProcessStep({
                       ? `${activeBatch.items.length} tài liệu trong lô thủ công`
                       : activeBatch.kind === "reviewed"
                         ? `${activeBatch.items.length} tài liệu đã review`
-                      : activeBatch.kind === "unassigned"
-                        ? `${activeBatch.items.length} tài liệu chưa chia`
-                        : `Tài liệu ${activeBatch.start}-${activeBatch.end} / ${sortedItems.length}`}
+                        : activeBatch.kind === "unassigned"
+                          ? `${activeBatch.items.length} tài liệu chưa chia`
+                          : `Tài liệu ${activeBatch.start}-${activeBatch.end} / ${sortedItems.length}`}
                   </p>
                   {activeBatch.assigneeName || activeBatch.assigneeEmail ? (
                     <p className="mt-0.5 text-[11px] text-[#475569]">
                       Phụ trách:{" "}
                       <span className="font-semibold text-[#0F172A]">
-                        {activeBatch.assigneeName ??
-                          activeBatch.assigneeEmail}
+                        {activeBatch.assigneeName ?? activeBatch.assigneeEmail}
                       </span>
                     </p>
                   ) : null}
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-[11px] text-[#475569]">
-                  <BatchMetric label="Sẵn sàng" value={activeBatch.readyCount} />
-                  <BatchMetric label="Cảnh báo" value={activeBatch.warningCount} />
-                  <BatchMetric label="Còn lại" value={activeBatch.pendingReadyCount} />
+                  <BatchMetric
+                    label="Sẵn sàng"
+                    value={activeBatch.readyCount}
+                  />
+                  <BatchMetric
+                    label="Cảnh báo"
+                    value={activeBatch.warningCount}
+                  />
+                  <BatchMetric
+                    label="Còn lại"
+                    value={activeBatch.pendingReadyCount}
+                  />
                 </div>
               </div>
               <div className="flex gap-2 overflow-x-auto pb-1">
@@ -1163,27 +1216,42 @@ export function ProcessStep({
           )}
           <ScrollArea className="h-[min(70svh,640px)] min-h-[360px]">
             <div className="flex flex-col gap-2 pr-1">
-              {displayedItems.map((item) => (
-                <MetadataCard
-                  key={item.id}
-                  item={item}
-                  selected={item.id === selectedDocumentId}
-                  selectionMode={manualSplitActive}
-                  selectionChecked={manualSelectedIds.has(item.id)}
-                  onSelectionChange={(checked, shiftKey) =>
-                    toggleManualSelection(item, checked, shiftKey)
-                  }
-                  submitting={verifyingIds.has(item.id)}
-                  retrying={retryingIds.has(item.id)}
-                  onSelect={(expanded) =>
-                    setSelectedDocumentId((current) =>
-                      expanded ? item.id : current === item.id ? null : current
-                    )
-                  }
-                  onApply={handleApply}
-                  onRetry={() => void handleRetryMetadata(item)}
-                />
-              ))}
+              {displayedItems.map((item) => {
+                const canEditItem =
+                  isCoordinator ||
+                  (reviewMode === "batch" &&
+                    canUserEditMetadataItem(item, currentUserIdentity))
+                return (
+                  <MetadataCard
+                    key={item.id}
+                    item={item}
+                    selected={item.id === selectedDocumentId}
+                    selectionMode={manualSplitActive}
+                    selectionChecked={manualSelectedIds.has(item.id)}
+                    readOnly={!canEditItem}
+                    onSelectionChange={(checked, shiftKey) =>
+                      toggleManualSelection(item, checked, shiftKey)
+                    }
+                    submitting={verifyingIds.has(item.id)}
+                    retrying={retryingIds.has(item.id)}
+                    onSelect={(expanded) =>
+                      setSelectedDocumentId((current) =>
+                        expanded
+                          ? item.id
+                          : current === item.id
+                            ? null
+                            : current
+                      )
+                    }
+                    onApply={handleApply}
+                    onRetry={
+                      canEditItem
+                        ? () => void handleRetryMetadata(item)
+                        : undefined
+                    }
+                  />
+                )
+              })}
               {Array.from({ length: visibleLoadingPlaceholderCount }).map(
                 (_, i) => (
                   <div
@@ -1197,6 +1265,14 @@ export function ProcessStep({
                   Không còn tài liệu chưa chia.
                 </div>
               )}
+              {!manualSplitActive &&
+                !metadataLoading &&
+                displayedItems.length === 0 &&
+                items.length > 0 && (
+                  <div className="rounded-xl border border-dashed border-[#CBD5E1] bg-white p-6 text-center text-sm text-muted-foreground">
+                    Không có tài liệu trong phạm vi này.
+                  </div>
+                )}
               {!metadataLoading && items.length === 0 && (
                 <div className="rounded-xl border border-dashed border-[#CBD5E1] bg-white p-6 text-center text-sm text-muted-foreground">
                   Chưa có metadata từ backend.
@@ -1233,7 +1309,8 @@ export function ProcessStep({
           ) : pendingReadyItems.length > 0 ? (
             <span className="flex items-center gap-2 text-[#475569]">
               <CheckCircle2 className="size-4 text-emerald-600" />
-              Có thể lập hồ sơ với {dossierReadyItems.length} tài liệu đủ điều kiện;
+              Có thể lập hồ sơ với {dossierReadyItems.length} tài liệu đủ điều
+              kiện;
               {` ${pendingReadyItems.length}`} tài liệu còn lại có thể cập nhật
               hồ sơ sau.
             </span>
@@ -1352,13 +1429,13 @@ function MetadataBatchButton({
       <span className="mt-1 block text-[10px] opacity-80">
         {group.kind === "manual"
           ? group.assigneeName || group.assigneeEmail
-            ? group.assigneeName ?? group.assigneeEmail
+            ? (group.assigneeName ?? group.assigneeEmail)
             : `${group.items.length} tài liệu`
           : group.kind === "reviewed"
             ? "Đã review"
-          : group.kind === "unassigned"
-            ? "Chưa chia"
-            : `${group.start}-${group.end}`}
+            : group.kind === "unassigned"
+              ? "Chưa chia"
+              : `${group.start}-${group.end}`}
       </span>
       <span className="mt-2 block h-1.5 overflow-hidden rounded-full bg-white/70">
         <span
@@ -1392,10 +1469,7 @@ function mergeIncomingMetadata(
   return incoming.map((rawItem) => {
     const item = normalizePdfMetadata(rawItem)
     const local = previousById.get(item.id)
-    if (
-      local?.is_reviewed === true &&
-      item.is_reviewed !== true
-    ) {
+    if (local?.is_reviewed === true && item.is_reviewed !== true) {
       const normalizedMetadata =
         item.normalized_metadata ?? local.normalized_metadata
       const rawMetadata = item.raw_metadata ?? local.raw_metadata
@@ -1406,10 +1480,8 @@ function mergeIncomingMetadata(
         metadata_batch_id: item.metadata_batch_id,
         metadata_batch_assigned_to_user_id:
           item.metadata_batch_assigned_to_user_id,
-        metadata_batch_assigned_to_email:
-          item.metadata_batch_assigned_to_email,
-        metadata_batch_assigned_to_name:
-          item.metadata_batch_assigned_to_name,
+        metadata_batch_assigned_to_email: item.metadata_batch_assigned_to_email,
+        metadata_batch_assigned_to_name: item.metadata_batch_assigned_to_name,
         metadata_batch_assigned_at: item.metadata_batch_assigned_at,
         metadata_verified_by_user_id: item.metadata_verified_by_user_id,
         metadata_verified_by_email: item.metadata_verified_by_email,
@@ -1633,9 +1705,41 @@ function buildManualMetadataBatchGroups(
   return groups
 }
 
-function normalizedMetadataBatchId(value: string | null | undefined): string | null {
+function normalizedMetadataBatchId(
+  value: string | null | undefined
+): string | null {
   const text = String(value ?? "").trim()
   return text || null
+}
+
+function canUserEditMetadataItem(
+  item: PdfMetadata,
+  actor: MetadataActorIdentity
+): boolean {
+  if (actor.isCoordinator) return true
+  return isMetadataItemAssignedToUser(item, actor)
+}
+
+function isMetadataItemAssignedToUser(
+  item: PdfMetadata,
+  actor: MetadataActorIdentity
+): boolean {
+  const assignedTo = String(
+    item.metadata_batch_assigned_to_user_id ?? ""
+  ).trim()
+  const assignedEmail = String(item.metadata_batch_assigned_to_email ?? "")
+    .trim()
+    .toLowerCase()
+  const assignedName = String(item.metadata_batch_assigned_to_name ?? "").trim()
+  if (actor.id && assignedTo && assignedTo === actor.id) return true
+  if (
+    actor.email &&
+    assignedEmail &&
+    assignedEmail === actor.email.toLowerCase()
+  ) {
+    return true
+  }
+  return Boolean(actor.name && assignedName && assignedName === actor.name)
 }
 
 function findUnassignedBatchIndex(groups: MetadataBatchGroup[]): number {
@@ -1723,9 +1827,7 @@ function firstPreferredMetadataItem(items: PdfMetadata[]): PdfMetadata | null {
     items.find(
       (item) => item.is_reviewed !== true && hasMetadataWarning(item)
     ) ??
-    items.find(
-      (item) => item.metadata_ready && item.is_reviewed !== true
-    ) ??
+    items.find((item) => item.metadata_ready && item.is_reviewed !== true) ??
     items[0] ??
     null
   )
