@@ -86,8 +86,10 @@ export interface FolderNode {
 
 export interface PdfMetadata {
   id: number
+  ocr_batch_id?: number | null
   document_id: string
   data_path: string
+  import_action?: string | null
   metadata_batch_id?: string | null
   metadata_batch_assigned_to_user_id?: string | number | null
   metadata_batch_assigned_to_email?: string | null

@@ -50,6 +50,7 @@ import {
   type DocumentNumberingMode,
   type SessionInputFileType,
   type SessionInputUploadResponse,
+  type UploadMode,
   type UploadProgressSnapshot,
 } from "@/features/upload/api/sessionApi"
 import type {
@@ -793,6 +794,7 @@ let _arrangementPlanUpload: SessionInputUploadResponse | null = null
 let _retentionUpload: SessionInputUploadResponse | null = null
 let _zipFolderPath = ""
 let _zipMaxFiles = ""
+let _uploadMode: UploadMode = "append"
 let _activePlanVersionId = ""
 let _activeClusterVersionId: string | null | undefined = undefined
 let _draftArrangementPlanFile: File | null = null
@@ -801,6 +803,7 @@ let _draftZipFile: File | null = null
 let _zipUploadProgress: UploadProgressSnapshot | null = null
 let _arrangementPlanReuploaded = false
 let _retentionReuploaded = false
+let _rawZipReuploaded = false
 
 export function UploadPage() {
   const navigate = useNavigate()
@@ -906,6 +909,9 @@ export function UploadPage() {
     arrangement: _arrangementPlanReuploaded,
     retention: _retentionReuploaded,
   }))
+  const [zipSupplementUploaded, setZipSupplementUploaded] =
+    useState(_rawZipReuploaded)
+  const [uploadMode, setUploadModeState] = useState<UploadMode>(_uploadMode)
 
   useEffect(() => {
     const targetSessionId = routeSessionId ?? sessionId ?? _sessionId
@@ -935,10 +941,12 @@ export function UploadPage() {
     setZipFolderPath(_zipFolderPath)
     setZipMaxFiles(_zipMaxFiles)
     setZipUploadProgress(_zipUploadProgress)
+    setUploadModeState(_uploadMode)
     setPlanReuploadState({
       arrangement: _arrangementPlanReuploaded,
       retention: _retentionReuploaded,
     })
+    setZipSupplementUploaded(_rawZipReuploaded)
     if (_planAnalysisState !== "processing") {
       setPlanProgressPhase(null)
       setPlanProgressMessage("")
@@ -975,6 +983,7 @@ export function UploadPage() {
     _retentionUpload = null
     _zipFolderPath = ""
     _zipMaxFiles = ""
+    _uploadMode = "append"
     _activePlanVersionId = ""
     _activeClusterVersionId = undefined
     _draftArrangementPlanFile = null
@@ -983,6 +992,7 @@ export function UploadPage() {
     _zipUploadProgress = null
     _arrangementPlanReuploaded = false
     _retentionReuploaded = false
+    _rawZipReuploaded = false
     applyWorkflowState(nextSessionId)
   }
 
@@ -1005,8 +1015,10 @@ export function UploadPage() {
         const reviewed = job.is_reviewed === true
         return {
           id: job.id,
+          ocr_batch_id: job.ocr_batch_id,
           document_id: job.document_id,
           data_path: job.data_path,
+          import_action: job.import_action,
           metadata_batch_id: job.metadata_batch_id,
           metadata_batch_assigned_to_user_id:
             job.metadata_batch_assigned_to_user_id,
@@ -1047,7 +1059,8 @@ export function UploadPage() {
     }),
     [ocr.status]
   )
-  const ocrIsReextracting = ocr.status?.reextracting === true
+  const ocrIsReextracting =
+    ocr.status?.reextracting === true && ocr.status?.upload_mode !== "append"
   const ocrMessage =
     ocr.state === "error"
       ? ocr.error || "Không thể lấy kết quả số hóa."
@@ -1147,7 +1160,8 @@ export function UploadPage() {
         const retentionFile = files.find(
           (file) => file.file_type === "retention_schedule"
         )
-        const zipFile = files.find((file) => file.file_type === "raw_zip")
+        const zipFiles = files.filter((file) => file.file_type === "raw_zip")
+        const zipFile = zipFiles[zipFiles.length - 1]
         _doc1Has = Boolean(arrangementPlanFile)
         _doc2Has = Boolean(retentionFile)
         _zipHas = Boolean(zipFile)
@@ -1158,6 +1172,7 @@ export function UploadPage() {
         _retentionUpload = retentionFile ?? null
         _arrangementPlanReuploaded = false
         _retentionReuploaded = false
+        _rawZipReuploaded = false
         _zipUpload = zipFile ?? null
         _zipFolderPath = zipFile?.folder_path ?? zipFile?.data_path ?? ""
         setDoc1Has(_doc1Has)
@@ -1167,6 +1182,7 @@ export function UploadPage() {
         setDoc2State(_doc2State)
         setZipState(_zipState)
         setPlanReuploadState({ arrangement: false, retention: false })
+        setZipSupplementUploaded(false)
         setZipFolderPath(_zipFolderPath)
 
         if (activePlan) {
@@ -1262,7 +1278,13 @@ export function UploadPage() {
     if (fileType === "raw_zip") {
       syncZipUploadProgress(zipUploadProgressForFile(file, "done", file.size))
     }
-    if (fileType === "raw_zip") _zipUpload = uploaded
+    if (fileType === "raw_zip") {
+      _zipUpload = uploaded
+      if (existingSessionMode) {
+        _rawZipReuploaded = true
+        setZipSupplementUploaded(true)
+      }
+    }
     if (fileType === "arrangement_plan" || fileType === "retention_schedule") {
       if (fileType === "arrangement_plan") {
         _arrangementPlanUpload = uploaded
@@ -1305,6 +1327,10 @@ export function UploadPage() {
   const syncZipMaxFiles = (value: string) => {
     _zipMaxFiles = value
     setZipMaxFiles(value)
+  }
+  const syncUploadMode = (value: UploadMode) => {
+    _uploadMode = value
+    setUploadModeState(value)
   }
   const syncZipUploadProgress = (progress: UploadProgressSnapshot | null) => {
     _zipUploadProgress = progress
@@ -1411,9 +1437,12 @@ export function UploadPage() {
     if (!v) {
       _zipUpload = null
       _draftZipFile = null
+      _rawZipReuploaded = false
+      setZipSupplementUploaded(false)
       syncZipUploadProgress(null)
       syncZipFolderPath("")
       syncZipMaxFiles("")
+      syncUploadMode("append")
     }
     setZipHas(v)
   }
@@ -1683,13 +1712,17 @@ export function UploadPage() {
   }
 
   const handleStartAll = async () => {
-    if (allDone) {
+    if (allDone && !(existingSessionMode && zipSupplementUploaded)) {
       goTo(2)
       return
     }
     if (existingSessionMode) {
       if (planInputsReuploaded) {
         await handleReanalyzeExistingSessionPlan()
+        return
+      }
+      if (zipSupplementUploaded) {
+        await handleConfirmPlan()
         return
       }
       goTo(2)
@@ -1816,7 +1849,7 @@ export function UploadPage() {
     }
   }
 
-  const handleConfirmPlan = async () => {
+  async function handleConfirmPlan() {
     if (confirmingPlan) return
     if (!_sessionId) {
       toast.error("Chưa có session xử lý.")
@@ -1945,6 +1978,8 @@ export function UploadPage() {
         return
       }
 
+      const hasSupplementalZipUpload =
+        existingSessionMode && _rawZipReuploaded && Boolean(_zipUpload)
       existingStatus = ocr.status ?? (await ocr.refresh())
       if ((existingStatus?.jobs.length ?? 0) > 0) {
         const existingMode = documentNumberingModeValue(
@@ -1953,7 +1988,7 @@ export function UploadPage() {
         if (existingMode && existingMode !== documentNumberingMode) {
           forceDigitization = true
           toast.info("Cách xử lý PDF đã thay đổi. Hệ thống sẽ lấy lại metadata.")
-        } else {
+        } else if (!hasSupplementalZipUpload) {
           const hasReadyMetadata = existingStatus?.jobs.some(
             (job) => job.metadata_ready
           )
@@ -1976,6 +2011,13 @@ export function UploadPage() {
       setConfirmingPlan(false)
     }
 
+    if (_zipUpload && uploadMode === "overwrite") {
+      const confirmed = window.confirm(
+        "Bạn đã chọn overwrite. Các PDF trùng đường dẫn trong ZIP bổ sung sẽ ghi đè file đang có và metadata/review của các file đó sẽ được extract lại. Tiếp tục?"
+      )
+      if (!confirmed) return
+    }
+
     syncZipState("processing")
     toast.success("Đã xác nhận phương án. Bắt đầu lấy metadata.")
     void ocr
@@ -1983,12 +2025,17 @@ export function UploadPage() {
         maxFiles: maxFilesToProcess,
         confirmedPlanVersionId,
         documentNumberingMode,
+        sessionFileId: _zipUpload?.id,
+        remoteFileId: _zipUpload?.remote_file_id ?? null,
+        uploadMode: _zipUpload ? uploadMode : undefined,
         force: forceDigitization,
-        reextract: forceDigitization,
+        reextract: forceDigitization || zipSupplementUploaded,
         previousStatus: existingStatus ?? null,
       })
       .then(() => {
         syncZipState("done")
+        _rawZipReuploaded = false
+        setZipSupplementUploaded(false)
         toast.success("Đã hoàn tất lấy metadata từ remote folder.")
       })
       .catch((err) => {
@@ -2252,6 +2299,44 @@ export function UploadPage() {
                 ocr={ocr}
               />
 
+              {existingSessionMode && zipHas && (
+                <div className="rounded-2xl border border-[#D8E1EC] bg-white p-5 shadow-sm">
+                  <p className="text-sm font-bold text-[#0F172A]">
+                    Chế độ upload bổ sung
+                  </p>
+                  <p className="mt-1 text-sm text-[#64748B]">
+                    Append sẽ bỏ qua file PDF đã có trong phông. Overwrite sẽ ghi đè file trùng và metadata của file đó sẽ được extract lại.
+                  </p>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    {(["append", "overwrite"] as UploadMode[]).map((mode) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => syncUploadMode(mode)}
+                        disabled={allProcessing || sessionLoading}
+                        className={cn(
+                          "rounded-xl border px-4 py-3 text-left transition-all disabled:cursor-not-allowed disabled:opacity-60",
+                          uploadMode === mode
+                            ? "border-[#0052FF] bg-[#EAF1FF] text-[#0F172A] shadow-sm"
+                            : "border-[#CBD5E1] bg-white text-[#475569] hover:border-[#0052FF]/40"
+                        )}
+                      >
+                        <span className="block text-sm font-bold">
+                          {mode === "append"
+                            ? "Append - bỏ qua file trùng"
+                            : "Overwrite - ghi đè file trùng"}
+                        </span>
+                        <span className="mt-1 block text-xs leading-5 text-[#64748B]">
+                          {mode === "append"
+                            ? "An toàn hơn, chỉ xử lý tài liệu mới trong ZIP bổ sung."
+                            : "Dùng khi muốn thay nội dung PDF đã có bằng bản mới trong ZIP."}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* DOCX */}
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <DocxSection
@@ -2354,6 +2439,10 @@ export function UploadPage() {
                         <Loader2 className="size-3.5 animate-spin text-primary" />{" "}
                         Đang xử lý tệp...
                       </span>
+                    ) : existingSessionMode && zipSupplementUploaded ? (
+                      <span className="text-muted-foreground">
+                        ZIP bổ sung đã upload xong. Nhấn nút bên phải để extract metadata.
+                      </span>
                     ) : hasAnyFile ? (
                       <span className="text-muted-foreground">
                         <span className="font-bold text-foreground">
@@ -2406,6 +2495,8 @@ export function UploadPage() {
                           ? "Đang xử lý..."
                           : planInputsReuploaded
                             ? "Phân tích lại và lập hồ sơ"
+                            : existingSessionMode && zipSupplementUploaded
+                              ? "Extract metadata ZIP bổ sung"
                             : allDone
                               ? "Tiếp tục"
                               : existingSessionMode
@@ -2477,6 +2568,7 @@ export function UploadPage() {
               <ProcessStep
                 sessionId={sessionId}
                 pdfPaths={ocrPdfPaths}
+                metadataTotal={ocr.status?.total_files ?? ocrMetadataItems.length}
                 metadataItems={ocrMetadataItems}
                 metadataLoading={ocrLoading}
                 metadataReloading={ocrIsReextracting}

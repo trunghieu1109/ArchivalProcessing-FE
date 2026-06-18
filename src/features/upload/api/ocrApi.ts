@@ -10,8 +10,10 @@ export interface FolderPreviewRequest {
 
 export interface JobSummary {
   id: number
+  ocr_batch_id?: number | null
   document_id: string
   data_path: string
+  import_action?: string | null
   metadata_batch_id?: string | null
   metadata_batch_assigned_to_user_id?: string | number | null
   metadata_batch_assigned_to_email?: string | null
@@ -53,6 +55,7 @@ export interface FolderStatusResponse {
   missing_files: string[]
   status_counts: Record<string, number>
   document_numbering_mode?: string | null
+  upload_mode?: "append" | "overwrite" | string | null
   reextracting?: boolean
   pdf_preprocessing?: Record<string, unknown> | null
   signature_extracted_documents: number

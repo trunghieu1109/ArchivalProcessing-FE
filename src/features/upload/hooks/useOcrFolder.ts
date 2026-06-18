@@ -13,6 +13,7 @@ import {
   startDigitization,
   type DocumentNumberingMode,
   type SessionDocumentResponse,
+  type UploadMode,
 } from "@/features/upload/api/sessionApi"
 import { buildDisplayMetadata } from "@/features/upload/lib/metadata"
 
@@ -37,6 +38,9 @@ export interface UseOcrFolderResult {
       maxFiles?: number
       confirmedPlanVersionId: string
       documentNumberingMode?: DocumentNumberingMode
+      sessionFileId?: number
+      remoteFileId?: string | number | null
+      uploadMode?: UploadMode
       force?: boolean
       reextract?: boolean
       previousStatus?: FolderStatusResponse | null
@@ -288,6 +292,9 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
         maxFiles?: number
         confirmedPlanVersionId: string
         documentNumberingMode?: DocumentNumberingMode
+        sessionFileId?: number
+        remoteFileId?: string | number | null
+        uploadMode?: UploadMode
         force?: boolean
         reextract?: boolean
         previousStatus?: FolderStatusResponse | null
@@ -313,6 +320,8 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
         options.reextract === true &&
         previousStatus !== null &&
         (previousStatus?.jobs.length ?? 0) > 0
+      const shouldResetExistingDocuments =
+        options.reextract === true && !options.uploadMode
       pendingStartRef.current =
         shouldShowReextractingState && previousStatus
           ? {
@@ -323,7 +332,10 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
       setState("starting")
       setStatus(
         shouldShowReextractingState && previousStatus
-          ? buildReextractingStatus(previousStatus, folderPath, expectedMode)
+          ? buildReextractingStatus(previousStatus, folderPath, expectedMode, {
+              resetExistingDocuments: shouldResetExistingDocuments,
+              uploadMode: options.uploadMode,
+            })
           : null
       )
       setError("")
@@ -336,6 +348,10 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
           max_files: options.maxFiles,
           confirmed_plan_version_id: options.confirmedPlanVersionId,
           document_numbering_mode: options.documentNumberingMode,
+          session_file_id: options.sessionFileId,
+          remote_file_id: options.remoteFileId,
+          upload_mode: options.uploadMode,
+          overwrite: options.uploadMode === "overwrite",
         })
       } catch (err) {
         pendingStartRef.current = null
@@ -377,13 +393,16 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
             }
             pendingStartRef.current = null
             const nextStatus = digitizationToFolderStatus(result, folderPath)
-            setStatus((current) =>
-              current?.reextracting && !isDigitizationComplete(result)
-                ? mergeReextractingStatus(current, nextStatus)
-                : nextStatus
-            )
+            const complete = isDigitizationComplete(result)
+            setStatus((current) => {
+              if (!current?.reextracting) return nextStatus
+              return {
+                ...mergeReextractingStatus(current, nextStatus),
+                reextracting: !complete,
+              }
+            })
             setError("")
-            if (isDigitizationComplete(result)) {
+            if (complete) {
               stop()
               setState("done")
               resolvePolling()
@@ -426,8 +445,10 @@ function sessionDocumentToJobSummary(
   const lightMetadata = buildDisplayMetadata(document)
   return {
     id: document.id,
+    ocr_batch_id: document.ocr_batch_id,
     document_id: document.document_id,
     data_path: document.data_path,
+    import_action: document.import_action,
     metadata_batch_id: document.metadata_batch_id,
     metadata_batch_assigned_to_user_id:
       document.metadata_batch_assigned_to_user_id,
@@ -456,32 +477,29 @@ function sessionDocumentToJobSummary(
 function buildReextractingStatus(
   previousStatus: FolderStatusResponse,
   folderPath: string,
-  expectedMode: DocumentNumberingMode
+  expectedMode: DocumentNumberingMode,
+  options: {
+    resetExistingDocuments: boolean
+    uploadMode?: UploadMode
+  }
 ): FolderStatusResponse {
-  const jobs = previousStatus.jobs.map((job) => ({
-    ...job,
-    status: "processing",
-    remote_metadata_status: "processing",
-    review_status: "pending",
-    is_reviewed: false,
-    metadata_ready: false,
-    metadata_final: false,
-    metadata_user_edited: false,
-    metadata_batch_id: job.metadata_batch_id,
-    metadata_batch_assigned_to_user_id: job.metadata_batch_assigned_to_user_id,
-    metadata_batch_assigned_to_email: job.metadata_batch_assigned_to_email,
-    metadata_batch_assigned_to_name: job.metadata_batch_assigned_to_name,
-    metadata_batch_assigned_at: job.metadata_batch_assigned_at,
-    metadata_verified_by_user_id: job.metadata_verified_by_user_id,
-    metadata_verified_by_email: job.metadata_verified_by_email,
-    metadata_verified_by_name: job.metadata_verified_by_name,
-    metadata_verified_at: job.metadata_verified_at,
-    error: null,
-    light_metadata: {},
-    normalized_metadata: {},
-    raw_metadata: {},
-    pdf_preprocessing: null,
-  }))
+  const jobs = options.resetExistingDocuments
+    ? previousStatus.jobs.map((job) => ({
+        ...job,
+        status: "processing",
+        remote_metadata_status: "processing",
+        review_status: "pending",
+        is_reviewed: false,
+        metadata_ready: false,
+        metadata_final: false,
+        metadata_user_edited: false,
+        error: null,
+        light_metadata: {},
+        normalized_metadata: {},
+        raw_metadata: {},
+        pdf_preprocessing: null,
+      }))
+    : previousStatus.jobs
   const totalJobs = Math.max(previousStatus.total_jobs, previousStatus.jobs.length)
   const totalFiles = Math.max(previousStatus.total_files, jobs.length)
   return {
@@ -489,13 +507,24 @@ function buildReextractingStatus(
     folder_path: folderPath || previousStatus.folder_path,
     total_files: totalFiles,
     total_jobs: totalJobs,
-    status_counts: { processing: jobs.length || totalJobs || totalFiles },
+    status_counts: options.resetExistingDocuments
+      ? { processing: jobs.length || totalJobs || totalFiles }
+      : countJobStatuses(jobs),
     document_numbering_mode: expectedMode,
+    upload_mode: options.uploadMode ?? previousStatus.upload_mode ?? null,
     reextracting: true,
-    pdf_preprocessing: null,
-    signature_extracted_documents: 0,
-    signature_pending_documents: 0,
-    signature_failed_documents: 0,
+    pdf_preprocessing: options.resetExistingDocuments
+      ? null
+      : previousStatus.pdf_preprocessing,
+    signature_extracted_documents: options.resetExistingDocuments
+      ? 0
+      : previousStatus.signature_extracted_documents,
+    signature_pending_documents: options.resetExistingDocuments
+      ? 0
+      : previousStatus.signature_pending_documents,
+    signature_failed_documents: options.resetExistingDocuments
+      ? 0
+      : previousStatus.signature_failed_documents,
     jobs,
   }
 }

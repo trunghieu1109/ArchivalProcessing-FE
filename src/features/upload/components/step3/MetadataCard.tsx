@@ -347,7 +347,7 @@ export function MetadataCard({
             </span>
           ) : (
             <span className="flex items-center gap-1 rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-              Đang lấy metadata
+              Đang extract metadata
             </span>
           )}
           <Button

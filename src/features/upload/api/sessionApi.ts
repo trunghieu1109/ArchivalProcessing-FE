@@ -16,6 +16,7 @@ export type SessionInputFileType =
 
 export type DossierBuildStrategy = "incremental" | "file_register"
 export type DocumentNumberingMode = "page" | "sheet"
+export type UploadMode = "append" | "overwrite"
 
 export interface CreateSessionResponse {
   session_id: string
@@ -232,6 +233,9 @@ export interface DigitizationDocument {
   document_id: string
   data_path: string
   metadata_batch_id?: string | null
+  last_import_job_id?: string | number | null
+  import_action?: string | null
+  content_revision?: number | null
   metadata_batch_assigned_to_user_id?: string | number | null
   metadata_batch_assigned_to_email?: string | null
   metadata_batch_assigned_to_name?: string | null
@@ -266,6 +270,8 @@ export interface DigitizationBatch {
   status_counts: Record<string, number>
   status: string
   document_numbering_mode?: DocumentNumberingMode | null
+  remote_file_id?: string | number | null
+  upload_mode?: UploadMode | string | null
   pdf_preprocessing?: Record<string, unknown> | null
 }
 
@@ -456,9 +462,11 @@ export interface MetadataBoxNumberImportResponse {
 export interface SessionDocumentResponse {
   id: number
   session_id: string
+  ocr_batch_id?: number | null
   document_id: string
   data_path: string
   file_name: string
+  import_action?: string | null
   metadata_batch_id?: string | null
   metadata_batch_assigned_to_user_id?: string | number | null
   metadata_batch_assigned_to_email?: string | null
@@ -1318,6 +1326,10 @@ export async function startDigitization(
     max_files?: number
     confirmed_plan_version_id: string
     document_numbering_mode?: DocumentNumberingMode
+    session_file_id?: number
+    remote_file_id?: string | number | null
+    upload_mode?: UploadMode
+    overwrite?: boolean
   }
 ): Promise<void> {
   await requestJson<unknown>(
@@ -1654,13 +1666,30 @@ export function digitizationToFolderStatus(
   fallbackFolderPath: string
 ): FolderStatusResponse {
   const batch = response?.batches[0]
-  const documents = latestBatchDocuments(response)
+  const documents = response?.documents ?? []
+  const batchComplete = ["done", "completed_with_errors", "failed"].includes(
+    String(batch?.status || "").trim().toLowerCase()
+  )
+  const latestBatchDocumentCount =
+    batch?.id == null
+      ? documents.length
+      : documents.filter((document) => document.ocr_batch_id === batch.id).length
+  const pendingBatchDocumentCount = Math.max(
+    0,
+    batchComplete ? 0 : (batch?.total_files ?? 0) - latestBatchDocumentCount
+  )
+  const cumulativeDocumentCount =
+    batch?.upload_mode === "append"
+      ? documents.length + pendingBatchDocumentCount
+      : Math.max(documents.length, batch?.total_files ?? 0)
   const jobs: JobSummary[] = documents.map((document) => {
     const lightMetadata = buildDisplayMetadata(document)
     return {
       id: document.id,
+      ocr_batch_id: document.ocr_batch_id,
       document_id: document.document_id,
       data_path: document.data_path,
+      import_action: document.import_action,
       metadata_batch_id: document.metadata_batch_id,
       metadata_batch_assigned_to_user_id:
         document.metadata_batch_assigned_to_user_id,
@@ -1692,12 +1721,16 @@ export function digitizationToFolderStatus(
     batch_id: batch?.id ?? null,
     folder_path: batch?.folder_path ?? fallbackFolderPath,
     recursive: batch?.recursive ?? true,
-    total_files: batch?.total_files ?? documents.length,
-    total_jobs: batch?.total_jobs ?? documents.length,
+    total_files: cumulativeDocumentCount,
+    total_jobs: Math.max(
+      cumulativeDocumentCount,
+      documents.length + Math.max(0, (batch?.total_jobs ?? 0) - latestBatchDocumentCount)
+    ),
     missing_files: batch?.missing_files ?? [],
     status_counts:
-      batch?.status_counts ?? response?.summary.status_counts ?? {},
+      response?.summary.status_counts ?? batch?.status_counts ?? {},
     document_numbering_mode: batch?.document_numbering_mode ?? null,
+    upload_mode: batch?.upload_mode ?? null,
     reextracting: false,
     pdf_preprocessing: batch?.pdf_preprocessing ?? null,
     signature_extracted_documents: documents.filter(

@@ -89,6 +89,7 @@ const LEGACY_METADATA_VERIFIED_BATCH_ID = "metadata-verified"
 interface ProcessStepProps {
   sessionId: string | null
   pdfPaths: string[]
+  metadataTotal?: number
   metadataItems?: PdfMetadata[]
   metadataLoading?: boolean
   metadataReloading?: boolean
@@ -106,6 +107,7 @@ interface ProcessStepProps {
 export function ProcessStep({
   sessionId,
   pdfPaths,
+  metadataTotal = 0,
   metadataItems = [],
   metadataLoading = false,
   metadataReloading = false,
@@ -124,7 +126,7 @@ export function ProcessStep({
     null
   )
   const [previewWidthPercent, setPreviewWidthPercent] = useState(48)
-  const [reviewMode, setReviewMode] = useState<MetadataReviewMode>("batch")
+  const [reviewMode, setReviewMode] = useState<MetadataReviewMode>("list")
   const [batchSize, setBatchSize] = useState(() => readStoredBatchSize())
   const [batchSizeInput, setBatchSizeInput] = useState(() =>
     String(readStoredBatchSize())
@@ -146,6 +148,7 @@ export function ProcessStep({
   const previewLayoutRef = useRef<HTMLDivElement | null>(null)
   const didAutoSelectRef = useRef(false)
   const manualLastSelectedIdRef = useRef<number | null>(null)
+  const metadataSessionIdRef = useRef(sessionId)
   const currentUserRole = String(user?.role ?? "")
     .trim()
     .toLowerCase()
@@ -171,15 +174,21 @@ export function ProcessStep({
       metadataItems
         .map(
           (item) =>
-            `${item.id}:${item.status}:${item.remote_metadata_status ?? ""}:${item.review_status}:${String(item.is_reviewed ?? false)}:${String(item.metadata_ready)}:${String(item.metadata_final)}:${String(item.metadata_user_edited ?? false)}:${item.metadata_batch_id ?? ""}:${item.metadata_batch_assigned_to_user_id ?? ""}:${item.metadata_batch_assigned_to_email ?? ""}:${item.metadata_batch_assigned_to_name ?? ""}:${item.metadata_verified_by_user_id ?? ""}:${item.metadata_verified_by_email ?? ""}:${item.metadata_verified_by_name ?? ""}`
+            `${item.id}:${item.ocr_batch_id ?? ""}:${item.import_action ?? ""}:${item.status}:${item.remote_metadata_status ?? ""}:${item.review_status}:${String(item.is_reviewed ?? false)}:${String(item.metadata_ready)}:${String(item.metadata_final)}:${String(item.metadata_user_edited ?? false)}:${item.metadata_batch_id ?? ""}:${item.metadata_batch_assigned_to_user_id ?? ""}:${item.metadata_batch_assigned_to_email ?? ""}:${item.metadata_batch_assigned_to_name ?? ""}:${item.metadata_verified_by_user_id ?? ""}:${item.metadata_verified_by_email ?? ""}:${item.metadata_verified_by_name ?? ""}`
         )
         .join("\n"),
     [metadataItems]
   )
 
   useEffect(() => {
-    setItems((previous) => mergeIncomingMetadata(previous, metadataItems))
-  }, [metadataItems, metadataKey])
+    const sessionChanged = metadataSessionIdRef.current !== sessionId
+    if (sessionChanged) {
+      metadataSessionIdRef.current = sessionId
+    }
+    setItems((previous) =>
+      mergeIncomingMetadata(sessionChanged ? [] : previous, metadataItems)
+    )
+  }, [metadataItems, metadataKey, sessionId])
 
   const paths = useMemo(
     () =>
@@ -197,6 +206,22 @@ export function ProcessStep({
     () => items.filter((item) => item.is_reviewed === true),
     [items]
   )
+  const failedMetadataItems = useMemo(
+    () => items.filter(isMetadataFailedItem),
+    [items]
+  )
+  const pendingExtractionItems = useMemo(
+    () => items.filter(isMetadataExtractionPending),
+    [items]
+  )
+  const needsReviewItems = useMemo(
+    () => items.filter(needsMetadataReview),
+    [items]
+  )
+  const autoVerifiedItems = useMemo(
+    () => items.filter(isAutomaticallyVerifiedMetadata),
+    [items]
+  )
   const dossierReadyItems = useMemo(
     () =>
       items.filter(
@@ -205,7 +230,7 @@ export function ProcessStep({
     [items]
   )
   const pendingReadyItems = useMemo(
-    () => readyItems.filter((item) => item.is_reviewed !== true),
+    () => readyItems.filter(needsMetadataReview),
     [readyItems]
   )
   const sortedItems = useMemo(
@@ -249,10 +274,7 @@ export function ProcessStep({
     [displayedItems]
   )
   const displayedPendingReadyItems = useMemo(
-    () =>
-      displayedItems.filter(
-        (item) => item.metadata_ready && item.is_reviewed !== true
-      ),
+    () => displayedItems.filter(needsMetadataReview),
     [displayedItems]
   )
   const bulkVerifyItems =
@@ -809,18 +831,21 @@ export function ProcessStep({
     window.addEventListener("pointercancel", handlePointerUp)
   }
 
-  const warningCount = items.filter(
-    (item) => item.is_reviewed !== true && hasMetadataWarning(item)
-  ).length
+  const warningCount = needsReviewItems.length
+  const expectedCount = Math.max(metadataTotal, paths.length, items.length)
+  const pendingMetadataCount = Math.max(
+    pendingExtractionItems.length,
+    expectedCount - readyItems.length - failedMetadataItems.length
+  )
+  const metadataInProgress = metadataLoading || pendingMetadataCount > 0
   const loadingPlaceholderCount = Math.max(
-    metadataLoading && items.length === 0 ? 1 : 0,
-    Math.max(paths.length - items.length, 0)
+    metadataInProgress && items.length === 0 ? 1 : 0,
+    Math.max(expectedCount - items.length, 0)
   )
   const visibleLoadingPlaceholderCount = Math.min(
     loadingPlaceholderCount,
     MAX_LOADING_PLACEHOLDERS
   )
-  const expectedCount = Math.max(paths.length, items.length)
   const readyPercent =
     expectedCount > 0
       ? Math.min(100, (readyItems.length / expectedCount) * 100)
@@ -864,14 +889,14 @@ export function ProcessStep({
               Tiến độ metadata
             </p>
             <p className="mt-1 text-sm text-[#0F172A]">
-              {metadataLoading
+              {pendingMetadataCount > 0
                 ? `${
                     metadataReloading
-                      ? "Đang trích xuất lại metadata"
-                      : "Đang trích xuất metadata"
-                  }: đã extract ${readyItems.length}/${expectedCount || "..."} tài liệu.`
+                      ? "Đang extract lại metadata"
+                      : "Đang extract metadata"
+                  } cho ${pendingMetadataCount} tài liệu. Đã extract ${readyItems.length}/${expectedCount || "..."} tài liệu.`
                 : readyItems.length > 0
-                  ? `Có ${readyItems.length} tài liệu sẵn sàng, ${reviewedItems.length} đã review.`
+                  ? `Đã extract ${readyItems.length}/${expectedCount} tài liệu; ${needsReviewItems.length} cần xem xét; ${autoVerifiedItems.length} tự động xác thực; ${reviewedItems.length} chuyên gia xác thực.`
                   : metadataMessage}
             </p>
             {(signatureStatus.pending > 0 || signatureStatus.failed > 0) && (
@@ -887,14 +912,12 @@ export function ProcessStep({
               </p>
             )}
           </div>
-          <div className="grid w-full grid-cols-2 gap-2 text-center sm:w-auto sm:grid-cols-4">
+          <div className="grid w-full grid-cols-2 gap-2 text-center sm:w-auto lg:grid-cols-5">
             <ProgressMetric label="Tài liệu" value={expectedCount} />
-            <ProgressMetric label="Đã extract" value={readyItems.length} />
-            <ProgressMetric
-              label="Chữ ký xong"
-              value={signatureStatus.extracted}
-            />
-            <ProgressMetric label="Đã review" value={reviewedItems.length} />
+            <ProgressMetric label="Đang extract" value={pendingMetadataCount} />
+            <ProgressMetric label="Cần xem xét" value={needsReviewItems.length} />
+            <ProgressMetric label="Tự động xác thực" value={autoVerifiedItems.length} />
+            <ProgressMetric label="Chuyên gia xác thực" value={reviewedItems.length} />
           </div>
         </div>
         <div className="mt-4 h-2 overflow-hidden rounded-full bg-[#E2E8F0]">
@@ -930,7 +953,7 @@ export function ProcessStep({
               Metadata tài liệu
             </span>
             <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-              {metadataLoading && (
+              {metadataInProgress && (
                 <span className="flex items-center gap-1.5 text-xs text-[#64748B]">
                   <Loader2 className="size-3 animate-spin text-[#0052FF]" />
                   {metadataReloading ? "Đang extract lại" : "Đã extract"}{" "}
@@ -1269,14 +1292,14 @@ export function ProcessStep({
                 </div>
               )}
               {!manualSplitActive &&
-                !metadataLoading &&
+                !metadataInProgress &&
                 displayedItems.length === 0 &&
                 items.length > 0 && (
                   <div className="rounded-xl border border-dashed border-[#CBD5E1] bg-white p-6 text-center text-sm text-muted-foreground">
                     Không có tài liệu trong phạm vi này.
                   </div>
                 )}
-              {!metadataLoading && items.length === 0 && (
+              {!metadataInProgress && items.length === 0 && (
                 <div className="rounded-xl border border-dashed border-[#CBD5E1] bg-white p-6 text-center text-sm text-muted-foreground">
                   Chưa có metadata từ backend.
                 </div>
@@ -1284,7 +1307,7 @@ export function ProcessStep({
             </div>
           </ScrollArea>
         </div>
-        <div className="relative min-w-0">
+        <div className="relative min-w-0 self-stretch xl:h-full">
           <button
             type="button"
             aria-label="Kéo để đổi kích thước preview"
@@ -1297,7 +1320,7 @@ export function ProcessStep({
           <DocumentPdfPreview
             sessionId={sessionId}
             document={previewDocument}
-            className="h-[min(72svh,678px)] min-h-[420px] min-w-0"
+            className="h-[min(72svh,678px)] min-h-[420px] min-w-0 xl:h-full xl:min-h-0"
           />
         </div>
       </div>
@@ -1472,15 +1495,26 @@ function mergeIncomingMetadata(
   incoming: PdfMetadata[]
 ): PdfMetadata[] {
   const previousById = new Map(previous.map((item) => [item.id, item]))
-  return incoming.map((rawItem) => {
+  const incomingIds = new Set(incoming.map((item) => item.id))
+  const merged = incoming.map((rawItem) => {
     const item = normalizePdfMetadata(rawItem)
     const local = previousById.get(item.id)
-    if (local?.is_reviewed === true && item.is_reviewed !== true) {
+    const sameOcrBatch =
+      local?.ocr_batch_id === undefined ||
+      item.ocr_batch_id === undefined ||
+      local.ocr_batch_id === item.ocr_batch_id
+    if (
+      local?.is_reviewed === true &&
+      item.is_reviewed !== true &&
+      sameOcrBatch
+    ) {
       const normalizedMetadata =
         item.normalized_metadata ?? local.normalized_metadata
       const rawMetadata = item.raw_metadata ?? local.raw_metadata
       return {
         ...local,
+        ocr_batch_id: item.ocr_batch_id,
+        import_action: item.import_action,
         status: item.status,
         remote_metadata_status: item.remote_metadata_status,
         metadata_batch_id: item.metadata_batch_id,
@@ -1509,6 +1543,12 @@ function mergeIncomingMetadata(
     }
     return item
   })
+  previous.forEach((item) => {
+    if (!incomingIds.has(item.id)) {
+      merged.push(normalizePdfMetadata(item))
+    }
+  })
+  return merged
 }
 
 function replaceVerifiedDocument(
@@ -1554,8 +1594,10 @@ function documentResponseToPdfMetadata(
   const reviewStatus = normalizeDocumentReviewStatus(document, lightMetadata)
   return {
     id: document.id,
+    ocr_batch_id: document.ocr_batch_id,
     document_id: document.document_id,
     data_path: document.data_path,
+    import_action: document.import_action,
     metadata_batch_id: document.metadata_batch_id,
     metadata_batch_assigned_to_user_id:
       document.metadata_batch_assigned_to_user_id,
@@ -1602,10 +1644,43 @@ function normalizePdfMetadata(item: PdfMetadata): PdfMetadata {
 }
 
 function metadataSortScore(item: PdfMetadata): number {
-  if (item.is_reviewed === true) return 3
-  if (hasMetadataWarning(item)) return 0
-  if (item.metadata_ready) return 1
-  return 2
+  if (isMetadataExtractionPending(item)) return 0
+  if (isMetadataFailedItem(item)) return 1
+  if (needsMetadataReview(item)) return 2
+  if (isAutomaticallyVerifiedMetadata(item)) return 3
+  return 4
+}
+
+function normalizedMetadataStatus(item: PdfMetadata): string {
+  return String(item.remote_metadata_status || item.status || "")
+    .trim()
+    .toLowerCase()
+}
+
+function isMetadataFailedItem(item: PdfMetadata): boolean {
+  return ["failed", "final_failed", "signature_failed", "cancelled"].includes(
+    normalizedMetadataStatus(item)
+  )
+}
+
+function isMetadataExtractionPending(item: PdfMetadata): boolean {
+  return !item.metadata_ready && !isMetadataFailedItem(item)
+}
+
+function needsMetadataReview(item: PdfMetadata): boolean {
+  return (
+    item.metadata_ready &&
+    item.is_reviewed !== true &&
+    (item.review_status !== "verified" || hasMetadataWarning(item))
+  )
+}
+
+function isAutomaticallyVerifiedMetadata(item: PdfMetadata): boolean {
+  return (
+    item.metadata_ready &&
+    item.is_reviewed !== true &&
+    !needsMetadataReview(item)
+  )
 }
 
 function buildMetadataBatchGroups(
@@ -1783,10 +1858,10 @@ function buildMetadataBatchGroup({
   const reviewedCount = items.filter((item) => item.is_reviewed === true).length
   const readyCount = items.filter((item) => item.metadata_ready).length
   const warningCount = items.filter(
-    (item) => item.is_reviewed !== true && hasMetadataWarning(item)
+    needsMetadataReview
   ).length
   const pendingReadyCount = items.filter(
-    (item) => item.metadata_ready && item.is_reviewed !== true
+    needsMetadataReview
   ).length
   const assignedItem = items.find(
     (item) =>
