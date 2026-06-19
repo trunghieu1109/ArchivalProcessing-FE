@@ -296,15 +296,17 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
           />
         )}
 
-        {fileName && uploadProgress && uploadProgress.phase !== "done" && (
+        {fileName && uploadProgress && (
           <div className="rounded-xl border border-primary/15 bg-primary/[0.03] p-3">
             <div className="flex items-center justify-between gap-3 text-xs font-semibold text-[#0F172A]">
               <span className="truncate">
                 {uploadProgress.phase === "error"
                   ? "Upload ZIP thất bại"
-                  : uploadProgress.phase === "processing"
-                    ? "Đang xác nhận upload"
-                    : "Đang upload ZIP"}
+                  : uploadProgress.phase === "done"
+                    ? "Đã upload ZIP xong"
+                    : uploadProgress.phase === "processing"
+                      ? "Đang xác nhận upload"
+                      : "Đang upload ZIP"}
               </span>
               <span className="shrink-0 font-roboto text-[11px] text-[#0052FF]">
                 {uploadProgress.percent !== null
@@ -314,7 +316,12 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
             </div>
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#D8E1EC]">
               <div
-                className="h-full rounded-full bg-[#0052FF] transition-[width] duration-200"
+                className={cn(
+                  "h-full rounded-full transition-[width] duration-200",
+                  uploadProgress.phase === "error"
+                    ? "bg-destructive"
+                    : "bg-[#0052FF]"
+                )}
                 style={{ width: `${uploadProgress.percent ?? 100}%` }}
               />
             </div>

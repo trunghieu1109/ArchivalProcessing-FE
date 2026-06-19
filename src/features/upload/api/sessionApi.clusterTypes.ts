@@ -137,6 +137,44 @@ export interface SessionClusterSummary {
   placements: ClusterPlacement[]
 }
 
+export type ClusterGroupInformationRowType = "dossier" | "document"
+
+export interface ClusterGroupInformationRow {
+  row_index: number
+  row_type: ClusterGroupInformationRowType
+  dossier_id: string
+  cluster_id: string
+  session_dossier_id?: number | null
+  session_document_id?: number | null
+  document_id?: string | null
+  dossier_number: string
+  title: string
+  count_value: number | null
+  page_count: number | null
+  sheet_count: number | null
+  date_text: string
+  start_date?: string | null
+  end_date?: string | null
+  document_number: string
+  author: string
+  retention_period: string
+  basis: string
+  file_name: string
+  position_index?: number | null
+}
+
+export interface ClusterGroupInformationTableResponse {
+  session_id: string
+  cluster_version_id: string
+  version_number: number
+  group_label: string
+  document_numbering_mode: DocumentNumberingMode
+  count_label: string
+  dossier_count: number
+  document_count: number
+  rows: ClusterGroupInformationRow[]
+}
+
 export interface ClusterVersionResponse {
   id: string
   session_id: string

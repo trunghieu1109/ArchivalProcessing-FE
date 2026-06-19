@@ -25,6 +25,7 @@ export function UploadPageStepOne(props: Record<string, any>) {
     syncZipMaxFiles,
     uploadInput,
     zipUploadProgress,
+    planReuploadState,
     ocr,
     zipHas,
     allProcessing,
@@ -43,12 +44,46 @@ export function UploadPageStepOne(props: Record<string, any>) {
     allDone,
     zipSupplementUploaded,
     hasAnyFile,
+    hasActivePlan,
     readyCount,
     requiredFileCount,
+    selectedInputLabels,
     primaryActionDisabled,
     handleStartAll,
     planInputsReuploaded,
   } = props
+  const zipUploadStatus = zipUploadProgress
+    ? zipUploadProgress.phase === "error"
+      ? "Upload ZIP thất bại"
+      : zipUploadProgress.phase === "done"
+        ? "Đã upload ZIP xong. Đang chuẩn bị sang extract metadata..."
+        : zipUploadProgress.phase === "processing"
+          ? "Đang xác nhận upload ZIP..."
+          : "Đang upload ZIP..."
+    : ""
+  const zipUploadDetail = zipUploadProgress
+    ? zipUploadProgress.percent !== null
+      ? `${zipUploadProgress.percent}%`
+      : `${zipUploadProgress.loadedMb.toFixed(2)} MB`
+    : ""
+  const planReanalysisActionLabel = planReuploadState?.retention
+    ? planReuploadState?.arrangement
+      ? "Phân tích lại phương án và thời hạn"
+      : "Phân tích thời hạn bảo quản"
+    : "Phân tích lại phương án"
+  const progressTitle =
+    planReuploadState?.retention && !planReuploadState?.arrangement
+      ? "Phân tích thời hạn bảo quản"
+      : "Phân tích phương án"
+  const handleUploadModeSelect = (mode: UploadMode) => {
+    if (mode === "overwrite" && uploadMode !== "overwrite") {
+      const confirmed = window.confirm(
+        "Bạn đang chọn overwrite. Hành động này sẽ ghi đè các file PDF trùng trong session và metadata/review liên quan có thể bị extract lại. Bạn có chắc muốn tiếp tục?"
+      )
+      if (!confirmed) return
+    }
+    syncUploadMode(mode)
+  }
 
   return (
     <motion.div
@@ -68,7 +103,7 @@ export function UploadPageStepOne(props: Record<string, any>) {
         <p className="mt-1 text-sm text-[#64748B]">
           {existingSessionMode
             ? "Bạn có thể tải thêm ZIP, hoặc tải lại phương án chỉnh lý và thời hạn bảo quản để phân tích lại rồi lập lại hồ sơ mà không extract metadata lại."
-            : "Chọn đủ phương án chỉnh lý, thông tư thời hạn bảo quản và file ZIP. Session chỉ được tạo khi bạn bấm bắt đầu phân tích."}
+            : "Chọn một hoặc nhiều file: phương án chỉnh lý, thông tư thời hạn bảo quản, hoặc file ZIP data."}
         </p>
       </div>
 
@@ -77,7 +112,7 @@ export function UploadPageStepOne(props: Record<string, any>) {
           phases={PLAN_PROGRESS_PHASES}
           activePhase={planProgressPhase}
           completedPhases={planCompletedPhases}
-          title="Phân tích phương án"
+          title={progressTitle}
           message={
             planProgressMessage || "Backend đang phân tích phương án chỉnh lý."
           }
@@ -113,7 +148,7 @@ export function UploadPageStepOne(props: Record<string, any>) {
               <button
                 key={mode}
                 type="button"
-                onClick={() => syncUploadMode(mode)}
+                onClick={() => handleUploadModeSelect(mode)}
                 disabled={allProcessing || sessionLoading}
                 className={cn(
                   "rounded-xl border px-4 py-3 text-left transition-all disabled:cursor-not-allowed disabled:opacity-60",
@@ -241,6 +276,20 @@ export function UploadPageStepOne(props: Record<string, any>) {
                 <Loader2 className="size-3.5 animate-spin text-primary" /> Đang
                 phân tích phương án...
               </span>
+            ) : zipUploadProgress ? (
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                {zipUploadProgress.phase === "done" ? (
+                  <CheckCircle2 className="size-4 text-primary" />
+                ) : (
+                  <Loader2 className="size-3.5 animate-spin text-primary" />
+                )}
+                {zipUploadStatus}
+                {zipUploadDetail ? (
+                  <span className="font-bold text-foreground">
+                    {zipUploadDetail}
+                  </span>
+                ) : null}
+              </span>
             ) : allProcessing ? (
               <span className="flex items-center gap-1.5 text-muted-foreground">
                 <Loader2 className="size-3.5 animate-spin text-primary" /> Đang
@@ -253,6 +302,13 @@ export function UploadPageStepOne(props: Record<string, any>) {
               </span>
             ) : hasAnyFile ? (
               <span className="text-muted-foreground">
+                Đã chọn:{" "}
+                <span className="font-bold text-foreground">
+                  {(selectedInputLabels ?? []).join(", ")}
+                </span>
+              </span>
+            ) : Boolean(readyCount) && !readyCount ? (
+              <span className="text-muted-foreground">
                 <span className="font-bold text-foreground">{readyCount}</span>{" "}
                 / {requiredFileCount} mục sẵn sàng
               </span>
@@ -260,7 +316,7 @@ export function UploadPageStepOne(props: Record<string, any>) {
               <span className="text-muted-foreground">
                 {existingSessionMode
                   ? "Có thể bỏ qua bước tải ZIP để xem phương án"
-                  : "Tải lên đủ 3 file để bắt đầu"}
+                  : "Chọn ít nhất 1 file để bắt đầu"}
               </span>
             )}
           </div>
@@ -299,14 +355,16 @@ export function UploadPageStepOne(props: Record<string, any>) {
                 : allProcessing
                   ? "Đang xử lý..."
                   : planInputsReuploaded
-                    ? "Phân tích lại và lập hồ sơ"
+                    ? planReanalysisActionLabel
                     : existingSessionMode && zipSupplementUploaded
                       ? "Extract metadata ZIP bổ sung"
+                      : existingSessionMode && zipHas && !hasActivePlan
+                        ? "Đi tới extract metadata"
                       : allDone
                         ? "Tiếp tục"
                         : existingSessionMode
                           ? "Tiếp tục"
-                          : "Bắt đầu phân tích"}
+                          : "Bắt đầu xử lý"}
           </span>
           {!primaryActionDisabled && (
             <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />

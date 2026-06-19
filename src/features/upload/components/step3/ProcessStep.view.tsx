@@ -1,5 +1,5 @@
 import { type CSSProperties } from "react"
-import { Download, Loader2 } from "lucide-react"
+import { Download, FileArchive, Loader2 } from "lucide-react"
 import { motion } from "framer-motion"
 import {
   ProcessStepFooter,
@@ -24,6 +24,8 @@ type ProcessStepViewProps = ReturnType<typeof useProcessStepModel> &
     metadataLoading: boolean
     metadataReloading: boolean
     metadataMessage: string
+    hasDataInput: boolean
+    buildBlockedMessage: string
     signatureStatus: {
       extracted: number
       pending: number
@@ -77,6 +79,8 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     metadataLoading,
     metadataMessage,
     metadataReloading,
+    hasDataInput,
+    buildBlockedMessage,
     metadataTotal,
     needsReviewItems,
     onContinue,
@@ -110,10 +114,15 @@ export function ProcessStepView(props: ProcessStepViewProps) {
   } = props
 
   const warningCount = needsReviewItems.length
-  const expectedCount = Math.max(metadataTotal, paths.length, items.length)
+  const rawExpectedCount = Math.max(metadataTotal, paths.length, items.length)
+  const metadataStartingWithoutCount =
+    (metadataLoading || metadataReloading) && rawExpectedCount === 0
+  const expectedCount = metadataStartingWithoutCount ? 1 : rawExpectedCount
   const pendingMetadataCount = Math.max(
     pendingExtractionItems.length,
-    expectedCount - readyItems.length - failedMetadataItems.length
+    metadataStartingWithoutCount
+      ? 1
+      : expectedCount - readyItems.length - failedMetadataItems.length
   )
   const metadataInProgress = metadataLoading || pendingMetadataCount > 0
   const loadingPlaceholderCount = Math.max(
@@ -132,8 +141,27 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     expectedCount > 0
       ? Math.min(100, (reviewedItems.length / expectedCount) * 100)
       : 0
-  const canBuildDossiers = isCoordinator
-  const canContinue = canBuildDossiers && dossierReadyItems.length > 0
+  const canAttemptContinue = isCoordinator && dossierReadyItems.length > 0
+  const canContinue = canAttemptContinue && !buildBlockedMessage
+
+  if (!hasDataInput) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+        className="rounded-2xl border border-dashed border-[#CBD5E1] bg-white px-6 py-10 text-center shadow-sm"
+      >
+        <FileArchive className="mx-auto size-10 text-[#94A3B8]" />
+        <h2 className="mt-3 text-xl font-semibold text-[#0F172A]">
+          Chưa có file data nào cả
+        </h2>
+        <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[#64748B]">
+          Hãy upload file data ZIP ở Step 1 để hệ thống extract metadata.
+        </p>
+      </motion.div>
+    )
+  }
 
   return (
     <motion.div
@@ -155,6 +183,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
         signatureStatus={signatureStatus}
         readyPercent={readyPercent}
         reviewedPercent={reviewedPercent}
+        metadataStartingWithoutCount={metadataStartingWithoutCount}
       />
 
       <div
@@ -351,6 +380,8 @@ export function ProcessStepView(props: ProcessStepViewProps) {
         readyItems={readyItems}
         metadataMessage={metadataMessage}
         canContinue={canContinue}
+        canAttemptContinue={canAttemptContinue}
+        buildBlockedMessage={buildBlockedMessage}
         onContinue={onContinue}
       />
     </motion.div>

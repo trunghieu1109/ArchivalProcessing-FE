@@ -1,9 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { DocumentPreviewTarget } from "@/features/upload/components/DocumentPdfPreview"
-import type { ClusterVersionResponse } from "@/features/upload/api/sessionApi"
+import {
+  getClusterGroupInformationTable,
+  type ClusterGroupInformationTableResponse,
+  type ClusterVersionResponse,
+} from "@/features/upload/api/sessionApi"
 import {
   ensureTemporaryFolderGroup,
   versionToGroups,
+  type ClusterDocument,
   type ClusterGroup,
 } from "@/features/upload/lib/clusterGroups"
 import { FinalResultView } from "./FinalResult.view"
@@ -14,8 +19,14 @@ import type {
   DraggedDocument,
   FinalResultProps,
   PreviewDocumentEntry,
+  ResultTreeNode,
 } from "./FinalResult.types"
-import { buildResultTree, flattenNodeIds } from "./FinalResult.treeUtils"
+import {
+  buildResultTree,
+  dossierGroupsFromNode,
+  findResultTreeNode,
+  flattenNodeIds,
+} from "./FinalResult.treeUtils"
 import {
   clusterDocumentToPreviewTarget,
   dossierPageCount,
@@ -91,6 +102,13 @@ export function FinalResult({
   const [selectedMetadataGroupId, setSelectedMetadataGroupId] = useState<
     string | null
   >(null)
+  const [selectedGroupInfoNodeId, setSelectedGroupInfoNodeId] = useState<
+    string | null
+  >(null)
+  const [groupInformationTable, setGroupInformationTable] =
+    useState<ClusterGroupInformationTableResponse | null>(null)
+  const [groupInformationLoading, setGroupInformationLoading] = useState(false)
+  const [groupInformationError, setGroupInformationError] = useState("")
   const [previewWidthPercent, setPreviewWidthPercent] = useState(50)
   const previewLayoutRef = useRef<HTMLDivElement | null>(null)
   const resultTreeScrollRef = useRef<HTMLDivElement | null>(null)
@@ -173,7 +191,26 @@ export function FinalResult({
         : null,
     [groups, selectedMetadataGroupId]
   )
-  const sidePreviewOpen = Boolean(previewDocument || selectedMetadataGroup)
+  const selectedGroupInfoNode = useMemo<ResultTreeNode | null>(
+    () =>
+      selectedGroupInfoNodeId
+        ? findResultTreeNode(tree, selectedGroupInfoNodeId)
+        : null,
+    [selectedGroupInfoNodeId, tree]
+  )
+  const selectedGroupInfoDossierIds = useMemo(
+    () =>
+      selectedGroupInfoNode
+        ? dossierGroupsFromNode(selectedGroupInfoNode)
+            .map((group) => group.dossierId ?? group.id)
+            .filter((id): id is string => Boolean(id))
+        : [],
+    [selectedGroupInfoNode]
+  )
+  const selectedGroupInfoDossierKey = selectedGroupInfoDossierIds.join("\u001f")
+  const sidePreviewOpen = Boolean(
+    previewDocument || selectedMetadataGroup || selectedGroupInfoNode
+  )
   const pendingClusterGroups = useMemo(
     () => versionToGroups(pendingClusterVersion, metadataItems),
     [metadataItems, pendingClusterVersion]
@@ -250,6 +287,80 @@ export function FinalResult({
       setSelectedMetadataGroupId(null)
     }
   }, [groups, selectedMetadataGroupId])
+
+  useEffect(() => {
+    if (selectedGroupInfoNodeId !== null && !selectedGroupInfoNode) {
+      setSelectedGroupInfoNodeId(null)
+      setGroupInformationTable(null)
+      setGroupInformationError("")
+    }
+  }, [selectedGroupInfoNode, selectedGroupInfoNodeId])
+
+  useEffect(() => {
+    let cancelled = false
+    if (!selectedGroupInfoNode) {
+      setGroupInformationLoading(false)
+      return () => {
+        cancelled = true
+      }
+    }
+    if (!sessionId) {
+      setGroupInformationTable(null)
+      setGroupInformationLoading(false)
+      setGroupInformationError("Chưa có session để tải thông tin nhóm.")
+      return () => {
+        cancelled = true
+      }
+    }
+    if (selectedGroupInfoDossierIds.length === 0) {
+      setGroupInformationTable(null)
+      setGroupInformationLoading(false)
+      setGroupInformationError("")
+      return () => {
+        cancelled = true
+      }
+    }
+
+    setGroupInformationLoading(true)
+    setGroupInformationError("")
+    getClusterGroupInformationTable(sessionId, {
+      cluster_version_id: displayedClusterVersionId,
+      dossier_ids: selectedGroupInfoDossierIds,
+      group_label: selectedGroupInfoNode.label,
+    })
+      .then((table) => {
+        if (cancelled) return
+        setGroupInformationTable(table)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setGroupInformationTable(null)
+        setGroupInformationError(
+          err instanceof Error
+            ? err.message
+            : "Không thể tải thông tin nhóm hồ sơ."
+        )
+      })
+      .finally(() => {
+        if (!cancelled) setGroupInformationLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    displayedClusterVersionId,
+    selectedGroupInfoDossierKey,
+    selectedGroupInfoNode,
+    selectedGroupInfoDossierIds,
+    sessionId,
+  ])
+
+  useEffect(() => {
+    setSelectedGroupInfoNodeId(null)
+    setGroupInformationTable(null)
+    setGroupInformationError("")
+  }, [displayedClusterVersionId])
 
   useFinalResultPolling({
     activeClusterVersionId,
@@ -379,6 +490,70 @@ export function FinalResult({
     setStatus,
   })
 
+  const handleSelectGroupInformation = useCallback((node: ResultTreeNode) => {
+    setSelectedPreviewDocumentId(null)
+    setSelectedMetadataGroupId(null)
+    setSelectedGroupInfoNodeId((current) =>
+      current === node.id ? null : node.id
+    )
+  }, [])
+
+  const handleCloseGroupInformation = useCallback(() => {
+    setSelectedGroupInfoNodeId(null)
+    setGroupInformationTable(null)
+    setGroupInformationError("")
+  }, [])
+
+  const handleSelectPreviewDocumentFromTree = useCallback(
+    (document: ClusterDocument) => {
+      setSelectedGroupInfoNodeId(null)
+      setGroupInformationTable(null)
+      setGroupInformationError("")
+      handleSelectPreviewDocument(document)
+    },
+    [handleSelectPreviewDocument]
+  )
+
+  const handleSelectDossierMetadataFromTree = useCallback(
+    (group: ClusterGroup) => {
+      setSelectedGroupInfoNodeId(null)
+      setGroupInformationTable(null)
+      setGroupInformationError("")
+      handleSelectDossierMetadata(group)
+    },
+    [handleSelectDossierMetadata]
+  )
+
+  const handleSelectGroupInfoDossier = useCallback(
+    (dossierId: string) => {
+      const group = groups.find(
+        (item) => !item.isTemporary && (item.dossierId ?? item.id) === dossierId
+      )
+      if (!group) return
+      setSelectedGroupInfoNodeId(null)
+      setGroupInformationTable(null)
+      setGroupInformationError("")
+      setSelectedPreviewDocumentId(null)
+      setSelectedMetadataGroupId(group.id)
+    },
+    [groups]
+  )
+
+  const handleSelectGroupInfoDocument = useCallback(
+    (sessionDocumentId: number) => {
+      const hasDocument = previewDocuments.some(
+        (item) => item.sessionDocumentId === sessionDocumentId
+      )
+      if (!hasDocument) return
+      setSelectedGroupInfoNodeId(null)
+      setGroupInformationTable(null)
+      setGroupInformationError("")
+      setSelectedMetadataGroupId(null)
+      setSelectedPreviewDocumentId(sessionDocumentId)
+    },
+    [previewDocuments]
+  )
+
   const activeClusterProgressLabel = clusterProgressPhase
     ? clusterProgressLabel(clusterProgressPhase)
     : ""
@@ -448,11 +623,18 @@ export function FinalResult({
       handleRestorePreviousClusterVersion={handleRestorePreviousClusterVersion}
       handleResultTreeDragOver={handleResultTreeDragOver}
       handleSaveDossierMetadata={handleSaveDossierMetadata}
-      handleSelectDossierMetadata={handleSelectDossierMetadata}
-      handleSelectPreviewDocument={handleSelectPreviewDocument}
+      handleSelectDossierMetadata={handleSelectDossierMetadataFromTree}
+      handleSelectGroupInformation={handleSelectGroupInformation}
+      handleSelectPreviewDocument={handleSelectPreviewDocumentFromTree}
       handleToggleDocumentSelection={handleToggleDocumentSelection}
       handleToggleGroupSelection={handleToggleGroupSelection}
       handleViewClusterVersion={handleViewClusterVersion}
+      groupInformationError={groupInformationError}
+      groupInformationLoading={groupInformationLoading}
+      groupInformationTable={groupInformationTable}
+      handleCloseGroupInformation={handleCloseGroupInformation}
+      handleSelectGroupInfoDossier={handleSelectGroupInfoDossier}
+      handleSelectGroupInfoDocument={handleSelectGroupInfoDocument}
       loading={loading}
       loadingClusterVersionId={loadingClusterVersionId}
       movingSelectedDocumentsTargetId={movingSelectedDocumentsTargetId}
@@ -476,6 +658,8 @@ export function FinalResult({
       savingDossierMetadataId={savingDossierMetadataId}
       selectedDocumentCount={selectedDocumentCount}
       selectedDocumentsActionDisabled={selectedDocumentsActionDisabled}
+      selectedGroupInfoNode={selectedGroupInfoNode}
+      selectedGroupInfoNodeId={selectedGroupInfoNodeId}
       selectedMetadataGroup={selectedMetadataGroup}
       selectedMetadataGroupId={selectedMetadataGroupId}
       selectedPreviewDocumentId={selectedPreviewDocumentId}

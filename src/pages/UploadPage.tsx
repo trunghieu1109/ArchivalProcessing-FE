@@ -35,6 +35,12 @@ import {
   normalizePlanProgressPhase,
   planProgressMessageForPhase,
 } from "./UploadPage.progress"
+import {
+  dossierBuildMissingLabels,
+  dossierBuildMissingMessage,
+  missingDossierBuildInputs,
+  selectedUploadLabels,
+} from "./UploadPage.requirements"
 
 export function UploadPage() {
   const navigate = useNavigate()
@@ -71,6 +77,20 @@ export function UploadPage() {
       toast.error("Chưa có session để lập hồ sơ.")
       return
     }
+    const hasAnalyzedPlanForBuild =
+      Boolean(cache.activePlanVersionId) &&
+      doc1Has &&
+      parsedPlan.groups.length > 0
+    const missingInputs = missingDossierBuildInputs({
+      hasArrangementPlan: doc1Has,
+      hasRetentionSchedule: doc2Has,
+      hasRawZip: zipHas,
+      hasActivePlan: hasAnalyzedPlanForBuild,
+    })
+    if (missingInputs.length > 0) {
+      toast.error(dossierBuildMissingMessage(missingInputs))
+      return
+    }
 
     try {
       const response = await ensureClusterBuild(currentSessionId, {
@@ -105,6 +125,7 @@ export function UploadPage() {
   const doc1Ref = useRef<SectionHandle>(null)
   const doc2Ref = useRef<SectionHandle>(null)
   const zipRef = useRef<SectionHandle>(null)
+  const metadataAutoStartRef = useRef(false)
 
   const [doc1State, setDoc1State] = useState<ProcessState>(cache.doc1State)
   const [doc2State, setDoc2State] = useState<ProcessState>(cache.doc2State)
@@ -218,8 +239,8 @@ export function UploadPage() {
             const phase = normalizePlanProgressPhase(event.payload?.phase)
             if (phase) {
               setPlanProgressPhase(phase)
-              setPlanCompletedPhases((previous) => {
-                const next = new Set(previous)
+              setPlanCompletedPhases(() => {
+                const next = new Set<string>()
                 const phaseIndex = PLAN_PROGRESS_PHASES.findIndex(
                   (item) => item.id === phase
                 )
@@ -316,6 +337,25 @@ export function UploadPage() {
     planReuploadState.arrangement || planReuploadState.retention
   const planReanalysisReady = existingSessionMode && planInputsReuploaded
   const hasAnyFile = doc1Has || doc2Has || zipHas
+  const hasActivePlan = Boolean(cache.activePlanVersionId)
+  const hasAnalyzedArrangementPlan =
+    planAnalysisState === "done" &&
+    hasActivePlan &&
+    doc1Has &&
+    parsedPlan.groups.length > 0
+  const missingDossierInputs = missingDossierBuildInputs({
+    hasArrangementPlan: doc1Has,
+    hasRetentionSchedule: doc2Has,
+    hasRawZip: zipHas,
+    hasActivePlan: hasAnalyzedArrangementPlan,
+  })
+  const missingDossierInputLabels =
+    dossierBuildMissingLabels(missingDossierInputs)
+  const selectedInputLabels = selectedUploadLabels({
+    hasArrangementPlan: doc1Has,
+    hasRetentionSchedule: doc2Has,
+    hasRawZip: zipHas,
+  })
   const readyCount = (
     existingSessionMode
       ? planInputsReuploaded
@@ -328,8 +368,12 @@ export function UploadPage() {
     ? [
         {
           label: "Phương án",
-          has: planAnalysisState === "done",
-          state: planAnalysisState,
+          has: hasAnalyzedArrangementPlan,
+          state: planAnalysisState === "processing"
+            ? "processing"
+            : hasAnalyzedArrangementPlan
+              ? "done"
+              : "idle",
         },
         { label: "Tệp phương án", has: doc1Has, state: doc1State },
         { label: "Thời hạn", has: doc2Has, state: doc2State },
@@ -341,13 +385,125 @@ export function UploadPage() {
         { label: "Kho lưu trữ", has: zipHas, state: zipState },
       ]
   const planAnalyzing = planAnalysisState === "processing"
+  const zipUploadInProgress =
+    zipUploadProgress !== null &&
+    zipUploadProgress.phase !== "done" &&
+    zipUploadProgress.phase !== "error"
+  const zipProcessingBlocksAction =
+    zipUploadInProgress || (!existingSessionMode && zipState === "processing")
   const allProcessing =
     planAnalyzing ||
     doc1State === "processing" ||
     doc2State === "processing" ||
-    zipState === "processing"
-  const allDone = planAnalysisState === "done" && !planInputsReuploaded
+    zipProcessingBlocksAction
+  const allDone = hasAnalyzedArrangementPlan && !planInputsReuploaded
   const primaryActionDisabled = allProcessing || sessionLoading
+
+  const startMetadataExtractionFromZip = useCallback(async () => {
+    const currentSessionId = sessionId ?? routeSessionId ?? cache.sessionId
+    if (!currentSessionId) {
+      toast.error("Chưa có session để extract metadata.")
+      return
+    }
+    const folderPath =
+      zipFolderPath ||
+      cache.zipUpload?.folder_path ||
+      cache.zipUpload?.data_path ||
+      ""
+    if (!folderPath) {
+      toast.error("Chưa có folder_path để bắt đầu lấy metadata.")
+      return
+    }
+    if (cache.zipUpload && !cache.zipUpload.remote_batch_id) {
+      toast.error(
+        "File ZIP chưa được upload lên Chỉnh Lý/MinIO. Vui lòng tải lại file ZIP."
+      )
+      return
+    }
+
+    let maxFilesToProcess: number | undefined
+    try {
+      maxFilesToProcess = parseZipMaxFiles()
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Số lượng tài liệu không hợp lệ."
+      )
+      return
+    }
+
+    let existingStatus = ocr.status ?? null
+    if (!existingStatus) {
+      try {
+        existingStatus = await ocr.refresh()
+      } catch {
+        existingStatus = null
+      }
+    }
+    if ((existingStatus?.jobs.length ?? 0) > 0) {
+      const hasPendingMetadata = existingStatus?.jobs.some(
+        (job) => !job.metadata_ready && job.status !== "failed"
+      )
+      syncZipState(hasPendingMetadata ? "processing" : "done")
+      toast.info("Session đã có job extract metadata. Không tạo job mới.")
+      return
+    }
+
+    syncZipState("processing")
+    toast.success("Bắt đầu lấy metadata.")
+    void ocr
+      .start(folderPath, {
+        maxFiles: maxFilesToProcess,
+        documentNumberingMode,
+        sessionFileId: cache.zipUpload?.id,
+        remoteFileId: cache.zipUpload?.remote_file_id ?? null,
+        uploadMode: cache.zipUpload ? uploadMode : undefined,
+        previousStatus: ocr.status ?? null,
+      })
+      .then(() => {
+        syncZipState("done")
+        toast.success("Đã hoàn tất lấy metadata từ remote folder.")
+      })
+      .catch((err: unknown) => {
+        syncZipState("idle")
+        toast.error(
+          err instanceof Error ? err.message : "Không thể bắt đầu OCR."
+        )
+      })
+  }, [
+    documentNumberingMode,
+    ocr,
+    parseZipMaxFiles,
+    routeSessionId,
+    sessionId,
+    syncZipState,
+    uploadMode,
+    zipFolderPath,
+  ])
+
+  useEffect(() => {
+    if (currentStep !== 3) return
+    if (searchParams.get("extract") !== "1") {
+      metadataAutoStartRef.current = false
+      return
+    }
+    if (!sessionId || !zipHas) return
+    if (metadataAutoStartRef.current) return
+
+    metadataAutoStartRef.current = true
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete("extract")
+    setSearchParams(nextParams, { replace: true })
+    void startMetadataExtractionFromZip()
+  }, [
+    currentStep,
+    searchParams,
+    sessionId,
+    setSearchParams,
+    startMetadataExtractionFromZip,
+    zipHas,
+  ])
 
   const handleConfirmPlan = createConfirmPlanHandler({
     confirmingPlan,
@@ -379,6 +535,7 @@ export function UploadPage() {
     zipSupplementUploaded,
     planInputsReuploaded,
     allDone,
+    hasActivePlan: hasAnalyzedArrangementPlan,
     planReanalysisReady,
     planReuploadState,
     dossierBuildStrategy,
@@ -425,6 +582,7 @@ export function UploadPage() {
       statusItems={statusItems}
       readyCount={readyCount}
       requiredFileCount={requiredFileCount}
+      selectedInputLabels={selectedInputLabels}
       hasAnyFile={hasAnyFile}
       allProcessing={allProcessing}
       allDone={allDone}
@@ -436,6 +594,8 @@ export function UploadPage() {
       doc1Has={doc1Has}
       doc2Has={doc2Has}
       zipHas={zipHas}
+      hasActivePlan={hasActivePlan}
+      hasAnalyzedArrangementPlan={hasAnalyzedArrangementPlan}
       doc1State={doc1State}
       doc2State={doc2State}
       zipState={zipState}
@@ -482,6 +642,11 @@ export function UploadPage() {
       ocrMessage={ocrMessage}
       ocrSignatureStatus={ocrSignatureStatus}
       handleContinueToResults={handleContinueToResults}
+      missingDossierInputs={missingDossierInputs}
+      missingDossierInputLabels={missingDossierInputLabels}
+      dossierBuildBlockedMessage={dossierBuildMissingMessage(
+        missingDossierInputs
+      )}
       clusterGroups={clusterGroups}
       handleFinalizeAutoStartHandled={handleFinalizeAutoStartHandled}
       searchParams={searchParams}

@@ -13,6 +13,8 @@ interface ProcessStepProps {
   metadataLoading?: boolean
   metadataReloading?: boolean
   metadataMessage?: string
+  hasDataInput?: boolean
+  buildBlockedMessage?: string
   signatureStatus?: {
     extracted: number
     pending: number
@@ -31,6 +33,8 @@ export function ProcessStep({
   metadataLoading = false,
   metadataReloading = false,
   metadataMessage = "Đang chờ kết quả số hóa từ backend...",
+  hasDataInput = true,
+  buildBlockedMessage = "",
   signatureStatus = { extracted: 0, pending: 0, failed: 0 },
   onDocumentsVerified,
   onRetryMetadata,
@@ -52,6 +56,8 @@ export function ProcessStep({
       metadataLoading={metadataLoading}
       metadataReloading={metadataReloading}
       metadataMessage={metadataMessage}
+      hasDataInput={hasDataInput}
+      buildBlockedMessage={buildBlockedMessage}
       signatureStatus={signatureStatus}
       sessionId={sessionId}
       onContinue={onContinue}

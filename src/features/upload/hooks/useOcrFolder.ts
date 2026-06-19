@@ -32,7 +32,7 @@ export interface UseOcrFolderResult {
     folderPath: string,
     options: {
       maxFiles?: number
-      confirmedPlanVersionId: string
+      confirmedPlanVersionId?: string
       documentNumberingMode?: DocumentNumberingMode
       sessionFileId?: number
       remoteFileId?: string | number | null
@@ -286,7 +286,7 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
       folderPath: string,
       options: {
         maxFiles?: number
-        confirmedPlanVersionId: string
+        confirmedPlanVersionId?: string
         documentNumberingMode?: DocumentNumberingMode
         sessionFileId?: number
         remoteFileId?: string | number | null
@@ -298,9 +298,6 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
     ) => {
       if (!sessionId) {
         throw new Error("Chưa có session để bắt đầu OCR.")
-      }
-      if (!options.confirmedPlanVersionId) {
-        throw new Error("Chưa xác nhận phương án chỉnh lý.")
       }
       stop()
       rejectRef.current?.(

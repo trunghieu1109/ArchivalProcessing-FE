@@ -47,21 +47,11 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
       toast.error("Chưa có session xử lý.")
       return
     }
-    if (planAnalysisState !== "done") {
-      toast.error(
-        "Phải phân tích xong phương án chỉnh lý trước khi lấy metadata."
-      )
-      return
-    }
-    if (cache.folderTree.length === 0) {
-      toast.error("Chưa có phương án chỉnh lý để xác nhận.")
-      return
-    }
     let confirmedPlanVersionId = cache.activePlanVersionId.trim()
-    if (!confirmedPlanVersionId) {
-      toast.error("Chưa có phiên bản phương án đã xác nhận.")
-      return
-    }
+    const hasConfirmedPlan =
+      planAnalysisState === "done" &&
+      cache.folderTree.length > 0 &&
+      Boolean(confirmedPlanVersionId)
 
     setConfirmingPlan(true)
     let folderPath = ""
@@ -69,6 +59,7 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
     let forceDigitization = false
     let existingStatus = ocr.status
     try {
+      if (hasConfirmedPlan) {
       if (cache.documentNumberingModeSavePromise) {
         const planResponse = await cache.documentNumberingModeSavePromise
         applyActivePlanResponse(planResponse)
@@ -140,6 +131,7 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
           goTo(4, cache.sessionId)
           return
         }
+      }
       }
 
       folderPath =
@@ -218,11 +210,15 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
     }
 
     syncZipState("processing")
-    toast.success("Đã xác nhận phương án. Bắt đầu lấy metadata.")
+    toast.success(
+      hasConfirmedPlan
+        ? "Đã xác nhận phương án. Bắt đầu lấy metadata."
+        : "Bắt đầu lấy metadata."
+    )
     void ocr
       .start(folderPath, {
         maxFiles: maxFilesToProcess,
-        confirmedPlanVersionId,
+        confirmedPlanVersionId: confirmedPlanVersionId || undefined,
         documentNumberingMode,
         sessionFileId: cache.zipUpload?.id,
         remoteFileId: cache.zipUpload?.remote_file_id ?? null,

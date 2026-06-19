@@ -303,6 +303,29 @@ export function flattenNodeIds(nodes: ResultTreeNode[]): string[] {
   return nodes.flatMap((node) => [node.id, ...flattenNodeIds(node.children)])
 }
 
+export function findResultTreeNode(
+  nodes: ResultTreeNode[],
+  nodeId: string
+): ResultTreeNode | null {
+  for (const node of nodes) {
+    if (node.id === nodeId) return node
+    const child = findResultTreeNode(node.children, nodeId)
+    if (child) return child
+  }
+  return null
+}
+
+export function dossierGroupsFromNode(node: ResultTreeNode): ClusterGroup[] {
+  const groups: ClusterGroup[] = []
+  if (node.group && !node.group.isTemporary) {
+    groups.push(node.group)
+  }
+  node.children.forEach((child) => {
+    groups.push(...dossierGroupsFromNode(child))
+  })
+  return groups
+}
+
 export function moveDocumentLocally(
   groups: ClusterGroup[],
   moving: DraggedDocument,

@@ -34,7 +34,7 @@ export async function startDigitization(
     recursive?: boolean
     force?: boolean
     max_files?: number
-    confirmed_plan_version_id: string
+    confirmed_plan_version_id?: string
     document_numbering_mode?: DocumentNumberingMode
     session_file_id?: number
     remote_file_id?: string | number | null

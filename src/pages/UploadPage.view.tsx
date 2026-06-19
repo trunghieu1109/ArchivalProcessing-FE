@@ -1,7 +1,8 @@
 import { AnimatePresence, motion } from "framer-motion"
-import { ArrowLeft, Home } from "lucide-react"
+import { ArrowLeft, FileText, Home } from "lucide-react"
 import { toast } from "sonner"
 import { FolderTree } from "@/features/upload/components/step2/FolderTree"
+import { RetentionAppendicesPanel } from "@/features/upload/components/step2/FolderTree.nodes"
 import { ProcessStep } from "@/features/upload/components/step3/ProcessStep"
 import { FinalResult } from "@/features/upload/components/step4/FinalResult"
 import { NumberingStep } from "@/features/upload/components/step5/NumberingStep"
@@ -29,6 +30,7 @@ export function UploadPageView(props: Record<string, any>) {
     statusItems,
     readyCount,
     requiredFileCount,
+    selectedInputLabels,
     hasAnyFile,
     allProcessing,
     allDone,
@@ -37,10 +39,14 @@ export function UploadPageView(props: Record<string, any>) {
     doc1Ref,
     doc2Ref,
     zipRef,
+    doc2Has,
     zipHas,
+    hasActivePlan,
+    hasAnalyzedArrangementPlan,
     doc1State,
     doc2State,
     zipState,
+    planAnalysisState,
     planAnalyzing,
     planProgressPhase,
     planCompletedPhases,
@@ -60,6 +66,7 @@ export function UploadPageView(props: Record<string, any>) {
     uploadMode,
     syncUploadMode,
     zipUploadProgress,
+    planReuploadState,
     planInputsReuploaded,
     zipSupplementUploaded,
     parsedPlan,
@@ -81,12 +88,24 @@ export function UploadPageView(props: Record<string, any>) {
     ocrMessage,
     ocrSignatureStatus,
     handleContinueToResults,
+    dossierBuildBlockedMessage,
     clusterGroups,
     handleFinalizeAutoStartHandled,
     searchParams,
     isWorkerUser,
     navigate,
   } = props
+  const hasAnalyzedPlan = Boolean(hasAnalyzedArrangementPlan)
+  const goToMetadataStep = () => {
+    const targetSessionId = sessionId ?? routeSessionId
+    if (targetSessionId) {
+      navigate(
+        `/sessions/${encodeURIComponent(targetSessionId)}/step/3?extract=1`
+      )
+      return
+    }
+    goTo(3)
+  }
 
   return (
     <div className="min-h-svh bg-[#F0F4F8]">
@@ -180,6 +199,7 @@ export function UploadPageView(props: Record<string, any>) {
               syncZipMaxFiles={syncZipMaxFiles}
               uploadInput={uploadInput}
               zipUploadProgress={zipUploadProgress}
+              planReuploadState={planReuploadState}
               ocr={ocr}
               zipHas={zipHas}
               allProcessing={allProcessing}
@@ -198,8 +218,10 @@ export function UploadPageView(props: Record<string, any>) {
               allDone={allDone}
               zipSupplementUploaded={zipSupplementUploaded}
               hasAnyFile={hasAnyFile}
+              hasActivePlan={hasAnalyzedPlan}
               readyCount={readyCount}
               requiredFileCount={requiredFileCount}
+              selectedInputLabels={selectedInputLabels}
               primaryActionDisabled={primaryActionDisabled}
               handleStartAll={handleStartAll}
               planInputsReuploaded={planInputsReuploaded}
@@ -215,21 +237,53 @@ export function UploadPageView(props: Record<string, any>) {
               exit={{ opacity: 0, y: -16 }}
               transition={{ duration: 0.4, ease: easeOut }}
             >
-              <FolderTree
-                tree={folderTree}
-                parsedPlan={parsedPlan}
-                readOnly={false}
-                dossierBuildStrategy={dossierBuildStrategy}
-                onDossierBuildStrategyChange={selectDossierBuildStrategy}
-                documentNumberingMode={documentNumberingMode}
-                onDocumentNumberingModeChange={selectDocumentNumberingMode}
-                onFileRegisterConfigChange={saveFileRegisterConfig}
-                onChange={syncFolderTree}
-                onSaveTree={saveFolderTree}
-                onCriteriaChange={savePlanCriterias}
-                onConfirm={handleConfirmPlan}
-                confirming={confirmingPlan}
-              />
+              {hasAnalyzedPlan ? (
+                <FolderTree
+                  tree={folderTree}
+                  parsedPlan={parsedPlan}
+                  readOnly={false}
+                  hasRetentionSchedule={doc2Has}
+                  dossierBuildStrategy={dossierBuildStrategy}
+                  onDossierBuildStrategyChange={selectDossierBuildStrategy}
+                  documentNumberingMode={documentNumberingMode}
+                  onDocumentNumberingModeChange={selectDocumentNumberingMode}
+                  onFileRegisterConfigChange={saveFileRegisterConfig}
+                  onChange={syncFolderTree}
+                  onSaveTree={saveFolderTree}
+                  onCriteriaChange={savePlanCriterias}
+                  onConfirm={handleConfirmPlan}
+                  confirming={confirmingPlan}
+                />
+              ) : (
+                <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-white px-6 py-8 text-center shadow-sm">
+                  <FileText className="mx-auto size-9 text-[#94A3B8]" />
+                  <h2 className="mt-3 text-xl font-semibold text-[#0F172A]">
+                    Chưa có phương án chỉnh lý
+                  </h2>
+                  <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[#64748B]">
+                    Hãy upload phương án chỉnh lý ở Step 1 để xem cây phân loại
+                    và tiêu chí phân tích. Các phần dữ liệu khác vẫn có thể xử lý
+                    độc lập.
+                  </p>
+                  {parsedPlan.retention_appendices.length > 0 && (
+                    <div className="mx-auto mt-6 max-w-4xl text-left">
+                      <RetentionAppendicesPanel
+                        appendices={parsedPlan.retention_appendices}
+                        hasRetentionSchedule={doc2Has}
+                      />
+                    </div>
+                  )}
+                  {zipHas && (
+                    <button
+                      type="button"
+                      onClick={goToMetadataStep}
+                      className="mt-5 rounded-xl bg-[#0052FF] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0047DB]"
+                    >
+                      Đi tới extract metadata
+                    </button>
+                  )}
+                </div>
+              )}
             </motion.div>
           )}
 
@@ -252,6 +306,8 @@ export function UploadPageView(props: Record<string, any>) {
                 metadataLoading={ocrLoading}
                 metadataReloading={ocrIsReextracting}
                 metadataMessage={ocrMessage}
+                hasDataInput={zipHas}
+                buildBlockedMessage={dossierBuildBlockedMessage}
                 signatureStatus={ocrSignatureStatus}
                 onDocumentsVerified={ocr.mergeVerifiedDocuments}
                 onRetryMetadata={ocr.restartMetadata}

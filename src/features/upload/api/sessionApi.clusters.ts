@@ -1,6 +1,7 @@
 import { requestJson, requestJsonOrNull } from "./sessionApi.http"
 import type {
   ClusterBuildStatusResponse,
+  ClusterGroupInformationTableResponse,
   ClusterVersionListResponse,
   ClusterVersionResponse,
   DossierBuildStrategy,
@@ -34,6 +35,24 @@ export async function getClusterVersion(
 ): Promise<ClusterVersionResponse> {
   return requestJson<ClusterVersionResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/clusters/versions/${encodeURIComponent(clusterVersionId)}`
+  )
+}
+
+export async function getClusterGroupInformationTable(
+  sessionId: string,
+  payload: {
+    cluster_version_id?: string | null
+    dossier_ids: string[]
+    group_label?: string | null
+  }
+): Promise<ClusterGroupInformationTableResponse> {
+  return requestJson<ClusterGroupInformationTableResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/clusters/group-info`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
   )
 }
 

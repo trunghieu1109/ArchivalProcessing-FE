@@ -1,6 +1,5 @@
 import { toast } from "sonner"
 import {
-  enqueueClusterBuild,
   enqueuePlanAnalysis,
   getSession,
   listSessionEvents,
@@ -31,6 +30,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     zipSupplementUploaded,
     planInputsReuploaded,
     allDone,
+    hasActivePlan,
     planReanalysisReady,
     planReuploadState,
     dossierBuildStrategy,
@@ -131,8 +131,8 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     const previousPlanId = cache.activePlanVersionId || undefined
     try {
       syncPlanAnalysisState("processing")
-      syncDoc1State("processing")
-      syncDoc2State("processing")
+      if (planReuploadState.arrangement) syncDoc1State("processing")
+      if (planReuploadState.retention) syncDoc2State("processing")
       setPlanCompletedPhases(new Set(["upload_inputs"]))
       setPlanProgressPhase("preparing_plan_file")
       setPlanProgressMessage(planProgressMessageForPhase("preparing_plan_file"))
@@ -164,35 +164,29 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
       syncSessionMetadata(sessionAfterPlan)
       await syncLatestPlanProgress(currentSessionId)
       syncPlanAnalysisState("done")
-      syncDoc1State("done")
-      syncDoc2State("done")
+      syncDoc1State(doc1Has ? "done" : "idle")
+      syncDoc2State(doc2Has ? "done" : "idle")
       resetPlanReuploadState()
 
+      const retentionOnly =
+        planReuploadState.retention && !planReuploadState.arrangement
       setPlanProgressMessage(
-        "Đã phân tích xong phương án mới. Đang gửi task lập lại hồ sơ."
+        retentionOnly
+          ? "Đã phân tích xong thông tư thời hạn bảo quản."
+          : "Đã phân tích xong phương án mới."
       )
-      try {
-        await enqueueClusterBuild(currentSessionId, {
-          source: "plan_reanalysis",
-          dossier_build_strategy: dossierBuildStrategy,
-        })
-      } catch (err) {
-        toast.error(
-          err instanceof Error
-            ? `Đã lưu phương án mới nhưng chưa gửi được task lập lại hồ sơ: ${err.message}`
-            : "Đã lưu phương án mới nhưng chưa gửi được task lập lại hồ sơ."
-        )
-        goTo(2, currentSessionId)
-        return
-      }
       cache.clusterGroups = []
       setClusterGroups([])
-      toast.success("Đã phân tích lại phương án và gửi task lập lại hồ sơ.")
-      goTo(4, currentSessionId)
+      toast.success(
+        retentionOnly
+          ? "Đã phân tích thời hạn bảo quản. Vui lòng kiểm tra lại ở Step 2."
+          : "Đã phân tích lại phương án. Vui lòng kiểm tra và xác nhận ở Step 2."
+      )
+      goTo(2, currentSessionId)
     } catch (err) {
       syncPlanAnalysisState("idle")
-      syncDoc1State("done")
-      syncDoc2State("done")
+      syncDoc1State(doc1Has ? "done" : "idle")
+      syncDoc2State(doc2Has ? "done" : "idle")
       setPlanProgressPhase(null)
       setPlanProgressMessage("")
       setPlanCompletedPhases(new Set())
@@ -218,75 +212,170 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
         await handleConfirmPlan()
         return
       }
+      if (zipHas && !hasActivePlan) {
+        const currentSessionId = routeSessionId ?? sessionId ?? cache.sessionId
+        if (currentSessionId) {
+          navigate(
+            `/sessions/${encodeURIComponent(currentSessionId)}/step/3?extract=1`
+          )
+        } else {
+          goTo(3)
+        }
+        return
+      }
       goTo(2)
       return
     }
 
-    if (!doc1Has || !cache.draftArrangementPlanFile) {
-      toast.error("Vui lòng tải lên phương án phân loại.")
-      return
-    }
-    if (!doc2Has || !cache.draftRetentionFile) {
-      toast.error("Vui lòng tải lên thông tư thời hạn bảo quản.")
-      return
-    }
-    if (!zipHas || !cache.draftZipFile) {
-      toast.error("Vui lòng chọn file ZIP dữ liệu.")
+    const arrangementFile = doc1Has ? cache.draftArrangementPlanFile : null
+    const retentionFileDraft = doc2Has ? cache.draftRetentionFile : null
+    const zipFile = zipHas ? cache.draftZipFile : null
+    if (!arrangementFile && !retentionFileDraft && !zipFile) {
+      toast.error("Vui lòng chọn ít nhất một file để bắt đầu.")
       return
     }
     try {
-      syncPlanAnalysisState("processing")
-      setPlanProgressPhase("upload_inputs")
-      setPlanProgressMessage(planProgressMessageForPhase("upload_inputs"))
+      if (arrangementFile) {
+        syncPlanAnalysisState("processing")
+        setPlanProgressPhase("upload_inputs")
+        setPlanProgressMessage(planProgressMessageForPhase("upload_inputs"))
+      } else {
+        syncPlanAnalysisState("idle")
+        setPlanProgressPhase(null)
+        setPlanProgressMessage("")
+      }
       setPlanCompletedPhases(new Set())
       const currentSessionId = await ensureSession()
-      syncZipState("processing")
-      syncZipUploadProgress(
-        zipUploadProgressForFile(cache.draftZipFile, "uploading")
-      )
-      const arrangementPlan = await uploadSessionInput(
-        currentSessionId,
-        "arrangement_plan",
-        cache.draftArrangementPlanFile
-      )
-      const [retentionPlan, zipInput] = await Promise.all([
-        uploadSessionInput(
-          currentSessionId,
-          "retention_schedule",
-          cache.draftRetentionFile
-        ),
-        uploadSessionInput(currentSessionId, "raw_zip", cache.draftZipFile, {
-          onProgress: syncZipUploadProgress,
-        }),
-      ])
-      cache.arrangementPlanUpload = arrangementPlan
-      cache.retentionUpload = retentionPlan
-      syncZipUploadProgress(
-        zipUploadProgressForFile(
-          cache.draftZipFile,
-          "done",
-          cache.draftZipFile.size
-        )
-      )
-      syncZipState("done")
-      cache.zipUpload = zipInput
-      syncZipFolderPath(zipInput.folder_path ?? zipInput.data_path ?? "")
-
-      const planFile = arrangementPlan.local_cached_path
-      const retentionFile = retentionPlan.local_cached_path
-      if (!planFile || !retentionFile) {
-        throw new Error(
-          "Backend chưa trả về đường dẫn local cho hồ sơ phương án."
-        )
-      }
-
       const documentTasks = [
         doc1Ref.current?.hasFile() ? doc1Ref.current.process() : null,
         doc2Ref.current?.hasFile() ? doc2Ref.current.process() : null,
       ].filter(Boolean) as Promise<void>[]
+      let arrangementPlan: Awaited<ReturnType<typeof uploadSessionInput>> | null =
+        null
+      let retentionPlan: Awaited<ReturnType<typeof uploadSessionInput>> | null =
+        null
+      let zipInput: Awaited<ReturnType<typeof uploadSessionInput>> | null = null
+      const uploadTasks: Promise<void>[] = []
+
+      if (arrangementFile) {
+        syncDoc1State("processing")
+        uploadTasks.push(
+          uploadSessionInput(
+            currentSessionId,
+            "arrangement_plan",
+            arrangementFile
+          ).then((response) => {
+            arrangementPlan = response
+            cache.arrangementPlanUpload = response
+            syncDoc1State("done")
+          })
+        )
+      }
+      if (retentionFileDraft) {
+        syncDoc2State("processing")
+        uploadTasks.push(
+          uploadSessionInput(
+            currentSessionId,
+            "retention_schedule",
+            retentionFileDraft
+          ).then((response) => {
+            retentionPlan = response
+            cache.retentionUpload = response
+            syncDoc2State("done")
+          })
+        )
+      }
+      if (zipFile) {
+        syncZipState("processing")
+        syncZipUploadProgress(zipUploadProgressForFile(zipFile, "uploading"))
+        uploadTasks.push(
+          uploadSessionInput(currentSessionId, "raw_zip", zipFile, {
+            onProgress: syncZipUploadProgress,
+          }).then((response) => {
+            zipInput = response
+            cache.zipUpload = response
+            syncZipUploadProgress(
+              zipUploadProgressForFile(zipFile, "done", zipFile.size)
+            )
+            syncZipState("done")
+            syncZipFolderPath(response.folder_path ?? response.data_path ?? "")
+          })
+        )
+      }
+
+      await Promise.all([...uploadTasks, ...documentTasks])
+
+      if (!arrangementFile) {
+        const retentionFile = retentionPlan?.local_cached_path
+        if (retentionFileDraft && !retentionFile) {
+          throw new Error(
+            "Backend chưa trả về đường dẫn local cho file thông tư."
+          )
+        }
+        if (retentionFile) {
+          syncPlanAnalysisState("processing")
+          setPlanProgressPhase("retention_schedule")
+          setPlanProgressMessage("Đang phân tích thông tư thời hạn bảo quản.")
+          const retentionJob = enqueuePlanAnalysis(currentSessionId, {
+            retention_file: retentionFile,
+            dossier_build_strategy: dossierBuildStrategy,
+          })
+          await retentionJob
+          const planResponse = await waitForActivePlan(
+            currentSessionId,
+            PLAN_ANALYSIS_TIMEOUT_MS,
+            2_000,
+            {
+              previousPlanId: undefined,
+              afterVersionNumber: undefined,
+            }
+          )
+          const plan = activePlanToParsedPlan(planResponse)
+          cache.activePlanVersionId = planResponse.id ?? ""
+          applyPersistedDossierBuildStrategy(activePlanBuildStrategy(planResponse))
+          applyPersistedDocumentNumberingMode(
+            activePlanDocumentNumberingMode(planResponse)
+          )
+          cache.parsedPlan = plan
+          cache.folderTree = planToTree(plan)
+          setParsedPlan(plan)
+          setFolderTree(cache.folderTree)
+          const sessionAfterRetention = await getSession(currentSessionId)
+          cache.activeClusterVersionId =
+            sessionAfterRetention.active_cluster_version_id ?? null
+          syncSessionMetadata(sessionAfterRetention)
+          syncPlanAnalysisState("done")
+          setPlanProgressPhase(null)
+          setPlanProgressMessage("Đã phân tích xong thông tư thời hạn bảo quản.")
+          toast.success(
+            "Đã tạo session và phân tích thời hạn bảo quản. Vui lòng kiểm tra ở Step 2."
+          )
+          navigate(`/sessions/${encodeURIComponent(currentSessionId)}/step/2`)
+          return
+        }
+        toast.success("Đã tạo session và lưu các file đã chọn.")
+        if (zipInput) {
+          await wait(PLAN_DONE_VISIBLE_MS)
+          navigate(
+            `/sessions/${encodeURIComponent(currentSessionId)}/step/3?extract=1`
+          )
+          return
+        }
+        navigate(`/sessions/${encodeURIComponent(currentSessionId)}/step/2`)
+        return
+      }
+
+      const planFile = arrangementPlan?.local_cached_path
+      const retentionFile = retentionPlan?.local_cached_path
+      if (!planFile || (retentionFileDraft && !retentionFile)) {
+        throw new Error(
+          "Backend chưa trả về đường dẫn local cho file phương án hoặc thông tư."
+        )
+      }
+
       const planJob = enqueuePlanAnalysis(currentSessionId, {
         plan_file: planFile,
-        retention_file: retentionFile,
+        ...(retentionFile ? { retention_file: retentionFile } : {}),
         dossier_build_strategy: dossierBuildStrategy,
       })
       setPlanCompletedPhases((previous: Set<string>) =>
@@ -294,7 +383,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
       )
       setPlanProgressPhase("preparing_plan_file")
       setPlanProgressMessage(planProgressMessageForPhase("preparing_plan_file"))
-      await Promise.all([...documentTasks, planJob])
+      await planJob
       const planResponse = await waitForActivePlan(
         currentSessionId,
         PLAN_ANALYSIS_TIMEOUT_MS,

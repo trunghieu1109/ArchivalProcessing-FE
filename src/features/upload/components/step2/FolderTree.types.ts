@@ -13,6 +13,7 @@ export interface FolderTreeProps {
   tree: FolderNode[]
   parsedPlan: ParsedPlan
   readOnly?: boolean
+  hasRetentionSchedule?: boolean
   dossierBuildStrategy: DossierBuildStrategy
   onDossierBuildStrategyChange: (strategy: DossierBuildStrategy) => void
   documentNumberingMode: DocumentNumberingMode

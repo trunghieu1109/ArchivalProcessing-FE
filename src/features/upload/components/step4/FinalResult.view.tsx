@@ -15,6 +15,7 @@ import { DocumentPdfPreview } from "@/features/upload/components/DocumentPdfPrev
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import { Metric } from "./FinalResult.documentRow"
 import { FinalResultFeedbackPanel } from "./FinalResult.feedbackPanel"
+import { ClusterGroupInformationPanel } from "./FinalResult.groupInfoPanel"
 import { DossierMetadataSidePanel } from "./FinalResult.sidePanel"
 import { ResultNode } from "./FinalResult.resultNode"
 import {
@@ -50,10 +51,17 @@ export function FinalResultView(props: Record<string, any>) {
     handleResultTreeDragOver,
     handleSaveDossierMetadata,
     handleSelectDossierMetadata,
+    handleSelectGroupInformation,
     handleSelectPreviewDocument,
     handleToggleDocumentSelection,
     handleToggleGroupSelection,
     handleViewClusterVersion,
+    groupInformationError,
+    groupInformationLoading,
+    groupInformationTable,
+    handleCloseGroupInformation,
+    handleSelectGroupInfoDossier,
+    handleSelectGroupInfoDocument,
     loading,
     loadingClusterVersionId,
     movingSelectedDocumentsTargetId,
@@ -77,6 +85,8 @@ export function FinalResultView(props: Record<string, any>) {
     savingDossierMetadataId,
     selectedDocumentCount,
     selectedDocumentsActionDisabled,
+    selectedGroupInfoNode,
+    selectedGroupInfoNodeId,
     selectedMetadataGroup,
     selectedMetadataGroupId,
     selectedPreviewDocumentId,
@@ -99,6 +109,9 @@ export function FinalResultView(props: Record<string, any>) {
     updatingClusterVersion,
     viewingHistoricalClusterVersion,
   } = props
+  const previewColumns = selectedGroupInfoNode
+    ? "minmax(340px,0.34fr) minmax(760px,0.66fr)"
+    : `minmax(0, ${100 - previewWidthPercent}fr) minmax(460px, ${previewWidthPercent}fr)`
 
   return (
     <motion.div
@@ -302,9 +315,7 @@ export function FinalResultView(props: Record<string, any>) {
         style={
           sidePreviewOpen
             ? ({
-                "--result-preview-columns": `minmax(0, ${
-                  100 - previewWidthPercent
-                }fr) minmax(460px, ${previewWidthPercent}fr)`,
+                "--result-preview-columns": previewColumns,
               } as CSSProperties)
             : undefined
         }
@@ -326,6 +337,7 @@ export function FinalResultView(props: Record<string, any>) {
                   dropTargetId={dropTargetId}
                   compact={sidePreviewOpen}
                   selectedPreviewDocumentId={selectedPreviewDocumentId}
+                  selectedGroupInfoNodeId={selectedGroupInfoNodeId}
                   selectedMetadataGroupId={selectedMetadataGroupId}
                   selectedSessionDocumentIds={selectedSessionDocumentIds}
                   selectedDocumentCount={selectedDocumentCount}
@@ -357,6 +369,7 @@ export function FinalResultView(props: Record<string, any>) {
                   }}
                   onDragEnter={setDropTargetId}
                   onDropOnDossier={handleDropOnDossier}
+                  onSelectGroupInformation={handleSelectGroupInformation}
                   onSelectPreview={handleSelectPreviewDocument}
                   onSelectDossierMetadata={handleSelectDossierMetadata}
                   onPromoteTemporaryFolder={handlePromoteTemporaryFolder}
@@ -402,6 +415,17 @@ export function FinalResultView(props: Record<string, any>) {
                 className="h-[min(70svh,560px)] min-h-[420px] min-w-0"
                 onSave={handleSaveDossierMetadata}
                 onClose={() => setSelectedMetadataGroupId(null)}
+              />
+            ) : selectedGroupInfoNode ? (
+              <ClusterGroupInformationPanel
+                table={groupInformationTable}
+                groupLabel={selectedGroupInfoNode.label}
+                loading={groupInformationLoading}
+                error={groupInformationError}
+                className="h-[min(70svh,560px)] min-h-[420px] min-w-0 max-w-full"
+                onClose={handleCloseGroupInformation}
+                onSelectDossier={handleSelectGroupInfoDossier}
+                onSelectDocument={handleSelectGroupInfoDocument}
               />
             ) : null}
           </div>

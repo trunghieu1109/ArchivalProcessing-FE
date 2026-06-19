@@ -186,6 +186,8 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
         cache.rawZipReuploaded = false
         cache.zipUpload = zipFile ?? null
         cache.zipFolderPath = zipFile?.folder_path ?? zipFile?.data_path ?? ""
+        cache.draftZipFile = null
+        cache.zipUploadProgress = null
         setDoc1Has(cache.doc1Has)
         setDoc2Has(cache.doc2Has)
         setZipHas(cache.zipHas)
@@ -195,6 +197,7 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
         setPlanReuploadState({ arrangement: false, retention: false })
         setZipSupplementUploaded(false)
         setZipFolderPath(cache.zipFolderPath)
+        setZipUploadProgress(null)
 
         if (activePlan) {
           const plan = activePlanToParsedPlan(activePlan)
@@ -213,6 +216,20 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
           setPlanAnalysisState("done")
           setDossierBuildStrategy(buildStrategy)
           setDocumentNumberingMode(numberingMode)
+        } else {
+          cache.activePlanVersionId = ""
+          cache.parsedPlan = EMPTY_PARSED_PLAN
+          cache.folderTree = planToTree(EMPTY_PARSED_PLAN)
+          cache.planAnalysisState = "idle"
+          cache.dossierBuildStrategy = DEFAULT_DOSSIER_BUILD_STRATEGY
+          cache.persistedDossierBuildStrategy = DEFAULT_DOSSIER_BUILD_STRATEGY
+          cache.documentNumberingMode = DEFAULT_DOCUMENT_NUMBERING_MODE
+          cache.persistedDocumentNumberingMode = DEFAULT_DOCUMENT_NUMBERING_MODE
+          setParsedPlan(cache.parsedPlan)
+          setFolderTree(cache.folderTree)
+          setPlanAnalysisState("idle")
+          setDossierBuildStrategy(cache.dossierBuildStrategy)
+          setDocumentNumberingMode(cache.documentNumberingMode)
         }
         window.localStorage.setItem(LAST_SESSION_KEY, routeSessionId)
       } catch (err) {

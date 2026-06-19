@@ -176,12 +176,23 @@ export function PlanSummary({
 
 interface RetentionAppendicesPanelProps {
   appendices: RetentionAppendixNode[]
+  hasRetentionSchedule?: boolean
 }
 
 export function RetentionAppendicesPanel({
   appendices,
+  hasRetentionSchedule = true,
 }: RetentionAppendicesPanelProps) {
-  if (appendices.length === 0) return null
+  if (appendices.length === 0) {
+    if (!hasRetentionSchedule) {
+      return (
+        <div className="rounded-xl border border-dashed border-[#CBD5E1] bg-white px-4 py-4 text-sm text-[#64748B] shadow-sm">
+          Chưa có thông tư về thời hạn bảo quản.
+        </div>
+      )
+    }
+    return null
+  }
   const unitCount = countRetentionUnits(appendices)
 
   return (

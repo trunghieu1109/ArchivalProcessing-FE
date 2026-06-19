@@ -16,6 +16,7 @@ export function ProcessStepSummaryPanel({
   signatureStatus,
   readyPercent,
   reviewedPercent,
+  metadataStartingWithoutCount,
 }: Record<string, any>) {
   return (
     <>
@@ -44,7 +45,9 @@ export function ProcessStepSummaryPanel({
               Tiến độ metadata
             </p>
             <p className="mt-1 text-sm text-[#0F172A]">
-              {pendingMetadataCount > 0
+              {metadataStartingWithoutCount
+                ? "Đang chuẩn bị extract metadata. Đang chờ backend trả danh sách tài liệu."
+                : pendingMetadataCount > 0
                 ? `${
                     metadataReloading
                       ? "Đang extract lại metadata"
@@ -108,7 +111,8 @@ export function ProcessStepFooter({
   dossierReadyItems,
   readyItems,
   metadataMessage,
-  canContinue,
+  canAttemptContinue,
+  buildBlockedMessage,
   onContinue,
 }: Record<string, any>) {
   return (
@@ -127,6 +131,11 @@ export function ProcessStepFooter({
             {` ${pendingReadyItems.length}`} tài liệu còn lại có thể cập nhật hồ
             sơ sau.
           </span>
+        ) : buildBlockedMessage ? (
+          <span className="flex items-center gap-2 text-amber-700">
+            <AlertTriangle className="size-4" />
+            {buildBlockedMessage}
+          </span>
         ) : readyItems.length > 0 ? (
           <span className="flex items-center gap-2 text-emerald-700">
             <CheckCircle2 className="size-4" /> Metadata đã được review.
@@ -139,19 +148,19 @@ export function ProcessStepFooter({
         )}
       </div>
       <button
-        disabled={!canContinue}
+        disabled={!canAttemptContinue}
         onClick={() => {
-          if (!canContinue) return
+          if (!canAttemptContinue) return
           onContinue([])
         }}
         className={cn(
           "group flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold transition-all duration-200 sm:w-auto",
-          canContinue
+          canAttemptContinue
             ? "text-white hover:-translate-y-0.5 active:scale-[0.98]"
             : "cursor-not-allowed bg-[#CBD5E1] text-[#475569]"
         )}
         style={
-          canContinue
+          canAttemptContinue
             ? {
                 background: "linear-gradient(to right, #0052FF, #4D7CFF)",
                 boxShadow: "0 4px 14px rgba(0,82,255,0.25)",
@@ -159,7 +168,7 @@ export function ProcessStepFooter({
             : {}
         }
       >
-        {canContinue
+        {canAttemptContinue
           ? `Lập hồ sơ (${dossierReadyItems.length} tài liệu)`
           : "Lập hồ sơ"}
       </button>

@@ -24,6 +24,7 @@ export function FolderTree({
   tree,
   parsedPlan,
   readOnly = false,
+  hasRetentionSchedule = true,
   dossierBuildStrategy,
   onDossierBuildStrategyChange,
   documentNumberingMode,
@@ -242,7 +243,10 @@ export function FolderTree({
         </motion.div>
       </AnimatePresence>
 
-      <RetentionAppendicesPanel appendices={parsedPlan.retention_appendices} />
+      <RetentionAppendicesPanel
+        appendices={parsedPlan.retention_appendices}
+        hasRetentionSchedule={hasRetentionSchedule}
+      />
 
       <div className="flex justify-stretch sm:justify-end">
         <button

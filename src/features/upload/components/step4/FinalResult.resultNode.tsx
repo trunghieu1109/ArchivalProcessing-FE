@@ -9,6 +9,7 @@ import {
   FolderPlus,
   Loader2,
   MoveRight,
+  Table2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/shared/lib/utils"
@@ -29,6 +30,7 @@ export function ResultNode({
   dropTargetId,
   compact,
   selectedPreviewDocumentId,
+  selectedGroupInfoNodeId,
   selectedMetadataGroupId,
   selectedSessionDocumentIds,
   selectedDocumentCount,
@@ -44,6 +46,7 @@ export function ResultNode({
   onDragEnd,
   onDragEnter,
   onDropOnDossier,
+  onSelectGroupInformation,
   onSelectPreview,
   onSelectDossierMetadata,
   onPromoteTemporaryFolder,
@@ -55,6 +58,7 @@ export function ResultNode({
   dropTargetId: string | null
   compact: boolean
   selectedPreviewDocumentId: number | null
+  selectedGroupInfoNodeId: string | null
   selectedMetadataGroupId: string | null
   selectedSessionDocumentIds: Set<number>
   selectedDocumentCount: number
@@ -73,6 +77,7 @@ export function ResultNode({
   onDragEnd: () => void
   onDragEnter: (nodeId: string | null) => void
   onDropOnDossier: (targetClusterId: string) => void
+  onSelectGroupInformation: (node: ResultTreeNode) => void
   onSelectPreview: (document: ClusterDocument) => void
   onSelectDossierMetadata: (group: ClusterGroup) => void
   onPromoteTemporaryFolder: (group: ClusterGroup) => void
@@ -102,6 +107,9 @@ export function ResultNode({
   const displayLabel = node.label
   const selectedDossierMetadata =
     Boolean(group) && selectedMetadataGroupId === group?.id
+  const canViewGroupInformation =
+    !isDossier && !isTemporary && node.documentCount > 0
+  const selectedGroupInformation = selectedGroupInfoNodeId === node.id
 
   return (
     <div
@@ -188,9 +196,11 @@ export function ResultNode({
               className={cn(
                 "min-w-0 flex-1 text-sm",
                 isDossier
-                  ? "leading-5 [overflow-wrap:anywhere] break-words whitespace-normal"
+                  ? compact
+                    ? "line-clamp-3 leading-5 [overflow-wrap:anywhere] break-words whitespace-normal"
+                    : "leading-5 [overflow-wrap:anywhere] break-words whitespace-normal"
                   : compact
-                    ? "line-clamp-2 leading-5 break-words whitespace-normal"
+                    ? "truncate"
                     : "truncate",
                 isDropFolder
                   ? "font-semibold text-[#0F172A]"
@@ -318,6 +328,20 @@ export function ResultNode({
               <Eye className="size-3.5" />
             </Button>
           )}
+          {canViewGroupInformation && (
+            <Button
+              type="button"
+              variant={selectedGroupInformation ? "default" : "outline"}
+              size="icon-sm"
+              title="Xem thông tin nhóm hồ sơ"
+              onClick={(event) => {
+                event.stopPropagation()
+                onSelectGroupInformation(node)
+              }}
+            >
+              <Table2 className="size-3.5" />
+            </Button>
+          )}
           <CountBadge value={node.documentCount} />
         </div>
       </div>
@@ -356,6 +380,7 @@ export function ResultNode({
               dropTargetId={dropTargetId}
               compact={compact}
               selectedPreviewDocumentId={selectedPreviewDocumentId}
+              selectedGroupInfoNodeId={selectedGroupInfoNodeId}
               selectedMetadataGroupId={selectedMetadataGroupId}
               selectedSessionDocumentIds={selectedSessionDocumentIds}
               selectedDocumentCount={selectedDocumentCount}
@@ -371,6 +396,7 @@ export function ResultNode({
               onDragEnd={onDragEnd}
               onDragEnter={onDragEnter}
               onDropOnDossier={onDropOnDossier}
+              onSelectGroupInformation={onSelectGroupInformation}
               onSelectPreview={onSelectPreview}
               onSelectDossierMetadata={onSelectDossierMetadata}
               onPromoteTemporaryFolder={onPromoteTemporaryFolder}
