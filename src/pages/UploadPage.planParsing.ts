@@ -504,23 +504,32 @@ function leafCandidateMapFromGroups(
 
 function attachLeafCandidates(
   groups: PlanGroup[],
-  leafCandidateMap: Map<string, PlanLeafCandidate[]>
+  leafCandidateMap: Map<string, PlanLeafCandidate[]>,
+  inheritedCandidates: PlanLeafCandidate[] = []
 ): PlanGroup[] {
   return groups.map((group) => {
-    const children = attachLeafCandidates(group.children, leafCandidateMap)
     const directCandidates = group.candidates ?? []
     const mappedCandidates =
       leafCandidateMap.get(groupCandidateRef(group)) ??
       leafCandidateMap.get(group.id) ??
       []
+    const ownCandidates =
+      mappedCandidates.length > 0 ? mappedCandidates : directCandidates
+    const childInheritedCandidates =
+      ownCandidates.length > 0 ? ownCandidates : inheritedCandidates
+    const children = attachLeafCandidates(
+      group.children,
+      leafCandidateMap,
+      childInheritedCandidates
+    )
     return {
       ...group,
       children,
       candidates:
         children.length === 0
-          ? mappedCandidates.length > 0
-            ? mappedCandidates
-            : directCandidates
+          ? ownCandidates.length > 0
+            ? ownCandidates
+            : inheritedCandidates
           : [],
     }
   })
