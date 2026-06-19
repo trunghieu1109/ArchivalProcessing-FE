@@ -30,6 +30,14 @@ export interface PlanLeafGroupCandidates {
   candidates: PlanLeafCandidate[]
 }
 
+export interface RetentionAppendixNode {
+  type: string
+  name: string
+  retention_period?: string
+  note?: string
+  children: RetentionAppendixNode[]
+}
+
 export interface PlanGroup {
   id: string
   name: string
@@ -69,6 +77,7 @@ export interface ParsedPlan {
   criterias: PlanCriterionSet[]
   leaf_group_candidates: PlanLeafGroupCandidates[]
   file_register_config: FileRegisterConfig
+  retention_appendices: RetentionAppendixNode[]
 }
 
 export interface FolderNode {

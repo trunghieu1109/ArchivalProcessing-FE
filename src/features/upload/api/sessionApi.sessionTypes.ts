@@ -216,4 +216,5 @@ export interface ActivePlanResponse {
   criterias?: unknown[]
   leaf_group_candidates?: unknown[]
   file_register_config?: FileRegisterConfig
+  retention_appendices?: unknown[]
 }

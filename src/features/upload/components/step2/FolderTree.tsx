@@ -5,7 +5,11 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/shared/lib/utils"
 import type { FolderNode } from "@/features/upload/types"
 
-import { FolderNodeItem, PlanSummary } from "./FolderTree.nodes"
+import {
+  FolderNodeItem,
+  PlanSummary,
+  RetentionAppendicesPanel,
+} from "./FolderTree.nodes"
 import { DossierBuildStrategySection } from "./FolderTree.strategy"
 import {
   addNode,
@@ -237,6 +241,8 @@ export function FolderTree({
           </ScrollArea>
         </motion.div>
       </AnimatePresence>
+
+      <RetentionAppendicesPanel appendices={parsedPlan.retention_appendices} />
 
       <div className="flex justify-stretch sm:justify-end">
         <button

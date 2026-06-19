@@ -19,6 +19,7 @@ import type {
   ParsedPlan,
   PlanCriterionSet,
   PlanLeafCandidate,
+  RetentionAppendixNode,
 } from "@/features/upload/types"
 import {
   DEPTH_LABELS,
@@ -171,6 +172,136 @@ export function PlanSummary({
       </div>
     </div>
   )
+}
+
+interface RetentionAppendicesPanelProps {
+  appendices: RetentionAppendixNode[]
+}
+
+export function RetentionAppendicesPanel({
+  appendices,
+}: RetentionAppendicesPanelProps) {
+  if (appendices.length === 0) return null
+  const unitCount = countRetentionUnits(appendices)
+
+  return (
+    <details className="group rounded-xl border border-[#CBD5E1] bg-white shadow-sm">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 outline-none transition-colors hover:bg-[#F8FAFC] focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2">
+        <span className="flex min-w-0 items-center gap-2">
+          <FileText className="size-4 shrink-0 text-[#0052FF]" />
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold text-[#0F172A]">
+              Thông tư thời hạn bảo quản
+            </span>
+            <span className="mt-0.5 block text-xs text-[#64748B]">
+              {appendices.length} phụ lục, {unitCount} điều khoản
+            </span>
+          </span>
+        </span>
+        <ChevronRight className="size-4 shrink-0 text-[#64748B] transition-transform group-open:rotate-90" />
+      </summary>
+      <div className="max-h-[420px] overflow-auto border-t border-[#E2E8F0] px-3 py-3">
+        <div className="flex flex-col gap-2">
+          {appendices.map((appendix, index) => (
+            <RetentionTreeNode
+              key={`${appendix.type}-${appendix.name}-${index}`}
+              node={appendix}
+              depth={0}
+            />
+          ))}
+        </div>
+      </div>
+    </details>
+  )
+}
+
+interface RetentionTreeNodeProps {
+  node: RetentionAppendixNode
+  depth: number
+}
+
+function RetentionTreeNode({ node, depth }: RetentionTreeNodeProps) {
+  const hasChildren = node.children.length > 0
+  const isAppendix = depth === 0 || node.type === "appendix"
+  const isUnit = !hasChildren
+  const paddingLeft = 8 + depth * 18
+
+  if (hasChildren) {
+    return (
+      <details className="group rounded-lg border border-[#E2E8F0] bg-[#F8FAFC]">
+        <summary
+          className="flex cursor-pointer list-none items-start gap-2 px-3 py-2 outline-none hover:bg-[#F1F5F9]"
+          style={{ paddingLeft }}
+        >
+          <ChevronRight className="mt-0.5 size-3.5 shrink-0 text-[#64748B] transition-transform group-open:rotate-90" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold leading-5 text-[#0F172A]">
+              {node.name || retentionNodeFallbackLabel(node)}
+            </span>
+            <span className="mt-0.5 block text-[11px] font-semibold tracking-wide text-[#64748B] uppercase">
+              {isAppendix ? "Phụ lục" : "Nhóm"} · {countRetentionUnits([node])} điều khoản
+            </span>
+          </span>
+        </summary>
+        <div className="flex flex-col gap-1 border-t border-[#E2E8F0] py-2">
+          {node.children.map((child, index) => (
+            <RetentionTreeNode
+              key={`${child.type}-${child.name}-${index}`}
+              node={child}
+              depth={depth + 1}
+            />
+          ))}
+        </div>
+      </details>
+    )
+  }
+
+  return (
+    <div
+      className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-2"
+      style={{ marginLeft: paddingLeft }}
+    >
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+        <p className="min-w-0 text-sm leading-5 text-[#0F172A]">
+          {node.name || retentionNodeFallbackLabel(node)}
+        </p>
+        {node.retention_period && (
+          <span className="shrink-0 rounded-full bg-[#E0F2FE] px-2 py-0.5 text-xs font-semibold text-[#0369A1]">
+            {node.retention_period}
+          </span>
+        )}
+      </div>
+      {node.note && (
+        <p className="mt-1 text-xs leading-5 text-[#64748B]">{node.note}</p>
+      )}
+      {!node.retention_period && isUnit && (
+        <p className="mt-1 text-xs leading-5 text-[#94A3B8]">
+          Chưa có thời hạn bảo quản
+        </p>
+      )}
+    </div>
+  )
+}
+
+function countRetentionUnits(nodes: RetentionAppendixNode[]): number {
+  return nodes.reduce((count, node) => {
+    const ownCount = retentionNodeIsUnit(node) ? 1 : 0
+    return count + ownCount + countRetentionUnits(node.children)
+  }, 0)
+}
+
+function retentionNodeFallbackLabel(node: RetentionAppendixNode): string {
+  if (node.type === "appendix") return "Phụ lục"
+  if (node.type === "merged") return "Nhóm thời hạn bảo quản"
+  return "Điều khoản"
+}
+
+function retentionNodeIsUnit(node: RetentionAppendixNode): boolean {
+  const normalizedType = node.type.trim().toLowerCase()
+  if (normalizedType === "unit") return true
+  if (node.retention_period) return true
+  if (node.children.length > 0) return false
+  return !["appendix", "merged", "merge", "group"].includes(normalizedType)
 }
 
 interface FolderNodeItemProps {

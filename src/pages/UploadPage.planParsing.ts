@@ -11,6 +11,7 @@ import type {
   PlanGroup,
   PlanLeafCandidate,
   PlanLeafGroupCandidates,
+  RetentionAppendixNode,
 } from "@/features/upload/types"
 import {
   DEFAULT_DOCUMENT_NUMBERING_MODE,
@@ -40,6 +41,9 @@ export function activePlanToParsedPlan(plan: ActivePlanResponse): ParsedPlan {
     leaf_group_candidates: leafGroupCandidates,
     file_register_config: normalizeFileRegisterConfig(
       plan.file_register_config
+    ),
+    retention_appendices: normalizeRetentionAppendices(
+      plan.retention_appendices
     ),
   }
 }
@@ -116,6 +120,54 @@ export function normalizePlanGroups(
       }
     })
     .filter((group): group is PlanGroup => Boolean(group?.name))
+}
+
+export function normalizeRetentionAppendices(
+  values: unknown[] | undefined
+): RetentionAppendixNode[] {
+  if (!Array.isArray(values)) return []
+  return values
+    .map((value): RetentionAppendixNode | null => normalizeRetentionNode(value))
+    .filter((item): item is RetentionAppendixNode => Boolean(item))
+    .filter(hasRetentionUnit)
+}
+
+function normalizeRetentionNode(value: unknown): RetentionAppendixNode | null {
+  const record = asRecord(value)
+  if (!record) return null
+  const name = stringValue(record.name || record.title || record.label)
+  const children = normalizeRetentionAppendices(retentionChildValues(record))
+  if (!name && children.length === 0) return null
+  return {
+    type: stringValue(record.type) || (children.length > 0 ? "group" : "unit"),
+    name,
+    retention_period: stringValue(
+      record.retention_period || record.retention || record.period
+    ),
+    note: stringValue(record.note || record.notes),
+    children,
+  }
+}
+
+function retentionChildValues(record: Record<string, unknown>): unknown[] {
+  const valueChildren = arrayValue(record.value)
+  if (valueChildren.length > 0) return valueChildren
+  const children = arrayValue(record.children)
+  if (children.length > 0) return children
+  return arrayValue(record.items)
+}
+
+function hasRetentionUnit(node: RetentionAppendixNode): boolean {
+  if (isRetentionUnitNode(node)) return true
+  return node.children.some(hasRetentionUnit)
+}
+
+function isRetentionUnitNode(node: RetentionAppendixNode): boolean {
+  const normalizedType = node.type.trim().toLowerCase()
+  if (normalizedType === "unit") return true
+  if (node.retention_period) return true
+  if (node.children.length > 0) return false
+  return !["appendix", "merged", "merge", "group"].includes(normalizedType)
 }
 
 type PlanParentRef = string | number
