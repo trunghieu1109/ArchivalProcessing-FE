@@ -140,6 +140,11 @@ export function ProcessStep({
   const [manualSelectedIds, setManualSelectedIds] = useState<Set<number>>(
     () => new Set()
   )
+  const [bulkReviewSelectionActive, setBulkReviewSelectionActive] =
+    useState(false)
+  const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<number>>(
+    () => new Set()
+  )
   const [exportingMetadataReview, setExportingMetadataReview] = useState(false)
   const [workers, setWorkers] = useState<ChinhlyUser[]>([])
   const [workersLoading, setWorkersLoading] = useState(false)
@@ -148,6 +153,7 @@ export function ProcessStep({
   const previewLayoutRef = useRef<HTMLDivElement | null>(null)
   const didAutoSelectRef = useRef(false)
   const manualLastSelectedIdRef = useRef<number | null>(null)
+  const bulkLastSelectedIdRef = useRef<number | null>(null)
   const metadataSessionIdRef = useRef(sessionId)
   const currentUserRole = String(user?.role ?? "")
     .trim()
@@ -268,24 +274,35 @@ export function ProcessStep({
       ? manualSplitActive
         ? (unassignedBatch?.items ?? EMPTY_METADATA_ITEMS)
         : (activeBatch?.items ?? EMPTY_METADATA_ITEMS)
-      : sortedItems
+      : batchScopeItems
   const displayedItemIdsKey = useMemo(
     () => displayedItems.map((item) => item.id).join("|"),
     [displayedItems]
   )
-  const displayedPendingReadyItems = useMemo(
-    () => displayedItems.filter(needsMetadataReview),
-    [displayedItems]
-  )
-  const bulkVerifyItems =
-    reviewMode === "batch"
-      ? displayedPendingReadyItems.filter((item) =>
-          canUserEditMetadataItem(item, currentUserIdentity)
-        )
-      : EMPTY_METADATA_ITEMS
-  const selectedItem = useMemo(
+  const displayedConfirmableItems = useMemo(
     () =>
-      displayedItems.find((item) => item.id === selectedDocumentId) ?? null,
+      displayedItems.filter(
+        (item) =>
+          isMetadataConfirmable(item) &&
+          canUserEditMetadataItem(item, currentUserIdentity)
+      ),
+    [currentUserIdentity, displayedItems]
+  )
+  const bulkSelectedItems = useMemo(
+    () =>
+      displayedConfirmableItems.filter((item) => bulkSelectedIds.has(item.id)),
+    [bulkSelectedIds, displayedConfirmableItems]
+  )
+  const bulkVerifyItems = bulkReviewSelectionActive
+    ? bulkSelectedItems
+    : reviewMode === "batch" && !manualSplitActive
+      ? displayedConfirmableItems
+      : EMPTY_METADATA_ITEMS
+  const bulkSelectionCount = bulkSelectedItems.length
+  const canBulkSelectMetadata =
+    !manualSplitActive && displayedConfirmableItems.length > 0
+  const selectedItem = useMemo(
+    () => displayedItems.find((item) => item.id === selectedDocumentId) ?? null,
     [displayedItems, selectedDocumentId]
   )
   const previewDocument = useMemo<DocumentPreviewTarget | null>(
@@ -437,14 +454,14 @@ export function ProcessStep({
 
   useEffect(() => {
     if (reviewMode !== "list") return
-    if (sortedItems.length === 0) {
+    if (batchScopeItems.length === 0) {
       setSelectedDocumentId(null)
       didAutoSelectRef.current = false
       return
     }
     if (
       selectedDocumentId !== null &&
-      sortedItems.some((item) => item.id === selectedDocumentId)
+      batchScopeItems.some((item) => item.id === selectedDocumentId)
     ) {
       return
     }
@@ -456,12 +473,12 @@ export function ProcessStep({
       return
     }
     const firstWarning =
-      sortedItems.find(
+      batchScopeItems.find(
         (item) => item.is_reviewed !== true && hasMetadataWarning(item)
-      ) ?? sortedItems[0]
+      ) ?? batchScopeItems[0]
     setSelectedDocumentId(firstWarning.id)
     didAutoSelectRef.current = true
-  }, [reviewMode, selectedDocumentId, sortedItems])
+  }, [batchScopeItems, reviewMode, selectedDocumentId])
 
   const handleApply = async (
     dataPath: string,
@@ -473,11 +490,7 @@ export function ProcessStep({
     if (!item.metadata_ready) {
       throw new Error("Metadata của tài liệu này chưa sẵn sàng để xác nhận.")
     }
-    if (
-      !isCoordinator &&
-      (reviewMode !== "batch" ||
-        !canUserEditMetadataItem(item, currentUserIdentity))
-    ) {
+    if (!canUserEditMetadataItem(item, currentUserIdentity)) {
       throw new Error(
         "Bạn chỉ có thể sửa/xác nhận tài liệu trong lô được giao."
       )
@@ -544,10 +557,17 @@ export function ProcessStep({
     }
   }
 
+  const resetBulkReviewSelection = () => {
+    setBulkReviewSelectionActive(false)
+    setBulkSelectedIds(new Set())
+    bulkLastSelectedIdRef.current = null
+  }
+
   const handleReviewModeChange = (mode: MetadataReviewMode) => {
     setReviewMode(mode)
     setManualSplitActive(false)
     setManualSelectedIds(new Set())
+    resetBulkReviewSelection()
     if (mode === "batch") {
       setSelectedDocumentId(
         firstPreferredMetadataItem(activeBatch?.items ?? EMPTY_METADATA_ITEMS)
@@ -589,6 +609,7 @@ export function ProcessStep({
     setManualSplitActive(false)
     setManualSelectedIds(new Set())
     setSelectedAssigneeId("")
+    resetBulkReviewSelection()
     setSelectedDocumentId(firstPreferredMetadataItem(group.items)?.id ?? null)
   }
 
@@ -597,6 +618,7 @@ export function ProcessStep({
     setManualSplitActive(false)
     setManualSelectedIds(new Set())
     setSelectedAssigneeId("")
+    resetBulkReviewSelection()
     setActiveBatchIndex(0)
     const nextGroups =
       mode === "manual"
@@ -614,6 +636,7 @@ export function ProcessStep({
     setBatchMode("manual")
     setManualSplitActive(true)
     setManualSelectedIds(new Set())
+    resetBulkReviewSelection()
     const nextGroups = buildManualMetadataBatchGroups(sortedItems)
     const unassignedIndex = findUnassignedBatchIndex(nextGroups)
     const targetGroup = nextGroups[unassignedIndex] ?? nextGroups[0] ?? null
@@ -665,6 +688,59 @@ export function ProcessStep({
   const clearManualSelection = () => {
     setManualSelectedIds(new Set())
     manualLastSelectedIdRef.current = null
+  }
+
+  const toggleBulkReviewSelectionMode = () => {
+    if (bulkReviewSelectionActive) {
+      resetBulkReviewSelection()
+      return
+    }
+    setBulkReviewSelectionActive(true)
+    setBulkSelectedIds(new Set())
+    bulkLastSelectedIdRef.current = null
+  }
+
+  const toggleBulkReviewSelection = (
+    item: PdfMetadata,
+    checked: boolean,
+    shiftKey: boolean
+  ) => {
+    if (!isMetadataConfirmable(item)) return
+    if (!canUserEditMetadataItem(item, currentUserIdentity)) return
+    setBulkSelectedIds((previous) => {
+      const next = new Set(previous)
+      const lastSelectedId = bulkLastSelectedIdRef.current
+      if (shiftKey && lastSelectedId !== null) {
+        selectedRange(
+          displayedConfirmableItems,
+          lastSelectedId,
+          item.id
+        ).forEach((rangeItem) => {
+          if (checked) next.add(rangeItem.id)
+          else next.delete(rangeItem.id)
+        })
+      } else if (checked) {
+        next.add(item.id)
+      } else {
+        next.delete(item.id)
+      }
+      return next
+    })
+    bulkLastSelectedIdRef.current = item.id
+  }
+
+  const selectAllDisplayedForBulkReview = () => {
+    setBulkSelectedIds(
+      new Set(displayedConfirmableItems.map((item) => item.id))
+    )
+    bulkLastSelectedIdRef.current =
+      displayedConfirmableItems[displayedConfirmableItems.length - 1]?.id ??
+      null
+  }
+
+  const clearBulkReviewSelection = () => {
+    setBulkSelectedIds(new Set())
+    bulkLastSelectedIdRef.current = null
   }
 
   const createManualBatchFromSelection = async () => {
@@ -749,11 +825,7 @@ export function ProcessStep({
   }
 
   const handleRetryMetadata = async (item: PdfMetadata) => {
-    if (
-      !isCoordinator &&
-      (reviewMode !== "batch" ||
-        !canUserEditMetadataItem(item, currentUserIdentity))
-    ) {
+    if (!canUserEditMetadataItem(item, currentUserIdentity)) {
       toast.error("Bạn chỉ có thể chạy lại metadata trong lô được giao.")
       return
     }
@@ -915,9 +987,18 @@ export function ProcessStep({
           <div className="grid w-full grid-cols-2 gap-2 text-center sm:w-auto lg:grid-cols-5">
             <ProgressMetric label="Tài liệu" value={expectedCount} />
             <ProgressMetric label="Đang extract" value={pendingMetadataCount} />
-            <ProgressMetric label="Cần xem xét" value={needsReviewItems.length} />
-            <ProgressMetric label="Tự động xác thực" value={autoVerifiedItems.length} />
-            <ProgressMetric label="Chuyên gia xác thực" value={reviewedItems.length} />
+            <ProgressMetric
+              label="Cần xem xét"
+              value={needsReviewItems.length}
+            />
+            <ProgressMetric
+              label="Tự động xác thực"
+              value={autoVerifiedItems.length}
+            />
+            <ProgressMetric
+              label="Chuyên gia xác thực"
+              value={reviewedItems.length}
+            />
           </div>
         </div>
         <div className="mt-4 h-2 overflow-hidden rounded-full bg-[#E2E8F0]">
@@ -1042,12 +1123,60 @@ export function ProcessStep({
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-                {bulkVerifyItems.length > 0 && (
+                {!manualSplitActive &&
+                  (bulkReviewSelectionActive || canBulkSelectMetadata) && (
+                    <Button
+                      type="button"
+                      variant={
+                        bulkReviewSelectionActive ? "default" : "outline"
+                      }
+                      size="sm"
+                      onClick={toggleBulkReviewSelectionMode}
+                      disabled={bulkVerifying}
+                      className="h-8 gap-1.5 text-xs"
+                    >
+                      {bulkReviewSelectionActive ? (
+                        <X className="size-3" />
+                      ) : (
+                        <CheckCircle2 className="size-3" />
+                      )}
+                      {bulkReviewSelectionActive
+                        ? "Hủy chọn nhiều"
+                        : "Chọn nhiều"}
+                    </Button>
+                  )}
+                {bulkReviewSelectionActive && !manualSplitActive && (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={selectAllDisplayedForBulkReview}
+                      disabled={
+                        bulkVerifying || displayedConfirmableItems.length === 0
+                      }
+                      className="h-8 gap-1.5 text-xs"
+                    >
+                      Chọn tất cả
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={clearBulkReviewSelection}
+                      disabled={bulkVerifying || bulkSelectionCount === 0}
+                      className="h-8 gap-1.5 text-xs"
+                    >
+                      Bỏ chọn
+                    </Button>
+                  </>
+                )}
+                {(bulkVerifyItems.length > 0 || bulkReviewSelectionActive) && (
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => void handleVerifyAllReady()}
-                    disabled={bulkVerifying}
+                    disabled={bulkVerifying || bulkVerifyItems.length === 0}
                     className="h-8 gap-1.5 text-xs"
                   >
                     {bulkVerifying ? (
@@ -1055,7 +1184,11 @@ export function ProcessStep({
                     ) : (
                       <CheckCircle2 className="size-3" />
                     )}
-                    {reviewMode === "batch" ? "Xác nhận lô" : "Xác nhận tất cả"}
+                    {bulkReviewSelectionActive
+                      ? `Xác nhận đã chọn (${bulkVerifyItems.length})`
+                      : reviewMode === "batch"
+                        ? `Xác nhận lô (${bulkVerifyItems.length})`
+                        : `Xác nhận tất cả (${bulkVerifyItems.length})`}
                   </Button>
                 )}
                 {reviewMode === "batch" &&
@@ -1187,6 +1320,12 @@ export function ProcessStep({
                   Shift khi chọn để chọn một dải.
                 </div>
               )}
+            {bulkReviewSelectionActive && !manualSplitActive && (
+              <div className="rounded-lg border border-[#BFD3FF] bg-[#EFF6FF] px-3 py-2 text-xs font-medium text-[#0F172A]">
+                Đã chọn {bulkSelectionCount} tài liệu để xác nhận hàng loạt. Giữ
+                Shift khi chọn để chọn một dải.
+              </div>
+            )}
           </div>
           {reviewMode === "batch" && batchGroups.length > 0 && activeBatch && (
             <div className="flex flex-col gap-2 rounded-xl border border-[#D8E1EC] bg-white p-3">
@@ -1243,20 +1382,32 @@ export function ProcessStep({
           <ScrollArea className="h-[min(70svh,640px)] min-h-[360px]">
             <div className="flex flex-col gap-2 pr-1">
               {displayedItems.map((item) => {
-                const canEditItem =
-                  isCoordinator ||
-                  (reviewMode === "batch" &&
-                    canUserEditMetadataItem(item, currentUserIdentity))
+                const canEditItem = canUserEditMetadataItem(
+                  item,
+                  currentUserIdentity
+                )
+                const bulkSelectionDisabled =
+                  bulkReviewSelectionActive &&
+                  (!isMetadataConfirmable(item) || !canEditItem)
                 return (
                   <MetadataCard
                     key={item.id}
                     item={item}
                     selected={item.id === selectedDocumentId}
-                    selectionMode={manualSplitActive}
-                    selectionChecked={manualSelectedIds.has(item.id)}
+                    selectionMode={
+                      manualSplitActive || bulkReviewSelectionActive
+                    }
+                    selectionChecked={
+                      manualSplitActive
+                        ? manualSelectedIds.has(item.id)
+                        : bulkSelectedIds.has(item.id)
+                    }
+                    selectionDisabled={bulkSelectionDisabled}
                     readOnly={!canEditItem}
                     onSelectionChange={(checked, shiftKey) =>
-                      toggleManualSelection(item, checked, shiftKey)
+                      manualSplitActive
+                        ? toggleManualSelection(item, checked, shiftKey)
+                        : toggleBulkReviewSelection(item, checked, shiftKey)
                     }
                     submitting={verifyingIds.has(item.id)}
                     retrying={retryingIds.has(item.id)}
@@ -1527,6 +1678,7 @@ function mergeIncomingMetadata(
         metadata_verified_by_email: item.metadata_verified_by_email,
         metadata_verified_by_name: item.metadata_verified_by_name,
         metadata_verified_at: item.metadata_verified_at,
+        metadata_review_note: item.metadata_review_note,
         is_reviewed: local.is_reviewed,
         metadata_ready: item.metadata_ready,
         metadata_final: item.metadata_final,
@@ -1608,6 +1760,7 @@ function documentResponseToPdfMetadata(
     metadata_verified_by_email: document.metadata_verified_by_email,
     metadata_verified_by_name: document.metadata_verified_by_name,
     metadata_verified_at: document.metadata_verified_at,
+    metadata_review_note: document.metadata_review_note,
     status: document.ocr_status,
     remote_metadata_status: document.remote_metadata_status,
     review_status: reviewStatus,
@@ -1675,6 +1828,10 @@ function needsMetadataReview(item: PdfMetadata): boolean {
   )
 }
 
+function isMetadataConfirmable(item: PdfMetadata): boolean {
+  return item.metadata_ready && item.is_reviewed !== true
+}
+
 function isAutomaticallyVerifiedMetadata(item: PdfMetadata): boolean {
   return (
     item.metadata_ready &&
@@ -1689,15 +1846,36 @@ function buildMetadataBatchGroups(
 ): MetadataBatchGroup[] {
   const normalizedBatchSize = normalizeBatchSize(batchSize)
   const groups: MetadataBatchGroup[] = []
+  const reviewedItems = items.filter(isReviewedMetadataItem)
+  const reviewedIds = new Set(reviewedItems.map((item) => item.id))
+  const pendingItems = items.filter((item) => !reviewedIds.has(item.id))
 
-  for (let start = 0; start < items.length; start += normalizedBatchSize) {
-    const groupItems = items.slice(start, start + normalizedBatchSize)
+  if (reviewedItems.length > 0) {
+    groups.push(
+      buildMetadataBatchGroup({
+        kind: "reviewed",
+        index: groups.length,
+        label: "Tài liệu đã review",
+        start: 0,
+        end: 0,
+        batchId: METADATA_REVIEWED_BATCH_ID,
+        items: reviewedItems,
+      })
+    )
+  }
+
+  for (
+    let start = 0;
+    start < pendingItems.length;
+    start += normalizedBatchSize
+  ) {
+    const groupItems = pendingItems.slice(start, start + normalizedBatchSize)
     const index = groups.length
     groups.push(
       buildMetadataBatchGroup({
         kind: "auto",
         index,
-        label: `Lô ${String(index + 1).padStart(2, "0")}`,
+        label: `Lô ${String(index + (reviewedItems.length ? 0 : 1)).padStart(2, "0")}`,
         start: start + 1,
         end: start + groupItems.length,
         batchId: null,
@@ -1724,10 +1902,7 @@ function buildManualMetadataBatchGroups(
     itemsByBatchId.set(batchId, groupItems)
   })
 
-  const reviewedItems = [
-    ...(itemsByBatchId.get(METADATA_REVIEWED_BATCH_ID) ?? []),
-    ...(itemsByBatchId.get(LEGACY_METADATA_VERIFIED_BATCH_ID) ?? []),
-  ]
+  const reviewedItems = items.filter(isReviewedMetadataBucketItem)
   if (reviewedItems.length > 0) {
     reviewedItems.forEach((item) => assignedIds.add(item.id))
     groups.push(
@@ -1791,6 +1966,28 @@ function normalizedMetadataBatchId(
 ): string | null {
   const text = String(value ?? "").trim()
   return text || null
+}
+
+function isReviewedMetadataBatchId(batchId: string | null): boolean {
+  return (
+    batchId === METADATA_REVIEWED_BATCH_ID ||
+    batchId === LEGACY_METADATA_VERIFIED_BATCH_ID
+  )
+}
+
+function isReviewedMetadataBucketItem(item: PdfMetadata): boolean {
+  const batchId = normalizedMetadataBatchId(item.metadata_batch_id)
+  return (
+    isReviewedMetadataBatchId(batchId) ||
+    (item.is_reviewed === true && !batchId)
+  )
+}
+
+function isReviewedMetadataItem(item: PdfMetadata): boolean {
+  return (
+    item.is_reviewed === true ||
+    isReviewedMetadataBatchId(normalizedMetadataBatchId(item.metadata_batch_id))
+  )
 }
 
 function canUserEditMetadataItem(
@@ -1857,12 +2054,8 @@ function buildMetadataBatchGroup({
 }): MetadataBatchGroup {
   const reviewedCount = items.filter((item) => item.is_reviewed === true).length
   const readyCount = items.filter((item) => item.metadata_ready).length
-  const warningCount = items.filter(
-    needsMetadataReview
-  ).length
-  const pendingReadyCount = items.filter(
-    needsMetadataReview
-  ).length
+  const warningCount = items.filter(needsMetadataReview).length
+  const pendingReadyCount = items.filter(isMetadataConfirmable).length
   const assignedItem = items.find(
     (item) =>
       item.metadata_batch_assigned_to_user_id ||

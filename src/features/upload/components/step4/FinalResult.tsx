@@ -840,7 +840,17 @@ export function FinalResult({
       )
       return
     }
-    if (draggedDocument.fromClusterId === targetClusterId) {
+    const sourceGroup = groups.find(
+      (group) => group.id === draggedDocument.fromClusterId
+    )
+    const targetGroup = groups.find((group) => group.id === targetClusterId)
+    const sourceFeedbackClusterId =
+      sourceGroup?.clusterId ?? draggedDocument.fromClusterId
+    const targetFeedbackClusterId = targetGroup?.clusterId ?? targetClusterId
+    if (
+      draggedDocument.fromClusterId === targetClusterId ||
+      sourceFeedbackClusterId === targetFeedbackClusterId
+    ) {
       stopResultTreeAutoScroll()
       setDraggedDocument(null)
       setDropTargetId(null)
@@ -858,9 +868,7 @@ export function FinalResult({
     }
 
     const moving = draggedDocument
-    const targetIsTemporary = Boolean(
-      groups.find((group) => group.id === targetClusterId)?.isTemporary
-    )
+    const targetIsTemporary = Boolean(targetGroup?.isTemporary)
     const sessionDocumentId = draggedDocument.document.sessionDocumentId
     stopResultTreeAutoScroll()
     setDraggedDocument(null)
@@ -873,16 +881,16 @@ export function FinalResult({
     try {
       await moveDocumentBetweenClusters(sessionId, {
         session_document_id: sessionDocumentId,
-        source_cluster_id: moving.fromClusterId,
-        target_cluster_id: targetClusterId,
+        source_cluster_id: sourceFeedbackClusterId,
+        target_cluster_id: targetFeedbackClusterId,
         details: {
           action: targetIsTemporary
             ? "move_to_temporary_folder"
             : "manual_move",
           document_id: moving.document.documentId,
           file_name: moving.document.fileName,
-          source_cluster_id: moving.fromClusterId,
-          target_cluster_id: targetClusterId,
+          source_cluster_id: sourceFeedbackClusterId,
+          target_cluster_id: targetFeedbackClusterId,
         },
       })
       setPendingFeedbackCount((count) => count + 1)
@@ -1059,7 +1067,7 @@ export function FinalResult({
     try {
       const response = await moveSelectedDocumentsToCluster(sessionId, {
         session_document_ids: sessionDocumentIds,
-        target_cluster_id: group.id,
+        target_cluster_id: group.clusterId,
       })
       setPendingFeedbackCount(
         (count) => count + Math.max(1, response.feedback_count)

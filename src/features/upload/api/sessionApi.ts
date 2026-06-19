@@ -244,6 +244,7 @@ export interface DigitizationDocument {
   metadata_verified_by_email?: string | null
   metadata_verified_by_name?: string | null
   metadata_verified_at?: string | null
+  metadata_review_note?: string | null
   remote_metadata_status?: string | null
   ocr_status: string
   review_status: string
@@ -405,6 +406,7 @@ export interface MetadataSnapshotDocument {
 
 export interface MetadataSnapshotGroup {
   id: string
+  clusterId?: string
   label: string
   dossierId?: string | null
   dossierNumber?: string | null
@@ -476,6 +478,7 @@ export interface SessionDocumentResponse {
   metadata_verified_by_email?: string | null
   metadata_verified_by_name?: string | null
   metadata_verified_at?: string | null
+  metadata_review_note?: string | null
   remote_metadata_status?: string | null
   ocr_status: string
   review_status: string
@@ -580,6 +583,7 @@ export interface ClusterPlacement {
   id: number
   session_document_id: number
   document_id: string
+  dossier_id?: string | null
   position_index: number
   placement_status: string
   requires_review: boolean
@@ -610,6 +614,9 @@ export interface SessionDossierSummary {
   box_number: string | null
   folder_name: string | null
   retention_period: string | null
+  notes?: string[]
+  document_ids?: string[]
+  page_count?: number | null
   archive_name?: string | null
   fonds_name?: string | null
   inventory_number?: string | null
@@ -661,6 +668,7 @@ export interface SessionClusterSummary {
   created_from_temporary_folder?: boolean
   title: string
   dossier: SessionDossierSummary | null
+  dossiers?: SessionDossierSummary[]
   status: string
   notes: string[]
   document_ids: string[]
@@ -1702,6 +1710,7 @@ export function digitizationToFolderStatus(
       metadata_verified_by_email: document.metadata_verified_by_email,
       metadata_verified_by_name: document.metadata_verified_by_name,
       metadata_verified_at: document.metadata_verified_at,
+      metadata_review_note: document.metadata_review_note,
       status: document.ocr_status,
       remote_metadata_status: document.remote_metadata_status,
       review_status: normalizeDocumentReviewStatus(document, lightMetadata),

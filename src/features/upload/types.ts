@@ -99,6 +99,7 @@ export interface PdfMetadata {
   metadata_verified_by_email?: string | null
   metadata_verified_by_name?: string | null
   metadata_verified_at?: string | null
+  metadata_review_note?: string | null
   status: string
   remote_metadata_status?: string | null
   review_status: string

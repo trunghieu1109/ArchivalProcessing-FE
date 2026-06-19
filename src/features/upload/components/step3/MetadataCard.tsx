@@ -142,6 +142,7 @@ interface MetadataCardProps {
   selected?: boolean
   selectionMode?: boolean
   selectionChecked?: boolean
+  selectionDisabled?: boolean
   readOnly?: boolean
   onSelectionChange?: (checked: boolean, shiftKey: boolean) => void
   onSelect?: (expanded: boolean) => void
@@ -159,6 +160,7 @@ export function MetadataCard({
   selected = false,
   selectionMode = false,
   selectionChecked = false,
+  selectionDisabled = false,
   readOnly = false,
   onSelectionChange,
   onSelect,
@@ -269,16 +271,21 @@ export function MetadataCard({
             type="button"
             role="checkbox"
             aria-checked={selectionChecked}
+            aria-disabled={selectionDisabled}
+            disabled={selectionDisabled}
             title="Chọn tài liệu"
             onClick={(event) => {
               event.stopPropagation()
+              if (selectionDisabled) return
               onSelectionChange?.(!selectionChecked, event.shiftKey)
             }}
             className={cn(
               "flex size-5 shrink-0 items-center justify-center rounded border transition-colors",
-              selectionChecked
-                ? "border-[#0052FF] bg-[#0052FF] text-white"
-                : "border-[#CBD5E1] bg-white text-transparent hover:border-[#0052FF]/50"
+              selectionDisabled
+                ? "cursor-not-allowed border-[#CBD5E1] bg-[#F8FAFC] text-transparent opacity-50"
+                : selectionChecked
+                  ? "border-[#0052FF] bg-[#0052FF] text-white"
+                  : "border-[#CBD5E1] bg-white text-transparent hover:border-[#0052FF]/50"
             )}
           >
             <Check className="size-3.5" />
@@ -297,11 +304,13 @@ export function MetadataCard({
           <p className="truncate font-roboto text-[10px] text-muted-foreground">
             {item.data_path}
           </p>
-          {expertReviewed && expertReviewerName && (
-            <p className="mt-0.5 truncate text-[10px] font-semibold text-[#0052FF]">
-              Chuyên gia xác thực: {expertReviewerName}
-            </p>
-          )}
+          {expertReviewed &&
+            (item.metadata_review_note || expertReviewerName) && (
+              <p className="mt-0.5 truncate text-[10px] font-semibold text-[#0052FF]">
+                {item.metadata_review_note ||
+                  `Đã review bởi: ${expertReviewerName}`}
+              </p>
+            )}
         </div>
         <div className="flex max-w-[18rem] shrink-0 flex-wrap items-center justify-end gap-2">
           {signatureTag && (

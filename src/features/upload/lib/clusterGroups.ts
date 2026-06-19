@@ -12,6 +12,7 @@ export const TEMPORARY_FOLDER_NAME = "Thư mục tạm"
 
 export interface ClusterGroup {
   id: string
+  clusterId: string
   label: string
   files: string[]
   documents: ClusterDocument[]
@@ -99,8 +100,8 @@ export function versionToGroups(
     items.map((item) => [item.document_id, item])
   )
   return ensureTemporaryFolderGroup(
-    version.clusters.map((cluster) =>
-      clusterToGroup(cluster, itemsByDocumentId)
+    version.clusters.flatMap((cluster) =>
+      clusterToGroups(cluster, itemsByDocumentId)
     )
   )
 }
@@ -119,6 +120,7 @@ export function ensureTemporaryFolderGroup(
       ? {
           ...temporaryGroup,
           id: TEMPORARY_CLUSTER_ID,
+          clusterId: TEMPORARY_CLUSTER_ID,
           label: TEMPORARY_FOLDER_NAME,
           dossierId: null,
           isTemporary: true,
@@ -127,6 +129,7 @@ export function ensureTemporaryFolderGroup(
         }
       : {
           id: TEMPORARY_CLUSTER_ID,
+          clusterId: TEMPORARY_CLUSTER_ID,
           label: TEMPORARY_FOLDER_NAME,
           files: [],
           documents: [],
@@ -140,15 +143,72 @@ export function ensureTemporaryFolderGroup(
   ]
 }
 
-function clusterToGroup(
+function clusterToGroups(
   cluster: SessionClusterSummary,
   itemsByDocumentId: Map<string, PdfMetadata>
+): ClusterGroup[] {
+  const isTemporary =
+    Boolean(cluster.is_temporary) || cluster.cluster_id === TEMPORARY_CLUSTER_ID
+  if (isTemporary) {
+    return [
+      clusterToGroup(
+        cluster,
+        itemsByDocumentId,
+        cluster.dossier,
+        cluster.placements ?? [],
+        cluster.document_ids ?? []
+      ),
+    ]
+  }
+
+  const dossiers =
+    cluster.dossiers?.length
+      ? cluster.dossiers
+      : cluster.dossier
+        ? [cluster.dossier]
+        : []
+  if (!dossiers.length) {
+    return [
+      clusterToGroup(
+        cluster,
+        itemsByDocumentId,
+        cluster.dossier,
+        cluster.placements ?? [],
+        cluster.document_ids ?? []
+      ),
+    ]
+  }
+
+  const hasMultipleDossiers = dossiers.length > 1
+  return dossiers.map((dossier) => {
+    const placements = (cluster.placements ?? []).filter(
+      (placement) =>
+        placement.dossier_id === dossier.dossier_id ||
+        (!hasMultipleDossiers && !placement.dossier_id)
+    )
+    return clusterToGroup(
+      cluster,
+      itemsByDocumentId,
+      dossier,
+      placements,
+      dossier.document_ids?.length
+        ? dossier.document_ids
+        : placements.map((placement) => placement.document_id)
+    )
+  })
+}
+
+function clusterToGroup(
+  cluster: SessionClusterSummary,
+  itemsByDocumentId: Map<string, PdfMetadata>,
+  dossier: SessionClusterSummary["dossier"],
+  clusterPlacements: SessionClusterSummary["placements"],
+  fallbackDocumentIds: string[]
 ): ClusterGroup {
-  const dossier = cluster.dossier
   const isTemporary =
     Boolean(cluster.is_temporary) || cluster.cluster_id === TEMPORARY_CLUSTER_ID
   const classification = dossier?.classification
-  const documents = [...(cluster.placements ?? [])]
+  const documents = [...(clusterPlacements ?? [])]
     .sort((a, b) => a.position_index - b.position_index)
     .map((placement) => {
       const item = itemsByDocumentId.get(placement.document_id)
@@ -195,7 +255,7 @@ function clusterToGroup(
       }
     })
   const placedIds = new Set(documents.map((document) => document.documentId))
-  const fallbackDocuments = (cluster.document_ids ?? [])
+  const fallbackDocuments = (fallbackDocumentIds ?? [])
     .filter((documentId) => !placedIds.has(documentId))
     .map((documentId, index) => {
       const item = itemsByDocumentId.get(documentId)
@@ -239,7 +299,8 @@ function clusterToGroup(
   const allDocuments = [...documents, ...fallbackDocuments]
 
   return {
-    id: cluster.cluster_id,
+    id: isTemporary ? TEMPORARY_CLUSTER_ID : (dossier?.dossier_id ?? cluster.dossier_id),
+    clusterId: cluster.cluster_id,
     dossierId: isTemporary ? null : (dossier?.dossier_id ?? cluster.dossier_id),
     isTemporary,
     createdFromTemporaryFolder:
@@ -275,7 +336,7 @@ function clusterToGroup(
     requiresReview:
       Boolean(classification?.requires_review) ||
       Boolean(allDocuments.some((document) => document.requiresReview)),
-    pageCount: cluster.page_count,
+    pageCount: dossier?.page_count ?? cluster.page_count,
     sheetCount: numberValue(dossier?.sheet_count) ?? cluster.sheet_count,
     startDate: dossier?.start_date ?? cluster.start_date,
     endDate: dossier?.end_date ?? cluster.end_date,

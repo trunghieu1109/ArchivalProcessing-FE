@@ -459,6 +459,7 @@ function sessionDocumentToJobSummary(
     metadata_verified_by_email: document.metadata_verified_by_email,
     metadata_verified_by_name: document.metadata_verified_by_name,
     metadata_verified_at: document.metadata_verified_at,
+    metadata_review_note: document.metadata_review_note,
     status: document.ocr_status,
     remote_metadata_status: document.remote_metadata_status,
     review_status: normalizeDocumentReviewStatus(document, lightMetadata),
