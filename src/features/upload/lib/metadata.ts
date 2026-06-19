@@ -145,7 +145,10 @@ export function buildDisplayMetadata(
   if (firstPageGuard && !(FIRST_PAGE_GUARD_KEY in metadata)) {
     metadata[FIRST_PAGE_GUARD_KEY] = firstPageGuard
   }
-  if (!hasResolvedFieldValue(metadata, "signer") && documentSignatureStatus(sources) === "done") {
+  if (
+    !hasResolvedFieldValue(metadata, "signer") &&
+    documentSignatureStatus(sources) === "done"
+  ) {
     const signer = firstSignerValue(
       sources.light_metadata,
       sources.normalized_metadata,
@@ -167,7 +170,9 @@ export function getWarningFields(meta: Record<string, unknown>): Set<string> {
   )
 }
 
-export function getWarningEntries(meta: Record<string, unknown>): WarningEntry[] {
+export function getWarningEntries(
+  meta: Record<string, unknown>
+): WarningEntry[] {
   const warnings = meta[WARNING_KEY]
   if (Array.isArray(warnings)) {
     return warnings
@@ -260,7 +265,11 @@ function firstPageGuardHasWarning(
   if (!guard) return false
   const warningFlag = guard.warning
   if (typeof warningFlag === "boolean") return warningFlag
-  if (["true", "1", "yes", "warning"].includes(normalizeFieldName(String(warningFlag ?? "")))) {
+  if (
+    ["true", "1", "yes", "warning"].includes(
+      normalizeFieldName(String(warningFlag ?? ""))
+    )
+  ) {
     return true
   }
   const category = normalizeFieldName(stringValue(guard.category))
@@ -401,9 +410,11 @@ function warningEntryFromField(
     return { field, message: warningMessage(value) }
   }
 
-  const warningField = stringValue(value.field ?? value.key ?? value.name) || field
+  const warningField =
+    stringValue(value.field ?? value.key ?? value.name) || field
   const status = stringValue(value.status).toLowerCase()
-  const warningPayload = value.warnings ?? value.warning ?? value.message ?? value.reason
+  const warningPayload =
+    value.warnings ?? value.warning ?? value.message ?? value.reason
   const hasPayload = hasWarningContent(warningPayload)
 
   if (isOkWarningStatus(status) && !hasPayload) return null
@@ -416,15 +427,18 @@ function warningEntryFromField(
   }
   if (isNeutralWarningStatus(status) && !hasPayload) return null
 
-  const message = warningMessage(warningPayload) || status || warningMessage(value)
+  const message =
+    warningMessage(warningPayload) || status || warningMessage(value)
   if (!message && !warningField) return null
   return { field: warningField, message }
 }
 
 function warningMessage(value: unknown): string {
   if (value === null || value === undefined) return ""
-  if (typeof value === "string") return hasTextContent(value) ? value.trim() : ""
-  if (typeof value === "number" || typeof value === "boolean") return String(value)
+  if (typeof value === "string")
+    return hasTextContent(value) ? value.trim() : ""
+  if (typeof value === "number" || typeof value === "boolean")
+    return String(value)
   if (Array.isArray(value)) {
     return value.map(warningMessage).filter(Boolean).join(", ")
   }

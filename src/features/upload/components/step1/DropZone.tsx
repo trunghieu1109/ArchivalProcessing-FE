@@ -58,7 +58,9 @@ export function DropZone({
       }}
       className={cn(
         "flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed py-8 transition-all duration-300",
-        dragging ? "scale-[1.01] border-primary bg-primary/5" : "border-[#CBD5E1] bg-[#F8FAFC]"
+        dragging
+          ? "scale-[1.01] border-primary bg-primary/5"
+          : "border-[#CBD5E1] bg-[#F8FAFC]"
       )}
     >
       <input
@@ -72,7 +74,12 @@ export function DropZone({
         }}
       />
 
-      <div className={cn("flex size-12 items-center justify-center rounded-full", iconBg)}>
+      <div
+        className={cn(
+          "flex size-12 items-center justify-center rounded-full",
+          iconBg
+        )}
+      >
         <CloudUpload className="size-6" style={{ color: iconColor }} />
       </div>
 

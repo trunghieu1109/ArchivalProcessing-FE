@@ -10,7 +10,10 @@ export function UserMenu({ className = "" }: { className?: string }) {
   const { user, logout } = useAuth()
   const displayName = displayUserName(user)
   const role = displayRole(user?.role)
-  const isAdmin = String(user?.role || "").trim().toLowerCase() === "admin"
+  const isAdmin =
+    String(user?.role || "")
+      .trim()
+      .toLowerCase() === "admin"
 
   const handleLogout = () => {
     logout()
@@ -26,7 +29,7 @@ export function UserMenu({ className = "" }: { className?: string }) {
         <UserRound className="size-4" />
       </div>
       <div className="hidden min-w-0 sm:block">
-        <p className="max-w-[14rem] truncate text-sm font-semibold leading-5 text-[#0F172A]">
+        <p className="max-w-[14rem] truncate text-sm leading-5 font-semibold text-[#0F172A]">
           {displayName}
         </p>
         <p className="flex items-center gap-1 text-[11px] font-medium text-[#64748B]">
@@ -80,7 +83,9 @@ function displayUserName(user: ReturnType<typeof useAuth>["user"]): string {
 }
 
 function displayRole(role: unknown): string {
-  const value = String(role || "").trim().toLowerCase()
+  const value = String(role || "")
+    .trim()
+    .toLowerCase()
   if (value === "admin") return "Quản trị viên"
   if (value === "coordinator") return "Điều phối viên"
   if (value === "worker") return "Nhân viên"

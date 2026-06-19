@@ -104,11 +104,14 @@ export async function updateChinhlyUser(
   const authorization = authHeaderValue()
   if (authorization) headers.set("Authorization", authorization)
 
-  const response = await fetch(apiUrl(`/auth/users/${encodeURIComponent(String(userId))}`), {
-    method: "PATCH",
-    headers,
-    body: JSON.stringify(payload),
-  })
+  const response = await fetch(
+    apiUrl(`/auth/users/${encodeURIComponent(String(userId))}`),
+    {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify(payload),
+    }
+  )
   if (!response.ok) {
     throw new Error(await responseErrorMessage(response))
   }
@@ -152,7 +155,9 @@ export async function updateChinhlyUserBatchAssignments(
   if (authorization) headers.set("Authorization", authorization)
 
   const response = await fetch(
-    apiUrl(`/auth/users/${encodeURIComponent(String(userId))}/batch-assignments`),
+    apiUrl(
+      `/auth/users/${encodeURIComponent(String(userId))}/batch-assignments`
+    ),
     {
       method: "PUT",
       headers,
@@ -188,15 +193,14 @@ async function responseErrorMessage(response: Response): Promise<string> {
 }
 
 function normalizeUserList(payload: unknown): ChinhlyUser[] {
-  const rawUsers =
-    Array.isArray(payload)
-      ? payload
-      : payload && typeof payload === "object"
-        ? ((payload as Record<string, unknown>).users ??
-          (payload as Record<string, unknown>).items ??
-          (payload as Record<string, unknown>).results ??
-          (payload as Record<string, unknown>).data)
-        : []
+  const rawUsers = Array.isArray(payload)
+    ? payload
+    : payload && typeof payload === "object"
+      ? ((payload as Record<string, unknown>).users ??
+        (payload as Record<string, unknown>).items ??
+        (payload as Record<string, unknown>).results ??
+        (payload as Record<string, unknown>).data)
+      : []
   if (!Array.isArray(rawUsers)) return []
   return rawUsers.filter(
     (item): item is ChinhlyUser =>

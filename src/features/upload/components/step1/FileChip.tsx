@@ -48,7 +48,7 @@ export function FileChip({
         <p className="truncate text-sm leading-none font-semibold text-foreground">
           {fileName}
         </p>
-        <p className="mt-1 font-roboto text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+        <p className="mt-1 font-roboto text-[11px] tracking-[0.12em] text-muted-foreground uppercase">
           {loading ? "Đang đọc..." : done ? "Đã xử lý" : "Sẵn sàng"}
         </p>
       </div>

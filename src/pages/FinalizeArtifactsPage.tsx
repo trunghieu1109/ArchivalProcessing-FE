@@ -1,30 +1,32 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
-  Link,
   Navigate,
   useNavigate,
   useParams,
   useSearchParams,
 } from "react-router-dom"
-import {
-  AlertCircle,
-  Archive,
-  ArrowLeft,
-  CheckCircle2,
-  Download,
-  Eye,
-  FileText,
-  Home,
-  Loader2,
-  Play,
-  RefreshCw,
-} from "lucide-react"
-import { motion } from "framer-motion"
+import { AlertCircle } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { cn } from "@/shared/lib/utils"
-import { UserMenu } from "@/features/auth/components/UserMenu"
+import {
+  ArtifactPreviewPanel,
+  ArtifactRow,
+  FinalizeEmptyState,
+  FinalizePageHeader,
+  FinalizeStatusCard,
+  FinalizeToolbar,
+} from "./FinalizeArtifactsPage.parts"
+import {
+  FINALIZE_POLL_INTERVAL_MS,
+  FINALIZE_POLL_TIMEOUT_MS,
+  FINALIZE_PROGRESS_PHASES,
+  artifactExtension,
+  buildArtifactSections,
+  filterVisibleArtifacts,
+  latestArtifactDate,
+  maxArtifactId,
+  saveBlob,
+} from "./FinalizeArtifactsPage.utils"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import {
   downloadAllArtifacts,
@@ -36,65 +38,11 @@ import {
   type SessionArtifact,
 } from "@/features/upload/api/sessionApi"
 
-const FINALIZE_POLL_INTERVAL_MS = 3_000
-const FINALIZE_POLL_TIMEOUT_MS = 10 * 60 * 1_000
-const EXCLUDED_FILE_NAMES = new Set(["tai lieu can kiem tra khi phan cum.xlsx"])
-const HIDDEN_ARTIFACT_TYPES = new Set(["manifest"])
-const ARTIFACT_SECTION_DEFINITIONS = [
-  { id: "metadata", ordinal: "01", label: "Tổng hợp metadata" },
-  { id: "dossierIndex", ordinal: "02", label: "Mục lục hồ sơ" },
-  { id: "documentIndex", ordinal: "03", label: "Mục lục văn bản" },
-  { id: "phieuTin", ordinal: "04", label: "Phiếu tin" },
-  { id: "nhanHop", ordinal: "05", label: "Nhãn hộp" },
-] as const
-const SECTION_ARTIFACT_TYPE_ORDER: Record<string, string[]> = {
-  metadata: [
-    "tong_hop_data_so_hoa_xlsx",
-    "metadata_digitalized_documents_xlsx",
-    "metadata_extracted_documents_xlsx",
-    "metadata_snapshot_xlsx",
-  ],
-  dossierIndex: [
-    "muc_luc_ho_so_xlsx",
-    "muc_luc_ho_so_co_thoi_han_xlsx",
-    "muc_luc_ho_so",
-    "muc_luc_ho_so_co_thoi_han",
-    "danh_muc_ho_so",
-  ],
-  documentIndex: [
-    "muc_luc_van_ban_xlsx",
-    "muc_luc_van_ban_co_thoi_han_xlsx",
-    "muc_luc_van_ban",
-    "muc_luc_van_ban_co_thoi_han",
-  ],
-}
-const VI_NATURAL_COLLATOR = new Intl.Collator("vi", {
-  numeric: true,
-  sensitivity: "base",
-})
-const FINALIZE_PROGRESS_PHASES = [
-  { id: "loading_data", label: "Tổng hợp dữ liệu hồ sơ" },
-  { id: "creating_xlsx", label: "Tạo các file Excel" },
-  { id: "writing_manifest", label: "Ghi danh sách tệp" },
-  { id: "completed", label: "Hoàn tất" },
-]
-
 interface FinalizeArtifactsStepProps {
   sessionId?: string | null
   autoStart?: boolean
   onAutoStartHandled?: () => void
   embedded?: boolean
-}
-
-type ArtifactSectionId =
-  | (typeof ARTIFACT_SECTION_DEFINITIONS)[number]["id"]
-  | "other"
-
-interface ArtifactSection {
-  id: ArtifactSectionId
-  ordinal: string
-  label: string
-  artifacts: SessionArtifact[]
 }
 
 export function FinalizeArtifactsPage() {
@@ -444,32 +392,11 @@ export function FinalizeArtifactsStep({
       }
     >
       {!embedded && (
-        <header className="border-b border-[#D8E1EC] bg-white/80 backdrop-blur">
-          <div className="mx-auto flex max-w-[1560px] flex-col gap-4 px-4 py-4 sm:px-6 md:flex-row md:items-center md:justify-between md:gap-6 lg:px-8">
-            <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-              <img
-                src="/assets/mbfs.png"
-                alt="MBFS"
-                className="h-12 w-auto object-contain sm:h-14"
-              />
-              <div className="min-w-0">
-                <h1 className="truncate text-2xl font-bold tracking-tight">
-                  Tạo mục lục
-                </h1>
-                <p className="mt-1 truncate text-sm text-[#64748B]">
-                  {sessionId}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 md:flex">
-              <div className="hidden items-center gap-3 lg:flex">
-                <SummaryPill label="Tệp" value={visibleArtifacts.length} />
-                <SummaryPill label="Định dạng" value={fileTypeCount} />
-              </div>
-              <UserMenu />
-            </div>
-          </div>
-        </header>
+        <FinalizePageHeader
+          sessionId={sessionId}
+          visibleArtifactCount={visibleArtifacts.length}
+          fileTypeCount={fileTypeCount}
+        />
       )}
 
       <main
@@ -479,76 +406,18 @@ export function FinalizeArtifactsStep({
             : "mx-auto flex max-w-[1560px] flex-col gap-6 px-4 py-5 sm:px-6 sm:py-8 lg:px-8"
         }
       >
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          {embedded ? (
-            <div className="min-w-0">
-              <p className="text-[11px] font-semibold tracking-[0.16em] text-[#64748B] uppercase">
-                Bước 5
-              </p>
-              <h2 className="mt-1 text-xl font-semibold text-[#0F172A]">
-                Tạo mục lục
-              </h2>
-              <p className="mt-1 truncate text-sm text-[#64748B]">
-                {sessionId ?? "Chưa có session"}
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" asChild>
-                <Link to="/sessions">
-                  <Home data-icon="inline-start" />
-                  Danh sách session
-                </Link>
-              </Button>
-              <Button variant="outline" onClick={() => navigate(-1)}>
-                <ArrowLeft data-icon="inline-start" />
-                Quay lại
-              </Button>
-            </div>
-          )}
-          <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-3 lg:w-auto lg:flex lg:flex-wrap lg:items-center lg:justify-end">
-            <Button
-              variant="outline"
-              onClick={() => void refreshArtifacts()}
-              disabled={loading || finalizing}
-              className="w-full lg:w-auto"
-            >
-              {loading ? (
-                <Loader2 data-icon="inline-start" className="animate-spin" />
-              ) : (
-                <RefreshCw data-icon="inline-start" />
-              )}
-              Làm mới
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => void startFinalize()}
-              disabled={finalizing || !sessionId}
-              className="w-full lg:w-auto"
-            >
-              {finalizing ? (
-                <Loader2 data-icon="inline-start" className="animate-spin" />
-              ) : (
-                <Play data-icon="inline-start" />
-              )}
-              {visibleArtifacts.length > 0 ? "Tạo lại" : "Tạo mục lục"}
-            </Button>
-            <Button
-              onClick={() => void handleDownloadAll()}
-              disabled={
-                visibleArtifacts.length === 0 || !sessionId || downloadingAll
-              }
-              className="w-full lg:w-auto"
-            >
-              {downloadingAll ? (
-                <Loader2 data-icon="inline-start" className="animate-spin" />
-              ) : (
-                <Archive data-icon="inline-start" />
-              )}
-              Tải tất cả
-            </Button>
-          </div>
-        </div>
+        <FinalizeToolbar
+          embedded={embedded}
+          sessionId={sessionId}
+          loading={loading}
+          finalizing={finalizing}
+          visibleArtifactCount={visibleArtifacts.length}
+          downloadingAll={downloadingAll}
+          onBack={() => navigate(-1)}
+          onRefreshArtifacts={refreshArtifacts}
+          onStartFinalize={startFinalize}
+          onDownloadAll={handleDownloadAll}
+        />
 
         {(finalizing || progressMessage) && (
           <ProgressTimeline
@@ -563,43 +432,12 @@ export function FinalizeArtifactsStep({
           />
         )}
 
-        <section className="rounded-2xl border border-[#D8E1EC] bg-white px-5 py-4 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div
-                className={cn(
-                  "flex size-10 items-center justify-center rounded-xl",
-                  finalizing
-                    ? "bg-blue-50 text-[#0052FF]"
-                    : "bg-emerald-50 text-emerald-700"
-                )}
-              >
-                {finalizing ? (
-                  <Loader2 className="size-5 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="size-5" />
-                )}
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-[#0F172A]">
-                  {statusMessage}
-                </p>
-                <p className="mt-1 text-xs text-[#64748B]">
-                  {latestGeneratedAt
-                    ? `Lần sinh mới nhất: ${formatDate(latestGeneratedAt)}`
-                    : "Chưa ghi nhận lần sinh tệp."}
-                </p>
-              </div>
-            </div>
-            <Badge variant={finalizing ? "outline" : "secondary"}>
-              {finalizing
-                ? "Đang tạo"
-                : visibleArtifacts.length > 0
-                  ? "Sẵn sàng"
-                  : "Chưa có tệp"}
-            </Badge>
-          </div>
-        </section>
+        <FinalizeStatusCard
+          finalizing={finalizing}
+          statusMessage={statusMessage}
+          latestGeneratedAt={latestGeneratedAt}
+          visibleArtifactCount={visibleArtifacts.length}
+        />
 
         {error && (
           <div className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
@@ -645,7 +483,9 @@ export function FinalizeArtifactsStep({
                           selected={artifact.id === selectedArtifactId}
                           downloading={downloadingArtifactId === artifact.id}
                           onPreview={() => setSelectedArtifactId(artifact.id)}
-                          onDownload={() => void handleDownloadArtifact(artifact)}
+                          onDownload={() =>
+                            void handleDownloadArtifact(artifact)
+                          }
                         />
                       ))}
                     </div>
@@ -661,332 +501,13 @@ export function FinalizeArtifactsStep({
             />
           </div>
         ) : (
-          <div className="flex min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-[#CBD5E1] bg-white px-8 text-center shadow-sm">
-            <div className="flex size-14 items-center justify-center rounded-2xl bg-[#EAF1FF] text-[#0052FF]">
-              <Archive className="size-7" />
-            </div>
-            <h2 className="mt-4 text-lg font-semibold">Chưa có tệp mục lục</h2>
-            <p className="mt-2 max-w-md text-sm leading-6 text-[#64748B]">
-              {finalizing
-                ? "Worker đang sinh tệp mục lục cho session này. Danh sách sẽ tự cập nhật khi hoàn tất."
-                : "Bấm tạo mục lục để sinh các tệp cho session hiện tại."}
-            </p>
-            {!finalizing && (
-              <Button
-                className="mt-5"
-                onClick={() => void startFinalize()}
-                disabled={!sessionId}
-              >
-                <Play data-icon="inline-start" />
-                Tạo mục lục
-              </Button>
-            )}
-          </div>
+          <FinalizeEmptyState
+            finalizing={finalizing}
+            sessionId={sessionId}
+            onStartFinalize={startFinalize}
+          />
         )}
       </main>
     </div>
   )
-}
-
-function ArtifactRow({
-  artifact,
-  index,
-  selected,
-  downloading,
-  onPreview,
-  onDownload,
-}: {
-  artifact: SessionArtifact
-  index: number
-  selected: boolean
-  downloading: boolean
-  onPreview: () => void
-  onDownload: () => void
-}) {
-  const extension = artifactExtension(artifact.file_name)
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.24, delay: index * 0.025 }}
-      onClick={onPreview}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault()
-          onPreview()
-        }
-      }}
-      className={cn(
-        "flex min-h-16 min-w-0 items-center justify-between gap-2.5 rounded-xl border bg-white px-3 py-2.5 text-left shadow-sm transition-all",
-        selected
-          ? "border-[#0052FF]/45 ring-2 ring-[#0052FF]/10"
-          : "border-[#D8E1EC] hover:border-[#0052FF]/35"
-      )}
-    >
-      <div className="flex min-w-0 flex-1 items-center gap-2.5">
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#EAF1FF] text-[#0052FF]">
-          <FileText className="size-4" />
-        </div>
-        <div className="min-w-0">
-          <p className="truncate text-xs font-semibold text-[#0F172A]">
-            {artifact.file_name}
-          </p>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-[#64748B]">
-            <span>{artifactTypeLabel(artifact.artifact_type)}</span>
-            <span className="text-[#CBD5E1]">/</span>
-            <span>{extension.toUpperCase()}</span>
-            {artifact.generated_at && (
-              <>
-                <span className="text-[#CBD5E1]">/</span>
-                <span>{formatDate(artifact.generated_at)}</span>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-      <div className="flex shrink-0 items-center gap-1">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onPreview}
-          title="Xem trước"
-        >
-          <Eye className="size-4" />
-        </Button>
-        <Button
-          variant="outline"
-          size="icon-sm"
-          title="Tải xuống"
-          disabled={downloading}
-          onClick={(event) => {
-            event.stopPropagation()
-            onDownload()
-          }}
-        >
-          {downloading ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <Download className="size-4" />
-          )}
-        </Button>
-      </div>
-    </motion.div>
-  )
-}
-
-function ArtifactPreviewPanel({
-  artifact,
-  previewHtml,
-  loading,
-  error,
-}: {
-  artifact: SessionArtifact | null
-  previewHtml: string
-  loading: boolean
-  error: string
-}) {
-  return (
-    <section className="min-h-[420px] min-w-0 overflow-hidden rounded-2xl border border-[#D8E1EC] bg-white shadow-sm">
-      <div className="flex min-h-14 items-center justify-between gap-3 border-b border-[#EEF2F7] px-4 py-3">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-[#0F172A]">Xem trước</p>
-          <p className="mt-0.5 truncate text-xs text-[#64748B]">
-            {artifact ? artifact.file_name : "Chọn một tệp"}
-          </p>
-        </div>
-        {artifact && (
-          <Badge variant="outline">
-            {artifactExtension(artifact.file_name).toUpperCase()}
-          </Badge>
-        )}
-      </div>
-      {artifact && loading ? (
-        <div className="flex h-[min(72svh,760px)] min-h-[420px] flex-col items-center justify-center px-8 text-center text-sm text-[#64748B]">
-          <Loader2 className="mb-3 size-6 animate-spin text-[#0052FF]" />
-          <p className="font-medium text-[#0F172A]">Đang tải preview...</p>
-        </div>
-      ) : artifact && error ? (
-        <div className="flex h-[min(72svh,760px)] min-h-[420px] flex-col items-center justify-center px-8 text-center text-sm text-red-600">
-          <AlertCircle className="mb-3 size-6" />
-          <p className="font-medium">{error}</p>
-        </div>
-      ) : artifact && previewHtml ? (
-        <iframe
-          title={`Xem trước ${artifact.file_name}`}
-          srcDoc={previewHtml}
-          sandbox=""
-          className="h-[min(72svh,760px)] min-h-[420px] w-full bg-white"
-        />
-      ) : (
-        <div className="flex h-[min(72svh,760px)] min-h-[420px] flex-col items-center justify-center px-8 text-center text-sm text-[#64748B]">
-          <div className="mb-3 flex size-12 items-center justify-center rounded-2xl bg-[#EAF1FF] text-[#0052FF]">
-            <Eye className="size-6" />
-          </div>
-          <p className="font-medium text-[#0F172A]">
-            Chọn một tệp để xem trực tiếp.
-          </p>
-        </div>
-      )}
-    </section>
-  )
-}
-
-function SummaryPill({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-2xl border border-[#D8E1EC] bg-white px-4 py-2 text-right shadow-sm">
-      <p className="text-[11px] font-semibold tracking-[0.12em] text-[#94A3B8] uppercase">
-        {label}
-      </p>
-      <p className="text-lg font-bold text-[#0F172A]">{value}</p>
-    </div>
-  )
-}
-
-function filterVisibleArtifacts(
-  artifacts: SessionArtifact[]
-): SessionArtifact[] {
-  return artifacts.filter((artifact) => {
-    if (artifact.status !== "ready") return false
-    if (HIDDEN_ARTIFACT_TYPES.has(normalizeFilterText(artifact.artifact_type)))
-      return false
-    if (EXCLUDED_FILE_NAMES.has(normalizeFilterText(artifact.file_name)))
-      return false
-    return true
-  })
-}
-
-function buildArtifactSections(artifacts: SessionArtifact[]): ArtifactSection[] {
-  const buckets: Record<ArtifactSectionId, SessionArtifact[]> = {
-    metadata: [],
-    dossierIndex: [],
-    documentIndex: [],
-    phieuTin: [],
-    nhanHop: [],
-    other: [],
-  }
-  artifacts.forEach((artifact) => {
-    buckets[artifactSectionId(artifact)].push(artifact)
-  })
-
-  const sections: ArtifactSection[] = ARTIFACT_SECTION_DEFINITIONS.map(
-    (section) => ({
-      ...section,
-      artifacts: sortArtifactsForSection(buckets[section.id], section.id),
-    })
-  ).filter((section) => section.artifacts.length > 0)
-
-  if (buckets.other.length > 0) {
-    sections.push({
-      id: "other",
-      ordinal: "06",
-      label: "Tệp khác",
-      artifacts: sortArtifactsForSection(buckets.other, "other"),
-    })
-  }
-  return sections
-}
-
-function artifactSectionId(artifact: SessionArtifact): ArtifactSectionId {
-  const type = normalizeFilterText(artifact.artifact_type)
-  if (type === "phieu_tin") return "phieuTin"
-  if (type === "nhan_hop") return "nhanHop"
-  if (type.includes("metadata") || type.includes("tong_hop")) {
-    return "metadata"
-  }
-  if (type.startsWith("muc_luc_ho_so") || type === "danh_muc_ho_so") {
-    return "dossierIndex"
-  }
-  if (type.startsWith("muc_luc_van_ban")) return "documentIndex"
-  return "other"
-}
-
-function sortArtifactsForSection(
-  artifacts: SessionArtifact[],
-  sectionId: ArtifactSectionId
-): SessionArtifact[] {
-  const typeOrder = SECTION_ARTIFACT_TYPE_ORDER[sectionId] ?? []
-  return [...artifacts].sort((left, right) => {
-    const priorityDelta =
-      artifactTypePriority(left, typeOrder) -
-      artifactTypePriority(right, typeOrder)
-    if (priorityDelta !== 0) return priorityDelta
-    return (
-      VI_NATURAL_COLLATOR.compare(left.file_name, right.file_name) ||
-      left.id - right.id
-    )
-  })
-}
-
-function artifactTypePriority(
-  artifact: SessionArtifact,
-  typeOrder: string[]
-): number {
-  const index = typeOrder.indexOf(normalizeFilterText(artifact.artifact_type))
-  return index >= 0 ? index : typeOrder.length
-}
-
-function normalizeFilterText(value: string): string {
-  return value.trim().toLowerCase()
-}
-
-function maxArtifactId(artifacts: SessionArtifact[]): number {
-  return artifacts.reduce((maxId, artifact) => Math.max(maxId, artifact.id), 0)
-}
-
-function latestArtifactDate(artifacts: SessionArtifact[]): string | null {
-  return (
-    artifacts
-      .map((artifact) => artifact.generated_at)
-      .filter((value): value is string => Boolean(value))
-      .sort(
-        (left, right) => new Date(right).getTime() - new Date(left).getTime()
-      )[0] ?? null
-  )
-}
-
-function artifactExtension(fileName: string): string {
-  const index = fileName.lastIndexOf(".")
-  return index >= 0 ? fileName.slice(index + 1) : "file"
-}
-
-function artifactTypeLabel(value: string): string {
-  const labels: Record<string, string> = {
-    muc_luc_ho_so: "Mục lục hồ sơ",
-    muc_luc_ho_so_co_thoi_han: "Mục lục hồ sơ có thời hạn",
-    muc_luc_ho_so_xlsx: "Mục lục hồ sơ Excel",
-    muc_luc_ho_so_co_thoi_han_xlsx: "Mục lục hồ sơ có thời hạn Excel",
-    danh_muc_ho_so: "Danh mục hồ sơ",
-    muc_luc_van_ban: "Mục lục văn bản",
-    muc_luc_van_ban_co_thoi_han: "Mục lục văn bản có thời hạn",
-    muc_luc_van_ban_xlsx: "Mục lục văn bản Excel",
-    muc_luc_van_ban_co_thoi_han_xlsx: "Mục lục văn bản có thời hạn Excel",
-    phieu_tin: "Phiếu tin",
-    nhan_hop: "Nhãn hộp",
-    metadata_extracted_documents_xlsx: "Metadata tài liệu trích xuất",
-    metadata_digitalized_documents_xlsx: "Metadata tài liệu số hóa",
-    metadata_snapshot_xlsx: "Snapshot metadata",
-  }
-  return labels[value] ?? value.replace(/_/g, " ")
-}
-
-function formatDate(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return new Intl.DateTimeFormat("vi-VN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date)
-}
-
-function saveBlob(blob: Blob, fileName: string) {
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement("a")
-  link.href = url
-  link.download = fileName
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  URL.revokeObjectURL(url)
 }

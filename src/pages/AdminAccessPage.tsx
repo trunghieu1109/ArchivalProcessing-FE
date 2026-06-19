@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   Loader2,
   RefreshCw,
-  ShieldCheck,
   UserCog,
   UserRound,
 } from "lucide-react"
@@ -65,7 +64,9 @@ export function AdminAccessPage() {
         is_active: true,
       })
       setUsers((current) =>
-        current.map((item) => (userId(item) === targetId ? { ...item, ...updated } : item))
+        current.map((item) =>
+          userId(item) === targetId ? { ...item, ...updated } : item
+        )
       )
       toast.success("Đã phân quyền coordinator.")
     } catch (err) {
@@ -83,7 +84,9 @@ export function AdminAccessPage() {
         <AdminHeader />
         <main className="mx-auto max-w-[960px] px-4 py-10 sm:px-6 lg:px-8">
           <div className="rounded-3xl border border-amber-200 bg-amber-50 p-6 text-amber-800">
-            <p className="text-lg font-bold">Chỉ admin mới truy cập được màn hình này.</p>
+            <p className="text-lg font-bold">
+              Chỉ admin mới truy cập được màn hình này.
+            </p>
             <p className="mt-2 text-sm">
               Hãy đăng nhập bằng tài khoản admin để phân quyền coordinator.
             </p>
@@ -99,7 +102,7 @@ export function AdminAccessPage() {
       <main className="mx-auto flex max-w-[1400px] flex-col gap-6 px-4 py-5 sm:px-6 sm:py-8 lg:px-8">
         <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#64748B]">
+            <p className="text-[11px] font-semibold tracking-[0.16em] text-[#64748B] uppercase">
               Quản trị phân quyền
             </p>
             <h2 className="mt-1 text-xl font-semibold text-[#0F172A]">
@@ -140,7 +143,8 @@ export function AdminAccessPage() {
           <SummaryCard
             label="Có thể nâng quyền"
             value={
-              users.filter((item) => normalizedRole(item.role) === "worker").length
+              users.filter((item) => normalizedRole(item.role) === "worker")
+                .length
             }
           />
         </div>
@@ -152,7 +156,7 @@ export function AdminAccessPage() {
         )}
 
         <section className="overflow-hidden rounded-3xl border border-[#D8E1EC] bg-white shadow-sm">
-          <div className="grid grid-cols-[minmax(0,1fr)_9rem_11rem] gap-3 border-b border-[#EEF2F7] bg-[#F8FAFC] px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B]">
+          <div className="grid grid-cols-[minmax(0,1fr)_9rem_11rem] gap-3 border-b border-[#EEF2F7] bg-[#F8FAFC] px-4 py-3 text-[11px] font-semibold tracking-[0.12em] text-[#64748B] uppercase">
             <span>User</span>
             <span>Role</span>
             <span className="text-right">Thao tác</span>
@@ -202,7 +206,9 @@ export function AdminAccessPage() {
                         ) : (
                           <UserCog className="size-3.5" />
                         )}
-                        {role === "coordinator" ? "Đã là coordinator" : "Nâng quyền"}
+                        {role === "coordinator"
+                          ? "Đã là coordinator"
+                          : "Nâng quyền"}
                       </button>
                     </div>
                   </div>
@@ -248,7 +254,7 @@ function AdminHeader() {
 function SummaryCard({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-2xl border border-[#D8E1EC] bg-white px-4 py-3 shadow-sm">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#94A3B8]">
+      <p className="text-[11px] font-semibold tracking-[0.12em] text-[#94A3B8] uppercase">
         {label}
       </p>
       <p className="mt-1 text-xl font-bold text-[#0F172A]">{value}</p>
@@ -262,12 +268,19 @@ function userId(user: ChinhlyUser): string {
 
 function displayUser(user: ChinhlyUser): string {
   return String(
-    user.display_name || user.name || user.email || user.username || userId(user) || "User"
+    user.display_name ||
+      user.name ||
+      user.email ||
+      user.username ||
+      userId(user) ||
+      "User"
   ).trim()
 }
 
 function normalizedRole(role: unknown): string {
-  return String(role || "").trim().toLowerCase()
+  return String(role || "")
+    .trim()
+    .toLowerCase()
 }
 
 function displayRole(role: unknown): string {

@@ -1,0 +1,208 @@
+import {
+  apiUrl,
+  delay,
+  downloadFileName,
+  requestJson,
+  responseErrorMessage,
+  withAuth,
+} from "./sessionApi.http"
+import type {
+  ArtifactListResponse,
+  DocumentArchiveDownload,
+  EnqueueNumberingResponse,
+  MetadataSnapshotGroup,
+  MetadataBoxNumberImportResponse,
+  MetadataSnapshotResponse,
+  NumberingStatusResponse,
+} from "./sessionApi.types"
+
+export async function enqueueFinalizeArtifacts(
+  sessionId: string,
+  payload: { created_by?: string } = {}
+): Promise<Record<string, unknown>> {
+  return requestJson<Record<string, unknown>>(
+    `/sessions/${encodeURIComponent(sessionId)}/artifacts/finalize`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
+}
+
+export async function enqueueDocumentNumbering(
+  sessionId: string,
+  payload: { created_by?: string; force?: boolean } = {}
+): Promise<EnqueueNumberingResponse> {
+  return requestJson<EnqueueNumberingResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/numbering/start`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
+}
+
+export async function updateDocumentNumberingFromPage(
+  sessionId: string,
+  sessionDocumentId: number,
+  payload: {
+    anchor_page_number: number
+    new_number: number
+    created_by?: string
+    force?: boolean
+  }
+): Promise<EnqueueNumberingResponse> {
+  return requestJson<EnqueueNumberingResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/numbering/documents/${encodeURIComponent(String(sessionDocumentId))}/start`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        created_by: "ui",
+        force: true,
+        ...payload,
+      }),
+    }
+  )
+}
+
+export async function getDocumentNumberingStatus(
+  sessionId: string
+): Promise<NumberingStatusResponse> {
+  return requestJson<NumberingStatusResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/numbering/status`
+  )
+}
+
+export async function exportMetadataSnapshot(
+  sessionId: string,
+  payload: { created_by?: string; groups?: MetadataSnapshotGroup[] } = {}
+): Promise<MetadataSnapshotResponse> {
+  return requestJson<MetadataSnapshotResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/artifacts/metadata-snapshot`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
+}
+
+export async function importMetadataBoxNumbers(
+  sessionId: string,
+  file: File,
+  payload: { created_by?: string } = {}
+): Promise<MetadataBoxNumberImportResponse> {
+  const form = new FormData()
+  form.append("created_by", payload.created_by ?? "ui")
+  form.append("file", file)
+  return requestJson<MetadataBoxNumberImportResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/artifacts/metadata-snapshot/import-box-numbers`,
+    {
+      method: "POST",
+      body: form,
+    }
+  )
+}
+
+export async function listArtifacts(
+  sessionId: string,
+  status?: string
+): Promise<ArtifactListResponse> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : ""
+  return requestJson<ArtifactListResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/artifacts${query}`
+  )
+}
+
+export async function waitForArtifacts(
+  sessionId: string,
+  timeoutMs = 120_000,
+  intervalMs = 2_000
+): Promise<ArtifactListResponse> {
+  const started = Date.now()
+  while (Date.now() - started < timeoutMs) {
+    const result = await listArtifacts(sessionId)
+    if (result.artifacts.some((artifact) => artifact.status === "ready")) {
+      return result
+    }
+    await delay(intervalMs)
+  }
+  throw new Error(
+    "Quá thời gian chờ tạo artifact. Hãy kiểm tra backend worker."
+  )
+}
+
+export function artifactDownloadUrl(
+  sessionId: string,
+  artifactId: number
+): string {
+  return apiUrl(
+    `/sessions/${encodeURIComponent(sessionId)}/artifacts/${artifactId}/download`
+  )
+}
+
+export async function downloadArtifact(
+  sessionId: string,
+  artifactId: number
+): Promise<DocumentArchiveDownload> {
+  const response = await fetch(
+    artifactDownloadUrl(sessionId, artifactId),
+    withAuth()
+  )
+  if (!response.ok) {
+    throw new Error(await responseErrorMessage(response))
+  }
+  return {
+    blob: await response.blob(),
+    fileName:
+      downloadFileName(response.headers.get("content-disposition")) ||
+      `${sessionId}-artifact-${artifactId}`,
+  }
+}
+
+export function artifactPreviewUrl(
+  sessionId: string,
+  artifactId: number
+): string {
+  return apiUrl(
+    `/sessions/${encodeURIComponent(sessionId)}/artifacts/${artifactId}/preview`
+  )
+}
+
+export async function getArtifactPreviewHtml(
+  sessionId: string,
+  artifactId: number
+): Promise<string> {
+  const response = await fetch(
+    artifactPreviewUrl(sessionId, artifactId),
+    withAuth()
+  )
+  if (!response.ok) {
+    throw new Error(await responseErrorMessage(response))
+  }
+  return response.text()
+}
+
+export function artifactDownloadAllUrl(sessionId: string): string {
+  return apiUrl(
+    `/sessions/${encodeURIComponent(sessionId)}/artifacts/download-all`
+  )
+}
+
+export async function downloadAllArtifacts(
+  sessionId: string
+): Promise<DocumentArchiveDownload> {
+  const response = await fetch(artifactDownloadAllUrl(sessionId), withAuth())
+  if (!response.ok) {
+    throw new Error(await responseErrorMessage(response))
+  }
+  return {
+    blob: await response.blob(),
+    fileName:
+      downloadFileName(response.headers.get("content-disposition")) ||
+      `${sessionId}-finalize-artifacts.zip`,
+  }
+}

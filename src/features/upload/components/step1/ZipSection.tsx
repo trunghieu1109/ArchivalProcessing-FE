@@ -34,7 +34,10 @@ import { Input } from "@/components/ui/input"
 import { cn } from "@/shared/lib/utils"
 import { DropZone } from "./DropZone"
 import { FileChip } from "./FileChip"
-import type { SessionInputUploadResponse, UploadProgressSnapshot } from "@/features/upload/api/sessionApi"
+import type {
+  SessionInputUploadResponse,
+  UploadProgressSnapshot,
+} from "@/features/upload/api/sessionApi"
 import type { UseOcrFolderResult } from "@/features/upload/hooks/useOcrFolder"
 import type {
   ProcessState,
@@ -189,7 +192,11 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
         onHasFileChange(true)
         onEntriesChange(list)
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Không thể đọc hoặc tải lên file nén.")
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Không thể đọc hoặc tải lên file nén."
+        )
         setFolderPath("")
         onFolderPathChange("")
         setFileName("")
@@ -300,7 +307,9 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
                     : "Đang upload ZIP"}
               </span>
               <span className="shrink-0 font-roboto text-[11px] text-[#0052FF]">
-                {uploadProgress.percent !== null ? `${uploadProgress.percent}%` : `${uploadProgress.loadedMb.toFixed(2)} MB`}
+                {uploadProgress.percent !== null
+                  ? `${uploadProgress.percent}%`
+                  : `${uploadProgress.loadedMb.toFixed(2)} MB`}
               </span>
             </div>
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#D8E1EC]">
@@ -311,7 +320,11 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
             </div>
             <div className="mt-2 flex items-center justify-between gap-3 font-roboto text-[11px] text-[#64748B]">
               <span>{uploadProgress.loadedMb.toFixed(2)} MB</span>
-              <span>{uploadProgress.totalMb > 0 ? `${uploadProgress.totalMb.toFixed(2)} MB` : "Đang tính dung lượng"}</span>
+              <span>
+                {uploadProgress.totalMb > 0
+                  ? `${uploadProgress.totalMb.toFixed(2)} MB`
+                  : "Đang tính dung lượng"}
+              </span>
             </div>
           </div>
         )}

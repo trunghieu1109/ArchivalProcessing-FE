@@ -226,7 +226,7 @@ function InlineMetadataField({
         >
           <span
             className={cn(
-              "min-w-0 text-base leading-6 font-semibold break-words whitespace-normal transition-colors [overflow-wrap:anywhere] group-hover:text-[#0052FF]",
+              "min-w-0 text-base leading-6 font-semibold [overflow-wrap:anywhere] break-words whitespace-normal transition-colors group-hover:text-[#0052FF]",
               emptyValue ? "text-[#64748B]" : "text-[#0F172A]"
             )}
           >

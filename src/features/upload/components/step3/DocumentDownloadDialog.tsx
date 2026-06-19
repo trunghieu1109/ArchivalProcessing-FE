@@ -181,7 +181,7 @@ export function DocumentDownloadDialog({
             </div>
           </ScrollArea>
 
-          <div className="shrink-0 flex flex-col-reverse gap-2 border-t border-[#E2E8F0] px-5 py-4 sm:flex-row sm:items-center sm:justify-end">
+          <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-[#E2E8F0] px-5 py-4 sm:flex-row sm:items-center sm:justify-end">
             <Dialog.Close asChild>
               <Button
                 type="button"

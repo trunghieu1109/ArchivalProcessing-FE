@@ -43,7 +43,9 @@ function PdfPreviewModal({
           <div className="flex min-w-0 items-center gap-3">
             <div
               className="flex size-8 shrink-0 items-center justify-center rounded-lg shadow-[0_4px_14px_rgba(0,82,255,0.25)]"
-              style={{ background: "linear-gradient(135deg, #0052FF, #4D7CFF)" }}
+              style={{
+                background: "linear-gradient(135deg, #0052FF, #4D7CFF)",
+              }}
             >
               <FileText className="size-4 text-white" />
             </div>
@@ -56,7 +58,12 @@ function PdfPreviewModal({
               </p>
             </div>
           </div>
-          <Button variant="ghost" size="sm" onClick={onClose} className="size-8 p-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+            className="size-8 p-0"
+          >
             <X className="size-4" />
           </Button>
         </div>
@@ -119,7 +126,7 @@ function ClusterGroupCard({
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-start gap-2">
-              <span className="min-w-0 flex-1 text-sm leading-5 font-semibold break-words whitespace-normal text-foreground [overflow-wrap:anywhere]">
+              <span className="min-w-0 flex-1 text-sm leading-5 font-semibold [overflow-wrap:anywhere] break-words whitespace-normal text-foreground">
                 {group.label}
               </span>
               <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 font-roboto text-[10px] font-bold text-primary">
@@ -132,7 +139,9 @@ function ClusterGroupCard({
               )}
             </div>
             <div className="mt-1 flex flex-wrap gap-1.5 text-[10px] text-muted-foreground">
-              <span className="rounded-full bg-muted px-2 py-0.5">{classification}</span>
+              <span className="rounded-full bg-muted px-2 py-0.5">
+                {classification}
+              </span>
               <span className="rounded-full bg-muted px-2 py-0.5">
                 {group.retentionPeriod || "Chưa gắn thời hạn"}
               </span>
@@ -214,7 +223,10 @@ export function ClusterPanel({
   const [previewFile, setPreviewFile] = useState<string | null>(null)
   const progress = clusterDone
     ? 100
-    : Math.max(0, Math.min(100, totalCount > 0 ? (loadedCount / totalCount) * 100 : 0))
+    : Math.max(
+        0,
+        Math.min(100, totalCount > 0 ? (loadedCount / totalCount) * 100 : 0)
+      )
 
   return (
     <div className="flex flex-col gap-3">
@@ -244,7 +256,9 @@ export function ClusterPanel({
         <div
           className={cn(
             "mb-3 flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium",
-            clusterDone ? "bg-emerald-50 text-emerald-700" : "bg-primary/5 text-primary"
+            clusterDone
+              ? "bg-emerald-50 text-emerald-700"
+              : "bg-primary/5 text-primary"
           )}
         >
           {clusterDone ? (
@@ -260,7 +274,9 @@ export function ClusterPanel({
         <div className="mb-3 h-1.5 w-full overflow-hidden rounded-full bg-muted">
           <motion.div
             className="h-full rounded-full"
-            style={{ background: "linear-gradient(to right, #0052FF, #4D7CFF)" }}
+            style={{
+              background: "linear-gradient(to right, #0052FF, #4D7CFF)",
+            }}
             animate={{ width: `${progress}%` }}
             transition={{ duration: 0.4 }}
           />

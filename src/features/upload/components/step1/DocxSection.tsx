@@ -18,7 +18,18 @@ interface DocxSectionProps {
 }
 
 export const DocxSection = forwardRef<SectionHandle, DocxSectionProps>(
-  ({ index, label, sublabel, processState, onProcessStateChange, onHasFileChange, onUploadFile }, ref) => {
+  (
+    {
+      index,
+      label,
+      sublabel,
+      processState,
+      onProcessStateChange,
+      onHasFileChange,
+      onUploadFile,
+    },
+    ref
+  ) => {
     const [fileName, setFileName] = useState("")
     const [hasContent, setHasContent] = useState(false)
     const [error, setError] = useState("")
@@ -47,7 +58,11 @@ export const DocxSection = forwardRef<SectionHandle, DocxSectionProps>(
         onHasFileChange(true)
       } catch (err) {
         setFileName("")
-        setError(err instanceof Error ? err.message : "Không thể đọc hoặc tải lên file DOCX này.")
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Không thể đọc hoặc tải lên file DOCX này."
+        )
         onHasFileChange(false)
       } finally {
         setLoading(false)
@@ -67,23 +82,32 @@ export const DocxSection = forwardRef<SectionHandle, DocxSectionProps>(
 
     const iconBg = index === 1 ? "bg-purple-50" : "bg-emerald-50"
     const iconColor = index === 1 ? "#7C3AED" : "#059669"
-    const buttonColor = index === 1 ? "purple" : "green" as "purple" | "green"
+    const buttonColor = index === 1 ? "purple" : ("green" as "purple" | "green")
 
     return (
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1], delay: index * 0.08 }}
+        transition={{
+          duration: 0.5,
+          ease: [0.16, 1, 0.3, 1],
+          delay: index * 0.08,
+        }}
         className={cn(
           "relative flex flex-col gap-4 overflow-hidden rounded-2xl border bg-white p-5 transition-all duration-300",
           isDone
             ? "border-primary/20 shadow-[0_4px_24px_rgba(0,82,255,0.08)]"
-            : "border-[#E2E8F0] shadow-sm",
+            : "border-[#E2E8F0] shadow-sm"
         )}
       >
         {/* Header */}
         <div className="flex items-start gap-3">
-          <div className={cn("flex size-10 shrink-0 items-center justify-center rounded-xl", iconBg)}>
+          <div
+            className={cn(
+              "flex size-10 shrink-0 items-center justify-center rounded-xl",
+              iconBg
+            )}
+          >
             <FileText className="size-5" style={{ color: iconColor }} />
           </div>
           <div className="flex-1">
@@ -92,7 +116,9 @@ export const DocxSection = forwardRef<SectionHandle, DocxSectionProps>(
               {isDone && (
                 <span
                   className="flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold text-white"
-                  style={{ background: "linear-gradient(to right, #0052FF, #4D7CFF)" }}
+                  style={{
+                    background: "linear-gradient(to right, #0052FF, #4D7CFF)",
+                  }}
                 >
                   <CheckCircle2 className="size-3" /> Xong
                 </span>
@@ -108,10 +134,22 @@ export const DocxSection = forwardRef<SectionHandle, DocxSectionProps>(
         </div>
 
         {fileName ? (
-          <FileChip fileName={fileName} loading={loading} processState={processState}
-            onClear={clear} icon={<FileText className="size-4" />} />
+          <FileChip
+            fileName={fileName}
+            loading={loading}
+            processState={processState}
+            onClear={clear}
+            icon={<FileText className="size-4" />}
+          />
         ) : (
-          <DropZone accept=".docx" onFile={handleFile} label="Kéo thả file .docx vào đây" hint=".docx" maxSize="50MB" buttonColor={buttonColor} />
+          <DropZone
+            accept=".docx"
+            onFile={handleFile}
+            label="Kéo thả file .docx vào đây"
+            hint=".docx"
+            maxSize="50MB"
+            buttonColor={buttonColor}
+          />
         )}
 
         {error && (
