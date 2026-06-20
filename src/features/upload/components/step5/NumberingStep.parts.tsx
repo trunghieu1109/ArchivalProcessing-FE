@@ -19,7 +19,10 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/shared/lib/utils"
-import type { NumberingDocumentStatus } from "@/features/upload/api/sessionApi"
+import type {
+  DocumentNumberingMode,
+  NumberingDocumentStatus,
+} from "@/features/upload/api/sessionApi"
 import {
   numberingEntries,
   compactPageList,
@@ -29,20 +32,26 @@ import {
 
 export function NumberingStepHeader({
   modeLabel,
+  documentNumberingMode,
+  changingMode,
   loading,
   starting,
   active,
   complete,
   onRefresh,
   onStart,
+  onModeChange,
 }: {
   modeLabel: string
+  documentNumberingMode: DocumentNumberingMode
+  changingMode: boolean
   loading: boolean
   starting: boolean
   active: boolean
   complete: boolean
   onRefresh: () => void | Promise<unknown>
   onStart: () => void | Promise<unknown>
+  onModeChange: (mode: DocumentNumberingMode) => void | Promise<unknown>
 }) {
   return (
     <div className="rounded-2xl border border-[#CBD5E1] bg-white px-5 py-4 shadow-sm">
@@ -58,6 +67,35 @@ export function NumberingStepHeader({
             {modeLabel}. Mỗi hồ sơ bắt đầu lại từ số 1; bản render dùng kiểu chữ
             pencil mặc định.
           </p>
+          <div
+            className="mt-4 inline-flex rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] p-1"
+            role="radiogroup"
+            aria-label="Cách đánh số tài liệu"
+          >
+            {(
+              [
+                ["page", "Theo trang"],
+                ["sheet", "Theo tờ"],
+              ] as const
+            ).map(([mode, label]) => (
+              <button
+                key={mode}
+                type="button"
+                role="radio"
+                aria-checked={documentNumberingMode === mode}
+                disabled={active || changingMode || loading}
+                onClick={() => void onModeChange(mode)}
+                className={cn(
+                  "rounded-lg px-3 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+                  documentNumberingMode === mode
+                    ? "bg-[#0052FF] text-white shadow-sm"
+                    : "text-[#475569] hover:bg-white hover:text-[#0052FF]"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <Button
@@ -72,7 +110,7 @@ export function NumberingStepHeader({
           <Button
             type="button"
             onClick={() => void onStart()}
-            disabled={active}
+            disabled={active || changingMode}
           >
             {active ? (
               <Loader2 data-icon="inline-start" className="animate-spin" />

@@ -42,12 +42,10 @@ export function UploadPageView(props: Record<string, any>) {
     zipRef,
     doc2Has,
     zipHas,
-    hasActivePlan,
     hasAnalyzedArrangementPlan,
     doc1State,
     doc2State,
     zipState,
-    planAnalysisState,
     planAnalyzing,
     planProgressPhase,
     planCompletedPhases,
@@ -263,8 +261,8 @@ export function UploadPageView(props: Record<string, any>) {
                   </h2>
                   <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[#64748B]">
                     Hãy upload phương án chỉnh lý ở Step 1 để xem cây phân loại
-                    và tiêu chí phân tích. Các phần dữ liệu khác vẫn có thể xử lý
-                    độc lập.
+                    và tiêu chí phân tích. Các phần dữ liệu khác vẫn có thể xử
+                    lý độc lập.
                   </p>
                   {parsedPlan.retention_appendices.length > 0 && (
                     <div className="mx-auto mt-6 max-w-4xl text-left">
@@ -337,7 +335,7 @@ export function UploadPageView(props: Record<string, any>) {
                     return
                   }
                   navigate(
-                    `/sessions/${encodeURIComponent(currentSessionId)}/step/5?start=1`
+                    `/sessions/${encodeURIComponent(currentSessionId)}/step/5`
                   )
                 }}
               />
@@ -355,6 +353,8 @@ export function UploadPageView(props: Record<string, any>) {
             >
               <NumberingStep
                 sessionId={sessionId ?? routeSessionId ?? null}
+                documentNumberingMode={documentNumberingMode}
+                onDocumentNumberingModeChange={selectDocumentNumberingMode}
                 autoStart={searchParams.get("start") === "1"}
                 onAutoStartHandled={handleFinalizeAutoStartHandled}
                 onContinue={() => {

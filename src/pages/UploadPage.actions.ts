@@ -230,7 +230,7 @@ export function createUploadPageActions(context: Record<string, any>) {
     cache.documentNumberingMode = mode
     setDocumentNumberingMode(mode)
     if (!cache.sessionId || mode === cache.persistedDocumentNumberingMode)
-      return
+      return true
     const savePromise = patchActivePlan(cache.sessionId, {
       document_numbering_mode: mode,
     })
@@ -239,12 +239,15 @@ export function createUploadPageActions(context: Record<string, any>) {
       const planResponse = await savePromise
       applyActivePlanResponse(planResponse)
       toast.success("Đã lưu cách xử lý trang PDF.")
+      return true
     } catch (err) {
+      applyPersistedDocumentNumberingMode(cache.persistedDocumentNumberingMode)
       toast.error(
         err instanceof Error
           ? `Không lưu được cách xử lý trang PDF: ${err.message}`
           : "Không lưu được cách xử lý trang PDF."
       )
+      return false
     } finally {
       if (cache.documentNumberingModeSavePromise === savePromise) {
         cache.documentNumberingModeSavePromise = null

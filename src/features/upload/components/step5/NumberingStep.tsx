@@ -9,6 +9,7 @@ import {
   getDocumentNumberingStatus,
   importMetadataBoxNumbers as importMetadataBoxNumbersApi,
   updateDocumentNumberingFromPage,
+  type DocumentNumberingMode,
   type NumberingDocumentStatus,
   type NumberingStatusResponse,
 } from "@/features/upload/api/sessionApi"
@@ -36,6 +37,10 @@ const NUMBERING_PROGRESS_PHASES = [
 
 interface NumberingStepProps {
   sessionId: string | null
+  documentNumberingMode: DocumentNumberingMode
+  onDocumentNumberingModeChange: (
+    mode: DocumentNumberingMode
+  ) => Promise<boolean | void>
   autoStart?: boolean
   onAutoStartHandled?: () => void
   onContinue: () => void
@@ -43,6 +48,8 @@ interface NumberingStepProps {
 
 export function NumberingStep({
   sessionId,
+  documentNumberingMode,
+  onDocumentNumberingModeChange,
   autoStart = false,
   onAutoStartHandled,
   onContinue,
@@ -51,6 +58,7 @@ export function NumberingStep({
   const [status, setStatus] = useState<NumberingStatusResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState(false)
+  const [changingMode, setChangingMode] = useState(false)
   const [updatingDocumentId, setUpdatingDocumentId] = useState<number | null>(
     null
   )
@@ -355,22 +363,42 @@ export function NumberingStep({
     status?.job?.status === "running" ? status.job.locked_by : null
   const metadataBusy = metadataExporting || metadataImporting
   const canContinue = complete && failedCount === 0
+  const changeNumberingMode = async (mode: DocumentNumberingMode) => {
+    if (active || changingMode || mode === documentNumberingMode) return
+    const hadCompletedNumbering = complete
+    setChangingMode(true)
+    setError("")
+    try {
+      const saved = await onDocumentNumberingModeChange(mode)
+      if (saved === false) return
+      await refreshStatus({ silent: true })
+      setProgressPhase(null)
+      setProgressMessage("")
+      setCompletedPhases(new Set())
+      if (hadCompletedNumbering) {
+        toast.info("Đã đổi cách đánh số. Vui lòng đánh số lại tài liệu.")
+      }
+    } finally {
+      setChangingMode(false)
+    }
+  }
   const modeLabel =
-    status?.document_numbering_mode === "sheet"
-      ? "Đánh số theo tờ"
-      : "Đánh số theo trang"
+    documentNumberingMode === "sheet" ? "Đánh số theo tờ" : "Đánh số theo trang"
 
   return (
     <div className="flex flex-col gap-5">
       <NumberingStepHeader
         modeLabel={modeLabel}
+        documentNumberingMode={documentNumberingMode}
+        changingMode={changingMode}
         loading={loading}
         starting={starting}
         active={active}
         complete={complete}
         onRefresh={refreshStatus}
         onStart={() => startNumbering(false)}
-      />{" "}
+        onModeChange={changeNumberingMode}
+      />
       <NumberingMetadataPanel
         metadataImportInputRef={metadataImportInputRef}
         sessionId={sessionId}

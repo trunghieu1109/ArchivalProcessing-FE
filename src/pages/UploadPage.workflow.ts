@@ -3,6 +3,7 @@ import {
   enqueuePlanAnalysis,
   getSession,
   listSessionEvents,
+  type SessionInputUploadResponse,
   uploadSessionInput,
   waitForActivePlan,
 } from "@/features/upload/api/sessionApi"
@@ -250,60 +251,66 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
         doc1Ref.current?.hasFile() ? doc1Ref.current.process() : null,
         doc2Ref.current?.hasFile() ? doc2Ref.current.process() : null,
       ].filter(Boolean) as Promise<void>[]
-      let arrangementPlan: Awaited<ReturnType<typeof uploadSessionInput>> | null =
-        null
-      let retentionPlan: Awaited<ReturnType<typeof uploadSessionInput>> | null =
-        null
-      let zipInput: Awaited<ReturnType<typeof uploadSessionInput>> | null = null
-      const uploadTasks: Promise<void>[] = []
+      let arrangementUploadTask: Promise<SessionInputUploadResponse | null> =
+        Promise.resolve(null)
+      let retentionUploadTask: Promise<SessionInputUploadResponse | null> =
+        Promise.resolve(null)
+      let zipUploadTask: Promise<SessionInputUploadResponse | null> =
+        Promise.resolve(null)
 
       if (arrangementFile) {
         syncDoc1State("processing")
-        uploadTasks.push(
-          uploadSessionInput(
-            currentSessionId,
-            "arrangement_plan",
-            arrangementFile
-          ).then((response) => {
-            arrangementPlan = response
-            cache.arrangementPlanUpload = response
-            syncDoc1State("done")
-          })
-        )
+        arrangementUploadTask = uploadSessionInput(
+          currentSessionId,
+          "arrangement_plan",
+          arrangementFile
+        ).then((response) => {
+          cache.arrangementPlanUpload = response
+          syncDoc1State("done")
+          return response
+        })
       }
       if (retentionFileDraft) {
         syncDoc2State("processing")
-        uploadTasks.push(
-          uploadSessionInput(
-            currentSessionId,
-            "retention_schedule",
-            retentionFileDraft
-          ).then((response) => {
-            retentionPlan = response
-            cache.retentionUpload = response
-            syncDoc2State("done")
-          })
-        )
+        retentionUploadTask = uploadSessionInput(
+          currentSessionId,
+          "retention_schedule",
+          retentionFileDraft
+        ).then((response) => {
+          cache.retentionUpload = response
+          syncDoc2State("done")
+          return response
+        })
       }
       if (zipFile) {
         syncZipState("processing")
         syncZipUploadProgress(zipUploadProgressForFile(zipFile, "uploading"))
-        uploadTasks.push(
-          uploadSessionInput(currentSessionId, "raw_zip", zipFile, {
+        zipUploadTask = uploadSessionInput(
+          currentSessionId,
+          "raw_zip",
+          zipFile,
+          {
             onProgress: syncZipUploadProgress,
-          }).then((response) => {
-            zipInput = response
-            cache.zipUpload = response
-            syncZipUploadProgress(
-              zipUploadProgressForFile(zipFile, "done", zipFile.size)
-            )
-            syncZipState("done")
-            syncZipFolderPath(response.folder_path ?? response.data_path ?? "")
-          })
-        )
+          }
+        ).then((response) => {
+          cache.zipUpload = response
+          syncZipUploadProgress(
+            zipUploadProgressForFile(zipFile, "done", zipFile.size)
+          )
+          syncZipState("done")
+          syncZipFolderPath(response.folder_path ?? response.data_path ?? "")
+          return response
+        })
       }
 
-      await Promise.all([...uploadTasks, ...documentTasks])
+      const [[arrangementPlan, retentionPlan, zipInput]] = await Promise.all([
+        Promise.all([
+          arrangementUploadTask,
+          retentionUploadTask,
+          zipUploadTask,
+        ]),
+        Promise.all(documentTasks),
+      ])
 
       if (!arrangementFile) {
         const retentionFile = retentionPlan?.local_cached_path
@@ -332,7 +339,9 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
           )
           const plan = activePlanToParsedPlan(planResponse)
           cache.activePlanVersionId = planResponse.id ?? ""
-          applyPersistedDossierBuildStrategy(activePlanBuildStrategy(planResponse))
+          applyPersistedDossierBuildStrategy(
+            activePlanBuildStrategy(planResponse)
+          )
           applyPersistedDocumentNumberingMode(
             activePlanDocumentNumberingMode(planResponse)
           )
@@ -346,7 +355,9 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
           syncSessionMetadata(sessionAfterRetention)
           syncPlanAnalysisState("done")
           setPlanProgressPhase(null)
-          setPlanProgressMessage("Đã phân tích xong thông tư thời hạn bảo quản.")
+          setPlanProgressMessage(
+            "Đã phân tích xong thông tư thời hạn bảo quản."
+          )
           toast.success(
             "Đã tạo session và phân tích thời hạn bảo quản. Vui lòng kiểm tra ở Step 2."
           )
