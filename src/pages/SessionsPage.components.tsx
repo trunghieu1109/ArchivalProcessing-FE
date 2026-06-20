@@ -239,7 +239,7 @@ export function SessionCard({
               type="button"
               onClick={onArtifacts}
               disabled={deleting}
-              className="flex items-center justify-center gap-1.5 rounded-lg border border-[#CBD5E1] px-2.5 py-1 text-xs font-semibold text-[#475569] transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF] disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex items-center justify-center gap-1.5 rounded-lg border border-[#0052FF] bg-[#0052FF] px-2.5 py-1 text-xs font-semibold text-white transition-colors hover:border-[#0047D6] hover:bg-[#0047D6] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Archive className="size-3.5" />
               Tạo mục lục

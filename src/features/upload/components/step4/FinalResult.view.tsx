@@ -122,10 +122,7 @@ export function FinalResultView(props: Record<string, any>) {
     >
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
-          <h2
-            className="text-2xl text-[#0F172A]"
-            style={{ fontFamily: "'Calistoga', Georgia, serif" }}
-          >
+          <h2 className="font-sans text-2xl font-semibold tracking-normal text-[#0F172A]">
             Kết quả
           </h2>
           <p className="mt-1 text-sm text-[#475569]">

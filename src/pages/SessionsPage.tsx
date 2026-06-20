@@ -82,7 +82,7 @@ export function SessionsPage() {
 
   const openArtifacts = (sessionId: string) => {
     window.localStorage.setItem(LAST_SESSION_KEY, sessionId)
-    navigate(`/sessions/${encodeURIComponent(sessionId)}/step/5`)
+    navigate(`/sessions/${encodeURIComponent(sessionId)}/step/6?start=1`)
   }
 
   const removeSession = async (session: SessionSummary) => {

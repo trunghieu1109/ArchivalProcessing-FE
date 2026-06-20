@@ -77,10 +77,7 @@ export function FolderTree({
       className="flex flex-col gap-4"
     >
       <div>
-        <h2
-          className="text-2xl text-[#0F172A]"
-          style={{ fontFamily: "'Calistoga', Georgia, serif" }}
-        >
+        <h2 className="font-sans text-2xl font-semibold tracking-normal text-[#0F172A]">
           Phương án chỉnh lý
         </h2>
         <p className="mt-0.5 text-sm font-semibold text-[#0052FF] uppercase">

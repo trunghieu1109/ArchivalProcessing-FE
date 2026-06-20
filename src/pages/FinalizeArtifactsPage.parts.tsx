@@ -43,7 +43,7 @@ export function FinalizePageHeader({
             className="h-12 w-auto object-contain sm:h-14"
           />
           <div className="min-w-0">
-            <h1 className="truncate text-2xl font-bold tracking-tight">
+            <h1 className="truncate font-sans text-2xl font-semibold tracking-normal">
               Tạo mục lục
             </h1>
             <p className="mt-1 truncate text-sm text-[#64748B]">{sessionId}</p>
@@ -89,9 +89,9 @@ export function FinalizeToolbar({
       {embedded ? (
         <div className="min-w-0">
           <p className="text-[11px] font-semibold tracking-[0.16em] text-[#64748B] uppercase">
-            Bước 5
+            Bước 6
           </p>
-          <h2 className="mt-1 text-xl font-semibold text-[#0F172A]">
+          <h2 className="mt-1 font-sans text-2xl font-semibold tracking-normal text-[#0F172A]">
             Tạo mục lục
           </h2>
           <p className="mt-1 truncate text-sm text-[#64748B]">
@@ -127,10 +127,9 @@ export function FinalizeToolbar({
           Làm mới
         </Button>
         <Button
-          variant="outline"
           onClick={() => void onStartFinalize()}
           disabled={finalizing || !sessionId}
-          className="w-full lg:w-auto"
+          className="w-full bg-[#0052FF] text-white hover:bg-[#0047D6] lg:w-auto"
         >
           {finalizing ? (
             <Loader2 data-icon="inline-start" className="animate-spin" />

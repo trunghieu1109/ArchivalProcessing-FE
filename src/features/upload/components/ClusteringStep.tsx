@@ -102,7 +102,7 @@ export function ClusteringStep({ tree, items, onDone }: ClusteringStepProps) {
             Bước 3/4
           </span>
         </div>
-        <h2 className="mt-2 text-2xl text-[#0F172A]">
+        <h2 className="mt-2 font-sans text-2xl font-semibold tracking-normal text-[#0F172A]">
           Đang lập hồ sơ tài liệu
         </h2>
 

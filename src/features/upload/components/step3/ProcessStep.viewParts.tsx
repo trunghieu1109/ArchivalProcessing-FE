@@ -22,7 +22,9 @@ export function ProcessStepSummaryPanel({
     <>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h2 className="text-2xl text-foreground">Xử lý & lập hồ sơ</h2>
+          <h2 className="font-sans text-2xl font-semibold tracking-normal text-foreground">
+            Xử lý & lập hồ sơ
+          </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Metadata được lấy từ backend. Sau khi metadata được xác nhận, màn
             hình sẽ chuyển sang kết quả lập hồ sơ.

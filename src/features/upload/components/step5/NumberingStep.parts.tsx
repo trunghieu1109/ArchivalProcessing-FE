@@ -51,7 +51,7 @@ export function NumberingStepHeader({
           <p className="text-sm font-semibold tracking-[0.14em] text-[#64748B] uppercase">
             Đánh số trang
           </p>
-          <h2 className="mt-1 text-2xl font-semibold text-[#0F172A]">
+          <h2 className="mt-1 font-sans text-2xl font-semibold tracking-normal text-[#0F172A]">
             Tạo PDF đã đánh số cho từng tài liệu
           </h2>
           <p className="mt-2 max-w-3xl text-sm text-[#475569]">
@@ -201,10 +201,9 @@ export function NumberingStepFooter({
         </div>
         <Button
           type="button"
-          variant="secondary"
           onClick={onContinue}
           disabled={!canContinue || metadataBusy}
-          className="w-full sm:w-auto"
+          className="w-full bg-[#0052FF] text-white hover:bg-[#0047D6] sm:w-auto"
         >
           Tạo mục lục
           <ArrowRight data-icon="inline-end" />
