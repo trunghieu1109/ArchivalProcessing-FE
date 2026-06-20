@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { DocumentPreviewTarget } from "@/features/upload/components/DocumentPdfPreview"
 import {
   getClusterGroupInformationTable,
+  patchSessionDossier,
   type ClusterGroupInformationTableResponse,
   type ClusterVersionResponse,
 } from "@/features/upload/api/sessionApi"
+import { toast } from "sonner"
 import {
   ensureTemporaryFolderGroup,
   versionToGroups,
@@ -31,6 +33,7 @@ import {
   clusterDocumentToPreviewTarget,
   dossierPageCount,
   regularDossierCount,
+  updateDossierGroupFromResponse,
 } from "./FinalResult.metadataUtils"
 import {
   clusterProgressLabel,
@@ -554,6 +557,44 @@ export function FinalResult({
     [previewDocuments]
   )
 
+  const handleSelectRetentionCandidate = useCallback(
+    async (dossierId: string, entryId: string) => {
+      if (viewingHistoricalClusterVersion) {
+        toast.error("Không thể sửa thời hạn bảo quản khi đang xem phiên bản cũ.")
+        throw new Error("Cannot edit a historical cluster version")
+      }
+      if (!sessionId) {
+        toast.error("Chưa có session để cập nhật thời hạn bảo quản.")
+        throw new Error("Missing session id")
+      }
+      const response = await patchSessionDossier(sessionId, dossierId, {
+        retention_candidate_entry_id: entryId,
+      })
+      setGroups((previous) =>
+        updateDossierGroupFromResponse(previous, dossierId, response)
+      )
+      setStatus(
+        `Đã cập nhật thời hạn bảo quản "${response.retention_period || ""}".`
+      )
+      toast.success("Đã lưu lựa chọn thời hạn bảo quản.")
+      if (selectedGroupInfoNode && selectedGroupInfoDossierIds.length > 0) {
+        const table = await getClusterGroupInformationTable(sessionId, {
+          cluster_version_id: displayedClusterVersionId,
+          dossier_ids: selectedGroupInfoDossierIds,
+          group_label: selectedGroupInfoNode.label,
+        })
+        setGroupInformationTable(table)
+      }
+    },
+    [
+      displayedClusterVersionId,
+      selectedGroupInfoDossierIds,
+      selectedGroupInfoNode,
+      sessionId,
+      viewingHistoricalClusterVersion,
+    ]
+  )
+
   const activeClusterProgressLabel = clusterProgressPhase
     ? clusterProgressLabel(clusterProgressPhase)
     : ""
@@ -625,6 +666,7 @@ export function FinalResult({
       handleSaveDossierMetadata={handleSaveDossierMetadata}
       handleSelectDossierMetadata={handleSelectDossierMetadataFromTree}
       handleSelectGroupInformation={handleSelectGroupInformation}
+      handleSelectRetentionCandidate={handleSelectRetentionCandidate}
       handleSelectPreviewDocument={handleSelectPreviewDocumentFromTree}
       handleToggleDocumentSelection={handleToggleDocumentSelection}
       handleToggleGroupSelection={handleToggleGroupSelection}

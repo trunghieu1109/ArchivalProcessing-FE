@@ -8,6 +8,7 @@ import type {
   EnsureClusterBuildResponse,
   SelectedDocumentsMoveResponse,
   SelectedDocumentsPromoteResponse,
+  SessionDossierRetentionCandidatesResponse,
   SessionDossierPatchPayload,
   SessionDossierSummary,
   TemporaryFolderPromoteResponse,
@@ -85,6 +86,18 @@ export async function patchSessionDossier(
         ...payload,
       }),
     }
+  )
+}
+
+export async function listSessionDossierRetentionCandidates(
+  sessionId: string,
+  dossierId: string,
+  limit = 10
+): Promise<SessionDossierRetentionCandidatesResponse> {
+  const searchParams = new URLSearchParams()
+  searchParams.set("limit", String(limit))
+  return requestJson<SessionDossierRetentionCandidatesResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/dossiers/${encodeURIComponent(dossierId)}/retention-candidates?${searchParams.toString()}`
   )
 }
 

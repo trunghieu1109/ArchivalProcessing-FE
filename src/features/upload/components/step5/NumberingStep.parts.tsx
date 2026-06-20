@@ -7,7 +7,6 @@ import {
 } from "react"
 import {
   ArrowRight,
-  Download,
   Eye,
   FileSpreadsheet,
   FileText,
@@ -459,33 +458,21 @@ export function NumberingDocumentRow({
         </button>
       </form>
       <div className="flex shrink-0 flex-wrap items-center gap-1.5 lg:justify-end">
-        {document.download_url ? (
-          <>
-            <button
-              type="button"
-              onClick={onPreview}
-              title="Preview"
-              aria-label="Preview"
-              className={cn(
-                "inline-flex size-8 items-center justify-center rounded-lg border text-[#475569] transition-colors",
-                previewing
-                  ? "border-[#0052FF] bg-[#EAF1FF] text-[#0052FF]"
-                  : "border-[#CBD5E1] bg-white text-[#475569] hover:border-[#0052FF]/40 hover:text-[#0052FF]"
-              )}
-            >
-              <Eye className="size-3.5" />
-            </button>
-            <a
-              href={document.download_url}
-              target="_blank"
-              rel="noreferrer"
-              title="Mở PDF"
-              aria-label="Mở PDF"
-              className="inline-flex size-8 items-center justify-center rounded-lg border border-[#CBD5E1] bg-white text-[#475569] transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF]"
-            >
-              <Download className="size-3.5" />
-            </a>
-          </>
+        {document.numbered_pdf_version_id ? (
+          <button
+            type="button"
+            onClick={onPreview}
+            title="Preview"
+            aria-label="Preview"
+            className={cn(
+              "inline-flex size-8 items-center justify-center rounded-lg border text-[#475569] transition-colors",
+              previewing
+                ? "border-[#0052FF] bg-[#EAF1FF] text-[#0052FF]"
+                : "border-[#CBD5E1] bg-white text-[#475569] hover:border-[#0052FF]/40 hover:text-[#0052FF]"
+            )}
+          >
+            <Eye className="size-3.5" />
+          </button>
         ) : document.status === "running" ? (
           <Loader2 className="size-4 animate-spin text-[#0052FF]" />
         ) : null}

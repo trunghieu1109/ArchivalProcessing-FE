@@ -7,6 +7,7 @@ import {
   enqueueDocumentNumbering,
   exportMetadataSnapshot,
   getDocumentNumberingStatus,
+  getNumberedDocumentPreviewUrl,
   importMetadataBoxNumbers as importMetadataBoxNumbersApi,
   updateDocumentNumberingFromPage,
   type DocumentNumberingMode,
@@ -68,6 +69,10 @@ export function NumberingStep({
   const [previewDocumentId, setPreviewDocumentId] = useState<number | null>(
     null
   )
+  const [previewUrl, setPreviewUrl] = useState("")
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState("")
+  const [previewRefreshKey, setPreviewRefreshKey] = useState(0)
   const [metadataExporting, setMetadataExporting] = useState(false)
   const [metadataImporting, setMetadataImporting] = useState(false)
   const metadataImportInputRef = useRef<HTMLInputElement | null>(null)
@@ -352,6 +357,51 @@ export function NumberingStep({
       ) ?? null,
     [previewDocumentId, status?.documents]
   )
+  const previewSessionDocumentId = previewDocument?.session_document_id ?? null
+  const previewPdfVersionId = previewDocument?.numbered_pdf_version_id ?? null
+
+  useEffect(() => {
+    if (
+      !sessionId ||
+      previewSessionDocumentId === null ||
+      previewPdfVersionId === null ||
+      previewPdfVersionId === ""
+    ) {
+      setPreviewUrl("")
+      setPreviewError("")
+      setPreviewLoading(false)
+      return
+    }
+
+    let cancelled = false
+    setPreviewUrl("")
+    setPreviewError("")
+    setPreviewLoading(true)
+    getNumberedDocumentPreviewUrl(sessionId, previewSessionDocumentId)
+      .then((response) => {
+        if (!cancelled) setPreviewUrl(response.download_url)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setPreviewError(
+          err instanceof Error
+            ? err.message
+            : "Không thể cấp URL preview PDF đã đánh số."
+        )
+      })
+      .finally(() => {
+        if (!cancelled) setPreviewLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    previewPdfVersionId,
+    previewRefreshKey,
+    previewSessionDocumentId,
+    sessionId,
+  ])
   const totalDocuments = status?.summary.total_documents ?? 0
   const doneCount = status?.summary.done ?? 0
   const failedCount = status?.summary.failed ?? 0
@@ -522,6 +572,10 @@ export function NumberingStep({
         </div>
         <NumberedPdfPreviewPanel
           document={previewDocument}
+          previewUrl={previewUrl}
+          loading={previewLoading}
+          error={previewError}
+          onRefresh={() => setPreviewRefreshKey((key) => key + 1)}
           onClose={() => setPreviewDocumentId(null)}
         />
       </div>

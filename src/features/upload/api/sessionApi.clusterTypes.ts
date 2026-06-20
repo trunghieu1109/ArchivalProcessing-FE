@@ -103,6 +103,7 @@ export interface SessionDossierPatchPayload {
   box_number?: string | null
   folder_name?: string | null
   retention_period?: string | null
+  retention_candidate_entry_id?: string | null
   archive_name?: string | null
   fonds_name?: string | null
   inventory_number?: string | null
@@ -116,6 +117,42 @@ export interface SessionDossierPatchPayload {
   physical_condition?: string | null
   note?: string | null
   created_by?: string
+}
+
+export interface SessionDossierRetentionCandidatesResponse {
+  session_id: string
+  dossier_id: string
+  cluster_version_id: string
+  retention_recommendation: Record<string, unknown>
+  candidates: RetentionCandidateSummary[]
+  candidate_count: number
+  candidates_truncated: boolean
+}
+
+export interface RetentionReferenceMergePathItem {
+  name: string
+  depth?: number | null
+}
+
+export interface RetentionReference {
+  entry_id?: string | null
+  appendix_name?: string | null
+  source_file_name?: string | null
+  merge_path?: RetentionReferenceMergePathItem[]
+  breadcrumb?: string | null
+  document_type?: string | null
+  source_unit_index?: string | number | null
+  retention_period?: string | null
+  note?: string | null
+}
+
+export interface RetentionCandidateSummary extends RetentionReference {
+  entry_id: string
+  rank?: number | null
+  combined_score?: number | null
+  keyword_score?: number | null
+  semantic_score?: number | null
+  context?: RetentionReference | null
 }
 
 export interface SessionClusterSummary {
@@ -160,6 +197,8 @@ export interface ClusterGroupInformationRow {
   retention_period: string
   basis: string
   basis_detail?: string
+  retention_reference?: RetentionReference | null
+  retention_candidate_count?: number
   file_name: string
   position_index?: number | null
 }

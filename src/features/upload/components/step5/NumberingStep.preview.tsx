@@ -1,17 +1,31 @@
-import { Download, Eye, X } from "lucide-react"
+import {
+  Download,
+  Eye,
+  Loader2,
+  RefreshCw,
+  TriangleAlert,
+  X,
+} from "lucide-react"
 import type { NumberingDocumentStatus } from "@/features/upload/api/sessionApi"
 import { pdfEmbedUrl } from "./NumberingStep.utils"
 
 export function NumberedPdfPreviewPanel({
   document,
+  previewUrl,
+  loading,
+  error,
+  onRefresh,
   onClose,
 }: {
   document: NumberingDocumentStatus | null
+  previewUrl: string
+  loading: boolean
+  error: string
+  onRefresh: () => void
   onClose: () => void
 }) {
-  const previewUrl = document?.download_url
-    ? pdfEmbedUrl(document.download_url)
-    : ""
+  const embedUrl = previewUrl ? pdfEmbedUrl(previewUrl) : ""
+
   return (
     <section className="min-h-[420px] min-w-0 overflow-hidden rounded-2xl border border-[#D8E1EC] bg-white shadow-sm xl:sticky xl:top-4 xl:self-start">
       <div className="flex min-h-14 items-center justify-between gap-3 border-b border-[#EEF2F7] px-4 py-3">
@@ -27,9 +41,9 @@ export function NumberedPdfPreviewPanel({
         </div>
         {document ? (
           <div className="flex shrink-0 items-center gap-2">
-            {document.download_url ? (
+            {previewUrl ? (
               <a
-                href={document.download_url}
+                href={previewUrl}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-[#CBD5E1] bg-white px-3 text-xs font-medium text-[#475569] transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF]"
@@ -38,6 +52,16 @@ export function NumberedPdfPreviewPanel({
                 Mở PDF
               </a>
             ) : null}
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={loading}
+              className="inline-flex size-8 items-center justify-center rounded-lg border border-[#CBD5E1] bg-white text-[#475569] transition-colors hover:bg-[#F8FAFC] hover:text-[#0052FF] disabled:opacity-50"
+              title="Làm mới URL preview"
+              aria-label="Làm mới URL preview"
+            >
+              <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
+            </button>
             <button
               type="button"
               onClick={onClose}
@@ -50,10 +74,28 @@ export function NumberedPdfPreviewPanel({
           </div>
         ) : null}
       </div>
-      {document && previewUrl ? (
+
+      {document && loading ? (
+        <div className="flex h-[min(72svh,760px)] min-h-[420px] items-center justify-center text-sm text-[#64748B]">
+          <Loader2 className="mr-2 size-4 animate-spin text-[#0052FF]" />
+          Đang cấp URL preview mới...
+        </div>
+      ) : document && error ? (
+        <div className="flex h-[min(72svh,760px)] min-h-[420px] flex-col items-center justify-center gap-3 px-8 text-center text-sm text-rose-700">
+          <TriangleAlert className="size-7" />
+          <p>{error}</p>
+          <button
+            type="button"
+            onClick={onRefresh}
+            className="rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-medium hover:bg-rose-50"
+          >
+            Thử lại
+          </button>
+        </div>
+      ) : document && embedUrl ? (
         <iframe
           title={`Preview PDF đã đánh số ${document.file_name || document.document_id}`}
-          src={previewUrl}
+          src={embedUrl}
           className="h-[min(72svh,760px)] min-h-[420px] w-full border-0 bg-white"
         />
       ) : (

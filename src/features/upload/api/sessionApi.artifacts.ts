@@ -13,6 +13,7 @@ import type {
   MetadataSnapshotGroup,
   MetadataBoxNumberImportResponse,
   MetadataSnapshotResponse,
+  NumberedDocumentPreviewUrlResponse,
   NumberingStatusResponse,
 } from "./sessionApi.types"
 
@@ -73,6 +74,15 @@ export async function getDocumentNumberingStatus(
 ): Promise<NumberingStatusResponse> {
   return requestJson<NumberingStatusResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/numbering/status`
+  )
+}
+
+export async function getNumberedDocumentPreviewUrl(
+  sessionId: string,
+  sessionDocumentId: number
+): Promise<NumberedDocumentPreviewUrlResponse> {
+  return requestJson<NumberedDocumentPreviewUrlResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/numbering/documents/${encodeURIComponent(String(sessionDocumentId))}/preview-url`
   )
 }
 

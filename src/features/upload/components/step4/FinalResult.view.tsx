@@ -62,6 +62,7 @@ export function FinalResultView(props: Record<string, any>) {
     handleCloseGroupInformation,
     handleSelectGroupInfoDossier,
     handleSelectGroupInfoDocument,
+    handleSelectRetentionCandidate,
     loading,
     loadingClusterVersionId,
     movingSelectedDocumentsTargetId,
@@ -420,9 +421,12 @@ export function FinalResultView(props: Record<string, any>) {
                 loading={groupInformationLoading}
                 error={groupInformationError}
                 className="h-[min(70svh,560px)] min-h-[420px] min-w-0 max-w-full"
+                sessionId={sessionId}
                 onClose={handleCloseGroupInformation}
                 onSelectDossier={handleSelectGroupInfoDossier}
                 onSelectDocument={handleSelectGroupInfoDocument}
+                onSelectRetentionCandidate={handleSelectRetentionCandidate}
+                retentionSelectionDisabled={viewingHistoricalClusterVersion}
               />
             ) : null}
           </div>

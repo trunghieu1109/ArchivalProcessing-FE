@@ -153,6 +153,19 @@ export interface NumberingStatusResponse {
   dossiers: NumberingDossierStatus[]
 }
 
+export interface NumberedDocumentPreviewUrlResponse {
+  session_id: string
+  session_document_id: number
+  document_id: string
+  file_name: string
+  numbered_pdf_version_id: string | number
+  version_type?: string | null
+  object_name?: string | null
+  download_url: string
+  expires_in?: number | null
+  expires_at?: string | number | null
+}
+
 export interface EnqueueNumberingResponse {
   session_id: string
   job_id: number | null
