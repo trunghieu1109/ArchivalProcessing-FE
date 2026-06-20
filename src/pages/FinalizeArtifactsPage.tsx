@@ -513,7 +513,7 @@ export function FinalizeArtifactsStep({
         {embedded && visibleArtifacts.length > 0 && !finalizing && onContinue ? (
           <div className="sticky bottom-0 z-20 flex justify-end border-t border-[#CBD5E1] bg-white/95 px-4 py-3 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur">
             <Button type="button" onClick={onContinue}>
-              Sang Xuất bản
+              Xuất bản
               <ArrowRight data-icon="inline-end" />
             </Button>
           </div>
