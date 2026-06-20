@@ -145,6 +145,9 @@ function normalizeRetentionNode(value: unknown): RetentionAppendixNode | null {
       record.retention_period || record.retention || record.period
     ),
     note: stringValue(record.note || record.notes),
+    source_row_index: numberValue(record.source_row_index),
+    source_unit_index: numberValue(record.source_unit_index),
+    source_file_name: stringValue(record.source_file_name || record.file_name),
     children,
   }
 }
@@ -605,4 +608,11 @@ export function stringValue(value: unknown): string {
   return typeof value === "string" || typeof value === "number"
     ? String(value).trim()
     : ""
+}
+
+function numberValue(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value
+  if (typeof value !== "string") return null
+  const parsed = Number(value.trim())
+  return Number.isFinite(parsed) ? parsed : null
 }

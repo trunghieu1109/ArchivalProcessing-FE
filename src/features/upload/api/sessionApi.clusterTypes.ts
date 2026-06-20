@@ -159,6 +159,7 @@ export interface ClusterGroupInformationRow {
   author: string
   retention_period: string
   basis: string
+  basis_detail?: string
   file_name: string
   position_index?: number | null
 }

@@ -151,7 +151,7 @@ function GroupInformationRow({
           ) : (
             <FileText className="mt-0.5 size-3.5 shrink-0 text-[#64748B]" />
           )}
-          <span className="min-w-0 whitespace-normal [overflow-wrap:anywhere]">
+          <span className="min-w-0 [overflow-wrap:anywhere] whitespace-normal">
             {row.title || row.file_name || "Chưa có"}
           </span>
         </div>
@@ -159,20 +159,27 @@ function GroupInformationRow({
       <BodyCell className="align-top tabular-nums">
         {formatCount(row.count_value)}
       </BodyCell>
-      <BodyCell className="align-top whitespace-normal [overflow-wrap:anywhere]">
+      <BodyCell className="align-top [overflow-wrap:anywhere] whitespace-normal">
         {row.date_text}
       </BodyCell>
-      <BodyCell className="align-top whitespace-normal [overflow-wrap:anywhere]">
+      <BodyCell className="align-top [overflow-wrap:anywhere] whitespace-normal">
         {row.document_number}
       </BodyCell>
-      <BodyCell className="align-top whitespace-normal [overflow-wrap:anywhere]">
+      <BodyCell className="align-top [overflow-wrap:anywhere] whitespace-normal">
         {row.author}
       </BodyCell>
-      <BodyCell className="align-top whitespace-normal [overflow-wrap:anywhere]">
+      <BodyCell className="align-top [overflow-wrap:anywhere] whitespace-normal">
         {row.retention_period}
       </BodyCell>
       <BodyCell className="align-top">
-        <span className="whitespace-normal [overflow-wrap:anywhere]">
+        <span
+          className={cn(
+            "[overflow-wrap:anywhere] whitespace-normal",
+            row.basis_detail &&
+              "cursor-help underline decoration-dotted underline-offset-2"
+          )}
+          title={row.basis_detail || row.basis || undefined}
+        >
           {row.basis}
         </span>
       </BodyCell>
@@ -216,7 +223,7 @@ function HeaderCell({
     <th
       scope="col"
       className={cn(
-        "border border-[#CBD5E1] px-2 py-2 text-center text-[11px] font-bold leading-5 text-[#0F172A]",
+        "border border-[#CBD5E1] px-2 py-2 text-center text-[11px] leading-5 font-bold text-[#0F172A]",
         className
       )}
     >

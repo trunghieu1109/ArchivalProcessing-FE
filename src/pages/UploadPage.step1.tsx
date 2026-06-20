@@ -214,10 +214,10 @@ export function UploadPageStepOne(props: Record<string, any>) {
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: easeOut, delay: 0.3 }}
-        className="flex flex-col items-stretch gap-4 rounded-2xl border border-border bg-card px-4 py-4 shadow-sm sm:px-6 lg:flex-row lg:items-center lg:justify-between"
+        className="grid grid-cols-1 items-stretch gap-4 rounded-2xl border border-border bg-card px-4 py-4 shadow-sm sm:px-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
       >
-        <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
-          <div className="flex flex-wrap gap-2">
+        <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center md:gap-4">
+          <div className="flex shrink-0 flex-wrap gap-2">
             {statusItems.map(
               (
                 s: {
@@ -230,7 +230,7 @@ export function UploadPageStepOne(props: Record<string, any>) {
                 <div
                   key={i}
                   className={cn(
-                    "flex items-center gap-1.5 rounded-full px-3 py-1 font-roboto text-[11px] font-semibold tracking-[0.1em] uppercase transition-all duration-200",
+                    "flex max-w-full items-center gap-1.5 rounded-full px-3 py-1 font-roboto text-[11px] font-semibold tracking-[0.1em] whitespace-nowrap uppercase transition-all duration-200",
                     s.state === "done"
                       ? "text-primary-foreground"
                       : s.has
@@ -261,59 +261,60 @@ export function UploadPageStepOne(props: Record<string, any>) {
               )
             )}
           </div>
-          <div className="text-sm font-medium">
+          <div className="min-w-0 text-sm font-medium [&>span]:max-w-full [&>span]:min-w-0">
             {sessionLoading ? (
-              <span className="flex items-center gap-1.5 text-muted-foreground">
-                <Loader2 className="size-3.5 animate-spin text-primary" /> Đang
-                tải lại trạng thái session...
+              <span className="flex min-w-0 items-center gap-1.5 truncate text-muted-foreground">
+                <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />{" "}
+                Đang tải lại trạng thái session...
               </span>
             ) : allDone ? (
-              <span className="flex items-center gap-1.5 text-primary">
-                <CheckCircle2 className="size-4" /> Phương án đã sẵn sàng
+              <span className="flex min-w-0 items-center gap-1.5 truncate text-primary">
+                <CheckCircle2 className="size-4 shrink-0" /> Phương án đã sẵn
+                sàng
               </span>
             ) : planAnalyzing ? (
-              <span className="flex items-center gap-1.5 text-muted-foreground">
-                <Loader2 className="size-3.5 animate-spin text-primary" /> Đang
-                phân tích phương án...
+              <span className="flex min-w-0 items-center gap-1.5 truncate text-muted-foreground">
+                <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />{" "}
+                Đang phân tích phương án...
               </span>
             ) : zipUploadProgress ? (
-              <span className="flex items-center gap-1.5 text-muted-foreground">
+              <span className="flex min-w-0 items-center gap-1.5 overflow-hidden text-muted-foreground">
                 {zipUploadProgress.phase === "done" ? (
-                  <CheckCircle2 className="size-4 text-primary" />
+                  <CheckCircle2 className="size-4 shrink-0 text-primary" />
                 ) : (
-                  <Loader2 className="size-3.5 animate-spin text-primary" />
+                  <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />
                 )}
-                {zipUploadStatus}
+                <span className="min-w-0 truncate">{zipUploadStatus}</span>
                 {zipUploadDetail ? (
-                  <span className="font-bold text-foreground">
+                  <span className="min-w-0 truncate font-bold text-foreground">
                     {zipUploadDetail}
                   </span>
                 ) : null}
               </span>
             ) : allProcessing ? (
-              <span className="flex items-center gap-1.5 text-muted-foreground">
-                <Loader2 className="size-3.5 animate-spin text-primary" /> Đang
-                xử lý tệp...
+              <span className="flex min-w-0 items-center gap-1.5 truncate text-muted-foreground">
+                <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />{" "}
+                Đang xử lý tệp...
               </span>
             ) : existingSessionMode && zipSupplementUploaded ? (
-              <span className="text-muted-foreground">
+              <span className="block truncate text-muted-foreground">
                 ZIP bổ sung đã upload xong. Nhấn nút bên phải để extract
                 metadata.
               </span>
             ) : hasAnyFile ? (
-              <span className="text-muted-foreground">
+              <span className="block truncate text-muted-foreground">
                 Đã chọn:{" "}
                 <span className="font-bold text-foreground">
                   {(selectedInputLabels ?? []).join(", ")}
                 </span>
               </span>
             ) : Boolean(readyCount) && !readyCount ? (
-              <span className="text-muted-foreground">
+              <span className="block truncate text-muted-foreground">
                 <span className="font-bold text-foreground">{readyCount}</span>{" "}
                 / {requiredFileCount} mục sẵn sàng
               </span>
             ) : (
-              <span className="text-muted-foreground">
+              <span className="block truncate text-muted-foreground">
                 {existingSessionMode
                   ? "Có thể bỏ qua bước tải ZIP để xem phương án"
                   : "Chọn ít nhất 1 file để bắt đầu"}
@@ -326,7 +327,7 @@ export function UploadPageStepOne(props: Record<string, any>) {
           disabled={primaryActionDisabled}
           onClick={handleStartAll}
           className={cn(
-            "group flex w-full min-w-44 items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold transition-all duration-200 sm:w-auto",
+            "group flex h-12 w-full min-w-0 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold transition-all duration-200 sm:w-auto sm:min-w-44 lg:max-w-[16rem]",
             !primaryActionDisabled
               ? "text-primary-foreground hover:-translate-y-0.5 active:scale-[0.98]"
               : "cursor-not-allowed bg-muted text-muted-foreground"
@@ -347,7 +348,7 @@ export function UploadPageStepOne(props: Record<string, any>) {
           ) : (
             <Play className="size-4" />
           )}
-          <span>
+          <span className="min-w-0 truncate whitespace-nowrap">
             {sessionLoading
               ? "Đang tải..."
               : planAnalyzing
@@ -360,11 +361,11 @@ export function UploadPageStepOne(props: Record<string, any>) {
                       ? "Extract metadata ZIP bổ sung"
                       : existingSessionMode && zipHas && !hasActivePlan
                         ? "Đi tới extract metadata"
-                      : allDone
-                        ? "Tiếp tục"
-                        : existingSessionMode
+                        : allDone
                           ? "Tiếp tục"
-                          : "Bắt đầu xử lý"}
+                          : existingSessionMode
+                            ? "Tiếp tục"
+                            : "Bắt đầu xử lý"}
           </span>
           {!primaryActionDisabled && (
             <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />

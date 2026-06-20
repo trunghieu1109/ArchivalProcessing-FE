@@ -35,6 +35,9 @@ export interface RetentionAppendixNode {
   name: string
   retention_period?: string
   note?: string
+  source_row_index?: number | null
+  source_unit_index?: number | null
+  source_file_name?: string
   children: RetentionAppendixNode[]
 }
 
