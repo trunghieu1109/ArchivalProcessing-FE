@@ -5,6 +5,7 @@ export const STEP_LABELS = [
   "Kết quả",
   "Đánh số trang",
   "Tạo mục lục",
+  "Xuất bản",
 ]
 export const PLAN_ANALYSIS_TIMEOUT_MS = 10 * 60 * 1000
 export const LAST_SESSION_KEY = "archival-processing:last-session-id"

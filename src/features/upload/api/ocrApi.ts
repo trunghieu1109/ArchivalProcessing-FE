@@ -56,6 +56,7 @@ export interface FolderStatusResponse {
   missing_files: string[]
   status_counts: Record<string, number>
   document_numbering_mode?: string | null
+  remove_blank_pages_before_ocr?: boolean
   upload_mode?: "append" | "overwrite" | string | null
   reextracting?: boolean
   pdf_preprocessing?: Record<string, unknown> | null

@@ -349,6 +349,10 @@ export function NumberingStep({
   const failedCount = status?.summary.failed ?? 0
   const complete = Boolean(status && isNumberingComplete(status))
   const active = starting || Boolean(status?.active)
+  const queuedForWorker =
+    status?.active === true && status.job?.status === "queued"
+  const activeWorkerId =
+    status?.job?.status === "running" ? status.job.locked_by : null
   const metadataBusy = metadataExporting || metadataImporting
   const canContinue = complete && failedCount === 0
   const modeLabel =
@@ -383,9 +387,24 @@ export function NumberingStep({
           activePhase={progressPhase}
           completedPhases={completedPhases}
           title="Tiến trình đánh số"
-          message={progressMessage || "Đang xử lý PDF đánh số."}
+          message={
+            queuedForWorker
+              ? "Task đang chờ worker artifacts nhận xử lý."
+              : activeWorkerId
+                ? `${progressMessage || "Đang xử lý PDF đánh số."} Worker: ${activeWorkerId}.`
+                : progressMessage || "Đang xử lý PDF đánh số."
+          }
         />
       )}
+      {queuedForWorker ? (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <span>
+            Job đánh số đã được tạo nhưng chưa có worker nhận. Kiểm tra worker
+            artifacts có khai báo job type <code>number_documents</code>.
+          </span>
+        </div>
+      ) : null}
       {error ? (
         <div className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />

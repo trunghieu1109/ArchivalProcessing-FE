@@ -361,6 +361,9 @@ export function NumberingDocumentRow({
             {document.blank_pages.length > 0
               ? ` · Trang trắng: ${compactPageList(document.blank_pages)}`
               : ""}
+            {document.status === "running" && document.remote_render_status
+              ? ` · Remote: ${document.remote_render_status}`
+              : ""}
           </p>
           {document.error ? (
             <p className="mt-1 text-xs text-rose-700">{document.error}</p>

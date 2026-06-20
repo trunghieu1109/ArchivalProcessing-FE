@@ -48,6 +48,7 @@ export interface DigitizationBatch {
   status_counts: Record<string, number>
   status: string
   document_numbering_mode?: DocumentNumberingMode | null
+  remove_blank_pages_before_ocr?: boolean
   remote_file_id?: string | number | null
   upload_mode?: UploadMode | string | null
   pdf_preprocessing?: Record<string, unknown> | null
@@ -112,6 +113,9 @@ export interface NumberingDocumentStatus {
     label: string
   }>
   source_version_id?: string | null
+  numbering_manifest_version_id?: string | number | null
+  render_task_id?: string | number | null
+  remote_render_status?: string | null
   numbered_pdf_version_id?: string | number | null
   download_url?: string | null
   expires_at?: string | number | null

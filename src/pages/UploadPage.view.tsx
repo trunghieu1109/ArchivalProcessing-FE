@@ -6,6 +6,7 @@ import { RetentionAppendicesPanel } from "@/features/upload/components/step2/Fol
 import { ProcessStep } from "@/features/upload/components/step3/ProcessStep"
 import { FinalResult } from "@/features/upload/components/step4/FinalResult"
 import { NumberingStep } from "@/features/upload/components/step5/NumberingStep"
+import { PublicationStep } from "@/features/upload/components/step7/PublicationStep"
 import { FinalizeArtifactsStep } from "@/pages/FinalizeArtifactsPage"
 import { SessionMetadataBar } from "@/features/upload/components/SessionMetadataBar"
 import { cn } from "@/shared/lib/utils"
@@ -384,6 +385,31 @@ export function UploadPageView(props: Record<string, any>) {
                 autoStart={searchParams.get("start") === "1"}
                 onAutoStartHandled={handleFinalizeAutoStartHandled}
                 embedded
+                onContinue={() => {
+                  const currentSessionId = sessionId ?? routeSessionId
+                  if (!currentSessionId) {
+                    toast.error("Chưa có session để xuất bản.")
+                    return
+                  }
+                  navigate(
+                    `/sessions/${encodeURIComponent(currentSessionId)}/step/7`
+                  )
+                }}
+              />
+            </motion.div>
+          )}
+
+          {/* Bước 7: Xuất bản */}
+          {!isWorkerUser && currentStep === 7 && (
+            <motion.div
+              key="step7"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -16 }}
+              transition={{ duration: 0.4, ease: easeOut }}
+            >
+              <PublicationStep
+                sessionId={sessionId ?? routeSessionId ?? null}
               />
             </motion.div>
           )}

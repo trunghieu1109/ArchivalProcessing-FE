@@ -3,7 +3,7 @@ import type { SessionArtifact } from "@/features/upload/api/sessionApi"
 export const FINALIZE_POLL_INTERVAL_MS = 3_000
 export const FINALIZE_POLL_TIMEOUT_MS = 10 * 60 * 1_000
 const EXCLUDED_FILE_NAMES = new Set(["tai lieu can kiem tra khi phan cum.xlsx"])
-const HIDDEN_ARTIFACT_TYPES = new Set(["manifest"])
+const HIDDEN_ARTIFACT_TYPES = new Set(["manifest", "publication_manifest"])
 export const ARTIFACT_SECTION_DEFINITIONS = [
   { id: "metadata", ordinal: "01", label: "Tổng hợp metadata" },
   { id: "dossierIndex", ordinal: "02", label: "Mục lục hồ sơ" },

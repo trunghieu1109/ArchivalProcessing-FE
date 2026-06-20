@@ -53,7 +53,7 @@ export function UploadPage() {
   const existingSessionMode = Boolean(routeSessionId)
   const currentStep = Math.min(
     Math.max(parseInt(step ?? "1", 10), 1),
-    6
+    7
   ) as AppStep
   const currentUserRole = String(user?.role ?? "")
     .trim()

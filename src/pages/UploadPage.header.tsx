@@ -43,7 +43,7 @@ export function UploadPageHeader(props: Record<string, any>) {
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold tracking-[0.14em] text-[#64748B] uppercase">
-                  Bước {currentStep}/6
+                  Bước {currentStep}/{STEP_LABELS.length}
                 </p>
                 <p className="truncate text-sm font-semibold text-[#0F172A]">
                   {STEP_LABELS[currentStep - 1]}

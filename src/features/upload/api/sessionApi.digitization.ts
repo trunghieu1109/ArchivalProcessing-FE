@@ -36,6 +36,7 @@ export async function startDigitization(
     max_files?: number
     confirmed_plan_version_id?: string
     document_numbering_mode?: DocumentNumberingMode
+    remove_blank_pages_before_ocr?: boolean
     session_file_id?: number
     remote_file_id?: string | number | null
     upload_mode?: UploadMode
@@ -50,6 +51,7 @@ export async function startDigitization(
       body: JSON.stringify({
         recursive: true,
         force: false,
+        remove_blank_pages_before_ocr: true,
         ...payload,
       }),
     }
@@ -253,6 +255,8 @@ export function digitizationToFolderStatus(
     status_counts:
       response?.summary.status_counts ?? batch?.status_counts ?? {},
     document_numbering_mode: batch?.document_numbering_mode ?? null,
+    remove_blank_pages_before_ocr:
+      batch?.remove_blank_pages_before_ocr ?? true,
     upload_mode: batch?.upload_mode ?? null,
     reextracting: false,
     pdf_preprocessing: batch?.pdf_preprocessing ?? null,

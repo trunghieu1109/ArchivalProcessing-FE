@@ -112,17 +112,17 @@ export function FolderTree({
             id="document-numbering-mode-title"
             className="text-sm font-semibold text-[#0F172A]"
           >
-            Cách xử lý trang PDF
+            Cách đánh số tài liệu
           </p>
           <p className="mt-1 text-sm text-[#64748B]">
-            Lựa chọn này quyết định bản PDF được dùng cho OCR và trích xuất
-            metadata.
+            OCR và metadata luôn chạy trên bản đã loại trang trắng. Bản PDF gốc
+            vẫn được giữ nguyên để đánh số và xuất kết quả.
           </p>
         </div>
         <div
           className="mt-4 grid gap-3 md:grid-cols-2"
           role="radiogroup"
-          aria-label="Cách xử lý trang PDF"
+          aria-label="Cách đánh số tài liệu"
         >
           <button
             type="button"
@@ -157,7 +157,7 @@ export function FolderTree({
                 </span>
               </span>
               <span className="mt-1.5 block text-sm leading-6 text-[#64748B]">
-                OCR và metadata chạy trên PDF gốc sau khi extract từ ZIP.
+                Đánh số tất cả trang theo số trang của PDF gốc.
               </span>
             </span>
           </button>
@@ -190,8 +190,7 @@ export function FolderTree({
                 Đánh số theo số tờ
               </span>
               <span className="mt-1.5 block text-sm leading-6 text-[#64748B]">
-                Hệ thống scan trang trắng, tạo bản PDF đã bỏ trang trắng rồi
-                dùng bản đó cho OCR và metadata.
+                Đánh số trên các trang lẻ của PDF gốc và bỏ qua trang trắng.
               </span>
             </span>
           </button>

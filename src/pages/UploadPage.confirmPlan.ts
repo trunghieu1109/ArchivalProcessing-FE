@@ -175,11 +175,11 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
           existingStatus?.document_numbering_mode
         )
         if (existingMode && existingMode !== documentNumberingMode) {
-          forceDigitization = true
           toast.info(
-            "Cách xử lý PDF đã thay đổi. Hệ thống sẽ lấy lại metadata."
+            "Đã đổi cách đánh số. Metadata hiện có tiếp tục được sử dụng."
           )
-        } else if (!hasSupplementalZipUpload) {
+        }
+        if (!hasSupplementalZipUpload) {
           const hasReadyMetadata = existingStatus?.jobs.some(
             (job: { metadata_ready?: boolean }) => job.metadata_ready
           )
