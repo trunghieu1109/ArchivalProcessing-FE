@@ -65,7 +65,9 @@ export function metadataFieldText(
 }
 
 export function isMetadataFailed(status: string): boolean {
-  return ["failed", "final_failed", "signature_failed"].includes(status)
+  return ["failed", "final_failed", "signature_failed", "skipped"].includes(
+    status
+  )
 }
 
 export function warningLabel(field: string): string {

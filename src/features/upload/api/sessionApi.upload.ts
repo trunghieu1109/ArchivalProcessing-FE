@@ -36,13 +36,29 @@ export const DIRECT_PRESIGNED_UPLOAD_ENABLED = [
     .trim()
     .toLowerCase()
 )
+const BYTES_PER_MB = 1024 * 1024
+const DEFAULT_CHUNKED_UPLOAD_CHUNK_SIZE_MB = 64
+const CONFIGURED_CHUNKED_UPLOAD_CHUNK_SIZE_MB = parseOptionalPositiveIntegerEnv(
+  import.meta.env.VITE_ARCHIVAL_CHUNKED_UPLOAD_CHUNK_SIZE_MB
+)
+const CONFIGURED_CHUNKED_UPLOAD_CHUNK_SIZE_BYTES =
+  CONFIGURED_CHUNKED_UPLOAD_CHUNK_SIZE_MB === null
+    ? null
+    : CONFIGURED_CHUNKED_UPLOAD_CHUNK_SIZE_MB * BYTES_PER_MB
 export const RAW_ZIP_CHUNKED_UPLOAD_THRESHOLD_BYTES = 50 * 1024 * 1024
-export const CHUNKED_UPLOAD_CHUNK_SIZE_BYTES = 16 * 1024 * 1024
+export const CHUNKED_UPLOAD_CHUNK_SIZE_BYTES =
+  (CONFIGURED_CHUNKED_UPLOAD_CHUNK_SIZE_MB ??
+    DEFAULT_CHUNKED_UPLOAD_CHUNK_SIZE_MB) * BYTES_PER_MB
 export const CHUNKED_UPLOAD_PART_PRESIGN_BATCH_SIZE = 32
 export const CHUNKED_UPLOAD_MAX_CONCURRENCY = 4
 export const CHUNKED_PROXY_UPLOAD_MAX_CONCURRENCY = 1
 export const CHUNKED_UPLOAD_PART_MAX_ATTEMPTS = 3
 export const PRESIGNED_UPLOAD_STALL_MS = 12_000
+
+function parseOptionalPositiveIntegerEnv(value: unknown): number | null {
+  const parsed = Number.parseInt(String(value ?? ""), 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
 
 export async function uploadSessionInput(
   sessionId: string,
@@ -151,7 +167,9 @@ async function uploadRawZipSessionInputChunked(
         file_name: file.name,
         content_type: contentType,
         size_bytes: file.size,
-        chunk_size_bytes: CHUNKED_UPLOAD_CHUNK_SIZE_BYTES,
+        ...(CONFIGURED_CHUNKED_UPLOAD_CHUNK_SIZE_BYTES === null
+          ? {}
+          : { chunk_size_bytes: CONFIGURED_CHUNKED_UPLOAD_CHUNK_SIZE_BYTES }),
         created_by: options.createdBy ?? "ui",
       }),
     }

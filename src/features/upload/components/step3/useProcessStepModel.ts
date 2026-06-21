@@ -216,19 +216,40 @@ export function useProcessStepModel({
       ),
     [currentUserIdentity, displayedItems]
   )
+  const displayedRetryableItems = useMemo(
+    () =>
+      displayedItems.filter(
+        (item) =>
+          isMetadataFailedItem(item) &&
+          canUserEditMetadataItem(item, currentUserIdentity)
+      ),
+    [currentUserIdentity, displayedItems]
+  )
+  const displayedBulkSelectableItems = useMemo(
+    () => {
+      const byId = new Map<number, PdfMetadata>()
+      displayedConfirmableItems.forEach((item) => byId.set(item.id, item))
+      displayedRetryableItems.forEach((item) => byId.set(item.id, item))
+      return displayedItems.filter((item) => byId.has(item.id))
+    },
+    [displayedConfirmableItems, displayedItems, displayedRetryableItems]
+  )
   const bulkSelectedItems = useMemo(
     () =>
-      displayedConfirmableItems.filter((item) => bulkSelectedIds.has(item.id)),
-    [bulkSelectedIds, displayedConfirmableItems]
+      displayedBulkSelectableItems.filter((item) => bulkSelectedIds.has(item.id)),
+    [bulkSelectedIds, displayedBulkSelectableItems]
   )
+  const bulkRetryItems = bulkReviewSelectionActive
+    ? bulkSelectedItems.filter(isMetadataFailedItem)
+    : EMPTY_METADATA_ITEMS
   const bulkVerifyItems = bulkReviewSelectionActive
-    ? bulkSelectedItems
+    ? bulkSelectedItems.filter(isMetadataConfirmable)
     : reviewMode === "batch" && !manualSplitActive
       ? displayedConfirmableItems
       : EMPTY_METADATA_ITEMS
   const bulkSelectionCount = bulkSelectedItems.length
   const canBulkSelectMetadata =
-    !manualSplitActive && displayedConfirmableItems.length > 0
+    !manualSplitActive && displayedBulkSelectableItems.length > 0
   const selectedItem = useMemo(
     () => displayedItems.find((item) => item.id === selectedDocumentId) ?? null,
     [displayedItems, selectedDocumentId]
@@ -478,7 +499,10 @@ export function useProcessStepModel({
     displayedItems,
     displayedItemIdsKey,
     displayedConfirmableItems,
+    displayedRetryableItems,
+    displayedBulkSelectableItems,
     bulkSelectedItems,
+    bulkRetryItems,
     bulkVerifyItems,
     bulkSelectionCount,
     canBulkSelectMetadata,

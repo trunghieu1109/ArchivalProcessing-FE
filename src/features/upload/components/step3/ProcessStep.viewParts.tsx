@@ -12,6 +12,7 @@ export function ProcessStepSummaryPanel({
   needsReviewItems,
   autoVerifiedItems,
   reviewedItems,
+  failedMetadataItems = [],
   metadataMessage,
   signatureStatus,
   readyPercent,
@@ -49,6 +50,8 @@ export function ProcessStepSummaryPanel({
             <p className="mt-1 text-sm text-[#0F172A]">
               {metadataStartingWithoutCount
                 ? "Đang chuẩn bị extract metadata. Đang chờ backend trả danh sách tài liệu."
+                : failedMetadataItems.length > 0
+                  ? `Có ${failedMetadataItems.length} tài liệu lỗi khi extract metadata. Đã extract ${readyItems.length}/${expectedCount || "..."} tài liệu; có thể chạy lại từng tài liệu lỗi.`
                 : pendingMetadataCount > 0
                 ? `${
                     metadataReloading
@@ -72,9 +75,10 @@ export function ProcessStepSummaryPanel({
               </p>
             )}
           </div>
-          <div className="grid w-full grid-cols-2 gap-2 text-center sm:w-auto lg:grid-cols-5">
+          <div className="grid w-full grid-cols-2 gap-2 text-center sm:w-auto lg:grid-cols-6">
             <ProgressMetric label="Tài liệu" value={expectedCount} />
             <ProgressMetric label="Đang extract" value={pendingMetadataCount} />
+            <ProgressMetric label="Lỗi" value={failedMetadataItems.length} />
             <ProgressMetric
               label="Cần xem xét"
               value={needsReviewItems.length}

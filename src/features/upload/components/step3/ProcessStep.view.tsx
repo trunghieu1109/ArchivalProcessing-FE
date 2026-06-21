@@ -12,7 +12,10 @@ import { DocumentDownloadDialog } from "./DocumentDownloadDialog"
 import { MetadataCard } from "./MetadataCard"
 import { ProcessStepReviewControls } from "./ProcessStep.reviewControls"
 import { MAX_LOADING_PLACEHOLDERS } from "./ProcessStep.types"
-import { isMetadataConfirmable } from "./ProcessStep.metadataUtils"
+import {
+  isMetadataConfirmable,
+  isMetadataFailedItem,
+} from "./ProcessStep.metadataUtils"
 import { canUserEditMetadataItem } from "./ProcessStep.batchUtils"
 import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
 import type { createProcessStepActions } from "./ProcessStep.actions"
@@ -42,6 +45,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     batchMode,
     batchSizeInput,
     bulkReviewSelectionActive,
+    bulkRetryItems,
     bulkSelectedIds,
     bulkSelectionCount,
     bulkVerifyItems,
@@ -56,6 +60,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     createManualBatchFromSelection,
     creatingManualBatch,
     currentUserIdentity,
+    displayedBulkSelectableItems,
     displayedConfirmableItems,
     displayedItems,
     dossierReadyItems,
@@ -69,6 +74,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     handleExportMetadataReview,
     handlePreviewResizePointerDown,
     handleRetryMetadata,
+    handleRetrySelectedMetadata,
     handleReviewModeChange,
     handleSelectBatch,
     handleVerifyAllReady,
@@ -179,6 +185,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
         needsReviewItems={needsReviewItems}
         autoVerifiedItems={autoVerifiedItems}
         reviewedItems={reviewedItems}
+        failedMetadataItems={failedMetadataItems}
         metadataMessage={metadataMessage}
         signatureStatus={signatureStatus}
         readyPercent={readyPercent}
@@ -235,6 +242,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
             batchGroups={batchGroups}
             batchMode={batchMode}
             bulkReviewSelectionActive={bulkReviewSelectionActive}
+            bulkRetryItems={bulkRetryItems}
             bulkSelectionCount={bulkSelectionCount}
             bulkVerifyItems={bulkVerifyItems}
             bulkVerifying={bulkVerifying}
@@ -247,6 +255,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
             closingBatchIds={closingBatchIds}
             createManualBatchFromSelection={createManualBatchFromSelection}
             creatingManualBatch={creatingManualBatch}
+            displayedBulkSelectableItems={displayedBulkSelectableItems}
             displayedConfirmableItems={displayedConfirmableItems}
             displayedItems={displayedItems}
             exportingMetadataReview={exportingMetadataReview}
@@ -255,6 +264,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
             handleBatchSizeInputBlur={handleBatchSizeInputBlur}
             handleBatchSizeInputChange={handleBatchSizeInputChange}
             handleExportMetadataReview={handleExportMetadataReview}
+            handleRetrySelectedMetadata={handleRetrySelectedMetadata}
             handleReviewModeChange={handleReviewModeChange}
             handleSelectBatch={handleSelectBatch}
             handleVerifyAllReady={handleVerifyAllReady}
@@ -286,7 +296,9 @@ export function ProcessStepView(props: ProcessStepViewProps) {
                 )
                 const bulkSelectionDisabled =
                   bulkReviewSelectionActive &&
-                  (!isMetadataConfirmable(item) || !canEditItem)
+                  ((!isMetadataConfirmable(item) &&
+                    !isMetadataFailedItem(item)) ||
+                    !canEditItem)
                 return (
                   <MetadataCard
                     key={item.id}

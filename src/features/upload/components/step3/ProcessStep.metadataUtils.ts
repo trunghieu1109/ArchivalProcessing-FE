@@ -179,9 +179,13 @@ export function normalizedMetadataStatus(item: PdfMetadata): string {
 }
 
 export function isMetadataFailedItem(item: PdfMetadata): boolean {
-  return ["failed", "final_failed", "signature_failed", "cancelled"].includes(
-    normalizedMetadataStatus(item)
-  )
+  return [
+    "failed",
+    "final_failed",
+    "signature_failed",
+    "skipped",
+    "cancelled",
+  ].includes(normalizedMetadataStatus(item))
 }
 
 export function isMetadataExtractionPending(item: PdfMetadata): boolean {

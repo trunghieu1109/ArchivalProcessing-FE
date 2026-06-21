@@ -5,7 +5,6 @@
 @import "@fontsource/roboto/400.css";
 @import "@fontsource/roboto/500.css";
 @import "@fontsource/roboto/700.css";
-@import "@fontsource/calistoga/400.css";
 @import "@fontsource/jetbrains-mono/400.css";
 @import "@fontsource/jetbrains-mono/500.css";
 
@@ -13,9 +12,9 @@
 @source "../**/*.{ts,tsx}";
 
 @theme inline {
-  --font-display: "Calistoga", Georgia, serif;
+  --font-display: "Roboto", system-ui, sans-serif;
   --font-sans: "Roboto", system-ui, sans-serif;
-  --font-heading: "Calistoga", Georgia, serif;
+  --font-heading: "Roboto", system-ui, sans-serif;
 
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -106,7 +105,7 @@
   }
   h1,
   h2 {
-    font-family: "Calistoga", Georgia, serif;
+    font-family: "Roboto", system-ui, sans-serif;
     letter-spacing: 0;
   }
   button:not(:disabled),
@@ -164,9 +163,9 @@
 @source "../**/*.{ts,tsx}";
 
 @theme inline {
-  --font-display: "Calistoga", Georgia, serif;
+  --font-display: "Roboto", system-ui, sans-serif;
   --font-sans: "Roboto", system-ui, sans-serif;
-  --font-heading: "Calistoga", Georgia, serif;
+  --font-heading: "Roboto", system-ui, sans-serif;
   --font-roboto: "Roboto", sans-serif;
 
   --color-sidebar-ring: var(--sidebar-ring);
@@ -254,7 +253,7 @@
   }
   h1,
   h2 {
-    font-family: "Calistoga", Georgia, serif;
+    font-family: "Roboto", system-ui, sans-serif;
   }
   button:not(:disabled),
   [role="button"]:not(:disabled) {

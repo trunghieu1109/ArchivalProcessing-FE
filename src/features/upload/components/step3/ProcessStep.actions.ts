@@ -14,6 +14,7 @@ import type {
   MetadataReviewMode,
 } from "./ProcessStep.types"
 import {
+  isMetadataFailedItem,
   isMetadataConfirmable,
   replaceDocument,
   replaceDocuments,
@@ -52,6 +53,7 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     setItems,
     setVerifyingIds,
     bulkVerifyItems,
+    bulkRetryItems,
     onDocumentsVerified,
     setBulkVerifying,
     setReviewMode,
@@ -74,7 +76,7 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     setBulkSelectedIds,
     bulkLastSelectedIdRef,
     bulkReviewSelectionActive,
-    displayedConfirmableItems,
+    displayedBulkSelectableItems,
     setCreatingManualBatch,
     manualSelectedIds,
     selectedAssigneeId,
@@ -314,14 +316,14 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     checked: boolean,
     shiftKey: boolean
   ) => {
-    if (!isMetadataConfirmable(item)) return
+    if (!isMetadataConfirmable(item) && !isMetadataFailedItem(item)) return
     if (!canUserEditMetadataItem(item, currentUserIdentity)) return
     setBulkSelectedIds((previous) => {
       const next = new Set(previous)
       const lastSelectedId = bulkLastSelectedIdRef.current
       if (shiftKey && lastSelectedId !== null) {
         selectedRange(
-          displayedConfirmableItems,
+          displayedBulkSelectableItems,
           lastSelectedId,
           item.id
         ).forEach((rangeItem) => {
@@ -340,10 +342,10 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
 
   const selectAllDisplayedForBulkReview = () => {
     setBulkSelectedIds(
-      new Set(displayedConfirmableItems.map((item) => item.id))
+      new Set(displayedBulkSelectableItems.map((item) => item.id))
     )
     bulkLastSelectedIdRef.current =
-      displayedConfirmableItems[displayedConfirmableItems.length - 1]?.id ??
+      displayedBulkSelectableItems[displayedBulkSelectableItems.length - 1]?.id ??
       null
   }
 
@@ -458,6 +460,52 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     }
   }
 
+  const handleRetrySelectedMetadata = async () => {
+    if (!onRetryMetadata) {
+      toast.error("Backend chưa bật chức năng chạy lại metadata.")
+      return
+    }
+    if (bulkRetryItems.length === 0) return
+
+    setBulkVerifying(true)
+    setRetryingIds((previous) => {
+      const next = new Set(previous)
+      bulkRetryItems.forEach((item) => next.add(item.id))
+      return next
+    })
+    try {
+      const results = await Promise.allSettled(
+        bulkRetryItems.map((item) => onRetryMetadata(item.id))
+      )
+      const restarted = results
+        .filter(
+          (result): result is PromiseFulfilledResult<SessionDocumentResponse> =>
+            result.status === "fulfilled"
+        )
+        .map((result) => result.value)
+      if (restarted.length > 0) {
+        setItems((previous) => replaceDocuments(previous, restarted))
+      }
+
+      const failedCount = results.length - restarted.length
+      if (failedCount > 0) {
+        toast.error(
+          `${failedCount} tài liệu chưa gửi extract lại được. Vui lòng kiểm tra lại.`
+        )
+      }
+      if (restarted.length > 0) {
+        toast.success(`Đã gửi yêu cầu extract lại ${restarted.length} tài liệu.`)
+      }
+    } finally {
+      setBulkVerifying(false)
+      setRetryingIds((previous) => {
+        const next = new Set(previous)
+        bulkRetryItems.forEach((item) => next.delete(item.id))
+        return next
+      })
+    }
+  }
+
   const handleExportMetadataReview = async () => {
     if (!sessionId || !canExportMetadataReview) return
     setExportingMetadataReview(true)
@@ -506,6 +554,7 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     createManualBatchFromSelection,
     finishMetadataBatch,
     handleRetryMetadata,
+    handleRetrySelectedMetadata,
     handleExportMetadataReview,
     handlePreviewResizePointerDown,
   }

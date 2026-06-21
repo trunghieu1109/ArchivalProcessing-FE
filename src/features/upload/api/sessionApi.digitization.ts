@@ -342,6 +342,7 @@ function isDigitizationDocumentComplete(
       "failed",
       "final_failed",
       "signature_failed",
+      "skipped",
       "cancelled",
     ].includes(status)
   )

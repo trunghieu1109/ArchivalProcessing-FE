@@ -4,6 +4,7 @@ import {
   List,
   Loader2,
   Plus,
+  RefreshCw,
   Scissors,
   UserRound,
   X,
@@ -27,6 +28,7 @@ export function ProcessStepReviewControls(props: Record<string, any>) {
     batchGroups,
     batchMode,
     bulkReviewSelectionActive,
+    bulkRetryItems,
     bulkSelectionCount,
     bulkVerifyItems,
     bulkVerifying,
@@ -38,7 +40,7 @@ export function ProcessStepReviewControls(props: Record<string, any>) {
     closingBatchIds,
     createManualBatchFromSelection,
     creatingManualBatch,
-    displayedConfirmableItems,
+    displayedBulkSelectableItems,
     displayedItems,
     finishMetadataBatch,
     handleBatchModeChange,
@@ -46,6 +48,7 @@ export function ProcessStepReviewControls(props: Record<string, any>) {
     handleBatchSizeInputChange,
     handleReviewModeChange,
     handleSelectBatch,
+    handleRetrySelectedMetadata,
     handleVerifyAllReady,
     manualSelectedIds,
     manualSplitActive,
@@ -152,7 +155,7 @@ export function ProcessStepReviewControls(props: Record<string, any>) {
                   size="sm"
                   onClick={selectAllDisplayedForBulkReview}
                   disabled={
-                    bulkVerifying || displayedConfirmableItems.length === 0
+                    bulkVerifying || displayedBulkSelectableItems.length === 0
                   }
                   className="h-8 gap-1.5 text-xs"
                 >
@@ -188,6 +191,22 @@ export function ProcessStepReviewControls(props: Record<string, any>) {
                   : reviewMode === "batch"
                     ? `Xác nhận lô (${bulkVerifyItems.length})`
                     : `Xác nhận tất cả (${bulkVerifyItems.length})`}
+              </Button>
+            )}
+            {bulkReviewSelectionActive && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void handleRetrySelectedMetadata()}
+                disabled={bulkVerifying || bulkRetryItems.length === 0}
+                className="h-8 gap-1.5 text-xs"
+              >
+                {bulkVerifying ? (
+                  <Loader2 className="size-3 animate-spin" />
+                ) : (
+                  <RefreshCw className="size-3" />
+                )}
+                Extract lại đã chọn ({bulkRetryItems.length})
               </Button>
             )}
             {reviewMode === "batch" &&

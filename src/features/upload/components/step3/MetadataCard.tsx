@@ -82,7 +82,7 @@ export function MetadataCard({
   const autoVerified =
     item.review_status === "verified" || (item.metadata_ready && !hasWarnings)
   const metadataFailed = isMetadataFailed(item.status)
-  const metadataUnavailable = item.status === "failed" && !item.metadata_ready
+  const metadataUnavailable = metadataFailed && !item.metadata_ready
   const hasMetadataEdits = item.metadata_user_edited === true
   const signatureTag = signatureTagInfo(item)
 
@@ -262,6 +262,25 @@ export function MetadataCard({
             <span className="flex items-center gap-1 rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
               Đang extract metadata
             </span>
+          )}
+          {!readOnly && metadataFailed && onRetry && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={(event) => {
+                event.stopPropagation()
+                onRetry()
+              }}
+              disabled={retrying}
+              className="h-7 rounded-full px-2.5 text-[10px]"
+            >
+              {retrying ? (
+                <Loader2 data-icon="inline-start" className="animate-spin" />
+              ) : (
+                <RefreshCw data-icon="inline-start" />
+              )}
+              Chạy lại
+            </Button>
           )}
           <Button
             variant="ghost"
