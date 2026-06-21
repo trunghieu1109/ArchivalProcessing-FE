@@ -68,6 +68,24 @@ export async function getPublicationManifest(
   )
 }
 
+export async function updatePublicationName(
+  sessionId: string,
+  payload: {
+    target_type: "box" | "dossier" | "document"
+    target_id: string | number
+    name: string
+  }
+): Promise<PublicationManifest> {
+  return requestJson<PublicationManifest>(
+    `/sessions/${encodeURIComponent(sessionId)}/publication/names`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
+}
+
 export async function downloadPublicationAll(
   sessionId: string
 ): Promise<DocumentArchiveDownload> {

@@ -2,14 +2,17 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   Archive,
   Box,
+  Check,
   ChevronDown,
   Download,
+  Edit2,
   FileText,
   Folder,
   FolderOpen,
   Loader2,
   RefreshCw,
   TriangleAlert,
+  X,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -19,6 +22,7 @@ import {
   downloadPublicationDocument,
   downloadPublicationDossier,
   getPublicationManifest,
+  updatePublicationName,
   type PublicationManifest,
 } from "@/features/upload/api/sessionApi"
 import { cn } from "@/shared/lib/utils"
@@ -38,6 +42,12 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
   const [collapsedDossiers, setCollapsedDossiers] = useState<Set<number>>(
     () => new Set()
   )
+  const [editingName, setEditingName] = useState<{
+    type: "box" | "dossier" | "document"
+    id: string | number
+    value: string
+  } | null>(null)
+  const [savingNameKey, setSavingNameKey] = useState("")
 
   const refresh = useCallback(async () => {
     if (!sessionId) {
@@ -101,6 +111,35 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
       ] as const,
     [manifest]
   )
+
+  const saveName = useCallback(async () => {
+    if (!sessionId || !editingName) return
+    const nextName = editingName.value.trim()
+    if (!nextName) {
+      toast.error("Tên không được để trống.")
+      return
+    }
+    const key = `${editingName.type}:${editingName.id}`
+    setSavingNameKey(key)
+    setError("")
+    try {
+      const response = await updatePublicationName(sessionId, {
+        target_type: editingName.type,
+        target_id: editingName.id,
+        name: nextName,
+      })
+      setManifest(response)
+      setEditingName(null)
+      toast.success("Đã cập nhật tên xuất bản.")
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Không thể cập nhật tên xuất bản."
+      setError(message)
+      toast.error(message)
+    } finally {
+      setSavingNameKey("")
+    }
+  }, [editingName, sessionId])
 
   if (loading) {
     return (
@@ -224,9 +263,34 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
                       )}
                     />
                     <Box className="size-4 shrink-0 text-[#0052FF]" />
-                    <span className="truncate text-sm font-semibold text-[#0F172A]">
-                      {box.name}
-                    </span>
+                    <EditablePublicationName
+                      value={box.name}
+                      editing={editingName?.type === "box" && editingName.id === box.box_number}
+                      draft={editingName?.value ?? ""}
+                      saving={savingNameKey === `box:${box.box_number}`}
+                      textClassName="text-sm font-semibold text-[#0F172A]"
+                      onStart={(event) => {
+                        event.stopPropagation()
+                        setEditingName({
+                          type: "box",
+                          id: box.box_number,
+                          value: box.name,
+                        })
+                      }}
+                      onChange={(value) =>
+                        setEditingName((current) =>
+                          current ? { ...current, value } : current
+                        )
+                      }
+                      onSave={(event) => {
+                        event.stopPropagation()
+                        void saveName()
+                      }}
+                      onCancel={(event) => {
+                        event.stopPropagation()
+                        setEditingName(null)
+                      }}
+                    />
                     <CountBadge>{box.dossiers.length} hồ sơ</CountBadge>
                   </button>
                   <IconDownloadButton
@@ -273,9 +337,41 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
                                 <FolderOpen className="size-4 shrink-0 text-[#0052FF]" />
                               )}
                               <span className="min-w-0 flex-1">
-                                <span className="block truncate text-sm font-medium text-[#0F172A]">
-                                  {dossier.standard_name}
-                                </span>
+                                <EditablePublicationName
+                                  value={dossier.standard_name}
+                                  editing={
+                                    editingName?.type === "dossier" &&
+                                    editingName.id ===
+                                      dossier.session_dossier_id
+                                  }
+                                  draft={editingName?.value ?? ""}
+                                  saving={
+                                    savingNameKey ===
+                                    `dossier:${dossier.session_dossier_id}`
+                                  }
+                                  textClassName="text-sm font-medium text-[#0F172A]"
+                                  onStart={(event) => {
+                                    event.stopPropagation()
+                                    setEditingName({
+                                      type: "dossier",
+                                      id: dossier.session_dossier_id,
+                                      value: dossier.standard_name,
+                                    })
+                                  }}
+                                  onChange={(value) =>
+                                    setEditingName((current) =>
+                                      current ? { ...current, value } : current
+                                    )
+                                  }
+                                  onSave={(event) => {
+                                    event.stopPropagation()
+                                    void saveName()
+                                  }}
+                                  onCancel={(event) => {
+                                    event.stopPropagation()
+                                    setEditingName(null)
+                                  }}
+                                />
                                 <span className="block truncate text-xs text-[#64748B]">
                                   {dossier.title}
                                 </span>
@@ -316,9 +412,43 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
                                       <FileText className="size-3.5" />
                                     </span>
                                     <div className="min-w-0 flex-1">
-                                      <p className="truncate text-sm text-[#0F172A]">
-                                        {document.standard_file_name}
-                                      </p>
+                                      <EditablePublicationName
+                                        value={document.standard_file_name}
+                                        editing={
+                                          editingName?.type === "document" &&
+                                          editingName.id ===
+                                            document.session_document_id
+                                        }
+                                        draft={editingName?.value ?? ""}
+                                        saving={
+                                          savingNameKey ===
+                                          `document:${document.session_document_id}`
+                                        }
+                                        textClassName="text-sm text-[#0F172A]"
+                                        onStart={(event) => {
+                                          event.stopPropagation()
+                                          setEditingName({
+                                            type: "document",
+                                            id: document.session_document_id,
+                                            value: document.standard_file_name,
+                                          })
+                                        }}
+                                        onChange={(value) =>
+                                          setEditingName((current) =>
+                                            current
+                                              ? { ...current, value }
+                                              : current
+                                          )
+                                        }
+                                        onSave={(event) => {
+                                          event.stopPropagation()
+                                          void saveName()
+                                        }}
+                                        onCancel={(event) => {
+                                          event.stopPropagation()
+                                          setEditingName(null)
+                                        }}
+                                      />
                                       <p className="truncate text-xs text-[#94A3B8]">
                                         {document.source_file_name} ·{" "}
                                         {document.issued_date || "Chưa có ngày"}
@@ -357,6 +487,97 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
         </div>
       </div>
     </div>
+  )
+}
+
+function EditablePublicationName({
+  value,
+  editing,
+  draft,
+  saving,
+  textClassName,
+  onStart,
+  onChange,
+  onSave,
+  onCancel,
+}: {
+  value: string
+  editing: boolean
+  draft: string
+  saving: boolean
+  textClassName: string
+  onStart: (event: React.MouseEvent<HTMLButtonElement>) => void
+  onChange: (value: string) => void
+  onSave: (event: React.MouseEvent<HTMLButtonElement>) => void
+  onCancel: (event: React.MouseEvent<HTMLButtonElement>) => void
+}) {
+  if (editing) {
+    return (
+      <span
+        className="flex min-w-0 flex-1 items-center gap-1.5"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <input
+          value={draft}
+          autoFocus
+          onChange={(event) => onChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault()
+              const buttonEvent =
+                event as unknown as React.MouseEvent<HTMLButtonElement>
+              onSave(buttonEvent)
+            }
+            if (event.key === "Escape") {
+              event.preventDefault()
+              const buttonEvent =
+                event as unknown as React.MouseEvent<HTMLButtonElement>
+              onCancel(buttonEvent)
+            }
+          }}
+          className="h-8 min-w-0 flex-1 rounded-md border border-[#BFD3FF] bg-white px-2 text-sm text-[#0F172A] outline-none focus-visible:border-[#0052FF] focus-visible:ring-2 focus-visible:ring-[#0052FF]/20"
+        />
+        <button
+          type="button"
+          disabled={saving}
+          onClick={onSave}
+          title="Lưu tên"
+          aria-label="Lưu tên"
+          className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+        >
+          {saving ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Check className="size-3.5" />
+          )}
+        </button>
+        <button
+          type="button"
+          disabled={saving}
+          onClick={onCancel}
+          title="Hủy"
+          aria-label="Hủy"
+          className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-[#64748B] hover:bg-[#F1F5F9] disabled:opacity-50"
+        >
+          <X className="size-3.5" />
+        </button>
+      </span>
+    )
+  }
+
+  return (
+    <span className="flex min-w-0 flex-1 items-center gap-1.5">
+      <span className={cn("truncate", textClassName)}>{value}</span>
+      <button
+        type="button"
+        onClick={onStart}
+        title="Đổi tên"
+        aria-label="Đổi tên"
+        className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-[#64748B] opacity-100 transition-all hover:bg-[#E8F0FF] hover:text-[#0052FF] focus-visible:opacity-100 sm:opacity-0 sm:group-hover/row:opacity-100"
+      >
+        <Edit2 className="size-3.5" />
+      </button>
+    </span>
   )
 }
 
