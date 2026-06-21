@@ -327,7 +327,6 @@ export function UploadPageView(props: Record<string, any>) {
               <FinalResult
                 sessionId={sessionId}
                 groups={clusterGroups}
-                metadataItems={ocrMetadataItems}
                 onFinish={() => {
                   const currentSessionId = sessionId ?? routeSessionId
                   if (!currentSessionId) {

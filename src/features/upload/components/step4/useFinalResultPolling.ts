@@ -256,14 +256,20 @@ export function useFinalResultPolling(context: Record<string, any>) {
         }
 
         const clusteredIds = clusteredDocumentIds(version)
-        const missingVerified = verifiedItems.filter(
-          (item: { document_id: string }) => !clusteredIds.has(item.document_id)
-        )
+        const hasMetadataItems = metadataItems.length > 0
+        const missingVerified = hasMetadataItems
+          ? verifiedItems.filter(
+              (item: { document_id: string }) =>
+                !clusteredIds.has(item.document_id)
+            )
+          : []
         const allVerifiedClustered =
           displayedGroupsForStatus.some(
             (group: { documents: unknown[] }) => group.documents.length > 0
           ) &&
-          (verifiedItems.length === 0 || missingVerified.length === 0)
+          (!hasMetadataItems ||
+            verifiedItems.length === 0 ||
+            missingVerified.length === 0)
         const displayedDossierCount = regularDossierCount(
           displayedGroupsForStatus
         )
@@ -277,14 +283,18 @@ export function useFinalResultPolling(context: Record<string, any>) {
           setClusterProgressMessage("Đã lập hồ sơ xong.")
           setStatus(
             displayedDossierCount > 0
-              ? `Đã lập ${displayedDossierCount} hồ sơ từ ${verifiedItems.length} tài liệu đã xác nhận.${displayedTemporaryCount > 0 ? ` Có ${displayedTemporaryCount} tài liệu trong Thư mục tạm.` : ""}`
+              ? `Đã lập ${displayedDossierCount} hồ sơ${verifiedItems.length > 0 ? ` từ ${verifiedItems.length} tài liệu đã xác nhận` : ""}.${displayedTemporaryCount > 0 ? ` Có ${displayedTemporaryCount} tài liệu trong Thư mục tạm.` : ""}`
               : `Có ${displayedTemporaryCount} tài liệu trong Thư mục tạm; chưa có hồ sơ để tạo mục lục.`
           )
           schedule()
           return
         }
 
-        if (displayedDossierCount > 0 && missingVerified.length > 0) {
+        if (
+          hasMetadataItems &&
+          displayedDossierCount > 0 &&
+          missingVerified.length > 0
+        ) {
           setClusterProgressPhase(null)
           setClusterCompletedPhases(completedClusterPhaseSet())
           setClusterProgressMessage("Đã lập hồ sơ xong.")

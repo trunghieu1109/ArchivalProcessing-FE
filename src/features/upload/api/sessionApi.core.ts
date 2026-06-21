@@ -11,10 +11,15 @@ import type {
   SessionSummary,
 } from "./sessionApi.types"
 
-export async function listSessions(limit = 100): Promise<SessionListResponse> {
-  return requestJson<SessionListResponse>(
-    `/sessions?limit=${encodeURIComponent(String(limit))}`
-  )
+export async function listSessions(
+  options: number | { limit?: number; offset?: number } = 100
+): Promise<SessionListResponse> {
+  const limit = typeof options === "number" ? options : (options.limit ?? 100)
+  const offset = typeof options === "number" ? 0 : (options.offset ?? 0)
+  const query = new URLSearchParams()
+  query.set("limit", String(limit))
+  query.set("offset", String(offset))
+  return requestJson<SessionListResponse>(`/sessions?${query.toString()}`)
 }
 
 export async function getSession(

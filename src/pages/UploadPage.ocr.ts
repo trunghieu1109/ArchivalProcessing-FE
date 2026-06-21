@@ -4,8 +4,14 @@ import { useOcrFolder } from "@/features/upload/hooks/useOcrFolder"
 import { buildDisplayMetadata } from "@/features/upload/lib/metadata"
 import type { PdfMetadata } from "@/features/upload/types"
 
-export function useUploadPageOcr(sessionId: string | null) {
-  const ocr = useOcrFolder(sessionId)
+export function useUploadPageOcr(
+  sessionId: string | null,
+  options: { enabled?: boolean } = {}
+) {
+  const ocr = useOcrFolder(sessionId, {
+    enabled: options.enabled ?? true,
+    clearOnDisable: true,
+  })
   const ocrMetadataItems = useMemo<PdfMetadata[]>(
     () =>
       ocr.status?.jobs.map((job) => {

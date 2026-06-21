@@ -46,6 +46,14 @@ export interface SessionSummary {
 
 export interface SessionListResponse {
   sessions: SessionSummary[]
+  pagination?: {
+    total: number
+    limit: number
+    offset: number
+    returned: number
+    has_more: boolean
+    next_offset?: number | null
+  }
 }
 
 export interface DeleteSessionResponse {

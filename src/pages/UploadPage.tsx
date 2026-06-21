@@ -217,7 +217,7 @@ export function UploadPage() {
     ocrIsReextracting,
     ocrMessage,
     ocrLoading,
-  } = useUploadPageOcr(sessionId)
+  } = useUploadPageOcr(sessionId, { enabled: currentStep === 3 })
 
   useEffect(() => {
     if (!sessionId || planAnalysisState !== "processing") return
@@ -369,11 +369,12 @@ export function UploadPage() {
         {
           label: "Phương án",
           has: hasAnalyzedArrangementPlan,
-          state: planAnalysisState === "processing"
-            ? "processing"
-            : hasAnalyzedArrangementPlan
-              ? "done"
-              : "idle",
+          state:
+            planAnalysisState === "processing"
+              ? "processing"
+              : hasAnalyzedArrangementPlan
+                ? "done"
+                : "idle",
         },
         { label: "Tệp phương án", has: doc1Has, state: doc1State },
         { label: "Thời hạn", has: doc2Has, state: doc2State },
@@ -426,9 +427,7 @@ export function UploadPage() {
       maxFilesToProcess = parseZipMaxFiles()
     } catch (err) {
       toast.error(
-        err instanceof Error
-          ? err.message
-          : "Số lượng tài liệu không hợp lệ."
+        err instanceof Error ? err.message : "Số lượng tài liệu không hợp lệ."
       )
       return
     }

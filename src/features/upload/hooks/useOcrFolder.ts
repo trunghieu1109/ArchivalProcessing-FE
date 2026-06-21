@@ -48,7 +48,15 @@ export interface UseOcrFolderResult {
   reset: () => void
 }
 
-export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
+interface UseOcrFolderOptions {
+  enabled?: boolean
+  clearOnDisable?: boolean
+}
+
+export function useOcrFolder(
+  sessionId: string | null,
+  { enabled = true, clearOnDisable = false }: UseOcrFolderOptions = {}
+): UseOcrFolderResult {
   const [state, setState] = useState<OcrFolderState>("idle")
   const [status, setStatus] = useState<FolderStatusResponse | null>(null)
   const [error, setError] = useState("")
@@ -56,6 +64,7 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
   const tokenRef = useRef(0)
   const rejectRef = useRef<((error: Error) => void) | null>(null)
   const pendingStartRef = useRef<PendingStartContext | null>(null)
+  const manualOperationRef = useRef(false)
 
   const stop = useCallback(() => {
     if (timeoutRef.current) {
@@ -219,6 +228,22 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
   )
 
   useEffect(() => {
+    if (!enabled) {
+      if (manualOperationRef.current) return
+      stop()
+      tokenRef.current += 1
+      pendingStartRef.current = null
+      rejectRef.current = null
+      if (clearOnDisable) {
+        setState("idle")
+        setStatus(null)
+        setError("")
+      }
+      return
+    }
+
+    if (manualOperationRef.current) return
+
     stop()
     tokenRef.current += 1
     const token = tokenRef.current
@@ -279,7 +304,7 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
         timeoutRef.current = null
       }
     }
-  }, [schedulePollRetry, sessionId, stop])
+  }, [clearOnDisable, enabled, schedulePollRetry, sessionId, stop])
 
   const start = useCallback(
     async (
@@ -322,6 +347,7 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
               expectedMode,
             }
           : null
+      manualOperationRef.current = true
       setState("starting")
       setStatus(
         shouldShowReextractingState && previousStatus
@@ -348,6 +374,7 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
         })
       } catch (err) {
         pendingStartRef.current = null
+        manualOperationRef.current = false
         setState("error")
         setError(
           err instanceof Error ? err.message : "KhÃ´ng thá»ƒ báº¯t Ä‘áº§u OCR."
@@ -356,67 +383,71 @@ export function useOcrFolder(sessionId: string | null): UseOcrFolderResult {
       }
       setState("polling")
 
-      await new Promise<void>((resolve, reject) => {
-        rejectRef.current = reject
-        const resolvePolling = () => {
-          rejectRef.current = null
-          pendingStartRef.current = null
-          resolve()
-        }
-        const rejectPolling = (error: Error) => {
-          rejectRef.current = null
-          pendingStartRef.current = null
-          reject(error)
-        }
-        const poll = async () => {
-          if (tokenRef.current !== token) {
-            rejectPolling(new Error("Đã hủy quá trình chờ kết quả OCR."))
-            return
+      try {
+        await new Promise<void>((resolve, reject) => {
+          rejectRef.current = reject
+          const resolvePolling = () => {
+            rejectRef.current = null
+            pendingStartRef.current = null
+            resolve()
           }
-          try {
-            const result = await getDigitizationStatus(sessionId)
-            const pendingStart = pendingStartRef.current
-            if (
-              pendingStart &&
-              !hasExpectedStartedBatch(result, pendingStart)
-            ) {
+          const rejectPolling = (error: Error) => {
+            rejectRef.current = null
+            pendingStartRef.current = null
+            reject(error)
+          }
+          const poll = async () => {
+            if (tokenRef.current !== token) {
+              rejectPolling(new Error("Đã hủy quá trình chờ kết quả OCR."))
+              return
+            }
+            try {
+              const result = await getDigitizationStatus(sessionId)
+              const pendingStart = pendingStartRef.current
+              if (
+                pendingStart &&
+                !hasExpectedStartedBatch(result, pendingStart)
+              ) {
+                setError("")
+                setState("polling")
+                timeoutRef.current = setTimeout(poll, OCR_POLL_INTERVAL_MS)
+                return
+              }
+              pendingStartRef.current = null
+              const nextStatus = digitizationToFolderStatus(result, folderPath)
+              const complete = isDigitizationComplete(result)
+              setStatus((current) => {
+                if (!current?.reextracting) return nextStatus
+                return {
+                  ...mergeReextractingStatus(current, nextStatus),
+                  reextracting: !complete,
+                }
+              })
               setError("")
+              if (complete) {
+                stop()
+                setState("done")
+                resolvePolling()
+                return
+              }
               setState("polling")
               timeoutRef.current = setTimeout(poll, OCR_POLL_INTERVAL_MS)
-              return
+            } catch (err) {
+              if (tokenRef.current !== token) return
+              schedulePollRetry(
+                poll,
+                err instanceof Error
+                  ? err.message
+                  : "Không thể kiểm tra trạng thái OCR."
+              )
             }
-            pendingStartRef.current = null
-            const nextStatus = digitizationToFolderStatus(result, folderPath)
-            const complete = isDigitizationComplete(result)
-            setStatus((current) => {
-              if (!current?.reextracting) return nextStatus
-              return {
-                ...mergeReextractingStatus(current, nextStatus),
-                reextracting: !complete,
-              }
-            })
-            setError("")
-            if (complete) {
-              stop()
-              setState("done")
-              resolvePolling()
-              return
-            }
-            setState("polling")
-            timeoutRef.current = setTimeout(poll, OCR_POLL_INTERVAL_MS)
-          } catch (err) {
-            if (tokenRef.current !== token) return
-            schedulePollRetry(
-              poll,
-              err instanceof Error
-                ? err.message
-                : "Không thể kiểm tra trạng thái OCR."
-            )
           }
-        }
 
-        void poll()
-      })
+          void poll()
+        })
+      } finally {
+        manualOperationRef.current = false
+      }
     },
     [schedulePollRetry, sessionId, status, stop]
   )

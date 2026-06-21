@@ -165,9 +165,12 @@ export function useFinalResultVersionActions(context: Record<string, any>) {
 
     const nextGroups = versionToGroups(pendingClusterVersion, metadataItems)
     const clusteredIds = clusteredDocumentIds(pendingClusterVersion)
-    const missingVerified = verifiedItems.filter(
-      (item: { document_id: string }) => !clusteredIds.has(item.document_id)
-    )
+    const hasMetadataItems = metadataItems.length > 0
+    const missingVerified = hasMetadataItems
+      ? verifiedItems.filter(
+          (item: { document_id: string }) => !clusteredIds.has(item.document_id)
+        )
+      : []
     setGroups(nextGroups)
     setDisplayedClusterVersionId(pendingClusterVersion.id)
     setDisplayedClusterVersion(pendingClusterVersion)
@@ -187,9 +190,11 @@ export function useFinalResultVersionActions(context: Record<string, any>) {
     const nextTemporaryCount = temporaryDocumentCount(nextGroups)
     setStatus(
       nextDossierCount > 0 &&
-        (verifiedItems.length === 0 || missingVerified.length === 0)
-        ? `Đã lập ${nextDossierCount} hồ sơ từ ${verifiedItems.length} tài liệu đã xác nhận.${nextTemporaryCount > 0 ? ` Có ${nextTemporaryCount} tài liệu trong Thư mục tạm.` : ""}`
-        : nextDossierCount > 0 && missingVerified.length > 0
+        (!hasMetadataItems ||
+          verifiedItems.length === 0 ||
+          missingVerified.length === 0)
+        ? `Đã lập ${nextDossierCount} hồ sơ${verifiedItems.length > 0 ? ` từ ${verifiedItems.length} tài liệu đã xác nhận` : ""}.${nextTemporaryCount > 0 ? ` Có ${nextTemporaryCount} tài liệu trong Thư mục tạm.` : ""}`
+        : hasMetadataItems && nextDossierCount > 0 && missingVerified.length > 0
           ? `Đã có ${nextDossierCount} hồ sơ. Có ${missingVerified.length} tài liệu đã xác nhận chưa được cập nhật vào hồ sơ.`
           : nextTemporaryCount > 0
             ? `Có ${nextTemporaryCount} tài liệu trong Thư mục tạm; chưa có hồ sơ để tạo mục lục.`

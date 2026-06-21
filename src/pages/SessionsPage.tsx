@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { FileStack, Loader2, Plus, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import { listChinhlyUsers, type ChinhlyUser } from "@/features/auth/api/authApi"
 import { UserMenu } from "@/features/auth/components/UserMenu"
 import { useAuth } from "@/features/auth/lib/AuthContext"
+import { PaginationControls } from "@/features/upload/components/PaginationControls"
 import {
   assignSessionCoordinator,
   deleteSession,
@@ -19,12 +20,20 @@ import {
 } from "./SessionsPage.components"
 
 const LAST_SESSION_KEY = "archival-processing:last-session-id"
+const SESSION_PAGE_SIZE_KEY = "archival-processing:sessions-page-size"
+const SESSION_PAGE_SIZE_OPTIONS = [12, 24, 48, 96, 200]
+const DEFAULT_SESSION_PAGE_SIZE = 24
 
 export function SessionsPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const isAdmin = normalizedRole(user?.role) === "admin"
   const [sessions, setSessions] = useState<SessionSummary[]>([])
+  const [sessionTotal, setSessionTotal] = useState(0)
+  const [sessionPageIndex, setSessionPageIndex] = useState(0)
+  const [sessionPageSize, setSessionPageSize] = useState(() =>
+    readSessionPageSize()
+  )
   const [coordinators, setCoordinators] = useState<ChinhlyUser[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -40,17 +49,45 @@ export function SessionsPage() {
     [sessions]
   )
 
-  const load = async () => {
+  const assignedCount = useMemo(
+    () => sessions.filter((session) => session.coordinator_user_id).length,
+    [sessions]
+  )
+
+  const sessionOffset = sessionPageIndex * sessionPageSize
+  const sessionPageCount = Math.max(1, Math.ceil(sessionTotal / sessionPageSize))
+  const displayedPageIndex = Math.min(sessionPageIndex, sessionPageCount - 1)
+  const sessionStartNumber =
+    sessionTotal === 0 ? 0 : displayedPageIndex * sessionPageSize + 1
+  const sessionEndNumber =
+    sessionTotal === 0
+      ? 0
+      : Math.min(sessionTotal, sessionStartNumber + sessions.length - 1)
+
+  const load = useCallback(async () => {
     setLoading(true)
     setError("")
     try {
       const [response, coordinatorUsers] = await Promise.all([
-        listSessions(200),
+        listSessions({ limit: sessionPageSize, offset: sessionOffset }),
         isAdmin
           ? listChinhlyUsers({ role: "coordinator", active: true, limit: 500 })
           : Promise.resolve([]),
       ])
+      const total = response.pagination?.total ?? response.sessions.length
+      const pageCount = Math.max(1, Math.ceil(total / sessionPageSize))
+      if (
+        response.sessions.length === 0 &&
+        total > 0 &&
+        sessionPageIndex >= pageCount
+      ) {
+        setSessionTotal(total)
+        setCoordinators(coordinatorUsers)
+        setSessionPageIndex(pageCount - 1)
+        return
+      }
       setSessions(response.sessions)
+      setSessionTotal(total)
       setCoordinators(coordinatorUsers)
     } catch (err) {
       const message =
@@ -60,11 +97,18 @@ export function SessionsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [isAdmin, sessionOffset, sessionPageIndex, sessionPageSize])
 
   useEffect(() => {
     void load()
-  }, [isAdmin])
+  }, [load])
+
+  const changeSessionPageSize = (pageSize: number) => {
+    const normalizedPageSize = normalizeSessionPageSize(pageSize)
+    writeSessionPageSize(normalizedPageSize)
+    setSessionPageSize(normalizedPageSize)
+    setSessionPageIndex(0)
+  }
 
   const coordinatorById = useMemo(() => {
     const map = new Map<string, ChinhlyUser>()
@@ -95,9 +139,6 @@ export function SessionsPage() {
     setDeletingSessionId(session.session_id)
     try {
       const response = await deleteSession(session.session_id)
-      setSessions((current) =>
-        current.filter((item) => item.session_id !== session.session_id)
-      )
       if (
         window.localStorage.getItem(LAST_SESSION_KEY) === session.session_id
       ) {
@@ -109,6 +150,11 @@ export function SessionsPage() {
         )
       } else {
         toast.success("Đã xóa session.")
+      }
+      if (sessions.length === 1 && sessionPageIndex > 0) {
+        setSessionPageIndex((current) => Math.max(0, current - 1))
+      } else {
+        void load()
       }
     } catch (err) {
       const message =
@@ -171,16 +217,10 @@ export function SessionsPage() {
           </div>
           <div className="flex items-center gap-3 md:flex">
             <div className="hidden items-center gap-3 lg:flex">
-              <SummaryPill label="Tổng session" value={sessions.length} />
-              <SummaryPill label="Đã có phương án" value={readyCount} />
+              <SummaryPill label="Tổng session" value={sessionTotal} />
+              <SummaryPill label="Trang có phương án" value={readyCount} />
               {isAdmin && (
-                <SummaryPill
-                  label="Đã phân công"
-                  value={
-                    sessions.filter((session) => session.coordinator_user_id)
-                      .length
-                  }
-                />
+                <SummaryPill label="Trang phân công" value={assignedCount} />
               )}
             </div>
             <UserMenu />
@@ -224,6 +264,25 @@ export function SessionsPage() {
           <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
             {error}
           </div>
+        )}
+
+        {sessionTotal > 0 && (
+          <PaginationControls
+            total={sessionTotal}
+            pageIndex={displayedPageIndex}
+            pageSize={sessionPageSize}
+            pageCount={sessionPageCount}
+            startNumber={sessionStartNumber}
+            endNumber={sessionEndNumber}
+            pageSizeOptions={SESSION_PAGE_SIZE_OPTIONS}
+            itemLabel="session"
+            onPageChange={(pageIndex) =>
+              setSessionPageIndex(
+                Math.min(Math.max(pageIndex, 0), sessionPageCount - 1)
+              )
+            }
+            onPageSizeChange={changeSessionPageSize}
+          />
         )}
 
         {loading ? (
@@ -279,4 +338,30 @@ export function SessionsPage() {
       </main>
     </div>
   )
+}
+
+function readSessionPageSize(): number {
+  if (typeof window === "undefined") return DEFAULT_SESSION_PAGE_SIZE
+  try {
+    return normalizeSessionPageSize(
+      Number(window.localStorage.getItem(SESSION_PAGE_SIZE_KEY))
+    )
+  } catch {
+    return DEFAULT_SESSION_PAGE_SIZE
+  }
+}
+
+function writeSessionPageSize(pageSize: number) {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.setItem(SESSION_PAGE_SIZE_KEY, String(pageSize))
+  } catch {
+    // Browser storage can be unavailable in hardened/private contexts.
+  }
+}
+
+function normalizeSessionPageSize(value: number): number {
+  return SESSION_PAGE_SIZE_OPTIONS.includes(value)
+    ? value
+    : DEFAULT_SESSION_PAGE_SIZE
 }
