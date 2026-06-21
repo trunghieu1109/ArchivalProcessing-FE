@@ -1,8 +1,14 @@
 import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
-import { Check, Edit2, FolderOpen, Loader2, X } from "lucide-react"
+import { Check, CheckCircle2, Edit2, FolderOpen, ListChecks, Loader2, X } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/shared/lib/utils"
+import {
+  listSessionDossierRetentionCandidates,
+  type RetentionCandidateSummary,
+  type RetentionReference,
+} from "@/features/upload/api/sessionApi"
 import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
 import {
   DOSSIER_METADATA_EDIT_FIELDS,
@@ -11,12 +17,14 @@ import {
 } from "./FinalResult.metadataUtils"
 
 export function DossierMetadataSidePanel({
+  sessionId,
   group,
   saving,
   className,
   onSave,
   onClose,
 }: {
+  sessionId: string | null
   group: ClusterGroup
   saving: boolean
   className?: string
@@ -27,6 +35,11 @@ export function DossierMetadataSidePanel({
   const [draft, setDraft] = useState<DossierMetadataDraft>(() =>
     createDossierMetadataDraft(group)
   )
+  const [candidatePanelOpen, setCandidatePanelOpen] = useState(false)
+  const [candidates, setCandidates] = useState<RetentionCandidateSummary[]>([])
+  const [candidatesLoading, setCandidatesLoading] = useState(false)
+  const [candidatesError, setCandidatesError] = useState("")
+  const [selectingEntryId, setSelectingEntryId] = useState("")
   const groupKey = group.dossierId ?? group.id
   const metadataFields: Array<{
     label: string
@@ -62,6 +75,10 @@ export function DossierMetadataSidePanel({
   useEffect(() => {
     setDraft(createDossierMetadataDraft(group))
     setEditing(false)
+    setCandidatePanelOpen(false)
+    setCandidates([])
+    setCandidatesError("")
+    setSelectingEntryId("")
   }, [groupKey])
 
   useEffect(() => {
@@ -87,13 +104,70 @@ export function DossierMetadataSidePanel({
     }
   }
 
+  const loadRetentionCandidates = async () => {
+    if (!sessionId) {
+      toast.error("Chưa có session để tải gợi ý thời hạn bảo quản.")
+      return
+    }
+    if (!group.dossierId) {
+      toast.error("Hồ sơ này chưa có mã để tải gợi ý thời hạn bảo quản.")
+      return
+    }
+    setCandidatePanelOpen(true)
+    setCandidatesLoading(true)
+    setCandidatesError("")
+    try {
+      const response = await listSessionDossierRetentionCandidates(
+        sessionId,
+        group.dossierId,
+        10
+      )
+      setCandidates(response.candidates ?? [])
+    } catch (err) {
+      setCandidates([])
+      setCandidatesError(
+        err instanceof Error
+          ? err.message
+          : "Không thể tải gợi ý thời hạn bảo quản."
+      )
+    } finally {
+      setCandidatesLoading(false)
+    }
+  }
+
+  const selectRetentionCandidate = async (
+    candidate: RetentionCandidateSummary
+  ) => {
+    const retentionPeriod = textValue(candidate.retention_period)
+    if (!retentionPeriod) {
+      toast.error("Gợi ý này chưa có thời hạn bảo quản.")
+      return
+    }
+    const nextDraft = {
+      ...createDossierMetadataDraft(group),
+      retentionPeriod,
+    }
+    setSelectingEntryId(candidate.entry_id)
+    try {
+      await onSave(group, nextDraft)
+      setDraft(nextDraft)
+      setEditing(false)
+      setCandidatePanelOpen(false)
+      toast.success(`Đã cập nhật thời hạn bảo quản "${retentionPeriod}".`)
+    } catch {
+      // The parent handler owns user-facing error messages.
+    } finally {
+      setSelectingEntryId("")
+    }
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, x: 8 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.16 }}
       className={cn(
-        "flex min-h-[360px] min-w-0 flex-col overflow-hidden rounded-2xl border border-[#D8E1EC] bg-white shadow-sm sm:min-h-[520px]",
+        "relative flex min-h-[360px] min-w-0 flex-col overflow-hidden rounded-2xl border border-[#D8E1EC] bg-white shadow-sm sm:min-h-[520px]",
         className
       )}
     >
@@ -134,14 +208,29 @@ export function DossierMetadataSidePanel({
               </Button>
             </>
           ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={startEdit}
-              disabled={saving}
-            >
-              <Edit2 data-icon="inline-start" /> Sửa
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void loadRetentionCandidates()}
+                disabled={saving || candidatesLoading}
+              >
+                {candidatesLoading ? (
+                  <Loader2 data-icon="inline-start" className="animate-spin" />
+                ) : (
+                  <ListChecks data-icon="inline-start" />
+                )}
+                Gợi ý THBQ
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={startEdit}
+                disabled={saving}
+              >
+                <Edit2 data-icon="inline-start" /> Sửa
+              </Button>
+            </>
           )}
           <Button
             type="button"
@@ -196,8 +285,171 @@ export function DossierMetadataSidePanel({
           </div>
         )}
       </div>
+      {candidatePanelOpen && (
+        <RetentionCandidatePanel
+          group={group}
+          candidates={candidates}
+          loading={candidatesLoading}
+          error={candidatesError}
+          selectingEntryId={selectingEntryId}
+          saving={saving}
+          onClose={() => setCandidatePanelOpen(false)}
+          onSelect={(candidate) => void selectRetentionCandidate(candidate)}
+        />
+      )}
     </motion.div>
   )
+}
+
+function RetentionCandidatePanel({
+  group,
+  candidates,
+  loading,
+  error,
+  selectingEntryId,
+  saving,
+  onClose,
+  onSelect,
+}: {
+  group: ClusterGroup
+  candidates: RetentionCandidateSummary[]
+  loading: boolean
+  error: string
+  selectingEntryId: string
+  saving: boolean
+  onClose: () => void
+  onSelect: (candidate: RetentionCandidateSummary) => void
+}) {
+  return (
+    <div className="absolute inset-x-3 top-16 bottom-3 z-40 flex flex-col overflow-hidden rounded-xl border border-[#CBD5E1] bg-white shadow-2xl">
+      <div className="flex items-start justify-between gap-3 border-b border-[#E2E8F0] px-4 py-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-[#0F172A]">
+            Gợi ý thời hạn bảo quản
+          </p>
+          <p className="mt-0.5 line-clamp-2 text-[11px] leading-5 text-[#64748B]">
+            {group.label}
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          title="Đóng gợi ý"
+          onClick={onClose}
+        >
+          <X className="size-3.5" />
+        </Button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-auto bg-[#F8FAFC] p-3">
+        {loading ? (
+          <div className="flex min-h-40 items-center justify-center rounded-lg border border-dashed border-[#CBD5E1] bg-white text-sm text-[#64748B]">
+            <Loader2 className="mr-2 size-4 animate-spin text-[#0052FF]" />
+            Đang tải gợi ý...
+          </div>
+        ) : error ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+          </div>
+        ) : candidates.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-[#CBD5E1] bg-white px-3 py-8 text-center text-sm text-[#64748B]">
+            Chưa có gợi ý thời hạn bảo quản.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {candidates.map((candidate) => {
+              const reference = candidateReference(candidate)
+              const selected =
+                textValue(candidate.retention_period) ===
+                textValue(group.retentionPeriod)
+              const candidateSaving = selectingEntryId === candidate.entry_id
+              return (
+                <button
+                  key={candidate.entry_id}
+                  type="button"
+                  disabled={saving || Boolean(selectingEntryId)}
+                  className={cn(
+                    "w-full rounded-lg border bg-white p-2.5 text-left text-[11px] leading-5 shadow-sm transition hover:border-[#0052FF] hover:bg-[#F8FBFF] focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60",
+                    selected ? "border-[#0052FF]" : "border-[#D8E1EC]"
+                  )}
+                  onClick={() => onSelect(candidate)}
+                >
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-semibold text-[#0F172A]">
+                      #{candidate.rank ?? "?"} ·{" "}
+                      {reference.retention_period || "Chưa rõ thời hạn"}
+                    </span>
+                    {candidateSaving ? (
+                      <Loader2 className="size-4 animate-spin text-[#0052FF]" />
+                    ) : selected ? (
+                      <CheckCircle2 className="size-4 text-emerald-600" />
+                    ) : null}
+                  </div>
+                  <RetentionReferenceDetails reference={reference} />
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function RetentionReferenceDetails({
+  reference,
+}: {
+  reference?: RetentionReference | null
+}) {
+  const mergeNames =
+    reference?.merge_path
+      ?.map((item) => textValue(item.name))
+      .filter(Boolean)
+      .join(" > ") || textValue(reference?.breadcrumb)
+  const rows = [
+    ["Phụ lục", reference?.appendix_name],
+    ["Nhóm", mergeNames],
+    ["Nội dung", reference?.document_type],
+    ["Số thứ tự điều", reference?.source_unit_index],
+    ["Thời hạn", reference?.retention_period],
+    ["Thông tư", reference?.source_file_name],
+    ["Ghi chú", reference?.note],
+  ].filter(([, value]) => textValue(value))
+  return (
+    <dl className="space-y-1.5 text-[11px] leading-5">
+      {rows.map(([label, value]) => (
+        <div key={String(label)} className="grid grid-cols-[78px_1fr] gap-2">
+          <dt className="font-medium text-[#64748B]">{label}</dt>
+          <dd className="min-w-0 [overflow-wrap:anywhere] text-[#0F172A]">
+            {textValue(value)}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
+function candidateReference(
+  candidate: RetentionCandidateSummary
+): RetentionReference {
+  const context = candidate.context ?? null
+  return {
+    ...context,
+    ...candidate,
+    merge_path: candidate.merge_path ?? context?.merge_path ?? [],
+    appendix_name: candidate.appendix_name ?? context?.appendix_name ?? "",
+    source_file_name:
+      candidate.source_file_name ?? context?.source_file_name ?? "",
+    document_type: candidate.document_type ?? "",
+    retention_period: candidate.retention_period ?? "",
+  }
+}
+
+function textValue(value: unknown): string {
+  if (value === null || value === undefined) return ""
+  if (typeof value === "string") return value.trim()
+  if (typeof value === "number" && Number.isFinite(value)) return String(value)
+  return ""
 }
 
 export function PreviewField({

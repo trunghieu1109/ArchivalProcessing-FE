@@ -46,6 +46,17 @@ type ProcessStepActionContext = ReturnType<typeof useProcessStepModel> & {
   onRetryMetadata?: (documentId: number) => Promise<SessionDocumentResponse>
 }
 
+const BULK_ACTION_BATCH_SIZE = readPositiveEnvInt(
+  "VITE_ARCHIVAL_BULK_ACTION_BATCH_SIZE",
+  32,
+  500
+)
+const BULK_ACTION_CONCURRENCY = readPositiveEnvInt(
+  "VITE_ARCHIVAL_BULK_ACTION_CONCURRENCY",
+  4,
+  32
+)
+
 export function createProcessStepActions(context: ProcessStepActionContext) {
   const {
     sessionId,
@@ -132,10 +143,9 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
       return next
     })
     try {
-      const results = await Promise.allSettled(
-        bulkVerifyItems.map((item) =>
-          verifyDocumentMetadata(sessionId, item.id)
-        )
+      const results = await runSettledInBatches(
+        bulkVerifyItems,
+        (item) => verifyDocumentMetadata(sessionId, item.id)
       )
       const verified = results
         .filter(
@@ -474,8 +484,9 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
       return next
     })
     try {
-      const results = await Promise.allSettled(
-        bulkRetryItems.map((item) => onRetryMetadata(item.id))
+      const results = await runSettledInBatches(
+        bulkRetryItems,
+        (item) => onRetryMetadata(item.id)
       )
       const restarted = results
         .filter(
@@ -558,4 +569,64 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     handleExportMetadataReview,
     handlePreviewResizePointerDown,
   }
+}
+
+function readPositiveEnvInt(
+  name: string,
+  fallback: number,
+  maxValue: number
+): number {
+  const env = import.meta.env as unknown as Record<string, string | undefined>
+  const parsed = Number(env[name])
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback
+  return Math.min(maxValue, Math.floor(parsed))
+}
+
+async function runSettledInBatches<T, R>(
+  items: readonly T[],
+  worker: (item: T) => Promise<R>
+): Promise<PromiseSettledResult<R>[]> {
+  const results: PromiseSettledResult<R>[] = []
+  for (let start = 0; start < items.length; start += BULK_ACTION_BATCH_SIZE) {
+    const batch = items.slice(start, start + BULK_ACTION_BATCH_SIZE)
+    results.push(
+      ...(await runSettledWithConcurrency(
+        batch,
+        worker,
+        BULK_ACTION_CONCURRENCY
+      ))
+    )
+  }
+  return results
+}
+
+async function runSettledWithConcurrency<T, R>(
+  items: readonly T[],
+  worker: (item: T) => Promise<R>,
+  concurrency: number
+): Promise<PromiseSettledResult<R>[]> {
+  const results = new Array<PromiseSettledResult<R>>(items.length)
+  let nextIndex = 0
+  const runNext = async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex
+      nextIndex += 1
+      const item = items[index] as T
+      try {
+        results[index] = {
+          status: "fulfilled",
+          value: await worker(item),
+        }
+      } catch (reason) {
+        results[index] = { status: "rejected", reason }
+      }
+    }
+  }
+  await Promise.all(
+    Array.from(
+      { length: Math.min(concurrency, items.length) },
+      () => runNext()
+    )
+  )
+  return results
 }

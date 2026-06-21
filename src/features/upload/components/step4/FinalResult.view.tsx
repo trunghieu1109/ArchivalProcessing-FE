@@ -405,6 +405,7 @@ export function FinalResultView(props: Record<string, any>) {
               />
             ) : selectedMetadataGroup ? (
               <DossierMetadataSidePanel
+                sessionId={sessionId}
                 group={selectedMetadataGroup}
                 saving={
                   savingDossierMetadataId ===

@@ -17,12 +17,13 @@ import {
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
-  downloadPublicationAll,
-  downloadPublicationBox,
+  downloadPublicationArchiveArtifact,
   downloadPublicationDocument,
-  downloadPublicationDossier,
+  enqueuePublicationArchive,
+  getPublicationArchiveStatus,
   getPublicationManifest,
   updatePublicationName,
+  type PublicationArchiveScope,
   type PublicationManifest,
 } from "@/features/upload/api/sessionApi"
 import { cn } from "@/shared/lib/utils"
@@ -30,6 +31,15 @@ import { cn } from "@/shared/lib/utils"
 interface PublicationStepProps {
   sessionId: string | null
 }
+
+const PUBLICATION_ARCHIVE_POLL_MS = 1500
+const PUBLICATION_ARCHIVE_TIMEOUT_MS = 30 * 60 * 1000
+const PUBLICATION_ARCHIVE_FAILED_STATUSES = new Set([
+  "failed",
+  "dead",
+  "cancelled",
+  "canceled",
+])
 
 export function PublicationStep({ sessionId }: PublicationStepProps) {
   const [manifest, setManifest] = useState<PublicationManifest | null>(null)
@@ -100,6 +110,43 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
       }
     },
     []
+  )
+
+  const downloadArchive = useCallback(
+    async (key: string, scope: PublicationArchiveScope) => {
+      if (!sessionId) return
+      setDownloadingKey(key)
+      setError("")
+      try {
+        let status = await getPublicationArchiveStatus(sessionId, scope)
+        if (!status.artifact) {
+          if (status.active) {
+            toast.info("ZIP xuáº¥t báº£n Ä‘ang Ä‘Æ°á»£c táº¡o, sáº½ táº£i khi hoÃ n táº¥t.")
+          } else {
+            await enqueuePublicationArchive(sessionId, scope)
+            toast.info("ÄÃ£ Ä‘Æ°a ZIP xuáº¥t báº£n vÃ o hÃ ng Ä‘á»£i.")
+          }
+          status = await waitForPublicationArchive(sessionId, scope)
+        }
+        const artifactId = status.artifact?.artifact_id ?? status.artifact?.id
+        if (!artifactId) {
+          throw new Error("ZIP xuáº¥t báº£n chÆ°a sáºµn sÃ ng Ä‘á»ƒ táº£i.")
+        }
+        const result = await downloadPublicationArchiveArtifact(
+          sessionId,
+          artifactId
+        )
+        saveBlob(result.blob, result.fileName)
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "KhÃ´ng thá»ƒ táº£i ZIP xuáº¥t báº£n."
+        setError(message)
+        toast.error(message)
+      } finally {
+        setDownloadingKey("")
+      }
+    },
+    [sessionId]
   )
 
   const summaryItems = useMemo(
@@ -179,7 +226,7 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
             disabled={!manifest?.ready || downloadingKey !== ""}
             onClick={() =>
               sessionId &&
-              void download("all", () => downloadPublicationAll(sessionId))
+              void downloadArchive("all", { scope: "all" })
             }
           >
             {downloadingKey === "all" ? (
@@ -299,9 +346,10 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
                     label={`Tải ${box.name}`}
                     onClick={() =>
                       sessionId &&
-                      void download(boxKey, () =>
-                        downloadPublicationBox(sessionId, box.box_number)
-                      )
+                      void downloadArchive(boxKey, {
+                        scope: "box",
+                        box_number: box.box_number,
+                      })
                     }
                   />
                 </div>
@@ -388,12 +436,11 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
                               label={`Tải hồ sơ ${dossier.standard_name}`}
                               onClick={() =>
                                 sessionId &&
-                                void download(dossierKey, () =>
-                                  downloadPublicationDossier(
-                                    sessionId,
-                                    dossier.session_dossier_id
-                                  )
-                                )
+                                void downloadArchive(dossierKey, {
+                                  scope: "dossier",
+                                  session_dossier_id:
+                                    dossier.session_dossier_id,
+                                })
                               }
                             />
                           </div>
@@ -623,6 +670,29 @@ function toggleSet<T>(current: Set<T>, value: T): Set<T> {
   if (next.has(value)) next.delete(value)
   else next.add(value)
   return next
+}
+
+async function waitForPublicationArchive(
+  sessionId: string,
+  scope: PublicationArchiveScope
+) {
+  const deadline = Date.now() + PUBLICATION_ARCHIVE_TIMEOUT_MS
+  while (Date.now() < deadline) {
+    const status = await getPublicationArchiveStatus(sessionId, scope)
+    if (status.artifact) return status
+    const jobStatus = status.job?.status ?? ""
+    if (PUBLICATION_ARCHIVE_FAILED_STATUSES.has(jobStatus)) {
+      throw new Error(
+        status.job?.error || "Job táº¡o ZIP xuáº¥t báº£n tháº¥t báº¡i."
+      )
+    }
+    await delay(PUBLICATION_ARCHIVE_POLL_MS)
+  }
+  throw new Error("QuÃ¡ thá»i gian chá» táº¡o ZIP xuáº¥t báº£n.")
+}
+
+function delay(ms: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, ms))
 }
 
 function saveBlob(blob: Blob, fileName: string) {

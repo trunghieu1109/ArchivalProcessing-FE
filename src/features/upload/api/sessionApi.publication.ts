@@ -60,6 +60,58 @@ export interface PublicationManifest {
   boxes: PublicationBox[]
 }
 
+export type PublicationArchiveScope =
+  | { scope?: "all" }
+  | { scope: "box"; box_number: string }
+  | { scope: "dossier"; session_dossier_id: number }
+
+export type PublicationArchiveScopeResponse =
+  | { type: "all" }
+  | { type: "box"; box_number: string }
+  | { type: "dossier"; session_dossier_id: number }
+
+export interface PublicationArchiveJob {
+  id: number
+  job_type: string
+  status: string
+  retry_count: number
+  payload: Record<string, unknown>
+  locked_at?: string | null
+  locked_by?: string | null
+  error?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface PublicationArchiveArtifact {
+  id: number
+  artifact_id: number
+  artifact_type: string
+  status: string
+  file_name: string
+  generated_at?: string | null
+  manifest: Record<string, unknown>
+}
+
+export interface PublicationArchiveStatus {
+  session_id: string
+  scope: PublicationArchiveScopeResponse
+  active: boolean
+  job: PublicationArchiveJob | null
+  artifact: PublicationArchiveArtifact | null
+}
+
+export interface PublicationArchiveJobResponse {
+  session_id: string
+  job_id: number
+  job_type: string
+  status: string
+  scope: PublicationArchiveScopeResponse
+  payload: Record<string, unknown>
+  created_by?: string | null
+  worker_required: boolean
+}
+
 export async function getPublicationManifest(
   sessionId: string
 ): Promise<PublicationManifest> {
@@ -83,6 +135,48 @@ export async function updatePublicationName(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }
+  )
+}
+
+export async function enqueuePublicationArchive(
+  sessionId: string,
+  scope: PublicationArchiveScope = { scope: "all" }
+): Promise<PublicationArchiveJobResponse> {
+  return requestJson<PublicationArchiveJobResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/publication/archive`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(scope),
+    }
+  )
+}
+
+export async function getPublicationArchiveStatus(
+  sessionId: string,
+  scope: PublicationArchiveScope = { scope: "all" }
+): Promise<PublicationArchiveStatus> {
+  const params = new URLSearchParams()
+  const scopeName = scope.scope ?? "all"
+  params.set("scope", scopeName)
+  if (scope.scope === "box") {
+    params.set("box_number", scope.box_number)
+  }
+  if (scope.scope === "dossier") {
+    params.set("session_dossier_id", String(scope.session_dossier_id))
+  }
+  return requestJson<PublicationArchiveStatus>(
+    `/sessions/${encodeURIComponent(sessionId)}/publication/archive?${params.toString()}`
+  )
+}
+
+export async function downloadPublicationArchiveArtifact(
+  sessionId: string,
+  artifactId: number
+): Promise<DocumentArchiveDownload> {
+  return downloadPublication(
+    `/sessions/${encodeURIComponent(sessionId)}/publication/archive/${encodeURIComponent(String(artifactId))}/download`,
+    `${sessionId}-publication.zip`
   )
 }
 
