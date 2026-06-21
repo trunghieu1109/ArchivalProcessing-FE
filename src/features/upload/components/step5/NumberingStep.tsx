@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AlertTriangle, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
+import { PaginationControls } from "@/features/upload/components/PaginationControls"
+import { usePagedItems } from "@/features/upload/hooks/usePagedItems"
 import {
   downloadArtifact,
   enqueueDocumentNumbering,
@@ -350,6 +352,12 @@ export function NumberingStep({
     () => groupDocumentsByDossier(status?.documents ?? []),
     [status?.documents]
   )
+  const dossierPagination = usePagedItems(documentsByDossier, {
+    defaultPageSize: 50,
+    resetKey: sessionId ?? "",
+    storageKey: "archival-processing.numbering-dossier-page-size",
+  })
+  const pagedDocumentsByDossier = dossierPagination.items
   const previewDocument = useMemo(
     () =>
       (status?.documents ?? []).find(
@@ -510,6 +518,22 @@ export function NumberingStep({
               </p>
             </div>
           </div>
+          {documentsByDossier.length > 0 && (
+            <div className="border-b border-[#E2E8F0] px-4 py-3">
+              <PaginationControls
+                total={dossierPagination.total}
+                pageIndex={dossierPagination.pageIndex}
+                pageSize={dossierPagination.pageSize}
+                pageCount={dossierPagination.pageCount}
+                startNumber={dossierPagination.startNumber}
+                endNumber={dossierPagination.endNumber}
+                pageSizeOptions={dossierPagination.pageSizeOptions}
+                itemLabel="hồ sơ"
+                onPageChange={dossierPagination.setPageIndex}
+                onPageSizeChange={dossierPagination.setPageSize}
+              />
+            </div>
+          )}
 
           {loading ? (
             <div className="flex min-h-48 items-center justify-center text-sm text-[#64748B]">
@@ -522,7 +546,7 @@ export function NumberingStep({
             </div>
           ) : (
             <div className="max-h-[min(72svh,760px)] divide-y divide-[#E2E8F0] overflow-x-hidden overflow-y-auto">
-              {documentsByDossier.map((group) => (
+              {pagedDocumentsByDossier.map((group) => (
                 <section key={group.dossierId} className="px-4 py-3">
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                     <div className="min-w-0">

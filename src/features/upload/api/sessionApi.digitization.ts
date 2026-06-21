@@ -59,10 +59,15 @@ export async function startDigitization(
 }
 
 export async function getDigitizationStatus(
-  sessionId: string
+  sessionId: string,
+  options: { limit?: number; offset?: number } = {}
 ): Promise<DigitizationStatusResponse | null> {
+  const searchParams = new URLSearchParams()
+  if (options.limit !== undefined) searchParams.set("limit", String(options.limit))
+  if (options.offset !== undefined) searchParams.set("offset", String(options.offset))
+  const query = searchParams.toString()
   return requestJsonOrNull<DigitizationStatusResponse>(
-    `/sessions/${encodeURIComponent(sessionId)}/digitization`
+    `/sessions/${encodeURIComponent(sessionId)}/digitization${query ? `?${query}` : ""}`
   )
 }
 
@@ -188,24 +193,28 @@ export function digitizationToFolderStatus(
 ): FolderStatusResponse {
   const batch = response?.batches[0]
   const documents = response?.documents ?? []
+  const summary = response?.summary
+  const responseDocumentTotal = summary?.total_documents ?? documents.length
   const batchComplete = ["done", "completed_with_errors", "failed"].includes(
     String(batch?.status || "")
       .trim()
       .toLowerCase()
   )
   const latestBatchDocumentCount =
-    batch?.id == null
-      ? documents.length
-      : documents.filter((document) => document.ocr_batch_id === batch.id)
-          .length
+    response?.pagination !== undefined
+      ? responseDocumentTotal
+      : batch?.id == null
+        ? documents.length
+        : documents.filter((document) => document.ocr_batch_id === batch.id)
+            .length
   const pendingBatchDocumentCount = Math.max(
     0,
     batchComplete ? 0 : (batch?.total_files ?? 0) - latestBatchDocumentCount
   )
   const cumulativeDocumentCount =
     batch?.upload_mode === "append"
-      ? documents.length + pendingBatchDocumentCount
-      : Math.max(documents.length, batch?.total_files ?? 0)
+      ? responseDocumentTotal + pendingBatchDocumentCount
+      : Math.max(responseDocumentTotal, batch?.total_files ?? 0)
   const jobs: JobSummary[] = documents.map((document) => {
     const lightMetadata = buildDisplayMetadata(document)
     return {
@@ -248,27 +257,31 @@ export function digitizationToFolderStatus(
     total_files: cumulativeDocumentCount,
     total_jobs: Math.max(
       cumulativeDocumentCount,
-      documents.length +
+      responseDocumentTotal +
         Math.max(0, (batch?.total_jobs ?? 0) - latestBatchDocumentCount)
     ),
     missing_files: batch?.missing_files ?? [],
-    status_counts:
-      response?.summary.status_counts ?? batch?.status_counts ?? {},
+    status_counts: summary?.status_counts ?? batch?.status_counts ?? {},
     document_numbering_mode: batch?.document_numbering_mode ?? null,
     remove_blank_pages_before_ocr:
       batch?.remove_blank_pages_before_ocr ?? true,
     upload_mode: batch?.upload_mode ?? null,
     reextracting: false,
     pdf_preprocessing: batch?.pdf_preprocessing ?? null,
-    signature_extracted_documents: documents.filter(
-      (document) => documentSignatureStatus(document) === "done"
-    ).length,
-    signature_pending_documents: documents.filter(
-      (document) => documentSignatureStatus(document) === "signature_pending"
-    ).length,
-    signature_failed_documents: documents.filter(
-      (document) => documentSignatureStatus(document) === "signature_failed"
-    ).length,
+    signature_extracted_documents:
+      summary?.signature_extracted_documents ??
+      documents.filter((document) => documentSignatureStatus(document) === "done")
+        .length,
+    signature_pending_documents:
+      summary?.signature_pending_documents ??
+      documents.filter(
+        (document) => documentSignatureStatus(document) === "signature_pending"
+      ).length,
+    signature_failed_documents:
+      summary?.signature_failed_documents ??
+      documents.filter(
+        (document) => documentSignatureStatus(document) === "signature_failed"
+      ).length,
     jobs,
   }
 }

@@ -4,6 +4,15 @@ import type {
   UploadMode,
 } from "./sessionApi.sessionTypes"
 
+export interface PaginationMeta {
+  total: number
+  limit: number | null
+  offset: number
+  returned: number
+  has_more: boolean
+  next_offset?: number | null
+}
+
 export interface DigitizationDocument {
   id: number
   ocr_batch_id?: number | null
@@ -58,6 +67,7 @@ export interface DigitizationStatusResponse {
   session_id: string
   batches: DigitizationBatch[]
   documents: DigitizationDocument[]
+  pagination?: PaginationMeta
   summary: {
     total_documents: number
     metadata_ready?: number

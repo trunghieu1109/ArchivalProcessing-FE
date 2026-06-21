@@ -13,6 +13,8 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/shared/lib/utils"
+import { PaginationControls } from "@/features/upload/components/PaginationControls"
+import { usePagedItems } from "@/features/upload/hooks/usePagedItems"
 import type {
   ClusterDocument,
   ClusterGroup,
@@ -110,6 +112,14 @@ export function ResultNode({
   const canViewGroupInformation =
     !isDossier && !isTemporary && node.documentCount > 0
   const selectedGroupInformation = selectedGroupInfoNodeId === node.id
+  const documentPagination = usePagedItems(group?.documents ?? [], {
+    defaultPageSize: 50,
+    resetKey: group?.id ?? node.id,
+  })
+  const childPagination = usePagedItems(node.children, {
+    defaultPageSize: 50,
+    resetKey: node.id,
+  })
 
   return (
     <div
@@ -348,29 +358,68 @@ export function ResultNode({
 
       {open && (
         <div className="mt-1">
-          {group?.documents.map((document) => (
-            <DocumentRow
-              key={`${group.id}-${document.documentId}`}
-              document={document}
-              clusterId={group.id}
-              depth={depth + 1}
-              compact={compact}
-              selected={
-                document.sessionDocumentId !== null &&
-                document.sessionDocumentId === selectedPreviewDocumentId
-              }
-              selectionChecked={
-                document.sessionDocumentId !== null &&
-                selectedSessionDocumentIds.has(document.sessionDocumentId)
-              }
-              selectionDisabled={document.sessionDocumentId === null}
-              onToggleSelection={onToggleDocumentSelection}
-              onDragStart={onDragStart}
-              onDragEnd={onDragEnd}
-              onSelectPreview={onSelectPreview}
-            />
-          ))}
-          {node.children.map((child) => (
+          {group && documentPagination.total > documentPagination.pageSize && (
+            <div
+              className="py-1"
+              style={{ marginLeft: `${28 + (depth + 1) * indentStep}px` }}
+            >
+              <PaginationControls
+                total={documentPagination.total}
+                pageIndex={documentPagination.pageIndex}
+                pageSize={documentPagination.pageSize}
+                pageCount={documentPagination.pageCount}
+                startNumber={documentPagination.startNumber}
+                endNumber={documentPagination.endNumber}
+                pageSizeOptions={documentPagination.pageSizeOptions}
+                itemLabel="tài liệu"
+                onPageChange={documentPagination.setPageIndex}
+                onPageSizeChange={documentPagination.setPageSize}
+              />
+            </div>
+          )}
+          {group &&
+            documentPagination.items.map((document) => (
+              <DocumentRow
+                key={`${group.id}-${document.documentId}`}
+                document={document}
+                clusterId={group.id}
+                depth={depth + 1}
+                compact={compact}
+                selected={
+                  document.sessionDocumentId !== null &&
+                  document.sessionDocumentId === selectedPreviewDocumentId
+                }
+                selectionChecked={
+                  document.sessionDocumentId !== null &&
+                  selectedSessionDocumentIds.has(document.sessionDocumentId)
+                }
+                selectionDisabled={document.sessionDocumentId === null}
+                onToggleSelection={onToggleDocumentSelection}
+                onDragStart={onDragStart}
+                onDragEnd={onDragEnd}
+                onSelectPreview={onSelectPreview}
+              />
+            ))}
+          {childPagination.total > childPagination.pageSize && (
+            <div
+              className="py-1"
+              style={{ marginLeft: `${28 + (depth + 1) * indentStep}px` }}
+            >
+              <PaginationControls
+                total={childPagination.total}
+                pageIndex={childPagination.pageIndex}
+                pageSize={childPagination.pageSize}
+                pageCount={childPagination.pageCount}
+                startNumber={childPagination.startNumber}
+                endNumber={childPagination.endNumber}
+                pageSizeOptions={childPagination.pageSizeOptions}
+                itemLabel="nhóm"
+                onPageChange={childPagination.setPageIndex}
+                onPageSizeChange={childPagination.setPageSize}
+              />
+            </div>
+          )}
+          {childPagination.items.map((child) => (
             <ResultNode
               key={child.id}
               node={child}

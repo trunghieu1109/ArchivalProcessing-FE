@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import { listChinhlyUsers, type ChinhlyUser } from "@/features/auth/api/authApi"
 import { useAuth } from "@/features/auth/lib/AuthContext"
+import { usePagedItems } from "@/features/upload/hooks/usePagedItems"
 import { hasMetadataWarning } from "@/features/upload/lib/metadata"
 import type { DocumentPreviewTarget } from "@/features/upload/components/DocumentPdfPreview"
 import type { PdfMetadata } from "@/features/upload/types"
@@ -197,12 +198,18 @@ export function useProcessStepModel({
     [batchGroups]
   )
   const activeBatch = batchGroups[activeBatchIndex] ?? batchGroups[0] ?? null
-  const displayedItems =
+  const unpagedDisplayedItems =
     reviewMode === "batch"
       ? manualSplitActive
         ? (unassignedBatch?.items ?? EMPTY_METADATA_ITEMS)
         : (activeBatch?.items ?? EMPTY_METADATA_ITEMS)
       : batchScopeItems
+  const displayedPagination = usePagedItems(unpagedDisplayedItems, {
+    defaultPageSize: 50,
+    resetKey: `${sessionId ?? ""}:${reviewMode}:${batchMode}:${manualSplitActive ? "split" : "normal"}:${activeBatch?.index ?? "list"}`,
+    storageKey: "archival-processing.metadata-display-page-size",
+  })
+  const displayedItems = displayedPagination.items
   const displayedItemIdsKey = useMemo(
     () => displayedItems.map((item) => item.id).join("|"),
     [displayedItems]
@@ -496,6 +503,8 @@ export function useProcessStepModel({
     batchGroups,
     unassignedBatch,
     activeBatch,
+    unpagedDisplayedItems,
+    displayedPagination,
     displayedItems,
     displayedItemIdsKey,
     displayedConfirmableItems,

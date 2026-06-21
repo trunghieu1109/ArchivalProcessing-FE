@@ -16,6 +16,8 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
+import { PaginationControls } from "@/features/upload/components/PaginationControls"
+import { usePagedItems } from "@/features/upload/hooks/usePagedItems"
 import {
   downloadPublicationArchiveArtifact,
   downloadPublicationDocument,
@@ -58,6 +60,14 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
     value: string
   } | null>(null)
   const [savingNameKey, setSavingNameKey] = useState("")
+  const [dossierPageByBox, setDossierPageByBox] = useState<
+    Record<string, number>
+  >({})
+  const [documentPageByDossier, setDocumentPageByDossier] = useState<
+    Record<number, number>
+  >({})
+  const [dossierPageSize, setDossierPageSize] = useState(25)
+  const [documentPageSize, setDocumentPageSize] = useState(100)
 
   const refresh = useCallback(async () => {
     if (!sessionId) {
@@ -158,6 +168,12 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
       ] as const,
     [manifest]
   )
+  const boxPagination = usePagedItems(manifest?.boxes ?? [], {
+    defaultPageSize: 25,
+    resetKey: manifest?.fingerprint ?? "",
+    storageKey: "archival-processing.publication-box-page-size",
+  })
+  const pagedBoxes = boxPagination.items
 
   const saveName = useCallback(async () => {
     if (!sessionId || !editingName) return
@@ -286,11 +302,36 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
             ))}
           </div>
         </div>
+        {(manifest?.boxes.length ?? 0) > 0 && (
+          <div className="border-b border-[#E2E8F0] px-4 py-3">
+            <PaginationControls
+              total={boxPagination.total}
+              pageIndex={boxPagination.pageIndex}
+              pageSize={boxPagination.pageSize}
+              pageCount={boxPagination.pageCount}
+              startNumber={boxPagination.startNumber}
+              endNumber={boxPagination.endNumber}
+              pageSizeOptions={boxPagination.pageSizeOptions}
+              itemLabel="hộp"
+              onPageChange={boxPagination.setPageIndex}
+              onPageSizeChange={boxPagination.setPageSize}
+            />
+          </div>
+        )}
 
         <div className="max-h-[min(68svh,620px)] overflow-y-auto p-3">
-          {(manifest?.boxes ?? []).map((box) => {
+          {pagedBoxes.map((box) => {
             const boxCollapsed = collapsedBoxes.has(box.box_number)
             const boxKey = `box:${box.box_number}`
+            const dossierPagination = paginationFromState(
+              box.dossiers.length,
+              dossierPageByBox[box.box_number] ?? 0,
+              dossierPageSize
+            )
+            const pagedDossiers = box.dossiers.slice(
+              dossierPagination.startIndex,
+              dossierPagination.endIndex
+            )
             return (
               <section key={box.box_number}>
                 <div className="group/row flex items-center gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-[#F1F5F9]">
@@ -356,11 +397,44 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
 
                 {!boxCollapsed ? (
                   <div className="ml-[15px] border-l border-[#D8E1EC] pl-3">
-                    {box.dossiers.map((dossier) => {
+                    {box.dossiers.length > dossierPagination.pageSize && (
+                      <PaginationControls
+                        total={dossierPagination.total}
+                        pageIndex={dossierPagination.pageIndex}
+                        pageSize={dossierPagination.pageSize}
+                        pageCount={dossierPagination.pageCount}
+                        startNumber={dossierPagination.startNumber}
+                        endNumber={dossierPagination.endNumber}
+                        itemLabel="hồ sơ"
+                        onPageChange={(pageIndex) =>
+                          setDossierPageByBox((current) => ({
+                            ...current,
+                            [box.box_number]: pageIndex,
+                          }))
+                        }
+                        onPageSizeChange={(pageSize) => {
+                          setDossierPageSize(pageSize)
+                          setDossierPageByBox({})
+                        }}
+                        className="my-2"
+                      />
+                    )}
+                    {pagedDossiers.map((dossier) => {
                       const dossierCollapsed = collapsedDossiers.has(
                         dossier.session_dossier_id
                       )
                       const dossierKey = `dossier:${dossier.session_dossier_id}`
+                      const documentPagination = paginationFromState(
+                        dossier.documents.length,
+                        documentPageByDossier[
+                          dossier.session_dossier_id
+                        ] ?? 0,
+                        documentPageSize
+                      )
+                      const pagedDocuments = dossier.documents.slice(
+                        documentPagination.startIndex,
+                        documentPagination.endIndex
+                      )
                       return (
                         <div key={dossier.session_dossier_id}>
                           <div className="group/row flex items-center gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-[#F1F5F9]">
@@ -447,7 +521,30 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
 
                           {!dossierCollapsed ? (
                             <div className="ml-[15px] border-l border-[#E2E8F0] pl-3">
-                              {dossier.documents.map((document) => {
+                              {dossier.documents.length >
+                                documentPagination.pageSize && (
+                                <PaginationControls
+                                  total={documentPagination.total}
+                                  pageIndex={documentPagination.pageIndex}
+                                  pageSize={documentPagination.pageSize}
+                                  pageCount={documentPagination.pageCount}
+                                  startNumber={documentPagination.startNumber}
+                                  endNumber={documentPagination.endNumber}
+                                  itemLabel="tài liệu"
+                                  onPageChange={(pageIndex) =>
+                                    setDocumentPageByDossier((current) => ({
+                                      ...current,
+                                      [dossier.session_dossier_id]: pageIndex,
+                                    }))
+                                  }
+                                  onPageSizeChange={(pageSize) => {
+                                    setDocumentPageSize(pageSize)
+                                    setDocumentPageByDossier({})
+                                  }}
+                                  className="my-2"
+                                />
+                              )}
+                              {pagedDocuments.map((document) => {
                                 const documentKey = `document:${document.session_document_id}`
                                 return (
                                   <div
@@ -670,6 +767,28 @@ function toggleSet<T>(current: Set<T>, value: T): Set<T> {
   if (next.has(value)) next.delete(value)
   else next.add(value)
   return next
+}
+
+function paginationFromState(
+  total: number,
+  pageIndex: number,
+  pageSize: number
+) {
+  const safePageSize = Math.max(1, pageSize)
+  const pageCount = Math.max(1, Math.ceil(total / safePageSize))
+  const safePageIndex = Math.min(Math.max(0, pageIndex), pageCount - 1)
+  const startIndex = safePageIndex * safePageSize
+  const endIndex = Math.min(total, startIndex + safePageSize)
+  return {
+    total,
+    pageIndex: safePageIndex,
+    pageSize: safePageSize,
+    pageCount,
+    startIndex,
+    endIndex,
+    startNumber: total === 0 ? 0 : startIndex + 1,
+    endNumber: endIndex,
+  }
 }
 
 async function waitForPublicationArchive(

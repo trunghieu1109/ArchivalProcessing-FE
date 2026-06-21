@@ -7,6 +7,7 @@ import {
 } from "./ProcessStep.viewParts"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { PaginationControls } from "@/features/upload/components/PaginationControls"
 import { DocumentPdfPreview } from "@/features/upload/components/DocumentPdfPreview"
 import { DocumentDownloadDialog } from "./DocumentDownloadDialog"
 import { MetadataCard } from "./MetadataCard"
@@ -63,6 +64,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     displayedBulkSelectableItems,
     displayedConfirmableItems,
     displayedItems,
+    displayedPagination,
     dossierReadyItems,
     exportingMetadataReview,
     failedMetadataItems,
@@ -287,6 +289,20 @@ export function ProcessStepView(props: ProcessStepViewProps) {
             sortedItems={sortedItems}
             batchSizeInput={batchSizeInput}
           />
+          {displayedPagination.total > 0 && (
+            <PaginationControls
+              total={displayedPagination.total}
+              pageIndex={displayedPagination.pageIndex}
+              pageSize={displayedPagination.pageSize}
+              pageCount={displayedPagination.pageCount}
+              startNumber={displayedPagination.startNumber}
+              endNumber={displayedPagination.endNumber}
+              pageSizeOptions={displayedPagination.pageSizeOptions}
+              itemLabel="tài liệu"
+              onPageChange={displayedPagination.setPageIndex}
+              onPageSizeChange={displayedPagination.setPageSize}
+            />
+          )}
           <ScrollArea className="h-[min(70svh,640px)] min-h-[360px]">
             <div className="flex flex-col gap-2 pr-1">
               {displayedItems.map((item) => {

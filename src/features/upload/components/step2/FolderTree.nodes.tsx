@@ -14,6 +14,8 @@ import {
 } from "lucide-react"
 import { AnimatePresence, motion } from "framer-motion"
 import { toast } from "sonner"
+import { PaginationControls } from "@/features/upload/components/PaginationControls"
+import { usePagedItems } from "@/features/upload/hooks/usePagedItems"
 import type {
   FolderNode,
   ParsedPlan,
@@ -346,6 +348,10 @@ export function FolderNodeItem({
     ? (node.candidates ?? []).filter((candidate) => candidate.title.trim())
     : []
   const hasCandidates = candidates.length > 0
+  const childPagination = usePagedItems(node.children, {
+    defaultPageSize: 50,
+    resetKey: node.id,
+  })
 
   const commitRename = () => {
     if (nameDraft.trim()) onRename(node.id, nameDraft.trim())
@@ -547,7 +553,27 @@ export function FolderNodeItem({
                 />
               )}
 
-              {node.children.map((child) => (
+              {node.children.length > childPagination.pageSize && (
+                <div
+                  className="mr-2 mb-2"
+                  style={{ marginLeft: `${28 + depth * 20}px` }}
+                >
+                  <PaginationControls
+                    total={childPagination.total}
+                    pageIndex={childPagination.pageIndex}
+                    pageSize={childPagination.pageSize}
+                    pageCount={childPagination.pageCount}
+                    startNumber={childPagination.startNumber}
+                    endNumber={childPagination.endNumber}
+                    pageSizeOptions={childPagination.pageSizeOptions}
+                    itemLabel="thư mục"
+                    onPageChange={childPagination.setPageIndex}
+                    onPageSizeChange={childPagination.setPageSize}
+                  />
+                </div>
+              )}
+
+              {childPagination.items.map((child) => (
                 <FolderNodeItem
                   key={child.id}
                   node={child}
@@ -572,6 +598,11 @@ interface LeafCandidateListProps {
 }
 
 function LeafCandidateList({ candidates, marginLeft }: LeafCandidateListProps) {
+  const candidatePagination = usePagedItems(candidates, {
+    defaultPageSize: 50,
+    resetKey: candidates.map((candidate) => candidate.title).join("\u001f"),
+  })
+
   return (
     <div
       className="mr-2 mb-2 border-l border-[#CBD5E1] py-1 pl-3"
@@ -585,8 +616,23 @@ function LeafCandidateList({ candidates, marginLeft }: LeafCandidateListProps) {
           {candidates.length}
         </span>
       </div>
+      {candidates.length > candidatePagination.pageSize && (
+        <PaginationControls
+          total={candidatePagination.total}
+          pageIndex={candidatePagination.pageIndex}
+          pageSize={candidatePagination.pageSize}
+          pageCount={candidatePagination.pageCount}
+          startNumber={candidatePagination.startNumber}
+          endNumber={candidatePagination.endNumber}
+          pageSizeOptions={candidatePagination.pageSizeOptions}
+          itemLabel="giá trị"
+          onPageChange={candidatePagination.setPageIndex}
+          onPageSizeChange={candidatePagination.setPageSize}
+          className="mb-2"
+        />
+      )}
       <div className="flex flex-col gap-1">
-        {candidates.map((candidate, index) => (
+        {candidatePagination.items.map((candidate, index) => (
           <div
             key={`${candidate.title}-${index}`}
             className="flex items-start gap-2 rounded-lg border border-[#E2E8F0] bg-white px-2.5 py-1.5"

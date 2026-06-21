@@ -2,6 +2,8 @@ import { Check, Files, FileText, Plus } from "lucide-react"
 import { AnimatePresence, motion } from "framer-motion"
 import { toast } from "sonner"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { PaginationControls } from "@/features/upload/components/PaginationControls"
+import { usePagedItems } from "@/features/upload/hooks/usePagedItems"
 import { cn } from "@/shared/lib/utils"
 import type { FolderNode } from "@/features/upload/types"
 
@@ -36,6 +38,13 @@ export function FolderTree({
   onConfirm,
   confirming = false,
 }: FolderTreeProps) {
+  const rootPagination = usePagedItems(tree, {
+    defaultPageSize: 50,
+    resetKey: parsedPlan.fonds_name,
+    storageKey: "archival-processing.folder-tree-root-page-size",
+  })
+  const pagedTree = rootPagination.items
+
   const handleAdd = (parentId: string) => {
     const newNode: FolderNode = {
       id: newId(),
@@ -218,8 +227,24 @@ export function FolderTree({
           transition={{ duration: 0.25 }}
           className="rounded-2xl border border-[#CBD5E1] bg-white shadow-sm"
         >
+          {tree.length > rootPagination.pageSize && (
+            <div className="border-b border-[#E2E8F0] px-3 py-3">
+              <PaginationControls
+                total={rootPagination.total}
+                pageIndex={rootPagination.pageIndex}
+                pageSize={rootPagination.pageSize}
+                pageCount={rootPagination.pageCount}
+                startNumber={rootPagination.startNumber}
+                endNumber={rootPagination.endNumber}
+                pageSizeOptions={rootPagination.pageSizeOptions}
+                itemLabel="thư mục"
+                onPageChange={rootPagination.setPageIndex}
+                onPageSizeChange={rootPagination.setPageSize}
+              />
+            </div>
+          )}
           <ScrollArea className="h-[min(68svh,520px)] min-h-[360px] p-3">
-            {tree.map((node) => (
+            {pagedTree.map((node) => (
               <FolderNodeItem
                 key={node.id}
                 node={node}

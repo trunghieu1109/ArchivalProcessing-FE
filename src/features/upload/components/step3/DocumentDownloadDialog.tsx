@@ -5,6 +5,8 @@ import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { PaginationControls } from "@/features/upload/components/PaginationControls"
+import { usePagedItems } from "@/features/upload/hooks/usePagedItems"
 import { downloadSessionDocuments } from "@/features/upload/api/sessionApi"
 import type { PdfMetadata } from "@/features/upload/types"
 
@@ -27,15 +29,28 @@ export function DocumentDownloadDialog({
         .sort(compareDownloadableItems),
     [items]
   )
+  const pagination = usePagedItems(downloadableItems, {
+    defaultPageSize: 100,
+    resetKey: open ? "open" : "closed",
+    storageKey: "archival-processing.metadata-download-page-size",
+  })
+  const visibleDownloadableItems = pagination.items
   const allSelected =
-    downloadableItems.length > 0 &&
-    downloadableItems.every((item) => selectedIds.has(item.id))
+    visibleDownloadableItems.length > 0 &&
+    visibleDownloadableItems.every((item) => selectedIds.has(item.id))
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (downloading) return
     setOpen(nextOpen)
     if (nextOpen) {
-      setSelectedIds(new Set(downloadableItems.map((item) => item.id)))
+      pagination.setPageIndex(0)
+      setSelectedIds(
+        new Set(
+          downloadableItems
+            .slice(0, pagination.pageSize)
+            .map((item) => item.id)
+        )
+      )
     }
   }
 
@@ -54,8 +69,8 @@ export function DocumentDownloadDialog({
   const toggleAll = () => {
     setSelectedIds(
       allSelected
-        ? new Set()
-        : new Set(downloadableItems.map((item) => item.id))
+        ? removeSelectedIds(selectedIds, visibleDownloadableItems)
+        : addSelectedIds(selectedIds, visibleDownloadableItems)
     )
   }
 
@@ -144,9 +159,26 @@ export function DocumentDownloadDialog({
             </span>
           </div>
 
+          {downloadableItems.length > 0 && (
+            <div className="border-b border-[#E2E8F0] px-5 py-3">
+              <PaginationControls
+                total={pagination.total}
+                pageIndex={pagination.pageIndex}
+                pageSize={pagination.pageSize}
+                pageCount={pagination.pageCount}
+                startNumber={pagination.startNumber}
+                endNumber={pagination.endNumber}
+                pageSizeOptions={pagination.pageSizeOptions}
+                itemLabel="tài liệu"
+                onPageChange={pagination.setPageIndex}
+                onPageSizeChange={pagination.setPageSize}
+              />
+            </div>
+          )}
+
           <ScrollArea className="min-h-0 flex-1 overflow-y-auto">
             <div className="divide-y divide-[#E2E8F0] px-5">
-              {downloadableItems.map((item) => {
+              {visibleDownloadableItems.map((item) => {
                 const selected = selectedIds.has(item.id)
                 const fileName = fileNameFromPath(item.data_path)
                 return (
@@ -230,6 +262,24 @@ function compareDownloadableItems(a: PdfMetadata, b: PdfMetadata): number {
     { numeric: true, sensitivity: "base" }
   )
   return byFileName || a.id - b.id
+}
+
+function addSelectedIds(
+  selectedIds: Set<number>,
+  items: PdfMetadata[]
+): Set<number> {
+  const next = new Set(selectedIds)
+  items.forEach((item) => next.add(item.id))
+  return next
+}
+
+function removeSelectedIds(
+  selectedIds: Set<number>,
+  items: PdfMetadata[]
+): Set<number> {
+  const next = new Set(selectedIds)
+  items.forEach((item) => next.delete(item.id))
+  return next
 }
 
 function saveBlob(blob: Blob, fileName: string) {
