@@ -227,22 +227,6 @@ export function FolderTree({
           transition={{ duration: 0.25 }}
           className="rounded-2xl border border-[#CBD5E1] bg-white shadow-sm"
         >
-          {tree.length > rootPagination.pageSize && (
-            <div className="border-b border-[#E2E8F0] px-3 py-3">
-              <PaginationControls
-                total={rootPagination.total}
-                pageIndex={rootPagination.pageIndex}
-                pageSize={rootPagination.pageSize}
-                pageCount={rootPagination.pageCount}
-                startNumber={rootPagination.startNumber}
-                endNumber={rootPagination.endNumber}
-                pageSizeOptions={rootPagination.pageSizeOptions}
-                itemLabel="thư mục"
-                onPageChange={rootPagination.setPageIndex}
-                onPageSizeChange={rootPagination.setPageSize}
-              />
-            </div>
-          )}
           <ScrollArea className="h-[min(68svh,520px)] min-h-[360px] p-3">
             {pagedTree.map((node) => (
               <FolderNodeItem
@@ -261,6 +245,22 @@ export function FolderTree({
               />
             ))}
           </ScrollArea>
+          {tree.length > rootPagination.pageSize && (
+            <div className="border-t border-[#E2E8F0] px-3 py-3">
+              <PaginationControls
+                total={rootPagination.total}
+                pageIndex={rootPagination.pageIndex}
+                pageSize={rootPagination.pageSize}
+                pageCount={rootPagination.pageCount}
+                startNumber={rootPagination.startNumber}
+                endNumber={rootPagination.endNumber}
+                pageSizeOptions={rootPagination.pageSizeOptions}
+                itemLabel="thư mục"
+                onPageChange={rootPagination.setPageIndex}
+                onPageSizeChange={rootPagination.setPageSize}
+              />
+            </div>
+          )}
         </motion.div>
       </AnimatePresence>
 

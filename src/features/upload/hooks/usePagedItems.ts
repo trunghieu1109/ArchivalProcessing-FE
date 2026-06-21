@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 
-export const DEFAULT_PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 500, 1000]
+export const DEFAULT_PAGE_SIZE_OPTIONS = [5, 10, 25, 50, 100, 200, 500, 1000]
 
 interface UsePagedItemsOptions {
   defaultPageSize?: number
@@ -49,23 +49,46 @@ export function usePagedItems<T>(
     [endIndex, items, startIndex]
   )
 
-  const setPageIndex = (nextPageIndex: number) => {
-    setPageState((current) => ({
-      ...current,
-      pageIndex: nextPageIndex,
-      resetKey,
-    }))
-  }
+  const setPageIndex = useCallback(
+    (nextPageIndex: number) => {
+      setPageState((current) => {
+        if (
+          current.pageIndex === nextPageIndex &&
+          current.resetKey === resetKey
+        ) {
+          return current
+        }
+        return {
+          ...current,
+          pageIndex: nextPageIndex,
+          resetKey,
+        }
+      })
+    },
+    [resetKey]
+  )
 
-  const setPageSize = (value: number) => {
-    const nextPageSize = normalizePageSize(value, normalizedOptions)
-    writeStoredPageSize(storageKey, nextPageSize)
-    setPageState({
-      pageIndex: 0,
-      pageSize: nextPageSize,
-      resetKey,
-    })
-  }
+  const setPageSize = useCallback(
+    (value: number) => {
+      const nextPageSize = normalizePageSize(value, normalizedOptions)
+      writeStoredPageSize(storageKey, nextPageSize)
+      setPageState((current) => {
+        if (
+          current.pageIndex === 0 &&
+          current.pageSize === nextPageSize &&
+          current.resetKey === resetKey
+        ) {
+          return current
+        }
+        return {
+          pageIndex: 0,
+          pageSize: nextPageSize,
+          resetKey,
+        }
+      })
+    },
+    [normalizedOptions, resetKey, storageKey]
+  )
 
   return {
     items: pageItems,

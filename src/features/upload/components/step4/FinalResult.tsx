@@ -27,6 +27,7 @@ import {
   buildResultTree,
   dossierGroupsFromNode,
   findResultTreeNode,
+  findResultTreeDossierMatches,
   flattenNodeIds,
 } from "./FinalResult.treeUtils"
 import {
@@ -136,6 +137,16 @@ export function FinalResult({
     [metadataItems]
   )
   const tree = useMemo(() => buildResultTree(groups), [groups])
+  const [resultTreeSearch, setResultTreeSearch] = useState("")
+  const [resultTreeSearchIndex, setResultTreeSearchIndex] = useState(0)
+  const resultTreeSearchMatches = useMemo(
+    () => findResultTreeDossierMatches(tree, resultTreeSearch),
+    [resultTreeSearch, tree]
+  )
+  const activeResultTreeSearchMatch =
+    resultTreeSearchMatches[resultTreeSearchIndex] ?? null
+  const activeResultTreeSearchAncestorKey =
+    activeResultTreeSearchMatch?.ancestorIds.join("\u001f") ?? ""
   const totalDossiers = regularDossierCount(groups)
   const hasClusterData = groups.some(
     (group) => !group.isTemporary || group.documents.length > 0
@@ -253,6 +264,41 @@ export function FinalResult({
       (previous) => new Set([...previous, ...flattenNodeIds(tree)])
     )
   }, [tree])
+
+  useEffect(() => {
+    setResultTreeSearchIndex(0)
+  }, [resultTreeSearch])
+
+  useEffect(() => {
+    if (resultTreeSearchIndex < resultTreeSearchMatches.length) return
+    setResultTreeSearchIndex(0)
+  }, [resultTreeSearchIndex, resultTreeSearchMatches.length])
+
+  useEffect(() => {
+    if (!activeResultTreeSearchMatch) return
+    setOpenNodeIds((previous) => {
+      let changed = false
+      const next = new Set(previous)
+      activeResultTreeSearchMatch.ancestorIds.forEach((id) => {
+        if (!next.has(id)) {
+          next.add(id)
+          changed = true
+        }
+      })
+      return changed ? next : previous
+    })
+    const timeoutId = window.setTimeout(() => {
+      scrollResultTreeNodeIntoView(
+        resultTreeScrollRef.current,
+        activeResultTreeSearchMatch.nodeId
+      )
+    }, 120)
+    return () => window.clearTimeout(timeoutId)
+  }, [
+    activeResultTreeSearchAncestorKey,
+    activeResultTreeSearchMatch,
+    resultTreeScrollRef,
+  ])
 
   useEffect(() => {
     setSelectedSessionDocumentIds((current) => {
@@ -636,6 +682,16 @@ export function FinalResult({
     Boolean(pendingClusterVersion)
   const selectedDocumentsActionDisabled =
     temporaryFolderUpdateDisabled || selectedDocumentCount === 0
+  const handleResultTreeSearchNavigate = useCallback(
+    (direction: number) => {
+      setResultTreeSearchIndex((current) => {
+        const total = resultTreeSearchMatches.length
+        if (total === 0) return 0
+        return (current + direction + total) % total
+      })
+    },
+    [resultTreeSearchMatches.length]
+  )
   return (
     <FinalResultView
       activeClusterVersionId={activeClusterVersionId}
@@ -695,6 +751,9 @@ export function FinalResult({
       rebuildBaselineVersionId={rebuildBaselineVersionId}
       rebuildSubmitting={rebuildSubmitting}
       resultStatusText={resultStatusText}
+      resultTreeSearch={resultTreeSearch}
+      resultTreeSearchIndex={resultTreeSearchIndex}
+      resultTreeSearchTotal={resultTreeSearchMatches.length}
       resultTreeScrollRef={resultTreeScrollRef}
       restoringClusterVersion={restoringClusterVersion}
       savingDossierMetadataId={savingDossierMetadataId}
@@ -709,6 +768,7 @@ export function FinalResult({
       sessionId={sessionId}
       setDraggedDocument={setDraggedDocument}
       setDropTargetId={setDropTargetId}
+      setResultTreeSearch={setResultTreeSearch}
       setSelectedMetadataGroupId={setSelectedMetadataGroupId}
       setSelectedPreviewDocumentId={setSelectedPreviewDocumentId}
       showClusterProgress={showClusterProgress}
@@ -723,6 +783,21 @@ export function FinalResult({
       toggleNode={toggleNode}
       updatingClusterVersion={updatingClusterVersion}
       viewingHistoricalClusterVersion={viewingHistoricalClusterVersion}
+      activeResultTreeSearchNodeId={activeResultTreeSearchMatch?.nodeId ?? null}
+      onResultTreeSearchNavigate={handleResultTreeSearchNavigate}
     />
   )
+}
+
+function scrollResultTreeNodeIntoView(
+  container: HTMLDivElement | null,
+  nodeId: string
+) {
+  if (!container) return
+  const nodes = container.querySelectorAll<HTMLElement>("[data-result-node-id]")
+  for (const node of nodes) {
+    if (node.dataset.resultNodeId !== nodeId) continue
+    node.scrollIntoView({ block: "center", behavior: "smooth" })
+    return
+  }
 }

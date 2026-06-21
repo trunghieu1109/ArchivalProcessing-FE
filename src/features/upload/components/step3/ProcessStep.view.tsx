@@ -84,6 +84,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     items,
     manualSelectedIds,
     manualSplitActive,
+    metadataFileFilter,
     metadataLoading,
     metadataMessage,
     metadataReloading,
@@ -107,6 +108,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     selectedAssigneeId,
     selectedDocumentId,
     sessionId,
+    setMetadataFileFilter,
     setSelectedAssigneeId,
     setSelectedDocumentId,
     signatureStatus,
@@ -123,6 +125,8 @@ export function ProcessStepView(props: ProcessStepViewProps) {
 
   const warningCount = needsReviewItems.length
   const rawExpectedCount = Math.max(metadataTotal, paths.length, items.length)
+  const hasMetadataDocuments =
+    rawExpectedCount > 0 || paths.length > 0 || items.length > 0
   const metadataStartingWithoutCount =
     (metadataLoading || metadataReloading) && rawExpectedCount === 0
   const expectedCount = metadataStartingWithoutCount ? 1 : rawExpectedCount
@@ -152,7 +156,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
   const canAttemptContinue = isCoordinator && dossierReadyItems.length > 0
   const canContinue = canAttemptContinue && !buildBlockedMessage
 
-  if (!hasDataInput) {
+  if (!hasDataInput && !hasMetadataDocuments) {
     return (
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -272,6 +276,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
             handleVerifyAllReady={handleVerifyAllReady}
             manualSelectedIds={manualSelectedIds}
             manualSplitActive={manualSplitActive}
+            metadataFileFilter={metadataFileFilter}
             metadataInProgress={metadataInProgress}
             metadataReloading={metadataReloading}
             readyItems={readyItems}
@@ -281,6 +286,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
             selectAllDisplayedForManualSplit={selectAllDisplayedForManualSplit}
             selectedAssigneeId={selectedAssigneeId}
             sessionId={sessionId}
+            setMetadataFileFilter={setMetadataFileFilter}
             setSelectedAssigneeId={setSelectedAssigneeId}
             startManualSplit={startManualSplit}
             toggleBulkReviewSelectionMode={toggleBulkReviewSelectionMode}
@@ -289,20 +295,6 @@ export function ProcessStepView(props: ProcessStepViewProps) {
             sortedItems={sortedItems}
             batchSizeInput={batchSizeInput}
           />
-          {displayedPagination.total > 0 && (
-            <PaginationControls
-              total={displayedPagination.total}
-              pageIndex={displayedPagination.pageIndex}
-              pageSize={displayedPagination.pageSize}
-              pageCount={displayedPagination.pageCount}
-              startNumber={displayedPagination.startNumber}
-              endNumber={displayedPagination.endNumber}
-              pageSizeOptions={displayedPagination.pageSizeOptions}
-              itemLabel="tài liệu"
-              onPageChange={displayedPagination.setPageIndex}
-              onPageSizeChange={displayedPagination.setPageSize}
-            />
-          )}
           <ScrollArea className="h-[min(70svh,640px)] min-h-[360px]">
             <div className="flex flex-col gap-2 pr-1">
               {displayedItems.map((item) => {
@@ -383,6 +375,20 @@ export function ProcessStepView(props: ProcessStepViewProps) {
               )}
             </div>
           </ScrollArea>
+          {displayedPagination.total > 0 && (
+            <PaginationControls
+              total={displayedPagination.total}
+              pageIndex={displayedPagination.pageIndex}
+              pageSize={displayedPagination.pageSize}
+              pageCount={displayedPagination.pageCount}
+              startNumber={displayedPagination.startNumber}
+              endNumber={displayedPagination.endNumber}
+              pageSizeOptions={displayedPagination.pageSizeOptions}
+              itemLabel="tài liệu"
+              onPageChange={displayedPagination.setPageIndex}
+              onPageSizeChange={displayedPagination.setPageSize}
+            />
+          )}
         </div>
         <div className="relative min-w-0 self-stretch xl:h-full">
           <button

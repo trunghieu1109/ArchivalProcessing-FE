@@ -2,12 +2,16 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react"
 
-import { loginToChinhly } from "@/features/auth/api/authApi"
+import {
+  getCurrentChinhlyUser,
+  loginToChinhly,
+} from "@/features/auth/api/authApi"
 import {
   clearStoredAuthSession,
   getStoredAuthSession,
@@ -39,11 +43,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (credentials: LoginCredentials) => {
     const response = await loginToChinhly(credentials)
+    const accessToken = String(response.access_token ?? "").trim()
+    const user = response.user ?? (await getCurrentChinhlyUser(accessToken))
     const nextSession: AuthSession = {
-      access_token: String(response.access_token ?? "").trim(),
+      access_token: accessToken,
       token_type: response.token_type ?? "Bearer",
       expires_at: response.expires_at ?? null,
-      user: response.user ?? null,
+      user,
     }
     if (!nextSession.access_token) {
       throw new Error("Đăng nhập không trả về access token.")
@@ -57,6 +63,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearStoredAuthSession()
     setSession(null)
   }, [])
+
+  useEffect(() => {
+    const accessToken = session?.access_token
+    if (!accessToken || session.user || isAuthSessionExpired(session)) return
+
+    let cancelled = false
+    getCurrentChinhlyUser(accessToken)
+      .then((user) => {
+        if (cancelled) return
+        setSession((current) => {
+          if (!current || current.access_token !== accessToken || current.user) {
+            return current
+          }
+          const nextSession: AuthSession = { ...current, user }
+          storeAuthSession(nextSession)
+          return nextSession
+        })
+      })
+      .catch(() => {
+        // Keep the token; API calls can still surface auth errors explicitly.
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [session])
 
   const effectiveSession =
     session && isAuthSessionExpired(session) ? null : session

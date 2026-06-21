@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { AlertTriangle, Loader2 } from "lucide-react"
+import { AlertTriangle, Loader2, Search, X } from "lucide-react"
 import { toast } from "sonner"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import { PaginationControls } from "@/features/upload/components/PaginationControls"
@@ -75,6 +75,7 @@ export function NumberingStep({
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState("")
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0)
+  const [numberingFilter, setNumberingFilter] = useState("")
   const [metadataExporting, setMetadataExporting] = useState(false)
   const [metadataImporting, setMetadataImporting] = useState(false)
   const metadataImportInputRef = useRef<HTMLInputElement | null>(null)
@@ -352,9 +353,21 @@ export function NumberingStep({
     () => groupDocumentsByDossier(status?.documents ?? []),
     [status?.documents]
   )
-  const dossierPagination = usePagedItems(documentsByDossier, {
+  const normalizedNumberingFilter = useMemo(
+    () => normalizeSearchText(numberingFilter),
+    [numberingFilter]
+  )
+  const filteredDocumentsByDossier = useMemo(
+    () =>
+      filterNumberingDossierGroups(
+        documentsByDossier,
+        normalizedNumberingFilter
+      ),
+    [documentsByDossier, normalizedNumberingFilter]
+  )
+  const dossierPagination = usePagedItems(filteredDocumentsByDossier, {
     defaultPageSize: 50,
-    resetKey: sessionId ?? "",
+    resetKey: `${sessionId ?? ""}:${normalizedNumberingFilter}`,
     storageKey: "archival-processing.numbering-dossier-page-size",
   })
   const pagedDocumentsByDossier = dossierPagination.items
@@ -506,35 +519,40 @@ export function NumberingStep({
           tone={failedCount ? "danger" : "neutral"}
         />
       </div>
-      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(420px,1.05fr)] xl:items-start">
-        <div className="min-w-0 overflow-hidden rounded-2xl border border-[#CBD5E1] bg-white shadow-sm">
-          <div className="flex items-center justify-between gap-3 border-b border-[#E2E8F0] px-5 py-4">
-            <div>
-              <p className="text-sm font-semibold text-[#0F172A]">
-                Danh sách PDF đánh số
-              </p>
-              <p className="mt-1 text-xs text-[#64748B]">
-                Các tài liệu được nhóm theo hồ sơ đang active.
-              </p>
+      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(420px,1.05fr)] xl:items-stretch">
+        <div className="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-[#CBD5E1] bg-white shadow-sm xl:h-[min(82svh,834px)] xl:min-h-[520px]">
+          <div className="flex flex-col gap-3 border-b border-[#E2E8F0] px-5 py-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-[#0F172A]">
+                  Danh sách PDF đánh số
+                </p>
+                <p className="mt-1 text-xs text-[#64748B]">
+                  Các tài liệu được nhóm theo hồ sơ đang active.
+                </p>
+              </div>
             </div>
-          </div>
-          {documentsByDossier.length > 0 && (
-            <div className="border-b border-[#E2E8F0] px-4 py-3">
-              <PaginationControls
-                total={dossierPagination.total}
-                pageIndex={dossierPagination.pageIndex}
-                pageSize={dossierPagination.pageSize}
-                pageCount={dossierPagination.pageCount}
-                startNumber={dossierPagination.startNumber}
-                endNumber={dossierPagination.endNumber}
-                pageSizeOptions={dossierPagination.pageSizeOptions}
-                itemLabel="hồ sơ"
-                onPageChange={dossierPagination.setPageIndex}
-                onPageSizeChange={dossierPagination.setPageSize}
+            <label className="flex h-10 min-w-0 items-center gap-2 rounded-xl border border-[#CBD5E1] bg-white px-3 transition-colors focus-within:border-[#0052FF] focus-within:ring-2 focus-within:ring-[#0052FF]/15">
+              <Search className="size-4 shrink-0 text-[#94A3B8]" />
+              <input
+                value={numberingFilter}
+                onChange={(event) => setNumberingFilter(event.target.value)}
+                placeholder="Lọc theo hồ sơ, hộp hoặc tên file"
+                className="min-w-0 flex-1 bg-transparent text-sm text-[#0F172A] outline-none placeholder:text-[#94A3B8]"
               />
-            </div>
-          )}
-
+              {numberingFilter ? (
+                <button
+                  type="button"
+                  onClick={() => setNumberingFilter("")}
+                  title="Xóa lọc"
+                  aria-label="Xóa lọc"
+                  className="flex size-6 shrink-0 items-center justify-center rounded-md text-[#64748B] hover:bg-[#F1F5F9]"
+                >
+                  <X className="size-3.5" />
+                </button>
+              ) : null}
+            </label>
+          </div>
           {loading ? (
             <div className="flex min-h-48 items-center justify-center text-sm text-[#64748B]">
               <Loader2 className="mr-2 size-4 animate-spin text-[#0052FF]" />
@@ -544,8 +562,12 @@ export function NumberingStep({
             <div className="flex min-h-48 items-center justify-center px-6 text-center text-sm text-[#64748B]">
               Chưa có tài liệu trong hồ sơ active để đánh số.
             </div>
+          ) : filteredDocumentsByDossier.length === 0 ? (
+            <div className="flex min-h-48 items-center justify-center px-6 text-center text-sm text-[#64748B]">
+              Không có hồ sơ hoặc tài liệu khớp bộ lọc.
+            </div>
           ) : (
-            <div className="max-h-[min(72svh,760px)] divide-y divide-[#E2E8F0] overflow-x-hidden overflow-y-auto">
+            <div className="min-h-0 flex-1 divide-y divide-[#E2E8F0] overflow-x-hidden overflow-y-auto">
               {pagedDocumentsByDossier.map((group) => (
                 <section key={group.dossierId} className="px-4 py-3">
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -593,6 +615,22 @@ export function NumberingStep({
               ))}
             </div>
           )}
+          {filteredDocumentsByDossier.length > 0 && (
+            <div className="border-t border-[#E2E8F0] px-4 py-3">
+              <PaginationControls
+                total={dossierPagination.total}
+                pageIndex={dossierPagination.pageIndex}
+                pageSize={dossierPagination.pageSize}
+                pageCount={dossierPagination.pageCount}
+                startNumber={dossierPagination.startNumber}
+                endNumber={dossierPagination.endNumber}
+                pageSizeOptions={dossierPagination.pageSizeOptions}
+                itemLabel="hồ sơ"
+                onPageChange={dossierPagination.setPageIndex}
+                onPageSizeChange={dossierPagination.setPageSize}
+              />
+            </div>
+          )}
         </div>
         <NumberedPdfPreviewPanel
           document={previewDocument}
@@ -614,4 +652,64 @@ export function NumberingStep({
       />
     </div>
   )
+}
+
+type NumberingDossierGroup = ReturnType<typeof groupDocumentsByDossier>[number]
+
+function filterNumberingDossierGroups(
+  groups: NumberingDossierGroup[],
+  normalizedFilter: string
+): NumberingDossierGroup[] {
+  if (!normalizedFilter) return groups
+  return groups.flatMap((group) => {
+    if (numberingGroupMatches(group, normalizedFilter)) return [group]
+    const documents = group.documents.filter((document) =>
+      numberingDocumentMatches(document, normalizedFilter)
+    )
+    return documents.length > 0 ? [{ ...group, documents }] : []
+  })
+}
+
+function numberingGroupMatches(
+  group: NumberingDossierGroup,
+  normalizedFilter: string
+): boolean {
+  return normalizeSearchText(
+    [
+      group.title,
+      group.dossierId,
+      group.dossierNumber,
+      group.boxNumber,
+      group.hosoId,
+      group.hopId,
+    ].join(" ")
+  ).includes(normalizedFilter)
+}
+
+function numberingDocumentMatches(
+  document: NumberingDocumentStatus,
+  normalizedFilter: string
+): boolean {
+  return normalizeSearchText(
+    [
+      document.file_name,
+      document.data_path,
+      document.document_id,
+      document.dossier_title,
+      document.dossier_number,
+      document.box_number,
+      document.hoso_id,
+      document.hop_id,
+      document.status,
+    ].join(" ")
+  ).includes(normalizedFilter)
+}
+
+function normalizeSearchText(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim()
 }

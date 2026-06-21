@@ -159,23 +159,6 @@ export function DocumentDownloadDialog({
             </span>
           </div>
 
-          {downloadableItems.length > 0 && (
-            <div className="border-b border-[#E2E8F0] px-5 py-3">
-              <PaginationControls
-                total={pagination.total}
-                pageIndex={pagination.pageIndex}
-                pageSize={pagination.pageSize}
-                pageCount={pagination.pageCount}
-                startNumber={pagination.startNumber}
-                endNumber={pagination.endNumber}
-                pageSizeOptions={pagination.pageSizeOptions}
-                itemLabel="tài liệu"
-                onPageChange={pagination.setPageIndex}
-                onPageSizeChange={pagination.setPageSize}
-              />
-            </div>
-          )}
-
           <ScrollArea className="min-h-0 flex-1 overflow-y-auto">
             <div className="divide-y divide-[#E2E8F0] px-5">
               {visibleDownloadableItems.map((item) => {
@@ -212,6 +195,22 @@ export function DocumentDownloadDialog({
               })}
             </div>
           </ScrollArea>
+          {downloadableItems.length > 0 && (
+            <div className="border-t border-[#E2E8F0] px-5 py-3">
+              <PaginationControls
+                total={pagination.total}
+                pageIndex={pagination.pageIndex}
+                pageSize={pagination.pageSize}
+                pageCount={pagination.pageCount}
+                startNumber={pagination.startNumber}
+                endNumber={pagination.endNumber}
+                pageSizeOptions={pagination.pageSizeOptions}
+                itemLabel="tài liệu"
+                onPageChange={pagination.setPageIndex}
+                onPageSizeChange={pagination.setPageSize}
+              />
+            </div>
+          )}
 
           <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-[#E2E8F0] px-5 py-4 sm:flex-row sm:items-center sm:justify-end">
             <Dialog.Close asChild>

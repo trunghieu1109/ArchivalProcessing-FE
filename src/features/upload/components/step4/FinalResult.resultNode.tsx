@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react"
 import {
   AlertTriangle,
   ChevronDown,
@@ -37,6 +38,7 @@ export function ResultNode({
   selectedSessionDocumentIds,
   selectedDocumentCount,
   selectedDocumentsActionDisabled,
+  activeFindNodeId,
   movingSelectedDocumentsTargetId,
   promotingTemporaryFolder,
   temporaryFolderUpdateDisabled,
@@ -65,6 +67,7 @@ export function ResultNode({
   selectedSessionDocumentIds: Set<number>
   selectedDocumentCount: number
   selectedDocumentsActionDisabled: boolean
+  activeFindNodeId: string | null
   movingSelectedDocumentsTargetId: string | null
   promotingTemporaryFolder: boolean
   temporaryFolderUpdateDisabled: boolean
@@ -120,9 +123,37 @@ export function ResultNode({
     defaultPageSize: 50,
     resetKey: node.id,
   })
+  const activeFindHit = activeFindNodeId === node.id
+  const nodeRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!activeFindNodeId || !open || node.children.length === 0) return
+    const childIndex = node.children.findIndex((child) =>
+      resultTreeNodeContainsId(child, activeFindNodeId)
+    )
+    if (childIndex < 0) return
+    const targetPageIndex = Math.floor(childIndex / childPagination.pageSize)
+    if (targetPageIndex !== childPagination.pageIndex) {
+      childPagination.setPageIndex(targetPageIndex)
+    }
+  }, [
+    activeFindNodeId,
+    childPagination.pageIndex,
+    childPagination.pageSize,
+    childPagination.setPageIndex,
+    node.children,
+    open,
+  ])
+
+  useEffect(() => {
+    if (!activeFindHit) return
+    nodeRef.current?.scrollIntoView({ block: "center", behavior: "smooth" })
+  }, [activeFindHit])
 
   return (
     <div
+      ref={nodeRef}
+      data-result-node-id={node.id}
       className={cn(
         "max-w-full min-w-0",
         isDossier ? "overflow-visible" : "overflow-hidden"
@@ -136,7 +167,9 @@ export function ResultNode({
             : "items-center overflow-hidden",
           isDropFolder ? "border border-transparent" : "",
           isTemporary && "bg-amber-50/60",
-          canDrop && dropTargetId === node.id
+          activeFindHit
+            ? "bg-[#EAF1FF] ring-2 ring-[#0052FF]/25 shadow-[0_8px_24px_rgba(0,82,255,0.10)]"
+            : canDrop && dropTargetId === node.id
             ? "border-[#0052FF]/40 bg-[#EAF1FF] shadow-[0_8px_24px_rgba(0,82,255,0.10)]"
             : "hover:bg-[#F8FAFC]"
         )}
@@ -358,25 +391,6 @@ export function ResultNode({
 
       {open && (
         <div className="mt-1">
-          {group && documentPagination.total > documentPagination.pageSize && (
-            <div
-              className="py-1"
-              style={{ marginLeft: `${28 + (depth + 1) * indentStep}px` }}
-            >
-              <PaginationControls
-                total={documentPagination.total}
-                pageIndex={documentPagination.pageIndex}
-                pageSize={documentPagination.pageSize}
-                pageCount={documentPagination.pageCount}
-                startNumber={documentPagination.startNumber}
-                endNumber={documentPagination.endNumber}
-                pageSizeOptions={documentPagination.pageSizeOptions}
-                itemLabel="tài liệu"
-                onPageChange={documentPagination.setPageIndex}
-                onPageSizeChange={documentPagination.setPageSize}
-              />
-            </div>
-          )}
           {group &&
             documentPagination.items.map((document) => (
               <DocumentRow
@@ -400,6 +414,58 @@ export function ResultNode({
                 onSelectPreview={onSelectPreview}
               />
             ))}
+          {group && documentPagination.total > documentPagination.pageSize && (
+            <div
+              className="py-1"
+              style={{ marginLeft: `${28 + (depth + 1) * indentStep}px` }}
+            >
+              <PaginationControls
+                total={documentPagination.total}
+                pageIndex={documentPagination.pageIndex}
+                pageSize={documentPagination.pageSize}
+                pageCount={documentPagination.pageCount}
+                startNumber={documentPagination.startNumber}
+                endNumber={documentPagination.endNumber}
+                pageSizeOptions={documentPagination.pageSizeOptions}
+                itemLabel="tài liệu"
+                onPageChange={documentPagination.setPageIndex}
+                onPageSizeChange={documentPagination.setPageSize}
+              />
+            </div>
+          )}
+          {childPagination.items.map((child) => (
+            <ResultNode
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              openNodeIds={openNodeIds}
+              draggedDocument={draggedDocument}
+              dropTargetId={dropTargetId}
+              compact={compact}
+              selectedPreviewDocumentId={selectedPreviewDocumentId}
+              selectedGroupInfoNodeId={selectedGroupInfoNodeId}
+              selectedMetadataGroupId={selectedMetadataGroupId}
+              selectedSessionDocumentIds={selectedSessionDocumentIds}
+              selectedDocumentCount={selectedDocumentCount}
+              selectedDocumentsActionDisabled={selectedDocumentsActionDisabled}
+              activeFindNodeId={activeFindNodeId}
+              movingSelectedDocumentsTargetId={movingSelectedDocumentsTargetId}
+              promotingTemporaryFolder={promotingTemporaryFolder}
+              temporaryFolderUpdateDisabled={temporaryFolderUpdateDisabled}
+              onToggle={onToggle}
+              onToggleDocumentSelection={onToggleDocumentSelection}
+              onToggleGroupSelection={onToggleGroupSelection}
+              onMoveSelectionToDossier={onMoveSelectionToDossier}
+              onDragStart={onDragStart}
+              onDragEnd={onDragEnd}
+              onDragEnter={onDragEnter}
+              onDropOnDossier={onDropOnDossier}
+              onSelectGroupInformation={onSelectGroupInformation}
+              onSelectPreview={onSelectPreview}
+              onSelectDossierMetadata={onSelectDossierMetadata}
+              onPromoteTemporaryFolder={onPromoteTemporaryFolder}
+            />
+          ))}
           {childPagination.total > childPagination.pageSize && (
             <div
               className="py-1"
@@ -419,40 +485,18 @@ export function ResultNode({
               />
             </div>
           )}
-          {childPagination.items.map((child) => (
-            <ResultNode
-              key={child.id}
-              node={child}
-              depth={depth + 1}
-              openNodeIds={openNodeIds}
-              draggedDocument={draggedDocument}
-              dropTargetId={dropTargetId}
-              compact={compact}
-              selectedPreviewDocumentId={selectedPreviewDocumentId}
-              selectedGroupInfoNodeId={selectedGroupInfoNodeId}
-              selectedMetadataGroupId={selectedMetadataGroupId}
-              selectedSessionDocumentIds={selectedSessionDocumentIds}
-              selectedDocumentCount={selectedDocumentCount}
-              selectedDocumentsActionDisabled={selectedDocumentsActionDisabled}
-              movingSelectedDocumentsTargetId={movingSelectedDocumentsTargetId}
-              promotingTemporaryFolder={promotingTemporaryFolder}
-              temporaryFolderUpdateDisabled={temporaryFolderUpdateDisabled}
-              onToggle={onToggle}
-              onToggleDocumentSelection={onToggleDocumentSelection}
-              onToggleGroupSelection={onToggleGroupSelection}
-              onMoveSelectionToDossier={onMoveSelectionToDossier}
-              onDragStart={onDragStart}
-              onDragEnd={onDragEnd}
-              onDragEnter={onDragEnter}
-              onDropOnDossier={onDropOnDossier}
-              onSelectGroupInformation={onSelectGroupInformation}
-              onSelectPreview={onSelectPreview}
-              onSelectDossierMetadata={onSelectDossierMetadata}
-              onPromoteTemporaryFolder={onPromoteTemporaryFolder}
-            />
-          ))}
         </div>
       )}
     </div>
+  )
+}
+
+function resultTreeNodeContainsId(
+  node: ResultTreeNode,
+  nodeId: string
+): boolean {
+  return (
+    node.id === nodeId ||
+    node.children.some((child) => resultTreeNodeContainsId(child, nodeId))
   )
 }

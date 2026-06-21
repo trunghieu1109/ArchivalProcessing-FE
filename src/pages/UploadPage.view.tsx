@@ -305,7 +305,13 @@ export function UploadPageView(props: Record<string, any>) {
                 metadataLoading={ocrLoading}
                 metadataReloading={ocrIsReextracting}
                 metadataMessage={ocrMessage}
-                hasDataInput={zipHas}
+                hasDataInput={
+                  zipHas ||
+                  ocrLoading ||
+                  ocrMetadataItems.length > 0 ||
+                  ocrPdfPaths.length > 0 ||
+                  Boolean(ocr.status?.total_files)
+                }
                 buildBlockedMessage={dossierBuildBlockedMessage}
                 signatureStatus={ocrSignatureStatus}
                 onDocumentsVerified={ocr.mergeVerifiedDocuments}

@@ -118,6 +118,64 @@ export function normalizePathSegment(value: string): string {
     .trim()
 }
 
+export interface ResultTreeSearchMatch {
+  nodeId: string
+  ancestorIds: string[]
+}
+
+export function findResultTreeDossierMatches(
+  nodes: ResultTreeNode[],
+  query: string
+): ResultTreeSearchMatch[] {
+  const normalizedQuery = normalizePathSegment(query)
+  if (!normalizedQuery) return []
+  const matches: ResultTreeSearchMatch[] = []
+  collectResultTreeDossierMatches(nodes, normalizedQuery, [], matches)
+  return matches
+}
+
+function collectResultTreeDossierMatches(
+  nodes: ResultTreeNode[],
+  normalizedQuery: string,
+  ancestorIds: string[],
+  matches: ResultTreeSearchMatch[]
+) {
+  nodes.forEach((node) => {
+    if (
+      isSearchableResultTreeNode(node) &&
+      resultTreeNodeMatchesSearch(node, normalizedQuery)
+    ) {
+      matches.push({ nodeId: node.id, ancestorIds })
+    }
+    collectResultTreeDossierMatches(
+      node.children,
+      normalizedQuery,
+      [...ancestorIds, node.id],
+      matches
+    )
+  })
+}
+
+function isSearchableResultTreeNode(node: ResultTreeNode): boolean {
+  return node.type === "dossier" || node.type === "temporary"
+}
+
+function resultTreeNodeMatchesSearch(
+  node: ResultTreeNode,
+  normalizedQuery: string
+): boolean {
+  const group = node.group
+  return normalizePathSegment(
+    [
+      node.label,
+      group?.label,
+      group?.dossierId,
+      group?.dossierNumber,
+      group?.boxNumber,
+    ].join(" ")
+  ).includes(normalizedQuery)
+}
+
 export function createTreeNode(
   id: string,
   label: string,

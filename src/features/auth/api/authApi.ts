@@ -47,6 +47,22 @@ export async function loginToChinhly(
   return response.json() as Promise<AuthSession>
 }
 
+export async function getCurrentChinhlyUser(
+  accessToken?: string | null
+): Promise<ChinhlyUser> {
+  const headers = new Headers()
+  const authorization = accessToken
+    ? `Bearer ${accessToken}`
+    : authHeaderValue()
+  if (authorization) headers.set("Authorization", authorization)
+
+  const response = await fetch(apiUrl("/auth/me"), { headers })
+  if (!response.ok) {
+    throw new Error(await responseErrorMessage(response))
+  }
+  return response.json() as Promise<ChinhlyUser>
+}
+
 export async function registerChinhlyUser(
   payload: RegisterPayload
 ): Promise<Record<string, unknown>> {

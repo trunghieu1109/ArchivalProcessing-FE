@@ -553,9 +553,21 @@ export function FolderNodeItem({
                 />
               )}
 
+              {childPagination.items.map((child) => (
+                <FolderNodeItem
+                  key={child.id}
+                  node={child}
+                  depth={depth + 1}
+                  readOnly={readOnly}
+                  onAdd={onAdd}
+                  onRename={onRename}
+                  onDefinitionChange={onDefinitionChange}
+                  onDelete={onDelete}
+                />
+              ))}
               {node.children.length > childPagination.pageSize && (
                 <div
-                  className="mr-2 mb-2"
+                  className="mr-2 mt-2 mb-2"
                   style={{ marginLeft: `${28 + depth * 20}px` }}
                 >
                   <PaginationControls
@@ -572,19 +584,6 @@ export function FolderNodeItem({
                   />
                 </div>
               )}
-
-              {childPagination.items.map((child) => (
-                <FolderNodeItem
-                  key={child.id}
-                  node={child}
-                  depth={depth + 1}
-                  readOnly={readOnly}
-                  onAdd={onAdd}
-                  onRename={onRename}
-                  onDefinitionChange={onDefinitionChange}
-                  onDelete={onDelete}
-                />
-              ))}
             </motion.div>
           )}
       </AnimatePresence>
@@ -616,21 +615,6 @@ function LeafCandidateList({ candidates, marginLeft }: LeafCandidateListProps) {
           {candidates.length}
         </span>
       </div>
-      {candidates.length > candidatePagination.pageSize && (
-        <PaginationControls
-          total={candidatePagination.total}
-          pageIndex={candidatePagination.pageIndex}
-          pageSize={candidatePagination.pageSize}
-          pageCount={candidatePagination.pageCount}
-          startNumber={candidatePagination.startNumber}
-          endNumber={candidatePagination.endNumber}
-          pageSizeOptions={candidatePagination.pageSizeOptions}
-          itemLabel="giá trị"
-          onPageChange={candidatePagination.setPageIndex}
-          onPageSizeChange={candidatePagination.setPageSize}
-          className="mb-2"
-        />
-      )}
       <div className="flex flex-col gap-1">
         {candidatePagination.items.map((candidate, index) => (
           <div
@@ -653,6 +637,21 @@ function LeafCandidateList({ candidates, marginLeft }: LeafCandidateListProps) {
           </div>
         ))}
       </div>
+      {candidates.length > candidatePagination.pageSize && (
+        <PaginationControls
+          total={candidatePagination.total}
+          pageIndex={candidatePagination.pageIndex}
+          pageSize={candidatePagination.pageSize}
+          pageCount={candidatePagination.pageCount}
+          startNumber={candidatePagination.startNumber}
+          endNumber={candidatePagination.endNumber}
+          pageSizeOptions={candidatePagination.pageSizeOptions}
+          itemLabel="giá trị"
+          onPageChange={candidatePagination.setPageIndex}
+          onPageSizeChange={candidatePagination.setPageSize}
+          className="mt-2"
+        />
+      )}
     </div>
   )
 }

@@ -27,7 +27,7 @@ export function NumberedPdfPreviewPanel({
   const embedUrl = previewUrl ? pdfEmbedUrl(previewUrl) : ""
 
   return (
-    <section className="min-h-[420px] min-w-0 overflow-hidden rounded-2xl border border-[#D8E1EC] bg-white shadow-sm xl:sticky xl:top-4 xl:self-start">
+    <section className="flex min-h-[420px] min-w-0 flex-col overflow-hidden rounded-2xl border border-[#D8E1EC] bg-white shadow-sm xl:sticky xl:top-4 xl:h-[min(82svh,834px)] xl:min-h-[520px] xl:self-start">
       <div className="flex min-h-14 items-center justify-between gap-3 border-b border-[#EEF2F7] px-4 py-3">
         <div className="min-w-0">
           <p className="text-sm font-semibold text-[#0F172A]">
@@ -76,12 +76,12 @@ export function NumberedPdfPreviewPanel({
       </div>
 
       {document && loading ? (
-        <div className="flex h-[min(72svh,760px)] min-h-[420px] items-center justify-center text-sm text-[#64748B]">
+        <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-[#64748B]">
           <Loader2 className="mr-2 size-4 animate-spin text-[#0052FF]" />
           Đang cấp URL preview mới...
         </div>
       ) : document && error ? (
-        <div className="flex h-[min(72svh,760px)] min-h-[420px] flex-col items-center justify-center gap-3 px-8 text-center text-sm text-rose-700">
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-8 text-center text-sm text-rose-700">
           <TriangleAlert className="size-7" />
           <p>{error}</p>
           <button
@@ -96,10 +96,10 @@ export function NumberedPdfPreviewPanel({
         <iframe
           title={`Preview PDF đã đánh số ${document.file_name || document.document_id}`}
           src={embedUrl}
-          className="h-[min(72svh,760px)] min-h-[420px] w-full border-0 bg-white"
+          className="min-h-0 flex-1 border-0 bg-white"
         />
       ) : (
-        <div className="flex h-[min(72svh,760px)] min-h-[420px] flex-col items-center justify-center px-8 text-center text-sm text-[#64748B]">
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-8 text-center text-sm text-[#64748B]">
           <div className="mb-3 flex size-12 items-center justify-center rounded-2xl bg-[#EAF1FF] text-[#0052FF]">
             <Eye className="size-6" />
           </div>

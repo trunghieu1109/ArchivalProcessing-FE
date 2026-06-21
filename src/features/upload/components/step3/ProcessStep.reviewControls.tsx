@@ -6,6 +6,7 @@ import {
   Plus,
   RefreshCw,
   Scissors,
+  Search,
   UserRound,
   X,
 } from "lucide-react"
@@ -52,10 +53,12 @@ export function ProcessStepReviewControls(props: Record<string, any>) {
     handleVerifyAllReady,
     manualSelectedIds,
     manualSplitActive,
+    metadataFileFilter,
     reviewMode,
     selectAllDisplayedForBulkReview,
     selectAllDisplayedForManualSplit,
     selectedAssigneeId,
+    setMetadataFileFilter,
     setSelectedAssigneeId,
     startManualSplit,
     toggleBulkReviewSelectionMode,
@@ -127,6 +130,26 @@ export function ProcessStepReviewControls(props: Record<string, any>) {
                 {activeBatch.items.length} đã review
               </span>
             )}
+            <label className="flex h-8 min-w-[14rem] flex-1 items-center gap-1.5 rounded-lg border border-[#CBD5E1] bg-white px-2 text-xs text-[#475569] transition-colors focus-within:border-[#0052FF] focus-within:ring-2 focus-within:ring-[#0052FF]/15">
+              <Search className="size-3.5 shrink-0 text-[#94A3B8]" />
+              <input
+                value={metadataFileFilter}
+                onChange={(event) => setMetadataFileFilter(event.target.value)}
+                placeholder="Lọc theo tên file"
+                className="min-w-0 flex-1 bg-transparent text-xs text-[#0F172A] outline-none placeholder:text-[#94A3B8]"
+              />
+              {metadataFileFilter ? (
+                <button
+                  type="button"
+                  onClick={() => setMetadataFileFilter("")}
+                  title="Xóa lọc tên file"
+                  aria-label="Xóa lọc tên file"
+                  className="flex size-5 shrink-0 items-center justify-center rounded-md text-[#64748B] hover:bg-[#F1F5F9]"
+                >
+                  <X className="size-3" />
+                </button>
+              ) : null}
+            </label>
           </div>
           <div className="flex flex-wrap items-center gap-2 lg:justify-end">
             {!manualSplitActive &&

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { FileStack, Loader2, Plus, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
@@ -21,8 +21,8 @@ import {
 
 const LAST_SESSION_KEY = "archival-processing:last-session-id"
 const SESSION_PAGE_SIZE_KEY = "archival-processing:sessions-page-size"
-const SESSION_PAGE_SIZE_OPTIONS = [12, 24, 48, 96, 200]
-const DEFAULT_SESSION_PAGE_SIZE = 24
+const SESSION_PAGE_SIZE_OPTIONS = [6, 12, 24, 48, 96, 200]
+const DEFAULT_SESSION_PAGE_SIZE = 12
 
 export function SessionsPage() {
   const navigate = useNavigate()
@@ -43,7 +43,7 @@ export function SessionsPage() {
   const [assigningSessionId, setAssigningSessionId] = useState<string | null>(
     null
   )
-
+  const loadRequestIdRef = useRef(0)
   const readyCount = useMemo(
     () => sessions.filter((session) => session.active_plan_version_id).length,
     [sessions]
@@ -65,15 +65,21 @@ export function SessionsPage() {
       : Math.min(sessionTotal, sessionStartNumber + sessions.length - 1)
 
   const load = useCallback(async () => {
+    const requestId = loadRequestIdRef.current + 1
+    loadRequestIdRef.current = requestId
     setLoading(true)
     setError("")
     try {
       const [response, coordinatorUsers] = await Promise.all([
-        listSessions({ limit: sessionPageSize, offset: sessionOffset }),
+        listSessions({
+          limit: sessionPageSize,
+          offset: sessionOffset,
+        }),
         isAdmin
           ? listChinhlyUsers({ role: "coordinator", active: true, limit: 500 })
           : Promise.resolve([]),
       ])
+      if (loadRequestIdRef.current !== requestId) return
       const total = response.pagination?.total ?? response.sessions.length
       const pageCount = Math.max(1, Math.ceil(total / sessionPageSize))
       if (
@@ -90,14 +96,20 @@ export function SessionsPage() {
       setSessionTotal(total)
       setCoordinators(coordinatorUsers)
     } catch (err) {
+      if (loadRequestIdRef.current !== requestId) return
       const message =
         err instanceof Error ? err.message : "Không thể tải danh sách session."
       setError(message)
       toast.error(message)
     } finally {
-      setLoading(false)
+      if (loadRequestIdRef.current === requestId) setLoading(false)
     }
-  }, [isAdmin, sessionOffset, sessionPageIndex, sessionPageSize])
+  }, [
+    isAdmin,
+    sessionOffset,
+    sessionPageIndex,
+    sessionPageSize,
+  ])
 
   useEffect(() => {
     void load()
@@ -266,25 +278,6 @@ export function SessionsPage() {
           </div>
         )}
 
-        {sessionTotal > 0 && (
-          <PaginationControls
-            total={sessionTotal}
-            pageIndex={displayedPageIndex}
-            pageSize={sessionPageSize}
-            pageCount={sessionPageCount}
-            startNumber={sessionStartNumber}
-            endNumber={sessionEndNumber}
-            pageSizeOptions={SESSION_PAGE_SIZE_OPTIONS}
-            itemLabel="session"
-            onPageChange={(pageIndex) =>
-              setSessionPageIndex(
-                Math.min(Math.max(pageIndex, 0), sessionPageCount - 1)
-              )
-            }
-            onPageSizeChange={changeSessionPageSize}
-          />
-        )}
-
         {loading ? (
           <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
             {Array.from({ length: 6 }).map((_, index) => (
@@ -334,6 +327,24 @@ export function SessionsPage() {
               <Plus className="size-4" /> Tạo session đầu tiên
             </button>
           </div>
+        )}
+        {sessionTotal > 0 && (
+          <PaginationControls
+            total={sessionTotal}
+            pageIndex={displayedPageIndex}
+            pageSize={sessionPageSize}
+            pageCount={sessionPageCount}
+            startNumber={sessionStartNumber}
+            endNumber={sessionEndNumber}
+            pageSizeOptions={SESSION_PAGE_SIZE_OPTIONS}
+            itemLabel="session"
+            onPageChange={(pageIndex) =>
+              setSessionPageIndex(
+                Math.min(Math.max(pageIndex, 0), sessionPageCount - 1)
+              )
+            }
+            onPageSizeChange={changeSessionPageSize}
+          />
         )}
       </main>
     </div>

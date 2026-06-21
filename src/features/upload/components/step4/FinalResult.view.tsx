@@ -4,8 +4,11 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Loader2,
   RefreshCw,
+  Search,
+  X,
 } from "lucide-react"
 import { motion } from "framer-motion"
 import { toast } from "sonner"
@@ -27,6 +30,7 @@ import {
 export function FinalResultView(props: Record<string, any>) {
   const {
     activeClusterVersionId,
+    activeResultTreeSearchNodeId,
     canRestoreFileRegisterVersion,
     checkingClusters,
     clusterCompletedPhases,
@@ -81,7 +85,10 @@ export function FinalResultView(props: Record<string, any>) {
     rebuildBaselineVersionId,
     rebuildSubmitting,
     resultStatusText,
+    resultTreeSearch,
+    resultTreeSearchIndex,
     resultTreeScrollRef,
+    resultTreeSearchTotal,
     restoringClusterVersion,
     savingDossierMetadataId,
     selectedDocumentCount,
@@ -95,6 +102,7 @@ export function FinalResultView(props: Record<string, any>) {
     sessionId,
     setDraggedDocument,
     setDropTargetId,
+    setResultTreeSearch,
     setSelectedMetadataGroupId,
     setSelectedPreviewDocumentId,
     showClusterProgress,
@@ -109,6 +117,7 @@ export function FinalResultView(props: Record<string, any>) {
     toggleNode,
     updatingClusterVersion,
     viewingHistoricalClusterVersion,
+    onResultTreeSearchNavigate,
   } = props
   const previewColumns = selectedGroupInfoNode
     ? "minmax(340px,0.34fr) minmax(760px,0.66fr)"
@@ -319,6 +328,57 @@ export function FinalResultView(props: Record<string, any>) {
         }
       >
         <div className="min-w-0 overflow-hidden rounded-2xl border border-[#D8E1EC] bg-white shadow-sm">
+          <div className="flex flex-col gap-2 border-b border-[#E2E8F0] bg-[#F8FAFC] p-3 sm:flex-row sm:items-center">
+            <label className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-xl border border-[#CBD5E1] bg-white px-3 transition-colors focus-within:border-[#0052FF] focus-within:ring-2 focus-within:ring-[#0052FF]/15">
+              <Search className="size-4 shrink-0 text-[#94A3B8]" />
+              <input
+                value={resultTreeSearch}
+                onChange={(event) => setResultTreeSearch(event.target.value)}
+                placeholder="Tìm hồ sơ trong cây"
+                className="min-w-0 flex-1 bg-transparent text-sm text-[#0F172A] outline-none placeholder:text-[#94A3B8]"
+              />
+              {resultTreeSearch ? (
+                <button
+                  type="button"
+                  onClick={() => setResultTreeSearch("")}
+                  title="Xóa tìm kiếm"
+                  aria-label="Xóa tìm kiếm"
+                  className="flex size-6 shrink-0 items-center justify-center rounded-md text-[#64748B] hover:bg-[#F1F5F9]"
+                >
+                  <X className="size-3.5" />
+                </button>
+              ) : null}
+            </label>
+            <div className="flex items-center justify-end gap-1.5">
+              <span className="min-w-16 text-right text-xs font-medium text-[#64748B]">
+                {resultTreeSearch
+                  ? resultTreeSearchTotal > 0
+                    ? `${resultTreeSearchIndex + 1}/${resultTreeSearchTotal}`
+                    : "0/0"
+                  : ""}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                title="Kết quả trước"
+                disabled={resultTreeSearchTotal === 0}
+                onClick={() => onResultTreeSearchNavigate(-1)}
+              >
+                <ChevronUp className="size-3.5" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                title="Kết quả tiếp theo"
+                disabled={resultTreeSearchTotal === 0}
+                onClick={() => onResultTreeSearchNavigate(1)}
+              >
+                <ChevronRight className="size-3.5 rotate-90" />
+              </Button>
+            </div>
+          </div>
           <div
             ref={resultTreeScrollRef}
             onDragOver={handleResultTreeDragOver}
@@ -342,6 +402,7 @@ export function FinalResultView(props: Record<string, any>) {
                   selectedDocumentsActionDisabled={
                     selectedDocumentsActionDisabled
                   }
+                  activeFindNodeId={activeResultTreeSearchNodeId}
                   movingSelectedDocumentsTargetId={
                     movingSelectedDocumentsTargetId
                   }

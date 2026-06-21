@@ -4,6 +4,7 @@ import {
   Box,
   Check,
   ChevronDown,
+  ChevronUp,
   Download,
   Edit2,
   FileText,
@@ -11,6 +12,7 @@ import {
   FolderOpen,
   Loader2,
   RefreshCw,
+  Search,
   TriangleAlert,
   X,
 } from "lucide-react"
@@ -68,6 +70,8 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
   >({})
   const [dossierPageSize, setDossierPageSize] = useState(25)
   const [documentPageSize, setDocumentPageSize] = useState(100)
+  const [publicationSearch, setPublicationSearch] = useState("")
+  const [publicationSearchIndex, setPublicationSearchIndex] = useState(0)
 
   const refresh = useCallback(async () => {
     if (!sessionId) {
@@ -174,6 +178,86 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
     storageKey: "archival-processing.publication-box-page-size",
   })
   const pagedBoxes = boxPagination.items
+  const publicationSearchMatches = useMemo(
+    () => buildPublicationSearchMatches(manifest, publicationSearch),
+    [manifest, publicationSearch]
+  )
+  const activePublicationSearchMatch =
+    publicationSearchMatches[publicationSearchIndex] ?? null
+
+  useEffect(() => {
+    setPublicationSearchIndex(0)
+  }, [publicationSearch])
+
+  useEffect(() => {
+    if (publicationSearchIndex < publicationSearchMatches.length) return
+    setPublicationSearchIndex(0)
+  }, [publicationSearchIndex, publicationSearchMatches.length])
+
+  useEffect(() => {
+    if (!activePublicationSearchMatch) return
+    boxPagination.setPageIndex(
+      Math.floor(
+        activePublicationSearchMatch.boxIndex / boxPagination.pageSize
+      )
+    )
+    setCollapsedBoxes((current) =>
+      removeSetValue(current, activePublicationSearchMatch.boxNumber)
+    )
+    if (activePublicationSearchMatch.dossierIndex !== undefined) {
+      const pageIndex = Math.floor(
+        activePublicationSearchMatch.dossierIndex / dossierPageSize
+      )
+      setDossierPageByBox((current) =>
+        setRecordPage(
+          current,
+          activePublicationSearchMatch.boxNumber,
+          pageIndex
+        )
+      )
+    }
+    if (activePublicationSearchMatch.dossierId !== undefined) {
+      setCollapsedDossiers((current) =>
+        removeSetValue(current, activePublicationSearchMatch.dossierId!)
+      )
+    }
+    if (
+      activePublicationSearchMatch.dossierId !== undefined &&
+      activePublicationSearchMatch.documentIndex !== undefined
+    ) {
+      const pageIndex = Math.floor(
+        activePublicationSearchMatch.documentIndex / documentPageSize
+      )
+      setDocumentPageByDossier((current) =>
+        setRecordPage(
+          current,
+          activePublicationSearchMatch.dossierId!,
+          pageIndex
+        )
+      )
+    }
+    const timeoutId = window.setTimeout(() => {
+      scrollPublicationNodeIntoView(activePublicationSearchMatch.id)
+    }, 120)
+    return () => window.clearTimeout(timeoutId)
+  }, [
+    activePublicationSearchMatch,
+    boxPagination.pageSize,
+    boxPagination.setPageIndex,
+    dossierPageSize,
+    documentPageSize,
+  ])
+
+  const navigatePublicationSearch = useCallback(
+    (direction: number) => {
+      setPublicationSearchIndex((current) => {
+        const total = publicationSearchMatches.length
+        if (total === 0) return 0
+        return (current + direction + total) % total
+      })
+    },
+    [publicationSearchMatches.length]
+  )
 
   const saveName = useCallback(async () => {
     if (!sessionId || !editingName) return
@@ -276,49 +360,87 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
       ) : null}
 
       <div className="overflow-hidden rounded-2xl border border-[#CBD5E1] bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2.5">
-            <span className="flex size-8 items-center justify-center rounded-lg bg-[#E8F0FF] text-[#0052FF]">
-              <FolderOpen className="size-4" />
-            </span>
-            <div>
-              <p className="text-sm font-semibold text-[#0F172A]">
-                Cấu trúc gói xuất bản
-              </p>
-              <p className="text-xs text-[#64748B]">Hộp / Hồ sơ / Tài liệu</p>
+        <div className="flex flex-col gap-3 border-b border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2.5">
+              <span className="flex size-8 items-center justify-center rounded-lg bg-[#E8F0FF] text-[#0052FF]">
+                <FolderOpen className="size-4" />
+              </span>
+              <div>
+                <p className="text-sm font-semibold text-[#0F172A]">
+                  Cấu trúc gói xuất bản
+                </p>
+                <p className="text-xs text-[#64748B]">
+                  Hộp / Hồ sơ / Tài liệu
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {summaryItems.map(([label, value]) => (
+                <span
+                  key={label}
+                  className="rounded-full border border-[#D8E1EC] bg-white px-2.5 py-1 text-xs text-[#64748B]"
+                >
+                  <strong className="font-semibold text-[#0F172A]">
+                    {value}
+                  </strong>{" "}
+                  {label.toLocaleLowerCase("vi")}
+                </span>
+              ))}
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {summaryItems.map(([label, value]) => (
-              <span
-                key={label}
-                className="rounded-full border border-[#D8E1EC] bg-white px-2.5 py-1 text-xs text-[#64748B]"
-              >
-                <strong className="font-semibold text-[#0F172A]">
-                  {value}
-                </strong>{" "}
-                {label.toLocaleLowerCase("vi")}
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <label className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-xl border border-[#CBD5E1] bg-white px-3 transition-colors focus-within:border-[#0052FF] focus-within:ring-2 focus-within:ring-[#0052FF]/15">
+              <Search className="size-4 shrink-0 text-[#94A3B8]" />
+              <input
+                value={publicationSearch}
+                onChange={(event) => setPublicationSearch(event.target.value)}
+                placeholder="Tìm hộp, hồ sơ hoặc tài liệu"
+                className="min-w-0 flex-1 bg-transparent text-sm text-[#0F172A] outline-none placeholder:text-[#94A3B8]"
+              />
+              {publicationSearch ? (
+                <button
+                  type="button"
+                  onClick={() => setPublicationSearch("")}
+                  title="Xóa tìm kiếm"
+                  aria-label="Xóa tìm kiếm"
+                  className="flex size-6 shrink-0 items-center justify-center rounded-md text-[#64748B] hover:bg-[#F1F5F9]"
+                >
+                  <X className="size-3.5" />
+                </button>
+              ) : null}
+            </label>
+            <div className="flex items-center justify-end gap-1.5">
+              <span className="min-w-16 text-right text-xs font-medium text-[#64748B]">
+                {publicationSearch
+                  ? publicationSearchMatches.length > 0
+                    ? `${publicationSearchIndex + 1}/${publicationSearchMatches.length}`
+                    : "0/0"
+                  : ""}
               </span>
-            ))}
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                title="Kết quả trước"
+                disabled={publicationSearchMatches.length === 0}
+                onClick={() => navigatePublicationSearch(-1)}
+              >
+                <ChevronUp className="size-3.5" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                title="Kết quả tiếp theo"
+                disabled={publicationSearchMatches.length === 0}
+                onClick={() => navigatePublicationSearch(1)}
+              >
+                <ChevronDown className="size-3.5" />
+              </Button>
+            </div>
           </div>
         </div>
-        {(manifest?.boxes.length ?? 0) > 0 && (
-          <div className="border-b border-[#E2E8F0] px-4 py-3">
-            <PaginationControls
-              total={boxPagination.total}
-              pageIndex={boxPagination.pageIndex}
-              pageSize={boxPagination.pageSize}
-              pageCount={boxPagination.pageCount}
-              startNumber={boxPagination.startNumber}
-              endNumber={boxPagination.endNumber}
-              pageSizeOptions={boxPagination.pageSizeOptions}
-              itemLabel="hộp"
-              onPageChange={boxPagination.setPageIndex}
-              onPageSizeChange={boxPagination.setPageSize}
-            />
-          </div>
-        )}
-
         <div className="max-h-[min(68svh,620px)] overflow-y-auto p-3">
           {pagedBoxes.map((box) => {
             const boxCollapsed = collapsedBoxes.has(box.box_number)
@@ -334,7 +456,14 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
             )
             return (
               <section key={box.box_number}>
-                <div className="group/row flex items-center gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-[#F1F5F9]">
+                <div
+                  data-publication-node-id={boxKey}
+                  className={cn(
+                    "group/row flex items-center gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-[#F1F5F9]",
+                    activePublicationSearchMatch?.id === boxKey &&
+                      "bg-[#EAF1FF] ring-2 ring-[#0052FF]/25"
+                  )}
+                >
                   <button
                     type="button"
                     className="flex min-w-0 flex-1 items-center gap-2 text-left"
@@ -397,28 +526,6 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
 
                 {!boxCollapsed ? (
                   <div className="ml-[15px] border-l border-[#D8E1EC] pl-3">
-                    {box.dossiers.length > dossierPagination.pageSize && (
-                      <PaginationControls
-                        total={dossierPagination.total}
-                        pageIndex={dossierPagination.pageIndex}
-                        pageSize={dossierPagination.pageSize}
-                        pageCount={dossierPagination.pageCount}
-                        startNumber={dossierPagination.startNumber}
-                        endNumber={dossierPagination.endNumber}
-                        itemLabel="hồ sơ"
-                        onPageChange={(pageIndex) =>
-                          setDossierPageByBox((current) => ({
-                            ...current,
-                            [box.box_number]: pageIndex,
-                          }))
-                        }
-                        onPageSizeChange={(pageSize) => {
-                          setDossierPageSize(pageSize)
-                          setDossierPageByBox({})
-                        }}
-                        className="my-2"
-                      />
-                    )}
                     {pagedDossiers.map((dossier) => {
                       const dossierCollapsed = collapsedDossiers.has(
                         dossier.session_dossier_id
@@ -437,7 +544,14 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
                       )
                       return (
                         <div key={dossier.session_dossier_id}>
-                          <div className="group/row flex items-center gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-[#F1F5F9]">
+                          <div
+                            data-publication-node-id={dossierKey}
+                            className={cn(
+                              "group/row flex items-center gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-[#F1F5F9]",
+                              activePublicationSearchMatch?.id === dossierKey &&
+                                "bg-[#EAF1FF] ring-2 ring-[#0052FF]/25"
+                            )}
+                          >
                             <button
                               type="button"
                               className="flex min-w-0 flex-1 items-center gap-2 text-left"
@@ -521,35 +635,18 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
 
                           {!dossierCollapsed ? (
                             <div className="ml-[15px] border-l border-[#E2E8F0] pl-3">
-                              {dossier.documents.length >
-                                documentPagination.pageSize && (
-                                <PaginationControls
-                                  total={documentPagination.total}
-                                  pageIndex={documentPagination.pageIndex}
-                                  pageSize={documentPagination.pageSize}
-                                  pageCount={documentPagination.pageCount}
-                                  startNumber={documentPagination.startNumber}
-                                  endNumber={documentPagination.endNumber}
-                                  itemLabel="tài liệu"
-                                  onPageChange={(pageIndex) =>
-                                    setDocumentPageByDossier((current) => ({
-                                      ...current,
-                                      [dossier.session_dossier_id]: pageIndex,
-                                    }))
-                                  }
-                                  onPageSizeChange={(pageSize) => {
-                                    setDocumentPageSize(pageSize)
-                                    setDocumentPageByDossier({})
-                                  }}
-                                  className="my-2"
-                                />
-                              )}
                               {pagedDocuments.map((document) => {
                                 const documentKey = `document:${document.session_document_id}`
                                 return (
                                   <div
                                     key={document.session_document_id}
-                                    className="group/row flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-[#F8FAFC]"
+                                    data-publication-node-id={documentKey}
+                                    className={cn(
+                                      "group/row flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-[#F8FAFC]",
+                                      activePublicationSearchMatch?.id ===
+                                        documentKey &&
+                                        "bg-[#EAF1FF] ring-2 ring-[#0052FF]/25"
+                                    )}
                                   >
                                     <span className="block size-3.5 shrink-0" />
                                     <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-[#E8F0FF] text-[#0052FF]">
@@ -618,17 +715,78 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
                                   </div>
                                 )
                               })}
+                              {dossier.documents.length >
+                                documentPagination.pageSize && (
+                                <PaginationControls
+                                  total={documentPagination.total}
+                                  pageIndex={documentPagination.pageIndex}
+                                  pageSize={documentPagination.pageSize}
+                                  pageCount={documentPagination.pageCount}
+                                  startNumber={documentPagination.startNumber}
+                                  endNumber={documentPagination.endNumber}
+                                  itemLabel="tài liệu"
+                                  onPageChange={(pageIndex) =>
+                                    setDocumentPageByDossier((current) => ({
+                                      ...current,
+                                      [dossier.session_dossier_id]: pageIndex,
+                                    }))
+                                  }
+                                  onPageSizeChange={(pageSize) => {
+                                    setDocumentPageSize(pageSize)
+                                    setDocumentPageByDossier({})
+                                  }}
+                                  className="my-2"
+                                />
+                              )}
                             </div>
                           ) : null}
                         </div>
                       )
                     })}
+                    {box.dossiers.length > dossierPagination.pageSize && (
+                      <PaginationControls
+                        total={dossierPagination.total}
+                        pageIndex={dossierPagination.pageIndex}
+                        pageSize={dossierPagination.pageSize}
+                        pageCount={dossierPagination.pageCount}
+                        startNumber={dossierPagination.startNumber}
+                        endNumber={dossierPagination.endNumber}
+                        itemLabel="hồ sơ"
+                        onPageChange={(pageIndex) =>
+                          setDossierPageByBox((current) => ({
+                            ...current,
+                            [box.box_number]: pageIndex,
+                          }))
+                        }
+                        onPageSizeChange={(pageSize) => {
+                          setDossierPageSize(pageSize)
+                          setDossierPageByBox({})
+                        }}
+                        className="my-2"
+                      />
+                    )}
                   </div>
                 ) : null}
               </section>
             )
           })}
         </div>
+        {(manifest?.boxes.length ?? 0) > 0 && (
+          <div className="border-t border-[#E2E8F0] px-4 py-3">
+            <PaginationControls
+              total={boxPagination.total}
+              pageIndex={boxPagination.pageIndex}
+              pageSize={boxPagination.pageSize}
+              pageCount={boxPagination.pageCount}
+              startNumber={boxPagination.startNumber}
+              endNumber={boxPagination.endNumber}
+              pageSizeOptions={boxPagination.pageSizeOptions}
+              itemLabel="hộp"
+              onPageChange={boxPagination.setPageIndex}
+              onPageSizeChange={boxPagination.setPageSize}
+            />
+          </div>
+        )}
       </div>
     </div>
   )
@@ -767,6 +925,118 @@ function toggleSet<T>(current: Set<T>, value: T): Set<T> {
   if (next.has(value)) next.delete(value)
   else next.add(value)
   return next
+}
+
+interface PublicationSearchMatch {
+  id: string
+  boxIndex: number
+  boxNumber: string
+  dossierIndex?: number
+  dossierId?: number
+  documentIndex?: number
+}
+
+function buildPublicationSearchMatches(
+  manifest: PublicationManifest | null,
+  query: string
+): PublicationSearchMatch[] {
+  const normalizedQuery = normalizeSearchText(query)
+  if (!manifest || !normalizedQuery) return []
+  const matches: PublicationSearchMatch[] = []
+  manifest.boxes.forEach((box, boxIndex) => {
+    const boxId = `box:${box.box_number}`
+    if (
+      normalizeSearchText([box.name, box.box_number].join(" ")).includes(
+        normalizedQuery
+      )
+    ) {
+      matches.push({
+        id: boxId,
+        boxIndex,
+        boxNumber: box.box_number,
+      })
+    }
+    box.dossiers.forEach((dossier, dossierIndex) => {
+      const dossierId = `dossier:${dossier.session_dossier_id}`
+      if (
+        normalizeSearchText(
+          [
+            dossier.standard_name,
+            dossier.title,
+            dossier.dossier_id,
+            dossier.dossier_number,
+            dossier.dossier_code,
+          ].join(" ")
+        ).includes(normalizedQuery)
+      ) {
+        matches.push({
+          id: dossierId,
+          boxIndex,
+          boxNumber: box.box_number,
+          dossierIndex,
+          dossierId: dossier.session_dossier_id,
+        })
+      }
+      dossier.documents.forEach((document, documentIndex) => {
+        if (
+          !normalizeSearchText(
+            [
+              document.standard_file_name,
+              document.source_file_name,
+              document.document_id,
+              document.sequence_code,
+            ].join(" ")
+          ).includes(normalizedQuery)
+        ) {
+          return
+        }
+        matches.push({
+          id: `document:${document.session_document_id}`,
+          boxIndex,
+          boxNumber: box.box_number,
+          dossierIndex,
+          dossierId: dossier.session_dossier_id,
+          documentIndex,
+        })
+      })
+    })
+  })
+  return matches
+}
+
+function normalizeSearchText(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function removeSetValue<T>(current: Set<T>, value: T): Set<T> {
+  if (!current.has(value)) return current
+  const next = new Set(current)
+  next.delete(value)
+  return next
+}
+
+function setRecordPage<T extends string | number>(
+  current: Record<T, number>,
+  key: T,
+  pageIndex: number
+): Record<T, number> {
+  if (current[key] === pageIndex) return current
+  return { ...current, [key]: pageIndex }
+}
+
+function scrollPublicationNodeIntoView(nodeId: string) {
+  const nodes =
+    document.querySelectorAll<HTMLElement>("[data-publication-node-id]")
+  for (const node of nodes) {
+    if (node.dataset.publicationNodeId !== nodeId) continue
+    node.scrollIntoView({ block: "center", behavior: "smooth" })
+    return
+  }
 }
 
 function paginationFromState(

@@ -12,14 +12,38 @@ import type {
 } from "./sessionApi.types"
 
 export async function listSessions(
-  options: number | { limit?: number; offset?: number } = 100
+  options:
+    | number
+    | {
+        limit?: number
+        offset?: number
+        sessionId?: string
+        fondsName?: string
+        archiveName?: string
+        fondsCreatorCode?: string
+      } = 100
 ): Promise<SessionListResponse> {
   const limit = typeof options === "number" ? options : (options.limit ?? 100)
   const offset = typeof options === "number" ? 0 : (options.offset ?? 0)
   const query = new URLSearchParams()
   query.set("limit", String(limit))
   query.set("offset", String(offset))
+  if (typeof options !== "number") {
+    setOptionalQuery(query, "session_id", options.sessionId)
+    setOptionalQuery(query, "fonds_name", options.fondsName)
+    setOptionalQuery(query, "archive_name", options.archiveName)
+    setOptionalQuery(query, "fonds_creator_code", options.fondsCreatorCode)
+  }
   return requestJson<SessionListResponse>(`/sessions?${query.toString()}`)
+}
+
+function setOptionalQuery(
+  query: URLSearchParams,
+  key: string,
+  value: string | null | undefined
+) {
+  const text = String(value ?? "").trim()
+  if (text) query.set(key, text)
 }
 
 export async function getSession(

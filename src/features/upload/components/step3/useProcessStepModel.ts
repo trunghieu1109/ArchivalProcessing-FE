@@ -35,6 +35,9 @@ import {
   writeStoredReviewMode,
 } from "./ProcessStep.batchUtils"
 
+const METADATA_PAGE_SIZE_OPTIONS = [5, 10, 25, 50, 100, 200, 500, 1000]
+const DEFAULT_METADATA_PAGE_SIZE = 25
+
 interface UseProcessStepModelParams {
   sessionId: string | null
   pdfPaths: string[]
@@ -60,6 +63,7 @@ export function useProcessStepModel({
   const [batchSizeInput, setBatchSizeInput] = useState(() =>
     String(readStoredBatchSize())
   )
+  const [metadataFileFilter, setMetadataFileFilter] = useState("")
   const [batchMode, setBatchMode] = useState<MetadataBatchMode>("manual")
   const [manualSplitActive, setManualSplitActive] = useState(false)
   const [creatingManualBatch, setCreatingManualBatch] = useState(false)
@@ -121,9 +125,12 @@ export function useProcessStepModel({
       metadataSessionIdRef.current = sessionId
     }
     setItems((previous) =>
-      mergeIncomingMetadata(sessionChanged ? [] : previous, metadataItems)
+      mergeIncomingMetadata(
+        sessionChanged || !isCoordinator ? [] : previous,
+        metadataItems
+      )
     )
-  }, [metadataItems, metadataKey, sessionId])
+  }, [isCoordinator, metadataItems, metadataKey, sessionId])
 
   const paths = useMemo(
     () =>
@@ -177,6 +184,7 @@ export function useProcessStepModel({
     () => sortedItems.map((item) => item.id).join("|"),
     [sortedItems]
   )
+  const listScopeItems = sortedItems
   const batchScopeItems = useMemo(
     () =>
       isCoordinator
@@ -185,6 +193,26 @@ export function useProcessStepModel({
             isMetadataItemAssignedToUser(item, currentUserIdentity)
           ),
     [currentUserIdentity, isCoordinator, sortedItems]
+  )
+  const normalizedMetadataFileFilter = useMemo(
+    () => normalizeSearchText(metadataFileFilter),
+    [metadataFileFilter]
+  )
+  const filteredListScopeItems = useMemo(
+    () =>
+      filterMetadataItemsByFileName(
+        listScopeItems,
+        normalizedMetadataFileFilter
+      ),
+    [listScopeItems, normalizedMetadataFileFilter]
+  )
+  const filteredBatchScopeItems = useMemo(
+    () =>
+      filterMetadataItemsByFileName(
+        batchScopeItems,
+        normalizedMetadataFileFilter
+      ),
+    [batchScopeItems, normalizedMetadataFileFilter]
   )
   const batchGroups = useMemo(
     () =>
@@ -198,15 +226,32 @@ export function useProcessStepModel({
     [batchGroups]
   )
   const activeBatch = batchGroups[activeBatchIndex] ?? batchGroups[0] ?? null
+  const activeBatchVisibleItems = useMemo(
+    () =>
+      filterMetadataItemsByFileName(
+        activeBatch?.items ?? EMPTY_METADATA_ITEMS,
+        normalizedMetadataFileFilter
+      ),
+    [activeBatch, normalizedMetadataFileFilter]
+  )
+  const unassignedBatchVisibleItems = useMemo(
+    () =>
+      filterMetadataItemsByFileName(
+        unassignedBatch?.items ?? EMPTY_METADATA_ITEMS,
+        normalizedMetadataFileFilter
+      ),
+    [normalizedMetadataFileFilter, unassignedBatch]
+  )
   const unpagedDisplayedItems =
     reviewMode === "batch"
       ? manualSplitActive
-        ? (unassignedBatch?.items ?? EMPTY_METADATA_ITEMS)
-        : (activeBatch?.items ?? EMPTY_METADATA_ITEMS)
-      : batchScopeItems
+        ? unassignedBatchVisibleItems
+        : activeBatchVisibleItems
+      : filteredListScopeItems
   const displayedPagination = usePagedItems(unpagedDisplayedItems, {
-    defaultPageSize: 50,
-    resetKey: `${sessionId ?? ""}:${reviewMode}:${batchMode}:${manualSplitActive ? "split" : "normal"}:${activeBatch?.index ?? "list"}`,
+    defaultPageSize: DEFAULT_METADATA_PAGE_SIZE,
+    pageSizeOptions: METADATA_PAGE_SIZE_OPTIONS,
+    resetKey: `${sessionId ?? ""}:${reviewMode}:${batchMode}:${manualSplitActive ? "split" : "normal"}:${activeBatch?.index ?? "list"}:${normalizedMetadataFileFilter}`,
     storageKey: "archival-processing.metadata-display-page-size",
   })
   const displayedItems = displayedPagination.items
@@ -325,7 +370,9 @@ export function useProcessStepModel({
   }, [canManageMetadataBatches])
 
   useEffect(() => {
-    const availableItems = manualSplitActive ? displayedItems : batchScopeItems
+    const availableItems = manualSplitActive
+      ? displayedItems
+      : filteredListScopeItems
     const availableIds = new Set(availableItems.map((item) => item.id))
     setManualSelectedIds((previous) => {
       const next = new Set<number>()
@@ -343,7 +390,7 @@ export function useProcessStepModel({
     displayedItems,
     displayedItemIdsKey,
     manualSplitActive,
-    batchScopeItems,
+    filteredListScopeItems,
     sortedItemIdsKey,
   ])
 
@@ -379,7 +426,10 @@ export function useProcessStepModel({
 
   useEffect(() => {
     if (reviewMode !== "batch") return
-    if (!activeBatch) {
+    const activeItems = manualSplitActive
+      ? unassignedBatchVisibleItems
+      : activeBatchVisibleItems
+    if (!activeBatch || activeItems.length === 0) {
       if (selectedDocumentId !== null) setSelectedDocumentId(null)
       return
     }
@@ -392,32 +442,34 @@ export function useProcessStepModel({
     }
     if (
       selectedDocumentId !== null &&
-      activeBatch.items.some((item) => item.id === selectedDocumentId)
+      activeItems.some((item) => item.id === selectedDocumentId)
     ) {
       return
     }
     setSelectedDocumentId(
-      firstPreferredMetadataItem(activeBatch.items)?.id ?? null
+      firstPreferredMetadataItem(activeItems)?.id ?? null
     )
   }, [
     activeBatch,
+    activeBatchVisibleItems,
     batchMode,
     manualSplitActive,
     reviewMode,
     selectedDocumentId,
     unassignedBatch,
+    unassignedBatchVisibleItems,
   ])
 
   useEffect(() => {
     if (reviewMode !== "list") return
-    if (batchScopeItems.length === 0) {
+    if (filteredListScopeItems.length === 0) {
       setSelectedDocumentId(null)
       didAutoSelectRef.current = false
       return
     }
     if (
       selectedDocumentId !== null &&
-      batchScopeItems.some((item) => item.id === selectedDocumentId)
+      filteredListScopeItems.some((item) => item.id === selectedDocumentId)
     ) {
       return
     }
@@ -429,12 +481,12 @@ export function useProcessStepModel({
       return
     }
     const firstWarning =
-      batchScopeItems.find(
+      filteredListScopeItems.find(
         (item) => item.is_reviewed !== true && hasMetadataWarning(item)
-      ) ?? batchScopeItems[0]
+      ) ?? filteredListScopeItems[0]
     setSelectedDocumentId(firstWarning.id)
     didAutoSelectRef.current = true
-  }, [batchScopeItems, reviewMode, selectedDocumentId])
+  }, [filteredListScopeItems, reviewMode, selectedDocumentId])
 
   return {
     items,
@@ -455,6 +507,8 @@ export function useProcessStepModel({
     setBatchSize,
     batchSizeInput,
     setBatchSizeInput,
+    metadataFileFilter,
+    setMetadataFileFilter,
     batchMode,
     setBatchMode,
     manualSplitActive,
@@ -499,7 +553,10 @@ export function useProcessStepModel({
     pendingReadyItems,
     sortedItems,
     sortedItemIdsKey,
+    listScopeItems,
+    filteredListScopeItems,
     batchScopeItems,
+    filteredBatchScopeItems,
     batchGroups,
     unassignedBatch,
     activeBatch,
@@ -518,4 +575,29 @@ export function useProcessStepModel({
     selectedItem,
     previewDocument,
   }
+}
+
+function filterMetadataItemsByFileName(
+  items: PdfMetadata[],
+  normalizedFilter: string
+): PdfMetadata[] {
+  if (!normalizedFilter) return items
+  return items.filter((item) =>
+    normalizeSearchText(
+      [
+        fileNameFromPath(item.data_path),
+        item.data_path,
+        item.document_id,
+      ].join(" ")
+    ).includes(normalizedFilter)
+  )
+}
+
+function normalizeSearchText(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim()
 }
