@@ -168,10 +168,10 @@ export function ResultNode({
           isDropFolder ? "border border-transparent" : "",
           isTemporary && "bg-amber-50/60",
           activeFindHit
-            ? "bg-[#EAF1FF] ring-2 ring-[#0052FF]/25 shadow-[0_8px_24px_rgba(0,82,255,0.10)]"
+            ? "bg-[#EAF1FF] shadow-[0_8px_24px_rgba(0,82,255,0.10)] ring-2 ring-[#0052FF]/25"
             : canDrop && dropTargetId === node.id
-            ? "border-[#0052FF]/40 bg-[#EAF1FF] shadow-[0_8px_24px_rgba(0,82,255,0.10)]"
-            : "hover:bg-[#F8FAFC]"
+              ? "border-[#0052FF]/40 bg-[#EAF1FF] shadow-[0_8px_24px_rgba(0,82,255,0.10)]"
+              : "hover:bg-[#F8FAFC]"
         )}
         style={{ paddingLeft: `${8 + depth * indentStep}px` }}
         onDragOver={(event) => {

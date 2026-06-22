@@ -65,7 +65,7 @@ export function createUploadPageActions(context: Record<string, any>) {
 
   const ensureSession = async () => {
     if (cache.sessionId) return cache.sessionId
-    const created = await createSession()
+    const created = await createSession("ui", normalizeSessionMetadataPayload(cache.sessionMetadata))
     cache.sessionId = created.session_id
     cache.activeClusterVersionId = null
     setSessionId(created.session_id)
@@ -413,4 +413,18 @@ export function createUploadPageActions(context: Record<string, any>) {
     syncZipState,
     parseZipMaxFiles,
   }
+}
+
+function normalizeSessionMetadataPayload(metadata: SessionMetadataValues) {
+  return {
+    archive_name: textOrNull(metadata.archive_name),
+    archive_code: textOrNull(metadata.archive_code),
+    fonds_name: textOrNull(metadata.fonds_name),
+    fonds_creator_code: textOrNull(metadata.fonds_creator_code),
+  }
+}
+
+function textOrNull(value: unknown): string | null {
+  const text = String(value ?? "").trim()
+  return text || null
 }

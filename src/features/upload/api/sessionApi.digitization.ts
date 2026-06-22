@@ -63,8 +63,10 @@ export async function getDigitizationStatus(
   options: { limit?: number; offset?: number } = {}
 ): Promise<DigitizationStatusResponse | null> {
   const searchParams = new URLSearchParams()
-  if (options.limit !== undefined) searchParams.set("limit", String(options.limit))
-  if (options.offset !== undefined) searchParams.set("offset", String(options.offset))
+  if (options.limit !== undefined)
+    searchParams.set("limit", String(options.limit))
+  if (options.offset !== undefined)
+    searchParams.set("offset", String(options.offset))
   const query = searchParams.toString()
   return requestJsonOrNull<DigitizationStatusResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/digitization${query ? `?${query}` : ""}`
@@ -263,15 +265,15 @@ export function digitizationToFolderStatus(
     missing_files: batch?.missing_files ?? [],
     status_counts: summary?.status_counts ?? batch?.status_counts ?? {},
     document_numbering_mode: batch?.document_numbering_mode ?? null,
-    remove_blank_pages_before_ocr:
-      batch?.remove_blank_pages_before_ocr ?? true,
+    remove_blank_pages_before_ocr: batch?.remove_blank_pages_before_ocr ?? true,
     upload_mode: batch?.upload_mode ?? null,
     reextracting: false,
     pdf_preprocessing: batch?.pdf_preprocessing ?? null,
     signature_extracted_documents:
       summary?.signature_extracted_documents ??
-      documents.filter((document) => documentSignatureStatus(document) === "done")
-        .length,
+      documents.filter(
+        (document) => documentSignatureStatus(document) === "done"
+      ).length,
     signature_pending_documents:
       summary?.signature_pending_documents ??
       documents.filter(

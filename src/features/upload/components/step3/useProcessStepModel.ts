@@ -277,18 +277,17 @@ export function useProcessStepModel({
       ),
     [currentUserIdentity, displayedItems]
   )
-  const displayedBulkSelectableItems = useMemo(
-    () => {
-      const byId = new Map<number, PdfMetadata>()
-      displayedConfirmableItems.forEach((item) => byId.set(item.id, item))
-      displayedRetryableItems.forEach((item) => byId.set(item.id, item))
-      return displayedItems.filter((item) => byId.has(item.id))
-    },
-    [displayedConfirmableItems, displayedItems, displayedRetryableItems]
-  )
+  const displayedBulkSelectableItems = useMemo(() => {
+    const byId = new Map<number, PdfMetadata>()
+    displayedConfirmableItems.forEach((item) => byId.set(item.id, item))
+    displayedRetryableItems.forEach((item) => byId.set(item.id, item))
+    return displayedItems.filter((item) => byId.has(item.id))
+  }, [displayedConfirmableItems, displayedItems, displayedRetryableItems])
   const bulkSelectedItems = useMemo(
     () =>
-      displayedBulkSelectableItems.filter((item) => bulkSelectedIds.has(item.id)),
+      displayedBulkSelectableItems.filter((item) =>
+        bulkSelectedIds.has(item.id)
+      ),
     [bulkSelectedIds, displayedBulkSelectableItems]
   )
   const bulkRetryItems = bulkReviewSelectionActive
@@ -446,9 +445,7 @@ export function useProcessStepModel({
     ) {
       return
     }
-    setSelectedDocumentId(
-      firstPreferredMetadataItem(activeItems)?.id ?? null
-    )
+    setSelectedDocumentId(firstPreferredMetadataItem(activeItems)?.id ?? null)
   }, [
     activeBatch,
     activeBatchVisibleItems,
@@ -584,11 +581,9 @@ function filterMetadataItemsByFileName(
   if (!normalizedFilter) return items
   return items.filter((item) =>
     normalizeSearchText(
-      [
-        fileNameFromPath(item.data_path),
-        item.data_path,
-        item.document_id,
-      ].join(" ")
+      [fileNameFromPath(item.data_path), item.data_path, item.document_id].join(
+        " "
+      )
     ).includes(normalizedFilter)
   )
 }

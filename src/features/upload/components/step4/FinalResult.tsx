@@ -606,7 +606,9 @@ export function FinalResult({
   const handleSelectRetentionCandidate = useCallback(
     async (dossierId: string, entryId: string) => {
       if (viewingHistoricalClusterVersion) {
-        toast.error("Không thể sửa thời hạn bảo quản khi đang xem phiên bản cũ.")
+        toast.error(
+          "Không thể sửa thời hạn bảo quản khi đang xem phiên bản cũ."
+        )
         throw new Error("Cannot edit a historical cluster version")
       }
       if (!sessionId) {

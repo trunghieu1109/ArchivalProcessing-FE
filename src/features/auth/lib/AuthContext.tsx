@@ -73,7 +73,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then((user) => {
         if (cancelled) return
         setSession((current) => {
-          if (!current || current.access_token !== accessToken || current.user) {
+          if (
+            !current ||
+            current.access_token !== accessToken ||
+            current.user
+          ) {
             return current
           }
           const nextSession: AuthSession = { ...current, user }

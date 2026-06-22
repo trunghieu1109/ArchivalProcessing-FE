@@ -60,7 +60,9 @@ export function NumberedPdfPreviewPanel({
               title="Làm mới URL preview"
               aria-label="Làm mới URL preview"
             >
-              <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
+              <RefreshCw
+                className={`size-4 ${loading ? "animate-spin" : ""}`}
+              />
             </button>
             <button
               type="button"

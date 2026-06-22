@@ -52,15 +52,15 @@ export function ProcessStepSummaryPanel({
                 ? "Đang chuẩn bị extract metadata. Đang chờ backend trả danh sách tài liệu."
                 : failedMetadataItems.length > 0
                   ? `Có ${failedMetadataItems.length} tài liệu lỗi khi extract metadata. Đã extract ${readyItems.length}/${expectedCount || "..."} tài liệu; có thể chạy lại từng tài liệu lỗi.`
-                : pendingMetadataCount > 0
-                ? `${
-                    metadataReloading
-                      ? "Đang extract lại metadata"
-                      : "Đang extract metadata"
-                  } cho ${pendingMetadataCount} tài liệu. Đã extract ${readyItems.length}/${expectedCount || "..."} tài liệu.`
-                : readyItems.length > 0
-                  ? `Đã extract ${readyItems.length}/${expectedCount} tài liệu; ${needsReviewItems.length} cần xem xét; ${autoVerifiedItems.length} tự động xác thực; ${reviewedItems.length} chuyên gia xác thực.`
-                  : metadataMessage}
+                  : pendingMetadataCount > 0
+                    ? `${
+                        metadataReloading
+                          ? "Đang extract lại metadata"
+                          : "Đang extract metadata"
+                      } cho ${pendingMetadataCount} tài liệu. Đã extract ${readyItems.length}/${expectedCount || "..."} tài liệu.`
+                    : readyItems.length > 0
+                      ? `Đã extract ${readyItems.length}/${expectedCount} tài liệu; ${needsReviewItems.length} cần xem xét; ${autoVerifiedItems.length} tự động xác thực; ${reviewedItems.length} chuyên gia xác thực.`
+                      : metadataMessage}
             </p>
             {(signatureStatus.pending > 0 || signatureStatus.failed > 0) && (
               <p className="mt-1 text-xs text-[#64748B]">

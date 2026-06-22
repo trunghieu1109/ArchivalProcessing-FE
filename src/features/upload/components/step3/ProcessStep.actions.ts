@@ -143,9 +143,8 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
       return next
     })
     try {
-      const results = await runSettledInBatches(
-        bulkVerifyItems,
-        (item) => verifyDocumentMetadata(sessionId, item.id)
+      const results = await runSettledInBatches(bulkVerifyItems, (item) =>
+        verifyDocumentMetadata(sessionId, item.id)
       )
       const verified = results
         .filter(
@@ -355,8 +354,8 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
       new Set(displayedBulkSelectableItems.map((item) => item.id))
     )
     bulkLastSelectedIdRef.current =
-      displayedBulkSelectableItems[displayedBulkSelectableItems.length - 1]?.id ??
-      null
+      displayedBulkSelectableItems[displayedBulkSelectableItems.length - 1]
+        ?.id ?? null
   }
 
   const clearBulkReviewSelection = () => {
@@ -484,9 +483,8 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
       return next
     })
     try {
-      const results = await runSettledInBatches(
-        bulkRetryItems,
-        (item) => onRetryMetadata(item.id)
+      const results = await runSettledInBatches(bulkRetryItems, (item) =>
+        onRetryMetadata(item.id)
       )
       const restarted = results
         .filter(
@@ -505,7 +503,9 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
         )
       }
       if (restarted.length > 0) {
-        toast.success(`Đã gửi yêu cầu extract lại ${restarted.length} tài liệu.`)
+        toast.success(
+          `Đã gửi yêu cầu extract lại ${restarted.length} tài liệu.`
+        )
       }
     } finally {
       setBulkVerifying(false)
@@ -623,10 +623,7 @@ async function runSettledWithConcurrency<T, R>(
     }
   }
   await Promise.all(
-    Array.from(
-      { length: Math.min(concurrency, items.length) },
-      () => runNext()
-    )
+    Array.from({ length: Math.min(concurrency, items.length) }, () => runNext())
   )
   return results
 }

@@ -55,12 +55,18 @@ export async function getSession(
 }
 
 export async function createSession(
-  createdBy = "ui"
+  createdBy = "ui",
+  metadata: {
+    archive_name?: string | null
+    archive_code?: string | null
+    fonds_name?: string | null
+    fonds_creator_code?: string | null
+  } = {}
 ): Promise<CreateSessionResponse> {
   return requestJson<CreateSessionResponse>("/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ created_by: createdBy }),
+    body: JSON.stringify({ created_by: createdBy, ...metadata }),
   })
 }
 

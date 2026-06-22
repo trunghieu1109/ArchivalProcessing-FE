@@ -152,6 +152,13 @@ export function UploadPage() {
   const [sessionMetadata, setSessionMetadata] = useState<SessionMetadataValues>(
     cache.sessionMetadata
   )
+  const syncSessionMetadataDraft = useCallback(
+    (metadata: SessionMetadataValues) => {
+      cache.sessionMetadata = metadata
+      setSessionMetadata(metadata)
+    },
+    []
+  )
   const [zipFolderPath, setZipFolderPath] = useState(cache.zipFolderPath)
   const [zipMaxFiles, setZipMaxFiles] = useState(cache.zipMaxFiles)
   const [zipUploadProgress, setZipUploadProgress] =
@@ -573,6 +580,7 @@ export function UploadPage() {
       routeSessionId={routeSessionId}
       sessionId={sessionId}
       sessionMetadata={sessionMetadata}
+      syncSessionMetadataDraft={syncSessionMetadataDraft}
       saveSessionMetadata={saveSessionMetadata}
       sessionLoading={sessionLoading}
       STEP_LABELS={STEP_LABELS}

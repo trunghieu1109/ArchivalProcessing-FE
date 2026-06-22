@@ -10,10 +10,11 @@ export function UserMenu({ className = "" }: { className?: string }) {
   const { user, logout } = useAuth()
   const displayName = displayUserName(user)
   const role = displayRole(user?.role)
-  const isAdmin =
-    String(user?.role || "")
-      .trim()
-      .toLowerCase() === "admin"
+  const normalizedRole = String(user?.role || "")
+    .trim()
+    .toLowerCase()
+  const isAdmin = normalizedRole === "admin"
+  const canCreateAccount = isAdmin || normalizedRole === "coordinator"
 
   const handleLogout = () => {
     logout()
@@ -37,17 +38,19 @@ export function UserMenu({ className = "" }: { className?: string }) {
           {role}
         </p>
       </div>
-      <Button
-        type="button"
-        variant="outline"
-        size="icon-sm"
-        onClick={() => navigate("/register")}
-        title="Tạo tài khoản"
-        aria-label="Tạo tài khoản"
-        className="ml-1 rounded-lg"
-      >
-        <UserPlus className="size-4" />
-      </Button>
+      {canCreateAccount && (
+        <Button
+          type="button"
+          variant="outline"
+          size="icon-sm"
+          onClick={() => navigate("/register")}
+          title="Tạo tài khoản"
+          aria-label="Tạo tài khoản"
+          className="ml-1 rounded-lg"
+        >
+          <UserPlus className="size-4" />
+        </Button>
+      )}
       {isAdmin && (
         <Button
           type="button"

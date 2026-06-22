@@ -135,16 +135,16 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
         let status = await getPublicationArchiveStatus(sessionId, scope)
         if (!status.artifact) {
           if (status.active) {
-            toast.info("ZIP xuáº¥t báº£n Ä‘ang Ä‘Æ°á»£c táº¡o, sáº½ táº£i khi hoÃ n táº¥t.")
+            toast.info("ZIP xuất bản đang được tạo, sẽ tải khi hoàn tất.")
           } else {
             await enqueuePublicationArchive(sessionId, scope)
-            toast.info("ÄÃ£ Ä‘Æ°a ZIP xuáº¥t báº£n vÃ o hÃ ng Ä‘á»£i.")
+            toast.info("Đã đưa ZIP xuất bản vào hàng đợi.")
           }
           status = await waitForPublicationArchive(sessionId, scope)
         }
         const artifactId = status.artifact?.artifact_id ?? status.artifact?.id
         if (!artifactId) {
-          throw new Error("ZIP xuáº¥t báº£n chÆ°a sáºµn sÃ ng Ä‘á»ƒ táº£i.")
+          throw new Error("ZIP xuất bản chưa sẵn sàng để tải.")
         }
         const result = await downloadPublicationArchiveArtifact(
           sessionId,
@@ -153,7 +153,7 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
         saveBlob(result.blob, result.fileName)
       } catch (err) {
         const message =
-          err instanceof Error ? err.message : "KhÃ´ng thá»ƒ táº£i ZIP xuáº¥t báº£n."
+          err instanceof Error ? err.message : "Không thể tải ZIP xuất bản."
         setError(message)
         toast.error(message)
       } finally {
@@ -1072,12 +1072,12 @@ async function waitForPublicationArchive(
     const jobStatus = status.job?.status ?? ""
     if (PUBLICATION_ARCHIVE_FAILED_STATUSES.has(jobStatus)) {
       throw new Error(
-        status.job?.error || "Job táº¡o ZIP xuáº¥t báº£n tháº¥t báº¡i."
+        status.job?.error || "Job tạo ZIP xuất bản thất bại."
       )
     }
     await delay(PUBLICATION_ARCHIVE_POLL_MS)
   }
-  throw new Error("QuÃ¡ thá»i gian chá» táº¡o ZIP xuáº¥t báº£n.")
+  throw new Error("Quá thời gian chờ tạo ZIP xuất bản.")
 }
 
 function delay(ms: number) {

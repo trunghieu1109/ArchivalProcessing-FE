@@ -46,9 +46,7 @@ export function DocumentDownloadDialog({
       pagination.setPageIndex(0)
       setSelectedIds(
         new Set(
-          downloadableItems
-            .slice(0, pagination.pageSize)
-            .map((item) => item.id)
+          downloadableItems.slice(0, pagination.pageSize).map((item) => item.id)
         )
       )
     }

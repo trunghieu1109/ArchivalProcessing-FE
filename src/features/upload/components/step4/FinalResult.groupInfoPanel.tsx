@@ -107,9 +107,7 @@ export function ClusterGroupInformationPanel({
       return
     }
     setCandidatePanel((current) =>
-      current
-        ? { ...current, selectingEntryId: candidate.entry_id }
-        : current
+      current ? { ...current, selectingEntryId: candidate.entry_id } : current
     )
     try {
       await onSelectRetentionCandidate(row.dossier_id, candidate.entry_id)
@@ -523,10 +521,10 @@ function candidateReference(
 function hasRetentionReference(reference?: RetentionReference | null): boolean {
   return Boolean(
     textValue(reference?.appendix_name) ||
-      textValue(reference?.document_type) ||
-      textValue(reference?.retention_period) ||
-      textValue(reference?.source_file_name) ||
-      textValue(reference?.source_unit_index)
+    textValue(reference?.document_type) ||
+    textValue(reference?.retention_period) ||
+    textValue(reference?.source_file_name) ||
+    textValue(reference?.source_unit_index)
   )
 }
 

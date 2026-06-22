@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
-import { Check, CheckCircle2, Edit2, FolderOpen, ListChecks, Loader2, X } from "lucide-react"
+import {
+  Check,
+  CheckCircle2,
+  Edit2,
+  FolderOpen,
+  ListChecks,
+  Loader2,
+  X,
+} from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/shared/lib/utils"

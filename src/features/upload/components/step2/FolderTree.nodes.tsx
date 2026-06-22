@@ -199,7 +199,7 @@ export function RetentionAppendicesPanel({
 
   return (
     <details className="group rounded-xl border border-[#CBD5E1] bg-white shadow-sm">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 outline-none transition-colors hover:bg-[#F8FAFC] focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 transition-colors outline-none hover:bg-[#F8FAFC] focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2">
         <span className="flex min-w-0 items-center gap-2">
           <FileText className="size-4 shrink-0 text-[#0052FF]" />
           <span className="min-w-0">
@@ -248,11 +248,12 @@ function RetentionTreeNode({ node, depth }: RetentionTreeNodeProps) {
         >
           <ChevronRight className="mt-0.5 size-3.5 shrink-0 text-[#64748B] transition-transform group-open:rotate-90" />
           <span className="min-w-0 flex-1">
-            <span className="block text-sm font-semibold leading-5 text-[#0F172A]">
+            <span className="block text-sm leading-5 font-semibold text-[#0F172A]">
               {node.name || retentionNodeFallbackLabel(node)}
             </span>
             <span className="mt-0.5 block text-[11px] font-semibold tracking-wide text-[#64748B] uppercase">
-              {isAppendix ? "Phụ lục" : "Nhóm"} · {countRetentionUnits([node])} điều khoản
+              {isAppendix ? "Phụ lục" : "Nhóm"} · {countRetentionUnits([node])}{" "}
+              điều khoản
             </span>
           </span>
         </summary>
@@ -567,7 +568,7 @@ export function FolderNodeItem({
               ))}
               {node.children.length > childPagination.pageSize && (
                 <div
-                  className="mr-2 mt-2 mb-2"
+                  className="mt-2 mr-2 mb-2"
                   style={{ marginLeft: `${28 + depth * 20}px` }}
                 >
                   <PaginationControls

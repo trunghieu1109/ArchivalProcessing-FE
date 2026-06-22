@@ -11,7 +11,6 @@ import { FinalizeArtifactsStep } from "@/pages/FinalizeArtifactsPage"
 import { SessionMetadataBar } from "@/features/upload/components/SessionMetadataBar"
 import { cn } from "@/shared/lib/utils"
 import type { AppStep } from "@/features/upload/types"
-import { UploadSessionMetadataForm } from "./UploadPage.metadataForm"
 import { easeOut } from "./UploadPage.planUtils"
 import { UploadPageHeader } from "./UploadPage.header"
 import { UploadPageStepOne } from "./UploadPage.step1"
@@ -23,6 +22,7 @@ export function UploadPageView(props: Record<string, any>) {
     routeSessionId,
     sessionId,
     sessionMetadata,
+    syncSessionMetadataDraft,
     saveSessionMetadata,
     sessionLoading,
     STEP_LABELS,
@@ -146,15 +146,6 @@ export function UploadPageView(props: Record<string, any>) {
           )}
         </div>
 
-        {(sessionId || routeSessionId) && currentStep === 1 && (
-          <UploadSessionMetadataForm
-            sessionId={sessionId ?? routeSessionId ?? null}
-            metadata={sessionMetadata}
-            onSave={saveSessionMetadata}
-            readOnly={isWorkerUser}
-            className="mb-5"
-          />
-        )}
         {(sessionId || routeSessionId) && currentStep !== 1 && (
           <SessionMetadataBar
             sessionId={sessionId ?? routeSessionId ?? null}
@@ -224,6 +215,8 @@ export function UploadPageView(props: Record<string, any>) {
               primaryActionDisabled={primaryActionDisabled}
               handleStartAll={handleStartAll}
               planInputsReuploaded={planInputsReuploaded}
+              sessionMetadata={sessionMetadata}
+              syncSessionMetadataDraft={syncSessionMetadataDraft}
             />
           )}
 

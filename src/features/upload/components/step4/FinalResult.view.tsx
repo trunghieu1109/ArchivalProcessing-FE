@@ -482,7 +482,7 @@ export function FinalResultView(props: Record<string, any>) {
                 groupLabel={selectedGroupInfoNode.label}
                 loading={groupInformationLoading}
                 error={groupInformationError}
-                className="h-[min(70svh,560px)] min-h-[420px] min-w-0 max-w-full"
+                className="h-[min(70svh,560px)] min-h-[420px] max-w-full min-w-0"
                 sessionId={sessionId}
                 onClose={handleCloseGroupInformation}
                 onSelectDossier={handleSelectGroupInfoDossier}
