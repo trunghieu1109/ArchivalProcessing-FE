@@ -12,6 +12,7 @@ import type {
 export interface FolderTreeProps {
   tree: FolderNode[]
   parsedPlan: ParsedPlan
+  fondsName?: string | null
   readOnly?: boolean
   hasRetentionSchedule?: boolean
   dossierBuildStrategy: DossierBuildStrategy

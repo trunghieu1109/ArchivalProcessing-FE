@@ -113,7 +113,8 @@ export function ResultNode({
   const selectedDossierMetadata =
     Boolean(group) && selectedMetadataGroupId === group?.id
   const canViewGroupInformation =
-    !isDossier && !isTemporary && node.documentCount > 0
+    (node.type === "classification" || node.type === "year") &&
+    node.documentCount > 0
   const selectedGroupInformation = selectedGroupInfoNodeId === node.id
   const documentPagination = usePagedItems(group?.documents ?? [], {
     defaultPageSize: 50,

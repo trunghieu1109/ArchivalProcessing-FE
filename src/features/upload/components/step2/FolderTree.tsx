@@ -1,4 +1,12 @@
-import { Check, Files, FileText, Plus } from "lucide-react"
+import {
+  Check,
+  ChevronDown,
+  Files,
+  FileText,
+  Folder,
+  FolderOpen,
+  Plus,
+} from "lucide-react"
 import { AnimatePresence, motion } from "framer-motion"
 import { toast } from "sonner"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -25,6 +33,7 @@ import type { FolderTreeProps } from "./FolderTree.types"
 export function FolderTree({
   tree,
   parsedPlan,
+  fondsName,
   readOnly = false,
   hasRetentionSchedule = true,
   dossierBuildStrategy,
@@ -40,10 +49,11 @@ export function FolderTree({
 }: FolderTreeProps) {
   const rootPagination = usePagedItems(tree, {
     defaultPageSize: 50,
-    resetKey: parsedPlan.fonds_name,
+    resetKey: fondsName || parsedPlan.fonds_name,
     storageKey: "archival-processing.folder-tree-root-page-size",
   })
   const pagedTree = rootPagination.items
+  const displayFondsName = fondsName?.trim() || parsedPlan.fonds_name
 
   const handleAdd = (parentId: string) => {
     const newNode: FolderNode = {
@@ -90,7 +100,7 @@ export function FolderTree({
           Phương án chỉnh lý
         </h2>
         <p className="mt-0.5 text-sm font-semibold text-[#0052FF] uppercase">
-          {parsedPlan.fonds_name}
+          {displayFondsName}
         </p>
         <p className="mt-1 text-sm text-[#475569]">
           Xem lại tiêu chí phân loại, chỉnh sửa nếu cần rồi áp dụng lại trước
@@ -228,22 +238,19 @@ export function FolderTree({
           className="rounded-2xl border border-[#CBD5E1] bg-white shadow-sm"
         >
           <ScrollArea className="h-[min(68svh,520px)] min-h-[360px] p-3">
-            {pagedTree.map((node) => (
-              <FolderNodeItem
-                key={node.id}
-                node={node}
-                depth={0}
-                readOnly={readOnly}
-                onAdd={handleAdd}
-                onRename={(id, name) => onChange(renameNode(tree, id, name))}
-                onDefinitionChange={async (id, definition) => {
-                  const nextTree = updateDefinition(tree, id, definition)
-                  onChange(nextTree)
-                  await onSaveTree?.(nextTree)
-                }}
-                onDelete={(id) => onChange(deleteNode(tree, id))}
-              />
-            ))}
+            <ArchivePlanTree
+              fondsName={displayFondsName}
+              tree={pagedTree}
+              readOnly={readOnly}
+              onAdd={handleAdd}
+              onRename={(id, name) => onChange(renameNode(tree, id, name))}
+              onDefinitionChange={async (id, definition) => {
+                const nextTree = updateDefinition(tree, id, definition)
+                onChange(nextTree)
+                await onSaveTree?.(nextTree)
+              }}
+              onDelete={(id) => onChange(deleteNode(tree, id))}
+            />
           </ScrollArea>
           {tree.length > rootPagination.pageSize && (
             <div className="border-t border-[#E2E8F0] px-3 py-3">
@@ -284,5 +291,111 @@ export function FolderTree({
         </button>
       </div>
     </motion.div>
+  )
+}
+
+interface ArchivePlanTreeProps {
+  fondsName: string
+  tree: FolderNode[]
+  readOnly: boolean
+  onAdd: (parentId: string) => void
+  onRename: (id: string, name: string) => void
+  onDefinitionChange: (id: string, definition: string) => void | Promise<void>
+  onDelete: (id: string) => void
+}
+
+function ArchivePlanTree({
+  fondsName,
+  tree,
+  readOnly,
+  onAdd,
+  onRename,
+  onDefinitionChange,
+  onDelete,
+}: ArchivePlanTreeProps) {
+  const rootLabel = fondsName.trim() || "Chưa đặt tên phông"
+
+  return (
+    <details className="group/fonds" open>
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-semibold text-[#0F172A] transition-colors hover:bg-[#F1F5F9]">
+        <ChevronDown className="size-3.5 shrink-0 text-[#64748B] transition-transform group-open/fonds:rotate-0" />
+        <FolderOpen className="size-4 shrink-0 text-[#0052FF]" />
+        <span className="min-w-0 flex-1 [overflow-wrap:anywhere] break-words">
+          {rootLabel}
+        </span>
+      </summary>
+
+      <ArchiveRetentionBranch
+        label="Vĩnh viễn"
+        tree={tree}
+        readOnly={readOnly}
+        onAdd={onAdd}
+        onRename={onRename}
+        onDefinitionChange={onDefinitionChange}
+        onDelete={onDelete}
+      />
+      <ArchiveRetentionBranch
+        label="Có thời hạn"
+        tree={tree}
+        readOnly={readOnly}
+        onAdd={onAdd}
+        onRename={onRename}
+        onDefinitionChange={onDefinitionChange}
+        onDelete={onDelete}
+      />
+      <ArchiveRetentionBranch
+        label="Tài liệu loại"
+        tree={[]}
+        readOnly={readOnly}
+        onAdd={onAdd}
+        onRename={onRename}
+        onDefinitionChange={onDefinitionChange}
+        onDelete={onDelete}
+      />
+    </details>
+  )
+}
+
+interface ArchiveRetentionBranchProps extends Omit<ArchivePlanTreeProps, "fondsName"> {
+  label: string
+}
+
+function ArchiveRetentionBranch({
+  label,
+  tree,
+  readOnly,
+  onAdd,
+  onRename,
+  onDefinitionChange,
+  onDelete,
+}: ArchiveRetentionBranchProps) {
+  return (
+    <details className="group/branch" open>
+      <summary className="ml-5 flex cursor-pointer list-none items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-[#0F172A] transition-colors hover:bg-[#F1F5F9]">
+        <ChevronDown className="size-3.5 shrink-0 text-[#64748B] transition-transform group-open/branch:rotate-0" />
+        <Folder className="size-4 shrink-0 text-[#0052FF]" />
+        <span>{label}</span>
+      </summary>
+      <div className="pl-10">
+        {tree.length > 0 ? (
+          tree.map((node) => (
+            <FolderNodeItem
+              key={`${label}:${node.id}`}
+              node={node}
+              depth={0}
+              readOnly={readOnly}
+              onAdd={onAdd}
+              onRename={onRename}
+              onDefinitionChange={onDefinitionChange}
+              onDelete={onDelete}
+            />
+          ))
+        ) : (
+          <div className="ml-2 rounded-lg px-2 py-1.5 text-xs text-[#64748B]">
+            Chưa có thư mục.
+          </div>
+        )}
+      </div>
+    </details>
   )
 }

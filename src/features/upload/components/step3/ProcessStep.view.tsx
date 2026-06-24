@@ -59,6 +59,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     canBulkSelectMetadata,
     canExportMetadataReview,
     canManageMetadataBatches,
+    canRestartMetadata,
     cancelManualSplit,
     clearBulkReviewSelection,
     clearManualSelection,
@@ -348,6 +349,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
                   bulkReviewSelectionActive &&
                   ((!isMetadataConfirmable(item) &&
                     !isMetadataFailedItem(item)) ||
+                    (isMetadataFailedItem(item) && !canRestartMetadata) ||
                     !canEditItem)
                 return (
                   <MetadataCard
@@ -382,7 +384,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
                     }
                     onApply={handleApply}
                     onRetry={
-                      canEditItem
+                      canRestartMetadata
                         ? () => void handleRetryMetadata(item)
                         : undefined
                     }

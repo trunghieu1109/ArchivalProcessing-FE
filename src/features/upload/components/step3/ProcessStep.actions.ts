@@ -100,6 +100,7 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     setRetryingIds,
     onRetryMetadata,
     canExportMetadataReview,
+    canRestartMetadata,
     setExportingMetadataReview,
     previewLayoutRef,
     setPreviewWidthPercent,
@@ -467,8 +468,8 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
   }
 
   const handleRetryMetadata = async (item: PdfMetadata) => {
-    if (!canUserEditMetadataItem(item, currentUserIdentity)) {
-      toast.error("Bạn chỉ có thể chạy lại metadata trong lô được giao.")
+    if (!canRestartMetadata) {
+      toast.error("Chỉ admin hoặc coordinator được chạy lại metadata.")
       return
     }
     if (!onRetryMetadata) {
@@ -496,6 +497,10 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
   }
 
   const handleRetrySelectedMetadata = async () => {
+    if (!canRestartMetadata) {
+      toast.error("Chỉ admin hoặc coordinator được chạy lại metadata.")
+      return
+    }
     if (!onRetryMetadata) {
       toast.error("Backend chưa bật chức năng chạy lại metadata.")
       return

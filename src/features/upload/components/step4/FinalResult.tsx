@@ -45,6 +45,7 @@ import {
 export function FinalResult({
   sessionId,
   groups: initialGroups,
+  fondsName,
   metadataItems = [],
   onFinish,
 }: FinalResultProps) {
@@ -136,7 +137,7 @@ export function FinalResult({
       ),
     [metadataItems]
   )
-  const tree = useMemo(() => buildResultTree(groups), [groups])
+  const tree = useMemo(() => buildResultTree(groups, fondsName), [groups, fondsName])
   const [resultTreeSearch, setResultTreeSearch] = useState("")
   const [resultTreeSearchIndex, setResultTreeSearchIndex] = useState(0)
   const resultTreeSearchMatches = useMemo(

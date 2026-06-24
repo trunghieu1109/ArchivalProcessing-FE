@@ -6,61 +6,74 @@ import {
 } from "./FinalResult.metadataUtils"
 import type { DraggedDocument, ResultTreeNode } from "./FinalResult.types"
 
+const UNKNOWN_FONDS_LABEL = "Ch\u01b0a \u0111\u1eb7t t\u00ean ph\u00f4ng"
+export const PERMANENT_RETENTION_LABEL = "V\u0129nh vi\u1ec5n"
+export const TIMED_RETENTION_LABEL = "C\u00f3 th\u1eddi h\u1ea1n"
+export const DISCARDED_RETENTION_LABEL = "T\u00e0i li\u1ec7u lo\u1ea1i"
+const RETENTION_LABELS = [
+  PERMANENT_RETENTION_LABEL,
+  TIMED_RETENTION_LABEL,
+  DISCARDED_RETENTION_LABEL,
+]
+
 const UNCLASSIFIED_LABEL = "Chưa phân loại"
 
-export function buildResultTree(groups: ClusterGroup[]): ResultTreeNode[] {
+export function buildResultTree(
+  groups: ClusterGroup[],
+  fondsName?: string | null
+): ResultTreeNode[] {
   const roots: ResultTreeNode[] = []
-  const rootByLabel = new Map<string, ResultTreeNode>()
+  const fondsByLabel = new Map<string, ResultTreeNode>()
+  const sessionFondsLabel = fondsName?.trim() || ""
+  const fallbackFondsLabel = sessionFondsLabel || UNKNOWN_FONDS_LABEL
 
-  groups
-    .filter((group) => group.isTemporary)
-    .forEach((group) => {
-      roots.push({
-        id: `temporary:${group.id}`,
-        label: group.label,
-        type: "temporary",
-        children: [],
-        group,
-        documentCount: group.documents.length,
-        pageCount: dossierPageCount(group),
+  const getOrCreateFondsNode = (fondsLabel: string): ResultTreeNode => {
+    let fondsNode = fondsByLabel.get(fondsLabel) ?? null
+    if (!fondsNode) {
+      fondsNode = createTreeNode(`fonds:${fondsLabel}`, fondsLabel, "fonds")
+      RETENTION_LABELS.forEach((label) => {
+        fondsNode!.children.push(
+          createTreeNode(
+            `${fondsNode!.id}/retention:${label}`,
+            label,
+            "retention"
+          )
+        )
       })
-    })
+      fondsByLabel.set(fondsLabel, fondsNode)
+      roots.push(fondsNode)
+    }
+    return fondsNode
+  }
 
   groups
     .filter((group) => !group.isTemporary)
     .forEach((group) => {
-      const path = resultTreePath(group)
-      let current: ResultTreeNode | null = null
-      path.forEach((segment, index) => {
-        const label = segment.trim() || UNCLASSIFIED_LABEL
-        if (index === 0) {
-          current = rootByLabel.get(label) ?? null
-          if (!current) {
-            current = createTreeNode(
-              `root:${label}`,
-              label,
-              isYearPathSegment(label) ? "year" : "classification"
-            )
-            rootByLabel.set(label, current)
-            roots.push(current)
-          }
-          return
-        }
+      const fondsLabel =
+        sessionFondsLabel || resultTreeFondsLabel(group, fallbackFondsLabel)
+      const fondsNode = getOrCreateFondsNode(fondsLabel)
 
-        const id = `${current!.id}/class:${index}:${label}`
-        let child = current!.children.find((candidate) => candidate.id === id)
+      const path = resultTreePath(group)
+      let current =
+        fondsNode.children.find(
+          (node) => node.label === resultTreeRetentionLabel(group)
+        ) ?? fondsNode.children[1]
+      path.forEach((segment) => {
+        const label = segment.trim() || UNCLASSIFIED_LABEL
+        const id = `${current.id}/class:${label}`
+        let child = current.children.find((candidate) => candidate.id === id)
         if (!child) {
           child = createTreeNode(
             id,
             label,
             isYearPathSegment(label) ? "year" : "classification"
           )
-          current!.children.push(child)
+          current.children.push(child)
         }
         current = child
       })
 
-      current!.children.push({
+      current.children.push({
         id: `dossier:${group.id}`,
         label: group.label,
         type: "dossier",
@@ -71,8 +84,47 @@ export function buildResultTree(groups: ClusterGroup[]): ResultTreeNode[] {
       })
     })
 
+  groups
+    .filter((group) => group.isTemporary && group.documents.length > 0)
+    .forEach((group) => {
+      const fondsNode = getOrCreateFondsNode(
+        sessionFondsLabel || group.fondsName?.trim() || fallbackFondsLabel
+      )
+      const discardedNode =
+        fondsNode.children.find((node) => node.label === DISCARDED_RETENTION_LABEL) ??
+        fondsNode.children[2]
+      discardedNode.children.push({
+        id: `temporary:${group.id}`,
+        label: group.label,
+        type: "temporary",
+        children: [],
+        group,
+        documentCount: group.documents.length,
+        pageCount: dossierPageCount(group),
+      })
+    })
+
   roots.forEach(updateTreeCounts)
   return sortResultTreeNodes(roots)
+}
+
+export function resultTreeFondsLabel(
+  group: ClusterGroup,
+  fallbackFondsLabel = UNKNOWN_FONDS_LABEL
+): string {
+  return group.fondsName?.trim() || fallbackFondsLabel
+}
+
+export function resultTreeRetentionLabel(group: ClusterGroup): string {
+  return isPermanentRetention(group.retentionPeriod)
+    ? PERMANENT_RETENTION_LABEL
+    : TIMED_RETENTION_LABEL
+}
+
+export function isPermanentRetention(value: string | null | undefined): boolean {
+  const normalized = normalizePathSegment(value ?? "")
+  const compact = normalized.replace(/\s+/g, "")
+  return normalized.includes("vinh vien") || compact === "vv"
 }
 
 export function resultTreePath(group: ClusterGroup): string[] {
@@ -218,6 +270,9 @@ export function compareResultTreeNodes(
 ): number {
   if (a.type === "temporary" && b.type !== "temporary") return -1
   if (b.type === "temporary" && a.type !== "temporary") return 1
+  if (a.type === "retention" && b.type === "retention") {
+    return retentionSortValue(a.label) - retentionSortValue(b.label)
+  }
 
   const aIsYearNode = a.type === "year" || isYearPathSegment(a.label)
   const bIsYearNode = b.type === "year" || isYearPathSegment(b.label)
@@ -250,6 +305,14 @@ export function compareResultTreeNodes(
   }
 
   return a.label.localeCompare(b.label, "vi")
+}
+
+function retentionSortValue(label: string): number {
+  const normalized = normalizePathSegment(label)
+  const index = RETENTION_LABELS.findIndex(
+    (item) => normalizePathSegment(item) === normalized
+  )
+  return index >= 0 ? index : RETENTION_LABELS.length
 }
 
 export function resultTreeYearValue(value: string): number | null {

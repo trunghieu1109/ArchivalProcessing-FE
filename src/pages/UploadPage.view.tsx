@@ -233,6 +233,7 @@ export function UploadPageView(props: Record<string, any>) {
                 <FolderTree
                   tree={folderTree}
                   parsedPlan={parsedPlan}
+                  fondsName={sessionMetadata?.fonds_name}
                   readOnly={false}
                   hasRetentionSchedule={doc2Has}
                   dossierBuildStrategy={dossierBuildStrategy}
@@ -350,6 +351,7 @@ export function UploadPageView(props: Record<string, any>) {
               <FinalResult
                 sessionId={sessionId}
                 groups={clusterGroups}
+                fondsName={sessionMetadata?.fonds_name}
                 onFinish={() => {
                   const currentSessionId = sessionId ?? routeSessionId
                   if (!currentSessionId) {

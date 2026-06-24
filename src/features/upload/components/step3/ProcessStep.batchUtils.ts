@@ -176,6 +176,10 @@ export function canUserEditMetadataItem(
   return isMetadataItemAssignedToUser(item, actor)
 }
 
+export function canUserRestartMetadata(actor: MetadataActorIdentity): boolean {
+  return actor.isCoordinator
+}
+
 export function isMetadataItemAssignedToUser(
   item: PdfMetadata,
   actor: MetadataActorIdentity

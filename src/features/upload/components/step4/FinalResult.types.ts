@@ -7,6 +7,7 @@ import type { PdfMetadata } from "@/features/upload/types"
 export interface FinalResultProps {
   sessionId: string | null
   groups: ClusterGroup[]
+  fondsName?: string | null
   metadataItems?: PdfMetadata[]
   onFinish: () => void
 }
@@ -25,7 +26,13 @@ export interface PreviewDocumentEntry {
 export interface ResultTreeNode {
   id: string
   label: string
-  type: "year" | "classification" | "dossier" | "temporary"
+  type:
+    | "fonds"
+    | "retention"
+    | "year"
+    | "classification"
+    | "dossier"
+    | "temporary"
   children: ResultTreeNode[]
   group?: ClusterGroup
   documentCount: number

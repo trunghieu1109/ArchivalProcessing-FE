@@ -26,6 +26,7 @@ import {
   buildManualMetadataBatchGroups,
   buildMetadataBatchGroups,
   canUserEditMetadataItem,
+  canUserRestartMetadata,
   chinhlyUserId,
   fileNameFromPath,
   findUnassignedBatchIndex,
@@ -110,6 +111,7 @@ export function useProcessStepModel({
   )
   const canManageMetadataBatches = isCoordinator
   const canExportMetadataReview = isCoordinator
+  const canRestartMetadata = canUserRestartMetadata(currentUserIdentity)
   const hasServerPagination = Boolean(metadataPagination)
 
   const metadataKey = useMemo(
@@ -288,9 +290,9 @@ export function useProcessStepModel({
       displayedItems.filter(
         (item) =>
           isMetadataFailedItem(item) &&
-          canUserEditMetadataItem(item, currentUserIdentity)
+          canRestartMetadata
       ),
-    [currentUserIdentity, displayedItems]
+    [canRestartMetadata, displayedItems]
   )
   const displayedBulkSelectableItems = useMemo(() => {
     const byId = new Map<number, PdfMetadata>()
@@ -555,6 +557,7 @@ export function useProcessStepModel({
     hasServerPagination,
     canManageMetadataBatches,
     canExportMetadataReview,
+    canRestartMetadata,
     paths,
     readyItems,
     reviewedItems,
