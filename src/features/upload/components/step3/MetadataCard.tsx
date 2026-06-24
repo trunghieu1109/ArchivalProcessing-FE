@@ -38,6 +38,7 @@ import {
   signatureTagClass,
   warningLabel,
 } from "./metadataCardUtils"
+import { isMetadataExtractionPending } from "./ProcessStep.metadataUtils"
 
 interface MetadataCardProps {
   item: PdfMetadata
@@ -79,12 +80,15 @@ export function MetadataCard({
   const hasWarnings = hasMetadataWarning(item)
   const expertReviewed = item.is_reviewed === true
   const expertReviewerName = reviewerDisplayName(item)
+  const metadataPending = isMetadataExtractionPending(item)
   const autoVerified =
-    item.review_status === "verified" || (item.metadata_ready && !hasWarnings)
+    !metadataPending &&
+    (item.review_status === "verified" || (item.metadata_ready && !hasWarnings))
   const metadataFailed = isMetadataFailed(item.status)
   const metadataUnavailable = metadataFailed && !item.metadata_ready
   const hasMetadataEdits = item.metadata_user_edited === true
   const signatureTag = signatureTagInfo(item)
+  const canRetryMetadata = Boolean(!readOnly && onRetry && !metadataPending)
 
   useEffect(() => {
     if (readOnly && editing) {
@@ -158,7 +162,7 @@ export function MetadataCard({
     >
       <div
         className={cn(
-          "flex items-center gap-3 px-4 py-3",
+          "flex items-center gap-3 px-4 py-2.5",
           onSelect && "cursor-pointer"
         )}
         onClick={toggleMetadata}
@@ -216,12 +220,12 @@ export function MetadataCard({
               </p>
             )}
         </div>
-        <div className="flex max-w-[18rem] shrink-0 flex-wrap items-center justify-end gap-2">
+        <div className="ml-auto flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap">
           {signatureTag && (
             <span
               title={signatureTag.title}
               className={cn(
-                "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                "flex h-6 shrink-0 items-center gap-1 rounded-full border px-2 text-[10px] font-semibold",
                 signatureTagClass(signatureTag.kind)
               )}
             >
@@ -229,13 +233,13 @@ export function MetadataCard({
             </span>
           )}
           {hasMetadataEdits && (
-            <span className="flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+            <span className="flex h-6 shrink-0 items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 text-[10px] font-semibold text-amber-700">
               <Edit2 className="size-2.5" /> Đã sửa
             </span>
           )}
           {expertReviewed ? (
             <span
-              className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold text-primary-foreground"
+              className="flex h-6 shrink-0 items-center gap-1 rounded-full px-2 text-[10px] font-semibold text-primary-foreground"
               style={{
                 background: "linear-gradient(to right, #0052FF, #4D7CFF)",
               }}
@@ -243,36 +247,40 @@ export function MetadataCard({
               <Check className="size-2.5" /> Chuyên gia xác thực
             </span>
           ) : autoVerified ? (
-            <span className="flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+            <span className="flex h-6 shrink-0 items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2 text-[10px] font-semibold text-emerald-700">
               <CheckCircle2 className="size-2.5" /> Tự động xác thực
             </span>
           ) : metadataFailed ? (
-            <span className="flex items-center gap-1 rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+            <span className="flex h-6 shrink-0 items-center gap-1 rounded-full border border-red-300 bg-red-50 px-2 text-[10px] font-semibold text-red-700">
               <AlertTriangle className="size-2.5" /> Lỗi metadata
             </span>
+          ) : metadataPending ? (
+            <span className="flex h-6 shrink-0 items-center gap-1 rounded-full border border-slate-300 bg-slate-50 px-2 text-[10px] font-semibold text-slate-600">
+              Đang extract metadata
+            </span>
           ) : hasWarnings ? (
-            <span className="flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+            <span className="flex h-6 shrink-0 items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 text-[10px] font-semibold text-amber-700">
               <AlertTriangle className="size-2.5" /> Cần xác minh
             </span>
           ) : item.metadata_ready ? (
-            <span className="flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+            <span className="flex h-6 shrink-0 items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2 text-[10px] font-semibold text-emerald-700">
               <CheckCircle2 className="size-2.5" /> Sẵn sàng
             </span>
           ) : (
-            <span className="flex items-center gap-1 rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+            <span className="flex h-6 shrink-0 items-center gap-1 rounded-full border border-slate-300 bg-slate-50 px-2 text-[10px] font-semibold text-slate-600">
               Đang extract metadata
             </span>
           )}
-          {!readOnly && metadataFailed && onRetry && (
+          {canRetryMetadata && (
             <Button
               variant="outline"
               size="sm"
               onClick={(event) => {
                 event.stopPropagation()
-                onRetry()
+                onRetry?.()
               }}
-              disabled={retrying}
-              className="h-7 rounded-full px-2.5 text-[10px]"
+              disabled={retrying || submitting}
+              className="h-6 shrink-0 rounded-full px-2 text-[10px]"
             >
               {retrying ? (
                 <Loader2 data-icon="inline-start" className="animate-spin" />
@@ -289,7 +297,7 @@ export function MetadataCard({
               event.stopPropagation()
               toggleMetadata()
             }}
-            className="size-7 p-0 text-muted-foreground"
+            className="size-6 shrink-0 p-0 text-muted-foreground"
           >
             {expanded ? (
               <ChevronUp className="size-3.5" />
@@ -339,7 +347,7 @@ export function MetadataCard({
                         variant="outline"
                         size="sm"
                         onClick={() => setEditing(false)}
-                        disabled={submitting || retrying || metadataUnavailable}
+                        disabled={submitting || retrying}
                       >
                         Hủy
                       </Button>
@@ -364,7 +372,7 @@ export function MetadataCard({
                   {metadataFailed && (
                     <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
                       {item.error ||
-                        "Trích xuất metadata thất bại. Có thể chạy lại metadata cho tài liệu này."}
+                        "Trích xuất metadata thất bại. Có thể chạy lại metadata hoặc tự nhập metadata cho tài liệu này."}
                     </div>
                   )}
                   {hasWarnings && !metadataFailed && (
@@ -445,16 +453,16 @@ export function MetadataCard({
                         variant="outline"
                         size="sm"
                         onClick={startEdit}
-                        disabled={submitting || retrying || metadataUnavailable}
+                        disabled={submitting || retrying}
                       >
                         <Edit2 data-icon="inline-start" /> Sửa
                       </Button>
-                      {metadataFailed && onRetry && (
+                      {canRetryMetadata && (
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={onRetry}
-                          disabled={retrying}
+                          disabled={retrying || submitting}
                         >
                           {retrying ? (
                             <Loader2

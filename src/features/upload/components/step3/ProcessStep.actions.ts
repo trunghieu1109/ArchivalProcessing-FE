@@ -1,6 +1,7 @@
 import type { PointerEvent as ReactPointerEvent } from "react"
 import { toast } from "sonner"
 import {
+  bulkVerifyDocumentMetadata,
   closeMetadataBatch,
   createMetadataBatch,
   downloadSessionMetadataReviewXlsx,
@@ -16,10 +17,13 @@ import type {
 import {
   isMetadataFailedItem,
   isMetadataConfirmable,
+  replaceMetadataItem,
   replaceDocument,
   replaceDocuments,
   replaceVerifiedDocument,
   replaceVerifiedDocuments,
+  resetMetadataItemForReextract,
+  resetMetadataItemsForReextract,
 } from "./ProcessStep.metadataUtils"
 import {
   addId,
@@ -49,7 +53,7 @@ type ProcessStepActionContext = ReturnType<typeof useProcessStepModel> & {
 const BULK_ACTION_BATCH_SIZE = readPositiveEnvInt(
   "VITE_ARCHIVAL_BULK_ACTION_BATCH_SIZE",
   32,
-  500
+  100
 )
 const BULK_ACTION_CONCURRENCY = readPositiveEnvInt(
   "VITE_ARCHIVAL_BULK_ACTION_CONCURRENCY",
@@ -109,7 +113,9 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     const item = items.find((candidate) => candidate.data_path === dataPath)
     if (!item) throw new Error("Không tìm thấy tài liệu trong session.")
     if (!sessionId) throw new Error("Chưa có session để xác nhận metadata.")
-    if (!item.metadata_ready) {
+    const manualFillAllowed =
+      Boolean(meta && Object.keys(meta).length > 0) && isMetadataFailedItem(item)
+    if (!item.metadata_ready && !manualFillAllowed) {
       throw new Error("Metadata của tài liệu này chưa sẵn sàng để xác nhận.")
     }
     if (!canUserEditMetadataItem(item, currentUserIdentity)) {
@@ -143,22 +149,38 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
       return next
     })
     try {
-      const results = await runSettledInBatches(bulkVerifyItems, (item) =>
-        verifyDocumentMetadata(sessionId, item.id)
+      const requestGroups = chunkItems(bulkVerifyItems, BULK_ACTION_BATCH_SIZE)
+      const results = await runSettledWithConcurrency(
+        requestGroups,
+        (group) =>
+          bulkVerifyDocumentMetadata(
+            sessionId,
+            group.map((item) => item.id)
+          ),
+        BULK_ACTION_CONCURRENCY
       )
       const verified = results
         .filter(
-          (result): result is PromiseFulfilledResult<SessionDocumentResponse> =>
+          (
+            result
+          ): result is PromiseFulfilledResult<
+            Awaited<ReturnType<typeof bulkVerifyDocumentMetadata>>
+          > =>
             result.status === "fulfilled"
         )
-        .map((result) => result.value)
+        .flatMap((result) => result.value.documents)
       if (verified.length > 0) {
         const nextItems = replaceVerifiedDocuments(items, verified)
         setItems(nextItems)
         onDocumentsVerified?.(verified)
       }
 
-      const failedCount = results.length - verified.length
+      const failedCount = results.reduce((count, result, index) => {
+        if (result.status === "fulfilled") {
+          return count + result.value.failed_count
+        }
+        return count + (requestGroups[index]?.length ?? 0)
+      }, 0)
       if (failedCount > 0) {
         toast.error(
           `${failedCount} tài liệu chưa xác nhận được. Vui lòng kiểm tra lại.`
@@ -454,11 +476,15 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
       return
     }
     setRetryingIds((previous) => addId(previous, item.id))
+    setItems((previous) =>
+      replaceMetadataItem(previous, resetMetadataItemForReextract(item))
+    )
     try {
       const restarted = await onRetryMetadata(item.id)
       setItems((previous) => replaceDocument(previous, restarted))
       toast.success("Đã gửi yêu cầu chạy lại metadata cho tài liệu.")
     } catch (err) {
+      setItems((previous) => replaceMetadataItem(previous, item))
       toast.error(
         err instanceof Error
           ? err.message
@@ -477,6 +503,8 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     if (bulkRetryItems.length === 0) return
 
     setBulkVerifying(true)
+    const retryIds = new Set(bulkRetryItems.map((item) => item.id))
+    setItems((previous) => resetMetadataItemsForReextract(previous, retryIds))
     setRetryingIds((previous) => {
       const next = new Set(previous)
       bulkRetryItems.forEach((item) => next.add(item.id))
@@ -498,6 +526,16 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
 
       const failedCount = results.length - restarted.length
       if (failedCount > 0) {
+        setItems((previous) => {
+          let next = previous
+          results.forEach((result, index) => {
+            if (result.status === "fulfilled") return
+            const original = bulkRetryItems[index]
+            if (!original) return
+            next = replaceMetadataItem(next, original)
+          })
+          return next
+        })
         toast.error(
           `${failedCount} tài liệu chưa gửi extract lại được. Vui lòng kiểm tra lại.`
         )
@@ -580,6 +618,14 @@ function readPositiveEnvInt(
   const parsed = Number(env[name])
   if (!Number.isFinite(parsed) || parsed < 1) return fallback
   return Math.min(maxValue, Math.floor(parsed))
+}
+
+function chunkItems<T>(items: readonly T[], size: number): T[][] {
+  const chunks: T[][] = []
+  for (let start = 0; start < items.length; start += size) {
+    chunks.push(items.slice(start, start + size))
+  }
+  return chunks
 }
 
 async function runSettledInBatches<T, R>(

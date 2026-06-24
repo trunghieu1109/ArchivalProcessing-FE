@@ -49,6 +49,7 @@ export function DocumentPdfPreview({
   onClose,
 }: DocumentPdfPreviewProps) {
   const [refreshKey, setRefreshKey] = useState(0)
+  const manualRefreshRef = useRef(false)
   const previewResponseCacheRef = useRef<
     Map<string, DocumentPreviewUrlResponse>
   >(new Map())
@@ -119,13 +120,23 @@ export function DocumentPdfPreview({
         const response = await getDocumentPreviewUrl(sessionId, documentId)
         const variants = normalizePreviewVariants(response)
         const needsRefresh = variants.some(previewVariantNeedsRefresh)
+        const preserveReadyUrls = !manualRefreshRef.current
+        manualRefreshRef.current = false
         if (!needsRefresh && variants.some((variant) => Boolean(variant.url))) {
           previewResponseCacheRef.current.set(documentKey, response)
         } else {
           previewResponseCacheRef.current.delete(documentKey)
         }
         if (!cancelled) {
-          setState({ status: "ready", variants, error: "" })
+          setState((current) => ({
+            status: "ready",
+            variants: mergePreviewVariants(
+              current.variants,
+              variants,
+              preserveReadyUrls
+            ),
+            error: "",
+          }))
           if (needsRefresh) scheduleRetry()
         }
       } catch (err) {
@@ -171,6 +182,7 @@ export function DocumentPdfPreview({
 
   const refreshPreview = () => {
     if (documentKey) previewResponseCacheRef.current.delete(documentKey)
+    manualRefreshRef.current = true
     setRefreshKey((key) => key + 1)
   }
   const selectedVariantUrl = selectedVariant?.url ?? ""
@@ -260,6 +272,56 @@ export function DocumentPdfPreview({
         )}
       </div>
     </div>
+  )
+}
+
+function mergePreviewVariants(
+  currentVariants: PreviewVariantState[],
+  nextVariants: PreviewVariantState[],
+  preserveReadyUrls: boolean
+): PreviewVariantState[] {
+  if (currentVariants.length === 0) return nextVariants
+  const currentByKey = new Map(
+    currentVariants.map((variant) => [variant.key, variant])
+  )
+  return nextVariants.map((nextVariant) => {
+    const currentVariant = currentByKey.get(nextVariant.key)
+    if (!currentVariant) return nextVariant
+    const mergedVariant =
+      preserveReadyUrls && currentVariant.url && nextVariant.url
+        ? { ...nextVariant, url: currentVariant.url }
+        : nextVariant
+    return previewVariantsEqual(currentVariant, mergedVariant)
+      ? currentVariant
+      : mergedVariant
+  })
+}
+
+function previewVariantsEqual(
+  left: PreviewVariantState,
+  right: PreviewVariantState
+): boolean {
+  return (
+    left.key === right.key &&
+    left.label === right.label &&
+    left.dataPath === right.dataPath &&
+    left.url === right.url &&
+    left.status === right.status &&
+    left.processingStatus === right.processingStatus &&
+    left.error === right.error &&
+    left.note === right.note &&
+    left.sameAsOriginal === right.sameAsOriginal &&
+    left.sourcePageCount === right.sourcePageCount &&
+    left.outputPageCount === right.outputPageCount &&
+    numberArraysEqual(left.blankPages, right.blankPages) &&
+    numberArraysEqual(left.removedPages, right.removedPages)
+  )
+}
+
+function numberArraysEqual(left: number[], right: number[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
   )
 }
 

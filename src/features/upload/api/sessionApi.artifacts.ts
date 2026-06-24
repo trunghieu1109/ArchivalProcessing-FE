@@ -70,10 +70,30 @@ export async function updateDocumentNumberingFromPage(
 }
 
 export async function getDocumentNumberingStatus(
-  sessionId: string
+  sessionId: string,
+  options: {
+    includeDocuments?: boolean
+    summaryOnly?: boolean
+    limit?: number
+    offset?: number
+  } = {}
 ): Promise<NumberingStatusResponse> {
+  const searchParams = new URLSearchParams()
+  if (options.includeDocuments !== undefined) {
+    searchParams.set("include_documents", String(options.includeDocuments))
+  }
+  if (options.summaryOnly !== undefined) {
+    searchParams.set("summary_only", String(options.summaryOnly))
+  }
+  if (options.limit !== undefined) {
+    searchParams.set("limit", String(options.limit))
+  }
+  if (options.offset !== undefined) {
+    searchParams.set("offset", String(options.offset))
+  }
+  const query = searchParams.toString()
   return requestJson<NumberingStatusResponse>(
-    `/sessions/${encodeURIComponent(sessionId)}/numbering/status`
+    `/sessions/${encodeURIComponent(sessionId)}/numbering/status${query ? `?${query}` : ""}`
   )
 }
 

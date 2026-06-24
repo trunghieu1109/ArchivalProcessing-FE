@@ -11,6 +11,7 @@ import {
   type MetadataActorIdentity,
   type MetadataBatchMode,
   type MetadataReviewMode,
+  type MetadataServerPaginationControls,
 } from "./ProcessStep.types"
 import {
   isAutomaticallyVerifiedMetadata,
@@ -35,19 +36,21 @@ import {
   writeStoredReviewMode,
 } from "./ProcessStep.batchUtils"
 
-const METADATA_PAGE_SIZE_OPTIONS = [5, 10, 25, 50, 100, 200, 500, 1000]
-const DEFAULT_METADATA_PAGE_SIZE = 25
+const METADATA_PAGE_SIZE_OPTIONS = [50]
+const DEFAULT_METADATA_PAGE_SIZE = 50
 
 interface UseProcessStepModelParams {
   sessionId: string | null
   pdfPaths: string[]
   metadataItems: PdfMetadata[]
+  metadataPagination?: MetadataServerPaginationControls
 }
 
 export function useProcessStepModel({
   sessionId,
   pdfPaths,
   metadataItems,
+  metadataPagination,
 }: UseProcessStepModelParams) {
   const { user } = useAuth()
   const [items, setItems] = useState<PdfMetadata[]>([])
@@ -107,6 +110,7 @@ export function useProcessStepModel({
   )
   const canManageMetadataBatches = isCoordinator
   const canExportMetadataReview = isCoordinator
+  const hasServerPagination = Boolean(metadataPagination)
 
   const metadataKey = useMemo(
     () =>
@@ -127,10 +131,11 @@ export function useProcessStepModel({
     setItems((previous) =>
       mergeIncomingMetadata(
         sessionChanged || !isCoordinator ? [] : previous,
-        metadataItems
+        metadataItems,
+        { keepMissing: !hasServerPagination }
       )
     )
-  }, [isCoordinator, metadataItems, metadataKey, sessionId])
+  }, [hasServerPagination, isCoordinator, metadataItems, metadataKey, sessionId])
 
   const paths = useMemo(
     () =>
@@ -248,13 +253,23 @@ export function useProcessStepModel({
         ? unassignedBatchVisibleItems
         : activeBatchVisibleItems
       : filteredListScopeItems
-  const displayedPagination = usePagedItems(unpagedDisplayedItems, {
+  const clientDisplayedPagination = usePagedItems(unpagedDisplayedItems, {
     defaultPageSize: DEFAULT_METADATA_PAGE_SIZE,
     pageSizeOptions: METADATA_PAGE_SIZE_OPTIONS,
     resetKey: `${sessionId ?? ""}:${reviewMode}:${batchMode}:${manualSplitActive ? "split" : "normal"}:${activeBatch?.index ?? "list"}:${normalizedMetadataFileFilter}`,
     storageKey: "archival-processing.metadata-display-page-size",
   })
-  const displayedItems = displayedPagination.items
+  const serverPagination = metadataPagination?.pagination ?? null
+  const displayedItems = metadataPagination
+    ? unpagedDisplayedItems
+    : clientDisplayedPagination.items
+  const displayedPagination = metadataPagination
+    ? serverPaginationForControls(
+        metadataPagination,
+        serverPagination,
+        displayedItems.length
+      )
+    : clientDisplayedPagination
   const displayedItemIdsKey = useMemo(
     () => displayedItems.map((item) => item.id).join("|"),
     [displayedItems]
@@ -537,6 +552,7 @@ export function useProcessStepModel({
     metadataSessionIdRef,
     currentUserIdentity,
     isCoordinator,
+    hasServerPagination,
     canManageMetadataBatches,
     canExportMetadataReview,
     paths,
@@ -571,6 +587,40 @@ export function useProcessStepModel({
     canBulkSelectMetadata,
     selectedItem,
     previewDocument,
+  }
+}
+
+function serverPaginationForControls(
+  controls: MetadataServerPaginationControls,
+  pagination: MetadataServerPaginationControls["pagination"],
+  visibleItemCount: number
+) {
+  const pageSize = Math.max(1, Math.floor(Number(controls.pageSize) || 1))
+  const total = Math.max(
+    0,
+    Math.floor(Number(pagination?.total ?? visibleItemCount) || 0)
+  )
+  const pageCount = Math.max(1, Math.ceil(total / pageSize))
+  const pageIndex = Math.min(
+    Math.max(0, Math.floor(Number(controls.pageIndex) || 0)),
+    pageCount - 1
+  )
+  const offset = Math.max(
+    0,
+    Math.floor(Number(pagination?.offset ?? pageIndex * pageSize) || 0)
+  )
+  const returned = Math.max(
+    visibleItemCount,
+    Math.floor(Number(pagination?.returned ?? 0) || 0)
+  )
+  return {
+    total,
+    pageIndex,
+    pageSize,
+    pageCount,
+    startNumber: total === 0 ? 0 : offset + 1,
+    endNumber: total === 0 ? 0 : Math.min(total, offset + returned),
+    setPageIndex: controls.onPageChange,
   }
 }
 

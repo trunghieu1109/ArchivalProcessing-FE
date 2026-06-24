@@ -52,6 +52,31 @@ export function sessionDocumentToJobSummary(
   }
 }
 
+export function sessionDocumentToReextractingDocument(
+  document: SessionDocumentResponse
+): SessionDocumentResponse {
+  return {
+    ...document,
+    remote_metadata_status: "processing",
+    ocr_status: "processing",
+    review_status: "pending",
+    is_reviewed: false,
+    metadata_ready: false,
+    metadata_final: false,
+    metadata_user_edited: false,
+    latest_metadata_version: null,
+    metadata_verified_by_user_id: null,
+    metadata_verified_by_email: null,
+    metadata_verified_by_name: null,
+    metadata_verified_at: null,
+    metadata_review_note: null,
+    metadata: {},
+    normalized_metadata: {},
+    raw_metadata: {},
+    error: null,
+  }
+}
+
 export function buildReextractingStatus(
   previousStatus: FolderStatusResponse,
   folderPath: string,

@@ -20,9 +20,7 @@ import {
 } from "./SessionsPage.components"
 
 const LAST_SESSION_KEY = "archival-processing:last-session-id"
-const SESSION_PAGE_SIZE_KEY = "archival-processing:sessions-page-size"
-const SESSION_PAGE_SIZE_OPTIONS = [6, 12, 24, 48, 96, 200]
-const DEFAULT_SESSION_PAGE_SIZE = 12
+const SESSION_PAGE_SIZE = 12
 
 export function SessionsPage() {
   const navigate = useNavigate()
@@ -31,9 +29,7 @@ export function SessionsPage() {
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [sessionTotal, setSessionTotal] = useState(0)
   const [sessionPageIndex, setSessionPageIndex] = useState(0)
-  const [sessionPageSize, setSessionPageSize] = useState(() =>
-    readSessionPageSize()
-  )
+  const sessionPageSize = SESSION_PAGE_SIZE
   const [coordinators, setCoordinators] = useState<ChinhlyUser[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -114,13 +110,6 @@ export function SessionsPage() {
   useEffect(() => {
     void load()
   }, [load])
-
-  const changeSessionPageSize = (pageSize: number) => {
-    const normalizedPageSize = normalizeSessionPageSize(pageSize)
-    writeSessionPageSize(normalizedPageSize)
-    setSessionPageSize(normalizedPageSize)
-    setSessionPageIndex(0)
-  }
 
   const coordinatorById = useMemo(() => {
     const map = new Map<string, ChinhlyUser>()
@@ -336,43 +325,15 @@ export function SessionsPage() {
             pageCount={sessionPageCount}
             startNumber={sessionStartNumber}
             endNumber={sessionEndNumber}
-            pageSizeOptions={SESSION_PAGE_SIZE_OPTIONS}
             itemLabel="session"
             onPageChange={(pageIndex) =>
               setSessionPageIndex(
                 Math.min(Math.max(pageIndex, 0), sessionPageCount - 1)
               )
             }
-            onPageSizeChange={changeSessionPageSize}
           />
         )}
       </main>
     </div>
   )
-}
-
-function readSessionPageSize(): number {
-  if (typeof window === "undefined") return DEFAULT_SESSION_PAGE_SIZE
-  try {
-    return normalizeSessionPageSize(
-      Number(window.localStorage.getItem(SESSION_PAGE_SIZE_KEY))
-    )
-  } catch {
-    return DEFAULT_SESSION_PAGE_SIZE
-  }
-}
-
-function writeSessionPageSize(pageSize: number) {
-  if (typeof window === "undefined") return
-  try {
-    window.localStorage.setItem(SESSION_PAGE_SIZE_KEY, String(pageSize))
-  } catch {
-    // Browser storage can be unavailable in hardened/private contexts.
-  }
-}
-
-function normalizeSessionPageSize(value: number): number {
-  return SESSION_PAGE_SIZE_OPTIONS.includes(value)
-    ? value
-    : DEFAULT_SESSION_PAGE_SIZE
 }

@@ -440,19 +440,53 @@ export function UploadPage() {
     }
 
     let existingStatus = ocr.status ?? null
-    if (!existingStatus) {
-      try {
-        existingStatus = await ocr.refresh()
-      } catch {
-        existingStatus = null
-      }
+    try {
+      existingStatus = await ocr.refresh()
+    } catch {
+      existingStatus = ocr.status ?? null
     }
-    if ((existingStatus?.jobs.length ?? 0) > 0) {
-      const hasPendingMetadata = existingStatus?.jobs.some(
-        (job) => !job.metadata_ready && job.status !== "failed"
+    const existingDocumentCount = Math.max(
+      existingStatus?.total_files ?? 0,
+      existingStatus?.total_jobs ?? 0,
+      existingStatus?.pagination?.total ?? 0,
+      existingStatus?.jobs.length ?? 0
+    )
+    if (existingDocumentCount > 0) {
+      const readyDocuments =
+        existingStatus?.metadata_ready_documents ??
+        existingStatus?.jobs.filter((job) => job.metadata_ready).length ??
+        0
+      const failedDocuments =
+        existingStatus?.metadata_failed_documents ??
+        (existingStatus?.status_counts?.failed ?? 0) +
+          (existingStatus?.status_counts?.final_failed ?? 0) +
+          (existingStatus?.status_counts?.signature_failed ?? 0) +
+          (existingStatus?.status_counts?.skipped ?? 0) +
+          (existingStatus?.status_counts?.cancelled ?? 0) +
+          (existingStatus?.status_counts?.missing_task ?? 0)
+      const hasPendingMetadata =
+        existingDocumentCount > readyDocuments + failedDocuments ||
+        Boolean(
+          existingStatus?.jobs.some(
+            (job) =>
+              !job.metadata_ready &&
+              ![
+                "failed",
+                "final_failed",
+                "signature_failed",
+                "skipped",
+                "cancelled",
+                "missing_task",
+              ].includes(String(job.status || "").trim().toLowerCase())
+          )
       )
       syncZipState(hasPendingMetadata ? "processing" : "done")
-      toast.info("Session đã có job extract metadata. Không tạo job mới.")
+      if (hasPendingMetadata) {
+        void ocr.refreshDocumentsPage({ force: true })
+        toast.info("Session đã có job extract metadata. Đang theo dõi tiếp.")
+      } else {
+        toast.info("Session đã có job extract metadata. Không tạo job mới.")
+      }
       return
     }
 

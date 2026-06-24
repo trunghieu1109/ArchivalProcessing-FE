@@ -28,6 +28,11 @@ type ProcessStepViewProps = ReturnType<typeof useProcessStepModel> &
     metadataLoading: boolean
     metadataReloading: boolean
     metadataMessage: string
+    metadataReadyTotal?: number
+    metadataProcessingTotal?: number
+    metadataFailedTotal?: number
+    metadataReviewedTotal?: number
+    metadataWarningTotal?: number
     hasDataInput: boolean
     buildBlockedMessage: string
     signatureStatus: {
@@ -80,6 +85,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     handleReviewModeChange,
     handleSelectBatch,
     handleVerifyAllReady,
+    hasServerPagination,
     isCoordinator,
     items,
     manualSelectedIds,
@@ -88,6 +94,11 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     metadataLoading,
     metadataMessage,
     metadataReloading,
+    metadataReadyTotal,
+    metadataProcessingTotal,
+    metadataFailedTotal,
+    metadataReviewedTotal,
+    metadataWarningTotal,
     hasDataInput,
     buildBlockedMessage,
     metadataTotal,
@@ -123,37 +134,65 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     autoVerifiedItems,
   } = props
 
-  const warningCount = needsReviewItems.length
-  const rawExpectedCount = Math.max(metadataTotal, paths.length, items.length)
+  const warningCount =
+    metadataWarningTotal !== undefined
+      ? metadataWarningTotal
+      : needsReviewItems.length
+  const rawExpectedCount =
+    metadataTotal > 0 ? metadataTotal : Math.max(paths.length, items.length)
   const hasMetadataDocuments =
     rawExpectedCount > 0 || paths.length > 0 || items.length > 0
   const metadataStartingWithoutCount =
     (metadataLoading || metadataReloading) && rawExpectedCount === 0
-  const expectedCount = metadataStartingWithoutCount ? 1 : rawExpectedCount
-  const pendingMetadataCount = Math.max(
-    pendingExtractionItems.length,
-    metadataStartingWithoutCount
-      ? 1
-      : expectedCount - readyItems.length - failedMetadataItems.length
+  const expectedCount = rawExpectedCount
+  const expectedCountLabel = metadataStartingWithoutCount
+    ? "..."
+    : expectedCount
+  const readyDocumentCount =
+    metadataReadyTotal !== undefined ? metadataReadyTotal : readyItems.length
+  const failedDocumentCount =
+    metadataFailedTotal !== undefined
+      ? metadataFailedTotal
+      : failedMetadataItems.length
+  const reviewedDocumentCount =
+    metadataReviewedTotal !== undefined
+      ? metadataReviewedTotal
+      : reviewedItems.length
+  const autoVerifiedDocumentCount = Math.max(
+    0,
+    readyDocumentCount - warningCount - reviewedDocumentCount
   )
+  const dossierReadyDocumentCount = hasServerPagination
+    ? reviewedDocumentCount + autoVerifiedDocumentCount
+    : dossierReadyItems.length
+  const pendingReadyDocumentCount = hasServerPagination
+    ? warningCount
+    : pendingReadyItems.length
+  const inferredPendingMetadataCount = Math.max(
+    0,
+    expectedCount - readyDocumentCount - failedDocumentCount
+  )
+  const pendingMetadataCount = metadataStartingWithoutCount
+    ? 0
+    : metadataProcessingTotal !== undefined
+      ? Math.max(metadataProcessingTotal, pendingExtractionItems.length)
+      : Math.max(inferredPendingMetadataCount, pendingExtractionItems.length)
   const metadataInProgress = metadataLoading || pendingMetadataCount > 0
-  const loadingPlaceholderCount = Math.max(
-    metadataInProgress && items.length === 0 ? 1 : 0,
-    Math.max(expectedCount - items.length, 0)
-  )
+  const loadingPlaceholderCount =
+    metadataInProgress && items.length === 0 ? 1 : 0
   const visibleLoadingPlaceholderCount = Math.min(
     loadingPlaceholderCount,
     MAX_LOADING_PLACEHOLDERS
   )
   const readyPercent =
     expectedCount > 0
-      ? Math.min(100, (readyItems.length / expectedCount) * 100)
+      ? Math.min(100, (readyDocumentCount / expectedCount) * 100)
       : 0
   const reviewedPercent =
     expectedCount > 0
-      ? Math.min(100, (reviewedItems.length / expectedCount) * 100)
+      ? Math.min(100, (reviewedDocumentCount / expectedCount) * 100)
       : 0
-  const canAttemptContinue = isCoordinator && dossierReadyItems.length > 0
+  const canAttemptContinue = isCoordinator && dossierReadyDocumentCount > 0
   const canContinue = canAttemptContinue && !buildBlockedMessage
 
   if (!hasDataInput && !hasMetadataDocuments) {
@@ -187,11 +226,14 @@ export function ProcessStepView(props: ProcessStepViewProps) {
         pendingMetadataCount={pendingMetadataCount}
         metadataReloading={metadataReloading}
         readyItems={readyItems}
-        expectedCount={expectedCount}
+        readyCount={readyDocumentCount}
+        expectedCount={expectedCountLabel}
         needsReviewItems={needsReviewItems}
         autoVerifiedItems={autoVerifiedItems}
         reviewedItems={reviewedItems}
+        reviewedCount={reviewedDocumentCount}
         failedMetadataItems={failedMetadataItems}
+        failedCount={failedDocumentCount}
         metadataMessage={metadataMessage}
         signatureStatus={signatureStatus}
         readyPercent={readyPercent}
@@ -220,7 +262,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
                 <span className="flex items-center gap-1.5 text-xs text-[#64748B]">
                   <Loader2 className="size-3 animate-spin text-[#0052FF]" />
                   {metadataReloading ? "Đang extract lại" : "Đã extract"}{" "}
-                  {readyItems.length}/{expectedCount || "..."}
+                  {readyDocumentCount}/{expectedCountLabel}
                 </span>
               )}
               {canExportMetadataReview && (
@@ -383,10 +425,8 @@ export function ProcessStepView(props: ProcessStepViewProps) {
               pageCount={displayedPagination.pageCount}
               startNumber={displayedPagination.startNumber}
               endNumber={displayedPagination.endNumber}
-              pageSizeOptions={displayedPagination.pageSizeOptions}
               itemLabel="tài liệu"
               onPageChange={displayedPagination.setPageIndex}
-              onPageSizeChange={displayedPagination.setPageSize}
             />
           )}
         </div>
@@ -410,7 +450,9 @@ export function ProcessStepView(props: ProcessStepViewProps) {
 
       <ProcessStepFooter
         pendingReadyItems={pendingReadyItems}
+        pendingReadyCount={pendingReadyDocumentCount}
         dossierReadyItems={dossierReadyItems}
+        dossierReadyCount={dossierReadyDocumentCount}
         readyItems={readyItems}
         metadataMessage={metadataMessage}
         canContinue={canContinue}

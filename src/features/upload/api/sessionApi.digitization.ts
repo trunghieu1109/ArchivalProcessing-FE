@@ -16,6 +16,7 @@ import {
 } from "./sessionApi.http"
 import { documentHasUserMetadataEdit } from "./sessionApi.types"
 import type {
+  BulkVerifyDocumentsResponse,
   CloseMetadataBatchResponse,
   CreateMetadataBatchResponse,
   DigitizationDocument,
@@ -60,9 +61,20 @@ export async function startDigitization(
 
 export async function getDigitizationStatus(
   sessionId: string,
-  options: { limit?: number; offset?: number } = {}
+  options: {
+    includeDocuments?: boolean
+    summaryOnly?: boolean
+    limit?: number
+    offset?: number
+  } = {}
 ): Promise<DigitizationStatusResponse | null> {
   const searchParams = new URLSearchParams()
+  if (options.includeDocuments !== undefined) {
+    searchParams.set("include_documents", String(options.includeDocuments))
+  }
+  if (options.summaryOnly !== undefined) {
+    searchParams.set("summary_only", String(options.summaryOnly))
+  }
   if (options.limit !== undefined)
     searchParams.set("limit", String(options.limit))
   if (options.offset !== undefined)
@@ -84,6 +96,23 @@ export async function verifyDocumentMetadata(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ metadata, created_by: "ui" }),
+    }
+  )
+}
+
+export async function bulkVerifyDocumentMetadata(
+  sessionId: string,
+  documentIds: number[]
+): Promise<BulkVerifyDocumentsResponse> {
+  return requestJson<BulkVerifyDocumentsResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/documents/bulk-verify`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        document_ids: documentIds,
+        created_by: "ui",
+      }),
     }
   )
 }
@@ -252,6 +281,11 @@ export function digitizationToFolderStatus(
       pdf_preprocessing: document.pdf_preprocessing,
     }
   })
+  const statusCounts = summary?.status_counts ?? batch?.status_counts ?? {}
+  const processingDocumentCount =
+    summary?.processing_documents ??
+    countMetadataRunningStatuses(statusCounts) ??
+    countRunningJobs(jobs)
   return {
     batch_id: batch?.id ?? null,
     folder_path: batch?.folder_path ?? fallbackFolderPath,
@@ -263,12 +297,26 @@ export function digitizationToFolderStatus(
         Math.max(0, (batch?.total_jobs ?? 0) - latestBatchDocumentCount)
     ),
     missing_files: batch?.missing_files ?? [],
-    status_counts: summary?.status_counts ?? batch?.status_counts ?? {},
+    status_counts: statusCounts,
+    pagination: response?.pagination,
     document_numbering_mode: batch?.document_numbering_mode ?? null,
     remove_blank_pages_before_ocr: batch?.remove_blank_pages_before_ocr ?? true,
     upload_mode: batch?.upload_mode ?? null,
     reextracting: false,
     pdf_preprocessing: batch?.pdf_preprocessing ?? null,
+    metadata_ready_documents: summary?.metadata_ready,
+    metadata_final_documents: summary?.metadata_final,
+    metadata_complete_documents: summary?.complete_documents,
+    metadata_processing_documents: processingDocumentCount,
+    metadata_usable_documents: summary?.metadata_usable_documents,
+    metadata_perfect_documents: summary?.perfect_documents,
+    metadata_failed_documents: summary?.failed_documents,
+    metadata_skipped_documents: summary?.skipped_documents,
+    metadata_cancelled_documents: summary?.cancelled_documents,
+    metadata_missing_task_documents: summary?.missing_task_documents,
+    metadata_verified_documents: summary?.verified,
+    metadata_reviewed_documents: summary?.reviewed,
+    metadata_warning_documents: summary?.warning,
     signature_extracted_documents:
       summary?.signature_extracted_documents ??
       documents.filter(
@@ -288,16 +336,49 @@ export function digitizationToFolderStatus(
   }
 }
 
-function documentSignatureStatus(document: DigitizationDocument): string {
-  return String(document.remote_metadata_status || document.ocr_status || "")
+function countMetadataRunningStatuses(
+  statusCounts: Record<string, number>
+): number | undefined {
+  let count = 0
+  let found = false
+  for (const [status, value] of Object.entries(statusCounts)) {
+    if (!METADATA_RUNNING_STATUSES.has(normalizeStatus(status))) continue
+    count += Math.max(0, Number(value) || 0)
+    found = true
+  }
+  return found ? count : undefined
+}
+
+function countRunningJobs(jobs: JobSummary[]): number {
+  return jobs.filter((job) =>
+    METADATA_RUNNING_STATUSES.has(
+      normalizeStatus(job.remote_metadata_status || job.status)
+    )
+  ).length
+}
+
+function normalizeStatus(value: unknown): string {
+  return String(value ?? "")
     .trim()
     .toLowerCase()
 }
 
+function documentSignatureStatus(document: DigitizationDocument): string {
+  return normalizeStatus(document.remote_metadata_status || document.ocr_status)
+}
+
 export function normalizeDocumentReviewStatus(
-  document: { review_status: string; metadata_ready: boolean },
+  document: {
+    review_status: string
+    metadata_ready: boolean
+    remote_metadata_status?: string | null
+    ocr_status?: string | null
+  },
   lightMetadata: Record<string, unknown>
 ): string {
+  if (METADATA_RUNNING_STATUSES.has(documentMetadataStatus(document))) {
+    return "pending"
+  }
   const status = String(document.review_status || "")
     .trim()
     .toLowerCase()
@@ -313,6 +394,28 @@ export function normalizeDocumentReviewStatus(
   return status || "pending"
 }
 
+const METADATA_RUNNING_STATUSES = new Set([
+  "pending",
+  "queued",
+  "running",
+  "processing",
+  "submitted",
+  "ocr_done",
+  "metadata_priority_running",
+  "metadata_running",
+  "signature_pending",
+  "cancel_requested",
+])
+
+function documentMetadataStatus(document: {
+  remote_metadata_status?: string | null
+  ocr_status?: string | null
+}): string {
+  return String(document.remote_metadata_status || document.ocr_status || "")
+    .trim()
+    .toLowerCase()
+}
+
 export function isDigitizationComplete(
   response: DigitizationStatusResponse | null
 ): boolean {
@@ -324,6 +427,15 @@ export function isDigitizationComplete(
     return false
   }
   const documents = latestBatchDocuments(response)
+  const totalDocuments = response.summary?.total_documents ?? documents.length
+  const completeDocuments = response.summary?.complete_documents
+  if (
+    response.pagination !== undefined &&
+    totalDocuments > 0 &&
+    completeDocuments !== undefined
+  ) {
+    return completeDocuments >= totalDocuments
+  }
   const expectedDocuments = Math.max(
     batch.total_jobs ?? 0,
     batch.total_files ?? 0,
@@ -359,6 +471,7 @@ function isDigitizationDocumentComplete(
       "signature_failed",
       "skipped",
       "cancelled",
+      "missing_task",
     ].includes(status)
   )
 }

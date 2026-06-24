@@ -1,5 +1,7 @@
 // Shared digitization response types used by the session-backed OCR flow.
 
+import type { PaginationMeta } from "./sessionApi.types"
+
 export interface FolderPreviewRequest {
   folder_path: string
   recursive: boolean
@@ -60,8 +62,22 @@ export interface FolderStatusResponse {
   upload_mode?: "append" | "overwrite" | string | null
   reextracting?: boolean
   pdf_preprocessing?: Record<string, unknown> | null
+  metadata_ready_documents?: number
+  metadata_final_documents?: number
+  metadata_complete_documents?: number
+  metadata_processing_documents?: number
+  metadata_usable_documents?: number
+  metadata_perfect_documents?: number
+  metadata_failed_documents?: number
+  metadata_skipped_documents?: number
+  metadata_cancelled_documents?: number
+  metadata_missing_task_documents?: number
+  metadata_verified_documents?: number
+  metadata_reviewed_documents?: number
+  metadata_warning_documents?: number
   signature_extracted_documents: number
   signature_pending_documents: number
   signature_failed_documents: number
+  pagination?: PaginationMeta
   jobs: JobSummary[]
 }

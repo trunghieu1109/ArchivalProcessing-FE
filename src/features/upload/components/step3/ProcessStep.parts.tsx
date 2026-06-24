@@ -111,7 +111,7 @@ export function ProgressMetric({
   value,
 }: {
   label: string
-  value: number
+  value: ReactNode
 }) {
   return (
     <div className="min-w-20 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2">

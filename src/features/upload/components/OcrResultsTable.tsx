@@ -22,11 +22,14 @@ const STATUS_LABELS: Record<string, string> = {
   pending: "Chờ xử lý",
   running: "Đang OCR",
   ocr_done: "OCR xong",
+  metadata_running: "Đang extract metadata",
   metadata_priority_running: "Đang trích xuất",
   chinhly_available: "Sẵn sàng",
   done: "Hoàn thành",
   failed: "Lỗi",
   final_failed: "Lỗi cuối",
+  skipped: "Bỏ qua",
+  missing_task: "Thiếu task",
   cancel_requested: "Đang dừng",
   cancelled: "Đã dừng",
   signature_pending: "Chờ chữ ký",
@@ -39,15 +42,22 @@ function statusStyle(status: string): string {
   if (
     status === "failed" ||
     status === "final_failed" ||
-    status === "signature_failed"
+    status === "signature_failed" ||
+    status === "skipped" ||
+    status === "missing_task"
   )
     return "bg-red-50 text-red-600 border border-red-200"
   if (status === "chinhly_available")
     return "bg-amber-50 text-amber-700 border border-amber-200"
   if (
-    ["pending", "running", "ocr_done", "metadata_priority_running"].includes(
-      status
-    )
+    [
+      "pending",
+      "running",
+      "ocr_done",
+      "metadata_priority_running",
+      "metadata_running",
+      "cancel_requested",
+    ].includes(status)
   )
     return "bg-[#0052FF]/5 text-[#0052FF] border border-[#0052FF]/20"
   return "bg-[#F1F5F9] text-[#64748B] border border-[#E2E8F0]"
@@ -56,12 +66,23 @@ function statusStyle(status: string): string {
 function StatusIcon({ status }: { status: string }) {
   if (status === "done")
     return <CheckCircle2 className="size-3.5 text-[#0052FF]" />
-  if (status === "failed" || status === "final_failed")
+  if (
+    status === "failed" ||
+    status === "final_failed" ||
+    status === "signature_failed" ||
+    status === "skipped" ||
+    status === "missing_task"
+  )
     return <AlertCircle className="size-3.5 text-red-500" />
   if (
-    ["pending", "running", "ocr_done", "metadata_priority_running"].includes(
-      status
-    )
+    [
+      "pending",
+      "running",
+      "ocr_done",
+      "metadata_priority_running",
+      "metadata_running",
+      "cancel_requested",
+    ].includes(status)
   )
     return <Loader2 className="size-3.5 animate-spin text-[#0052FF]" />
   return <Clock className="size-3.5 text-[#64748B]" />

@@ -126,8 +126,8 @@ export function useFinalResultPolling(context: Record<string, any>) {
       }
 
       try {
-        const [version, buildStatus] = await Promise.all([
-          getActiveClusters(sessionId),
+        const [versionSummary, buildStatus] = await Promise.all([
+          getActiveClusters(sessionId, { summaryOnly: true }),
           getClusterBuildStatus(sessionId).catch(() => null),
         ])
         if (cancelled) return
@@ -138,26 +138,10 @@ export function useFinalResultPolling(context: Record<string, any>) {
           : rebuildBaselineVersionId
             ? clusterJobMode
             : "new"
-        const nextVersionId = version?.id ?? null
+        let version = versionSummary
+        const nextVersionId = versionSummary?.id ?? null
         const nextVersionMarker = nextVersionId ?? NO_CLUSTER_VERSION
         setActiveClusterVersionId(nextVersionId)
-        const nextGroups = versionToGroups(version, metadataItems)
-        const shouldDisplayInitialVersion =
-          Boolean(version && nextVersionId) &&
-          (!displayedClusterVersionId || !hasClusterData)
-        const effectiveDisplayedVersionId = shouldDisplayInitialVersion
-          ? nextVersionId
-          : displayedClusterVersionId
-        const displayedGroupsForStatus = shouldDisplayInitialVersion
-          ? nextGroups
-          : groups
-
-        if (shouldDisplayInitialVersion && nextVersionId) {
-          setGroups(nextGroups)
-          setDisplayedClusterVersionId(nextVersionId)
-          setDisplayedClusterVersion(version)
-          setPendingClusterVersion(null)
-        }
 
         if (hasActiveBuildJob) {
           setCheckingClusters(false)
@@ -224,6 +208,35 @@ export function useFinalResultPolling(context: Record<string, any>) {
           )
           schedule()
           return
+        }
+
+        const shouldDisplayInitialVersion =
+          Boolean(version && nextVersionId) &&
+          (!displayedClusterVersionId || !hasClusterData)
+        const effectiveDisplayedVersionId = shouldDisplayInitialVersion
+          ? nextVersionId
+          : displayedClusterVersionId
+        const shouldFetchFullVersion =
+          Boolean(version && nextVersionId) &&
+          (shouldDisplayInitialVersion ||
+            Boolean(
+              effectiveDisplayedVersionId &&
+                nextVersionId !== effectiveDisplayedVersionId
+            ))
+        if (shouldFetchFullVersion) {
+          version = await getActiveClusters(sessionId)
+          if (cancelled) return
+        }
+        const nextGroups = versionToGroups(version, metadataItems)
+        const displayedGroupsForStatus = shouldDisplayInitialVersion
+          ? nextGroups
+          : groups
+
+        if (shouldDisplayInitialVersion && nextVersionId && version) {
+          setGroups(nextGroups)
+          setDisplayedClusterVersionId(nextVersionId)
+          setDisplayedClusterVersion(version)
+          setPendingClusterVersion(null)
         }
 
         if (

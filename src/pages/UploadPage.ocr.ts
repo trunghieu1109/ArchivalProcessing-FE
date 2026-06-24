@@ -67,13 +67,19 @@ export function useUploadPageOcr(
   )
   const ocrIsReextracting =
     ocr.status?.reextracting === true && ocr.status?.upload_mode !== "append"
+  const ocrDocumentTotal = Math.max(
+    ocr.status?.total_files ?? 0,
+    ocr.status?.total_jobs ?? 0,
+    ocr.status?.pagination?.total ?? 0,
+    ocrMetadataItems.length
+  )
   const ocrMessage =
     ocr.state === "error"
       ? ocr.error || "Không thể lấy kết quả số hóa."
       : ocrIsReextracting
         ? "Đang trích xuất lại metadata theo cách đánh số mới."
         : ocr.state === "done"
-          ? ocrMetadataItems.length > 0
+          ? ocrDocumentTotal > 0
             ? `Đã nhận ${ocrMetadataItems.length} tài liệu từ backend.`
             : "Backend chưa trả về tài liệu số hóa."
           : "Đang chờ kết quả số hóa từ remote folder..."

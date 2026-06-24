@@ -72,6 +72,14 @@ export interface DigitizationStatusResponse {
     total_documents: number
     metadata_ready?: number
     metadata_final?: number
+    complete_documents?: number
+    processing_documents?: number
+    metadata_usable_documents?: number
+    perfect_documents?: number
+    failed_documents?: number
+    skipped_documents?: number
+    cancelled_documents?: number
+    missing_task_documents?: number
     verified?: number
     reviewed?: number
     warning?: number
@@ -153,6 +161,7 @@ export interface NumberingStatusResponse {
   job: ActiveJobSummary | null
   summary: {
     total_documents: number
+    total_dossiers?: number
     status_counts: Record<string, number>
     done: number
     failed: number
@@ -161,6 +170,7 @@ export interface NumberingStatusResponse {
   }
   documents: NumberingDocumentStatus[]
   dossiers: NumberingDossierStatus[]
+  pagination?: PaginationMeta
 }
 
 export interface NumberedDocumentPreviewUrlResponse {
@@ -297,6 +307,18 @@ export interface SessionDocumentResponse {
   raw_metadata?: Record<string, unknown>
   pdf_preprocessing?: Record<string, unknown> | null
   error?: string | null
+}
+
+export interface BulkVerifyDocumentsResponse {
+  session_id: string
+  requested_count: number
+  verified_count: number
+  failed_count: number
+  documents: SessionDocumentResponse[]
+  errors: Array<{
+    document_id: number
+    detail: string
+  }>
 }
 
 export interface CreateMetadataBatchResponse {

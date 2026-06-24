@@ -15,10 +15,19 @@ import type {
 } from "./sessionApi.types"
 
 export async function getActiveClusters(
-  sessionId: string
+  sessionId: string,
+  options: { includeClusters?: boolean; summaryOnly?: boolean } = {}
 ): Promise<ClusterVersionResponse | null> {
+  const searchParams = new URLSearchParams()
+  if (options.includeClusters !== undefined) {
+    searchParams.set("include_clusters", String(options.includeClusters))
+  }
+  if (options.summaryOnly !== undefined) {
+    searchParams.set("summary_only", String(options.summaryOnly))
+  }
+  const query = searchParams.toString()
   return requestJsonOrNull<ClusterVersionResponse>(
-    `/sessions/${encodeURIComponent(sessionId)}/clusters`
+    `/sessions/${encodeURIComponent(sessionId)}/clusters${query ? `?${query}` : ""}`
   )
 }
 
@@ -32,10 +41,19 @@ export async function listClusterVersions(
 
 export async function getClusterVersion(
   sessionId: string,
-  clusterVersionId: string
+  clusterVersionId: string,
+  options: { includeClusters?: boolean; summaryOnly?: boolean } = {}
 ): Promise<ClusterVersionResponse> {
+  const searchParams = new URLSearchParams()
+  if (options.includeClusters !== undefined) {
+    searchParams.set("include_clusters", String(options.includeClusters))
+  }
+  if (options.summaryOnly !== undefined) {
+    searchParams.set("summary_only", String(options.summaryOnly))
+  }
+  const query = searchParams.toString()
   return requestJson<ClusterVersionResponse>(
-    `/sessions/${encodeURIComponent(sessionId)}/clusters/versions/${encodeURIComponent(clusterVersionId)}`
+    `/sessions/${encodeURIComponent(sessionId)}/clusters/versions/${encodeURIComponent(clusterVersionId)}${query ? `?${query}` : ""}`
   )
 }
 

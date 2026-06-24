@@ -100,7 +100,7 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
 
       if (activeClusterVersionId) {
         const [activeClusters, clusterBuildStatus] = await Promise.all([
-          getActiveClusters(cache.sessionId),
+          getActiveClusters(cache.sessionId, { summaryOnly: true }),
           getClusterBuildStatus(cache.sessionId),
         ])
         const activeStrategy = activeClusterBuildStrategy(activeClusters)
@@ -170,7 +170,13 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
         cache.rawZipReuploaded &&
         Boolean(cache.zipUpload)
       existingStatus = ocr.status ?? (await ocr.refresh())
-      if ((existingStatus?.jobs.length ?? 0) > 0) {
+      const existingDocumentCount = Math.max(
+        existingStatus?.total_files ?? 0,
+        existingStatus?.total_jobs ?? 0,
+        existingStatus?.pagination?.total ?? 0,
+        existingStatus?.jobs.length ?? 0
+      )
+      if (existingDocumentCount > 0) {
         const existingMode = documentNumberingModeValue(
           existingStatus?.document_numbering_mode
         )
@@ -180,9 +186,11 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
           )
         }
         if (!hasSupplementalZipUpload) {
-          const hasReadyMetadata = existingStatus?.jobs.some(
-            (job: { metadata_ready?: boolean }) => job.metadata_ready
-          )
+          const hasReadyMetadata =
+            (existingStatus?.metadata_ready_documents ?? 0) > 0 ||
+            existingStatus?.jobs.some(
+              (job: { metadata_ready?: boolean }) => job.metadata_ready
+            )
           syncZipState(hasReadyMetadata ? "done" : "processing")
           toast.info(
             "Session đã có dữ liệu metadata. Không gọi lại bước lấy metadata."

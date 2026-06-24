@@ -298,6 +298,30 @@ export function UploadPageView(props: Record<string, any>) {
                 metadataLoading={ocrLoading}
                 metadataReloading={ocrIsReextracting}
                 metadataMessage={ocrMessage}
+                metadataReadyTotal={ocr.status?.metadata_ready_documents ?? 0}
+                metadataProcessingTotal={
+                  ocr.status?.metadata_processing_documents ?? 0
+                }
+                metadataFailedTotal={
+                  ocr.status?.metadata_failed_documents ??
+                  (ocr.status?.status_counts?.failed ?? 0) +
+                    (ocr.status?.status_counts?.final_failed ?? 0) +
+                    (ocr.status?.status_counts?.signature_failed ?? 0) +
+                    (ocr.status?.status_counts?.skipped ?? 0) +
+                    (ocr.status?.status_counts?.cancelled ?? 0) +
+                    (ocr.status?.status_counts?.missing_task ?? 0)
+                }
+                metadataReviewedTotal={ocr.status?.metadata_reviewed_documents ?? 0}
+                metadataWarningTotal={ocr.status?.metadata_warning_documents ?? 0}
+                metadataPagination={{
+                  pagination: ocr.status?.pagination ?? null,
+                  pageIndex: ocr.documentPageIndex,
+                  pageSize: ocr.documentPageSize,
+                  onPageChange: (pageIndex: number) => {
+                    ocr.setDocumentPageIndex(pageIndex)
+                    void ocr.refreshDocumentsPage({ pageIndex })
+                  },
+                }}
                 hasDataInput={
                   zipHas ||
                   ocrLoading ||

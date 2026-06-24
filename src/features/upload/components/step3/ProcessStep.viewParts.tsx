@@ -8,17 +8,28 @@ export function ProcessStepSummaryPanel({
   pendingMetadataCount,
   metadataReloading,
   readyItems,
+  readyCount,
   expectedCount,
   needsReviewItems,
-  autoVerifiedItems,
   reviewedItems,
+  reviewedCount,
   failedMetadataItems = [],
+  failedCount,
   metadataMessage,
   signatureStatus,
   readyPercent,
   reviewedPercent,
   metadataStartingWithoutCount,
 }: Record<string, any>) {
+  const extractedCount = readyCount ?? readyItems.length
+  const reviewedDocumentCount = reviewedCount ?? reviewedItems.length
+  const failedDocumentCount = failedCount ?? failedMetadataItems.length
+  const needsReviewDocumentCount =
+    warningCount ?? needsReviewItems.length
+  const autoVerifiedDocumentCount = Math.max(
+    0,
+    extractedCount - needsReviewDocumentCount - reviewedDocumentCount
+  )
   return (
     <>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -50,16 +61,16 @@ export function ProcessStepSummaryPanel({
             <p className="mt-1 text-sm text-[#0F172A]">
               {metadataStartingWithoutCount
                 ? "Đang chuẩn bị extract metadata. Đang chờ backend trả danh sách tài liệu."
-                : failedMetadataItems.length > 0
-                  ? `Có ${failedMetadataItems.length} tài liệu lỗi khi extract metadata. Đã extract ${readyItems.length}/${expectedCount || "..."} tài liệu; có thể chạy lại từng tài liệu lỗi.`
+                : failedDocumentCount > 0
+                  ? `Có ${failedDocumentCount} tài liệu lỗi khi extract metadata. Đã extract ${extractedCount}/${expectedCount || "..."} tài liệu; có thể chạy lại từng tài liệu lỗi.`
                   : pendingMetadataCount > 0
                     ? `${
                         metadataReloading
                           ? "Đang extract lại metadata"
                           : "Đang extract metadata"
-                      } cho ${pendingMetadataCount} tài liệu. Đã extract ${readyItems.length}/${expectedCount || "..."} tài liệu.`
-                    : readyItems.length > 0
-                      ? `Đã extract ${readyItems.length}/${expectedCount} tài liệu; ${needsReviewItems.length} cần xem xét; ${autoVerifiedItems.length} tự động xác thực; ${reviewedItems.length} chuyên gia xác thực.`
+                      } cho ${pendingMetadataCount} tài liệu. Đã extract ${extractedCount}/${expectedCount || "..."} tài liệu.`
+                    : extractedCount > 0
+                      ? `Đã extract ${extractedCount}/${expectedCount} tài liệu; ${needsReviewDocumentCount} cần xem xét; ${autoVerifiedDocumentCount} tự động xác thực; ${reviewedDocumentCount} chuyên gia xác thực.`
                       : metadataMessage}
             </p>
             {(signatureStatus.pending > 0 || signatureStatus.failed > 0) && (
@@ -78,18 +89,18 @@ export function ProcessStepSummaryPanel({
           <div className="grid w-full grid-cols-2 gap-2 text-center sm:w-auto lg:grid-cols-6">
             <ProgressMetric label="Tài liệu" value={expectedCount} />
             <ProgressMetric label="Đang extract" value={pendingMetadataCount} />
-            <ProgressMetric label="Lỗi" value={failedMetadataItems.length} />
+            <ProgressMetric label="Lỗi" value={failedDocumentCount} />
             <ProgressMetric
               label="Cần xem xét"
-              value={needsReviewItems.length}
+              value={needsReviewDocumentCount}
             />
             <ProgressMetric
               label="Tự động xác thực"
-              value={autoVerifiedItems.length}
+              value={autoVerifiedDocumentCount}
             />
             <ProgressMetric
               label="Chuyên gia xác thực"
-              value={reviewedItems.length}
+              value={reviewedDocumentCount}
             />
           </div>
         </div>
@@ -113,14 +124,22 @@ export function ProcessStepSummaryPanel({
 }
 
 export function ProcessStepFooter({
-  pendingReadyItems,
-  dossierReadyItems,
+  pendingReadyItems: pendingReadyPageItems,
+  pendingReadyCount,
+  dossierReadyItems: dossierReadyPageItems,
+  dossierReadyCount,
   readyItems,
   metadataMessage,
   canAttemptContinue,
   buildBlockedMessage,
   onContinue,
 }: Record<string, any>) {
+  const pendingCount = pendingReadyCount ?? pendingReadyPageItems.length
+  const readyForDossierCount =
+    dossierReadyCount ?? dossierReadyPageItems.length
+  const pendingReadyItems = { length: pendingCount }
+  const dossierReadyItems = { length: readyForDossierCount }
+
   return (
     <div className="flex flex-col gap-4 rounded-2xl border border-[#CBD5E1] bg-white px-4 py-4 shadow-sm sm:px-6 lg:flex-row lg:items-center lg:justify-between">
       <div className="min-w-0 text-sm text-[#475569]">

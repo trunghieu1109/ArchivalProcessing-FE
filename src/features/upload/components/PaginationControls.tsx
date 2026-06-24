@@ -28,7 +28,7 @@ export function PaginationControls({
   itemLabel?: string
   className?: string
   onPageChange: (pageIndex: number) => void
-  onPageSizeChange: (pageSize: number) => void
+  onPageSizeChange?: (pageSize: number) => void
 }) {
   const pageItems = getPageItems(pageIndex, pageCount)
 
@@ -43,20 +43,22 @@ export function PaginationControls({
         <span className="font-medium text-[#0F172A]">
           {startNumber}-{endNumber} / {total} {itemLabel}
         </span>
-        <label className="flex items-center gap-1.5">
-          <span>Cỡ trang</span>
-          <select
-            value={pageSize}
-            onChange={(event) => onPageSizeChange(Number(event.target.value))}
-            className="h-7 rounded-md border border-[#CBD5E1] bg-white px-2 text-xs font-medium text-[#0F172A] outline-none focus-visible:border-[#0052FF] focus-visible:ring-2 focus-visible:ring-[#0052FF]/20"
-          >
-            {pageSizeOptions.map((value) => (
-              <option key={value} value={value}>
-                {value}
-              </option>
-            ))}
-          </select>
-        </label>
+        {onPageSizeChange && (
+          <label className="flex items-center gap-1.5">
+            <span>Cỡ trang</span>
+            <select
+              value={pageSize}
+              onChange={(event) => onPageSizeChange(Number(event.target.value))}
+              className="h-7 rounded-md border border-[#CBD5E1] bg-white px-2 text-xs font-medium text-[#0F172A] outline-none focus-visible:border-[#0052FF] focus-visible:ring-2 focus-visible:ring-[#0052FF]/20"
+            >
+              {pageSizeOptions.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
       <div className="flex min-w-0 flex-wrap items-center gap-1.5 lg:justify-end">
         <Button

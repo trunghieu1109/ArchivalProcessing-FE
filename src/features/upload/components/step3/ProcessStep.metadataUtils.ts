@@ -9,10 +9,14 @@ import {
 } from "@/features/upload/lib/metadata"
 import type { PdfMetadata } from "@/features/upload/types"
 
+const REEXTRACT_STALE_RESPONSE_GRACE_MS = 30_000
+
 export function mergeIncomingMetadata(
   previous: PdfMetadata[],
-  incoming: PdfMetadata[]
+  incoming: PdfMetadata[],
+  options: { keepMissing?: boolean } = {}
 ): PdfMetadata[] {
+  const keepMissing = options.keepMissing ?? true
   const previousById = new Map(previous.map((item) => [item.id, item]))
   const incomingIds = new Set(incoming.map((item) => item.id))
   const merged = incoming.map((rawItem) => {
@@ -22,6 +26,17 @@ export function mergeIncomingMetadata(
       local?.ocr_batch_id === undefined ||
       item.ocr_batch_id === undefined ||
       local.ocr_batch_id === item.ocr_batch_id
+    if (local && shouldKeepLocalReextractingState(local, item)) {
+      return {
+        ...local,
+        metadata_batch_id: item.metadata_batch_id,
+        metadata_batch_assigned_to_user_id:
+          item.metadata_batch_assigned_to_user_id,
+        metadata_batch_assigned_to_email: item.metadata_batch_assigned_to_email,
+        metadata_batch_assigned_to_name: item.metadata_batch_assigned_to_name,
+        metadata_batch_assigned_at: item.metadata_batch_assigned_at,
+      }
+    }
     if (
       local?.is_reviewed === true &&
       item.is_reviewed !== true &&
@@ -63,11 +78,13 @@ export function mergeIncomingMetadata(
     }
     return item
   })
-  previous.forEach((item) => {
-    if (!incomingIds.has(item.id)) {
-      merged.push(normalizePdfMetadata(item))
-    }
-  })
+  if (keepMissing) {
+    previous.forEach((item) => {
+      if (!incomingIds.has(item.id)) {
+        merged.push(normalizePdfMetadata(item))
+      }
+    })
+  }
   return merged
 }
 
@@ -85,6 +102,46 @@ export function replaceDocument(
 ): PdfMetadata[] {
   const next = documentResponseToPdfMetadata(document)
   return items.map((item) => (item.id === next.id ? next : item))
+}
+
+export function replaceMetadataItem(
+  items: PdfMetadata[],
+  nextItem: PdfMetadata
+): PdfMetadata[] {
+  return items.map((item) => (item.id === nextItem.id ? nextItem : item))
+}
+
+export function resetMetadataItemForReextract(item: PdfMetadata): PdfMetadata {
+  return normalizePdfMetadata({
+    ...item,
+    status: "processing",
+    remote_metadata_status: "processing",
+    review_status: "pending",
+    is_reviewed: false,
+    metadata_ready: false,
+    metadata_final: false,
+    metadata_user_edited: false,
+    metadata_verified_by_user_id: null,
+    metadata_verified_by_email: null,
+    metadata_verified_by_name: null,
+    metadata_verified_at: null,
+    metadata_review_note: null,
+    error: null,
+    light_metadata: {},
+    normalized_metadata: {},
+    raw_metadata: {},
+    applied: false,
+    metadata_reextract_started_at: Date.now(),
+  })
+}
+
+export function resetMetadataItemsForReextract(
+  items: PdfMetadata[],
+  documentIds: Set<number>
+): PdfMetadata[] {
+  return items.map((item) =>
+    documentIds.has(item.id) ? resetMetadataItemForReextract(item) : item
+  )
 }
 
 export function replaceVerifiedDocuments(
@@ -112,6 +169,13 @@ export function documentResponseToPdfMetadata(
 ): PdfMetadata {
   const lightMetadata = buildDisplayMetadata(document)
   const reviewStatus = normalizeDocumentReviewStatus(document, lightMetadata)
+  const status = String(document.remote_metadata_status || document.ocr_status || "")
+    .trim()
+    .toLowerCase()
+  const reextractStartedAt =
+    METADATA_RUNNING_STATUSES.has(status) && !document.metadata_ready
+      ? Date.now()
+      : undefined
   return {
     id: document.id,
     ocr_batch_id: document.ocr_batch_id,
@@ -136,7 +200,10 @@ export function documentResponseToPdfMetadata(
     metadata_ready: document.metadata_ready,
     metadata_final: document.metadata_final,
     metadata_version_count: document.metadata_version_count,
-    metadata_user_edited: documentHasUserMetadataEdit(document),
+    metadata_reextract_started_at: reextractStartedAt,
+    metadata_user_edited: reextractStartedAt
+      ? false
+      : documentHasUserMetadataEdit(document),
     error: document.error,
     light_metadata: lightMetadata,
     normalized_metadata: document.normalized_metadata,
@@ -150,6 +217,8 @@ export function normalizePdfMetadata(item: PdfMetadata): PdfMetadata {
     {
       review_status: item.review_status,
       metadata_ready: item.metadata_ready,
+      remote_metadata_status: item.remote_metadata_status,
+      ocr_status: item.status,
     },
     item.light_metadata
   )
@@ -161,6 +230,9 @@ export function normalizePdfMetadata(item: PdfMetadata): PdfMetadata {
     ...item,
     review_status: reviewStatus,
     applied,
+    metadata_reextract_started_at: isMetadataExtractionPending(item)
+      ? item.metadata_reextract_started_at
+      : undefined,
   }
 }
 
@@ -178,22 +250,43 @@ export function normalizedMetadataStatus(item: PdfMetadata): string {
     .toLowerCase()
 }
 
+export const METADATA_RUNNING_STATUSES = new Set([
+  "pending",
+  "queued",
+  "running",
+  "processing",
+  "submitted",
+  "ocr_done",
+  "metadata_priority_running",
+  "metadata_running",
+  "signature_pending",
+  "cancel_requested",
+])
+
+export const METADATA_FAILED_STATUSES = new Set([
+  "failed",
+  "final_failed",
+  "signature_failed",
+  "skipped",
+  "cancelled",
+  "missing_task",
+])
+
 export function isMetadataFailedItem(item: PdfMetadata): boolean {
-  return [
-    "failed",
-    "final_failed",
-    "signature_failed",
-    "skipped",
-    "cancelled",
-  ].includes(normalizedMetadataStatus(item))
+  return METADATA_FAILED_STATUSES.has(normalizedMetadataStatus(item))
 }
 
 export function isMetadataExtractionPending(item: PdfMetadata): boolean {
-  return !item.metadata_ready && !isMetadataFailedItem(item)
+  const status = normalizedMetadataStatus(item)
+  return (
+    METADATA_RUNNING_STATUSES.has(status) ||
+    (!item.metadata_ready && !isMetadataFailedItem(item))
+  )
 }
 
 export function needsMetadataReview(item: PdfMetadata): boolean {
   return (
+    !isMetadataExtractionPending(item) &&
     item.metadata_ready &&
     item.is_reviewed !== true &&
     (item.review_status !== "verified" || hasMetadataWarning(item))
@@ -201,13 +294,41 @@ export function needsMetadataReview(item: PdfMetadata): boolean {
 }
 
 export function isMetadataConfirmable(item: PdfMetadata): boolean {
-  return item.metadata_ready && item.is_reviewed !== true
+  return (
+    !isMetadataExtractionPending(item) &&
+    item.metadata_ready &&
+    item.is_reviewed !== true
+  )
 }
 
 export function isAutomaticallyVerifiedMetadata(item: PdfMetadata): boolean {
   return (
+    !isMetadataExtractionPending(item) &&
     item.metadata_ready &&
     item.is_reviewed !== true &&
     !needsMetadataReview(item)
   )
+}
+
+function shouldKeepLocalReextractingState(
+  local: PdfMetadata,
+  incoming: PdfMetadata
+): boolean {
+  if (!isMetadataExtractionPending(local)) return false
+  if (isMetadataExtractionPending(incoming)) return false
+  if (isMetadataFailedItem(incoming)) return false
+  if (!local.metadata_reextract_started_at) return false
+
+  const localVersion = local.metadata_version_count
+  const incomingVersion = incoming.metadata_version_count
+  if (
+    localVersion !== undefined &&
+    incomingVersion !== undefined &&
+    incomingVersion > localVersion
+  ) {
+    return false
+  }
+
+  return Date.now() - local.metadata_reextract_started_at <
+    REEXTRACT_STALE_RESPONSE_GRACE_MS
 }

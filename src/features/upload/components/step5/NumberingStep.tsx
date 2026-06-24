@@ -3,7 +3,6 @@ import { AlertTriangle, Loader2, Search, X } from "lucide-react"
 import { toast } from "sonner"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import { PaginationControls } from "@/features/upload/components/PaginationControls"
-import { usePagedItems } from "@/features/upload/hooks/usePagedItems"
 import {
   downloadArtifact,
   enqueueDocumentNumbering,
@@ -32,6 +31,7 @@ import {
 } from "./NumberingStep.utils"
 
 const NUMBERING_POLL_INTERVAL_MS = 3_000
+const NUMBERING_PAGE_SIZE = 10
 const NUMBERING_PROGRESS_PHASES = [
   { id: "loading_data", label: "Chuẩn bị hồ sơ" },
   { id: "rendering_document", label: "Đánh số PDF" },
@@ -65,6 +65,9 @@ export function NumberingStep({
   const [updatingDocumentId, setUpdatingDocumentId] = useState<number | null>(
     null
   )
+  const [retryingDocumentId, setRetryingDocumentId] = useState<number | null>(
+    null
+  )
   const [error, setError] = useState("")
   const [progressPhase, setProgressPhase] = useState<string | null>(null)
   const [progressMessage, setProgressMessage] = useState("")
@@ -76,16 +79,71 @@ export function NumberingStep({
   const [previewError, setPreviewError] = useState("")
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0)
   const [numberingFilter, setNumberingFilter] = useState("")
+  const [numberingPageIndex, setNumberingPageIndex] = useState(0)
   const [metadataExporting, setMetadataExporting] = useState(false)
   const [metadataImporting, setMetadataImporting] = useState(false)
   const metadataImportInputRef = useRef<HTMLInputElement | null>(null)
+  const numberingPageCacheSessionRef = useRef<string | null>(null)
+  const numberingPageCacheRef = useRef<Map<number, NumberingStatusResponse>>(
+    new Map()
+  )
+  const prefetchingNumberingPagesRef = useRef<Set<number>>(new Set())
   const [completedPhases, setCompletedPhases] = useState<Set<string>>(
     () => new Set()
   )
 
+  useEffect(() => {
+    if (numberingPageCacheSessionRef.current === sessionId) return
+    numberingPageCacheSessionRef.current = sessionId
+    numberingPageCacheRef.current.clear()
+    prefetchingNumberingPagesRef.current.clear()
+    setNumberingPageIndex(0)
+  }, [sessionId])
+
+  const fetchNumberingPageStatus = useCallback(
+    async (pageIndex: number) => {
+      if (!sessionId) return null
+      return getDocumentNumberingStatus(sessionId, {
+        includeDocuments: true,
+        summaryOnly: false,
+        limit: NUMBERING_PAGE_SIZE,
+        offset: pageIndex * NUMBERING_PAGE_SIZE,
+      })
+    },
+    [sessionId]
+  )
+
+  const prefetchNumberingPage = useCallback(
+    async (pageIndex: number) => {
+      if (!sessionId) return
+      if (numberingPageCacheRef.current.has(pageIndex)) return
+      if (prefetchingNumberingPagesRef.current.has(pageIndex)) return
+
+      prefetchingNumberingPagesRef.current.add(pageIndex)
+      try {
+        const response = await fetchNumberingPageStatus(pageIndex)
+        if (response) numberingPageCacheRef.current.set(pageIndex, response)
+      } catch {
+        // Prefetch is best-effort; visible refreshes surface real errors.
+      } finally {
+        prefetchingNumberingPagesRef.current.delete(pageIndex)
+      }
+    },
+    [fetchNumberingPageStatus, sessionId]
+  )
+
   const refreshStatus = useCallback(
-    async (options: { silent?: boolean } = {}) => {
+    async (
+      options: {
+        silent?: boolean
+        includeDocuments?: boolean
+        pageIndex?: number
+        force?: boolean
+      } = {}
+    ) => {
       if (!sessionId) {
+        numberingPageCacheRef.current.clear()
+        prefetchingNumberingPagesRef.current.clear()
         setStatus(null)
         setLoading(false)
         setError("Chưa có session để đánh số trang.")
@@ -96,9 +154,70 @@ export function NumberingStep({
         setError("")
       }
       try {
-        const response = await getDocumentNumberingStatus(sessionId)
-        setStatus(response)
+        const includeDocuments = options.includeDocuments ?? true
+        const pageSize = NUMBERING_PAGE_SIZE
+        const pageIndex = Math.max(
+          0,
+          Math.floor(Number(options.pageIndex ?? numberingPageIndex) || 0)
+        )
+        if (includeDocuments && options.force) {
+          numberingPageCacheRef.current.clear()
+          prefetchingNumberingPagesRef.current.clear()
+        }
+
+        const cachedStatus =
+          includeDocuments && !options.force
+            ? numberingPageCacheRef.current.get(pageIndex)
+            : undefined
+
+        if (cachedStatus) {
+          setStatus((current) =>
+            mergeCachedNumberingPage(current, cachedStatus)
+          )
+          setError("")
+          const nextPageIndex = nextNumberingPrefetchPageIndex(
+            pageIndex,
+            pageSize,
+            cachedStatus
+          )
+          if (nextPageIndex !== null) {
+            void prefetchNumberingPage(nextPageIndex)
+          }
+          return cachedStatus
+        }
+
+        const response = includeDocuments
+          ? await fetchNumberingPageStatus(pageIndex)
+          : await getDocumentNumberingStatus(sessionId, {
+              includeDocuments,
+              summaryOnly: true,
+            })
+        if (!response) return null
+        if (includeDocuments) {
+          numberingPageCacheRef.current.set(pageIndex, response)
+        }
+        setStatus((current) => {
+          if (includeDocuments || !current) return response
+          return {
+            ...response,
+            documents: current.documents,
+            pagination: mergeNumberingPaginationTotal(
+              current.pagination,
+              response.pagination
+            ),
+          }
+        })
         setError("")
+        if (includeDocuments) {
+          const nextPageIndex = nextNumberingPrefetchPageIndex(
+            pageIndex,
+            pageSize,
+            response
+          )
+          if (nextPageIndex !== null) {
+            void prefetchNumberingPage(nextPageIndex)
+          }
+        }
         return response
       } catch (err) {
         const message =
@@ -111,7 +230,12 @@ export function NumberingStep({
         if (!options.silent) setLoading(false)
       }
     },
-    [sessionId]
+    [
+      fetchNumberingPageStatus,
+      numberingPageIndex,
+      prefetchNumberingPage,
+      sessionId,
+    ]
   )
 
   const startNumbering = useCallback(
@@ -132,7 +256,7 @@ export function NumberingStep({
         })
         if (response.status === "not_needed") {
           if (response.result) setStatus(response.result)
-          setProgressPhase("completed")
+          setProgressPhase(null)
           setCompletedPhases(
             new Set(NUMBERING_PROGRESS_PHASES.map((phase) => phase.id))
           )
@@ -143,7 +267,7 @@ export function NumberingStep({
         } else {
           toast.info("Task đánh số trang đang được xử lý.")
         }
-        await refreshStatus({ silent: true })
+        await refreshStatus({ silent: true, force: true })
       } catch (err) {
         const message =
           err instanceof Error
@@ -198,7 +322,7 @@ export function NumberingStep({
         } else {
           toast.info("Task đánh số đang được xử lý.")
         }
-        await refreshStatus({ silent: true })
+        await refreshStatus({ silent: true, force: true })
       } catch (err) {
         const message =
           err instanceof Error
@@ -211,6 +335,50 @@ export function NumberingStep({
       }
     },
     [refreshStatus, sessionId]
+  )
+
+  const retryIncompleteDocument = useCallback(
+    async (document: NumberingDocumentStatus) => {
+      if (!sessionId) {
+        toast.error("Chưa có session để đánh số lại tài liệu.")
+        return
+      }
+      if (starting || status?.active) return
+
+      setRetryingDocumentId(document.session_document_id)
+      setPreviewDocumentId(document.session_document_id)
+      setError("")
+      setProgressPhase("loading_data")
+      setProgressMessage(
+        `Đang gửi yêu cầu đánh số lại ${document.file_name || document.document_id}.`
+      )
+      setCompletedPhases(new Set())
+      try {
+        const response = await enqueueDocumentNumbering(sessionId, {
+          created_by: "ui",
+          force: false,
+        })
+        if (response.status === "not_needed") {
+          if (response.result) setStatus(response.result)
+          toast.info("Không còn tài liệu cần đánh số lại.")
+        } else if (response.created) {
+          toast.success("Đã gửi task đánh số lại tài liệu chưa hoàn tất.")
+        } else {
+          toast.info("Task đánh số đang được xử lý.")
+        }
+        await refreshStatus({ silent: true, force: true })
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Không gửi được task đánh số lại tài liệu."
+        setError(message)
+        toast.error(message)
+      } finally {
+        setRetryingDocumentId(null)
+      }
+    },
+    [refreshStatus, sessionId, starting, status?.active]
   )
 
   const exportMetadata = useCallback(async () => {
@@ -270,7 +438,7 @@ export function NumberingStep({
             `Có ${issueCount} dòng chưa cập nhật được do chưa khớp hồ sơ hoặc bị trùng số hộp.`
           )
         }
-        await refreshStatus({ silent: true })
+        await refreshStatus({ silent: true, force: true })
       } catch (err) {
         const message =
           err instanceof Error
@@ -302,14 +470,18 @@ export function NumberingStep({
     let cancelled = false
     let timeoutId: number | null = null
     const poll = async () => {
-      const response = await refreshStatus({ silent: true })
+      const response = await refreshStatus({
+        silent: true,
+        includeDocuments: false,
+      })
       if (cancelled) return
+      void refreshStatus({ silent: true, includeDocuments: true, force: true })
       if (response?.active || starting) {
         timeoutId = window.setTimeout(poll, NUMBERING_POLL_INTERVAL_MS)
         return
       }
       if (response && isNumberingComplete(response)) {
-        setProgressPhase("completed")
+        setProgressPhase(null)
         setCompletedPhases(
           new Set(NUMBERING_PROGRESS_PHASES.map((phase) => phase.id))
         )
@@ -330,14 +502,25 @@ export function NumberingStep({
     const done = status.summary.done
     const failed = status.summary.failed
     const running = status.summary.running
-    if (status.active || running > 0 || starting) {
+    if (
+      (status.active || running > 0 || starting) &&
+      !(total > 0 && done + failed >= total)
+    ) {
       setProgressPhase("rendering_document")
       setProgressMessage(`Đã đánh số ${done}/${total} tài liệu.`)
       setCompletedPhases(new Set(["loading_data"]))
       return
     }
+    if (!status.active && !starting && total > 0 && done < total) {
+      setProgressPhase(null)
+      setCompletedPhases(new Set(["loading_data", "rendering_document"]))
+      setProgressMessage(
+        `Đã đánh số ${done}/${total} tài liệu; còn ${total - done} tài liệu chưa hoàn tất.`
+      )
+      return
+    }
     if (total > 0 && done + failed >= total) {
-      setProgressPhase("completed")
+      setProgressPhase(null)
       setCompletedPhases(
         new Set(NUMBERING_PROGRESS_PHASES.map((phase) => phase.id))
       )
@@ -365,12 +548,22 @@ export function NumberingStep({
       ),
     [documentsByDossier, normalizedNumberingFilter]
   )
-  const dossierPagination = usePagedItems(filteredDocumentsByDossier, {
-    defaultPageSize: 50,
-    resetKey: `${sessionId ?? ""}:${normalizedNumberingFilter}`,
-    storageKey: "archival-processing.numbering-dossier-page-size",
-  })
-  const pagedDocumentsByDossier = dossierPagination.items
+  const pagedDocumentsByDossier = filteredDocumentsByDossier
+  const numberingPaginationTotal =
+    status?.pagination?.total ?? status?.summary.total_dossiers ?? 0
+  const numberingPageCount = Math.max(
+    1,
+    Math.ceil(numberingPaginationTotal / NUMBERING_PAGE_SIZE)
+  )
+  const normalizedNumberingPageIndex = Math.min(
+    Math.max(0, numberingPageIndex),
+    numberingPageCount - 1
+  )
+  const numberingPageOffset =
+    status?.pagination?.offset ??
+    normalizedNumberingPageIndex * NUMBERING_PAGE_SIZE
+  const numberingPageReturned =
+    status?.pagination?.returned ?? filteredDocumentsByDossier.length
   const previewDocument = useMemo(
     () =>
       (status?.documents ?? []).find(
@@ -426,14 +619,24 @@ export function NumberingStep({
   const totalDocuments = status?.summary.total_documents ?? 0
   const doneCount = status?.summary.done ?? 0
   const failedCount = status?.summary.failed ?? 0
+  const pendingCount = status?.summary.pending ?? 0
+  const unresolvedCount = Math.max(0, totalDocuments - doneCount)
+  const hasNumberingOutput = doneCount > 0 || failedCount > 0
   const complete = Boolean(status && isNumberingComplete(status))
   const active = starting || Boolean(status?.active)
+  const stoppedWithUnresolved = Boolean(
+    status &&
+      !active &&
+      totalDocuments > 0 &&
+      unresolvedCount > 0 &&
+      hasNumberingOutput
+  )
   const queuedForWorker =
     status?.active === true && status.job?.status === "queued"
   const activeWorkerId =
     status?.job?.status === "running" ? status.job.locked_by : null
   const metadataBusy = metadataExporting || metadataImporting
-  const canContinue = complete && failedCount === 0
+  const canContinue = complete && failedCount === 0 && unresolvedCount === 0
   const changeNumberingMode = async (mode: DocumentNumberingMode) => {
     if (active || changingMode || mode === documentNumberingMode) return
     const hadCompletedNumbering = complete
@@ -442,7 +645,7 @@ export function NumberingStep({
     try {
       const saved = await onDocumentNumberingModeChange(mode)
       if (saved === false) return
-      await refreshStatus({ silent: true })
+      await refreshStatus({ silent: true, force: true })
       setProgressPhase(null)
       setProgressMessage("")
       setCompletedPhases(new Set())
@@ -466,7 +669,7 @@ export function NumberingStep({
         starting={starting}
         active={active}
         complete={complete}
-        onRefresh={refreshStatus}
+        onRefresh={() => refreshStatus({ force: true })}
         onStart={() => startNumbering(false)}
         onModeChange={changeNumberingMode}
       />
@@ -504,15 +707,46 @@ export function NumberingStep({
           </span>
         </div>
       ) : null}
+      {stoppedWithUnresolved ? (
+        <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 md:flex-row md:items-center md:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+            <span>
+              Còn {unresolvedCount} tài liệu chưa hoàn tất nhưng không có job
+              đánh số đang chạy.
+              {failedCount > 0
+                ? ` Có ${failedCount} tài liệu lỗi.`
+                : pendingCount > 0
+                  ? " Một số lỗi render có thể đang được backend trả về trạng thái chờ xử lý."
+                  : ""}{" "}
+              Hãy bấm <strong>Đánh số lại</strong> ở dòng tài liệu cần xử lý,
+              hoặc chạy lại phần còn thiếu.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => void startNumbering(false)}
+            disabled={active || starting}
+            className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg bg-amber-600 px-3 text-sm font-semibold text-white transition-colors hover:bg-amber-700 disabled:pointer-events-none disabled:opacity-60"
+          >
+            Đánh số lại phần còn thiếu
+          </button>
+        </div>
+      ) : null}
       {error ? (
         <div className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
           <span>{error}</span>
         </div>
       ) : null}
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <NumberingStat label="Tổng tài liệu" value={totalDocuments} />
         <NumberingStat label="Đã đánh số" value={doneCount} tone="success" />
+        <NumberingStat
+          label="Chưa hoàn tất"
+          value={unresolvedCount}
+          tone={unresolvedCount ? "danger" : "neutral"}
+        />
         <NumberingStat
           label="Lỗi"
           value={failedCount}
@@ -603,10 +837,26 @@ export function NumberingStep({
                         updating={
                           updatingDocumentId === document.session_document_id
                         }
+                        retrying={
+                          retryingDocumentId === document.session_document_id
+                        }
+                        retryable={
+                          stoppedWithUnresolved &&
+                          document.status !== "done" &&
+                          document.status !== "running"
+                        }
+                        stalled={
+                          stoppedWithUnresolved &&
+                          document.status !== "done" &&
+                          document.status !== "failed" &&
+                          document.status !== "running"
+                        }
+                        onRetry={retryIncompleteDocument}
                         disabled={
                           starting ||
                           Boolean(status?.active) ||
-                          updatingDocumentId !== null
+                          updatingDocumentId !== null ||
+                          retryingDocumentId !== null
                         }
                       />
                     ))}
@@ -618,16 +868,30 @@ export function NumberingStep({
           {filteredDocumentsByDossier.length > 0 && (
             <div className="border-t border-[#E2E8F0] px-4 py-3">
               <PaginationControls
-                total={dossierPagination.total}
-                pageIndex={dossierPagination.pageIndex}
-                pageSize={dossierPagination.pageSize}
-                pageCount={dossierPagination.pageCount}
-                startNumber={dossierPagination.startNumber}
-                endNumber={dossierPagination.endNumber}
-                pageSizeOptions={dossierPagination.pageSizeOptions}
+                total={numberingPaginationTotal}
+                pageIndex={normalizedNumberingPageIndex}
+                pageSize={NUMBERING_PAGE_SIZE}
+                pageCount={numberingPageCount}
+                startNumber={
+                  numberingPaginationTotal === 0 ? 0 : numberingPageOffset + 1
+                }
+                endNumber={
+                  numberingPaginationTotal === 0
+                    ? 0
+                    : Math.min(
+                        numberingPaginationTotal,
+                        numberingPageOffset + numberingPageReturned
+                      )
+                }
                 itemLabel="hồ sơ"
-                onPageChange={dossierPagination.setPageIndex}
-                onPageSizeChange={dossierPagination.setPageSize}
+                onPageChange={(pageIndex) => {
+                  setNumberingPageIndex(pageIndex)
+                  void refreshStatus({
+                    silent: true,
+                    includeDocuments: true,
+                    pageIndex,
+                  })
+                }}
               />
             </div>
           )}
@@ -648,6 +912,7 @@ export function NumberingStep({
         doneCount={doneCount}
         totalDocuments={totalDocuments}
         failedCount={failedCount}
+        unresolvedCount={unresolvedCount}
         onContinue={onContinue}
       />
     </div>
@@ -655,6 +920,66 @@ export function NumberingStep({
 }
 
 type NumberingDossierGroup = ReturnType<typeof groupDocumentsByDossier>[number]
+
+function mergeNumberingPaginationTotal(
+  current: NumberingStatusResponse["pagination"] | undefined,
+  next: NumberingStatusResponse["pagination"] | undefined
+): NumberingStatusResponse["pagination"] | undefined {
+  if (!current) return next
+  if (!next) return current
+  return {
+    ...current,
+    total: next.total,
+  }
+}
+
+function mergeCachedNumberingPage(
+  current: NumberingStatusResponse | null,
+  cached: NumberingStatusResponse
+): NumberingStatusResponse {
+  if (!current) return cached
+  return {
+    ...cached,
+    session_id: current.session_id,
+    cluster_version_id: current.cluster_version_id,
+    document_numbering_mode: current.document_numbering_mode,
+    active: current.active,
+    job: current.job,
+    summary: current.summary,
+    pagination: mergeCachedNumberingPagination(
+      current.pagination,
+      cached.pagination
+    ),
+    documents: cached.documents,
+    dossiers: cached.dossiers,
+  }
+}
+
+function mergeCachedNumberingPagination(
+  current: NumberingStatusResponse["pagination"] | undefined,
+  cached: NumberingStatusResponse["pagination"] | undefined
+): NumberingStatusResponse["pagination"] | undefined {
+  if (!cached) return current
+  if (!current) return cached
+  return {
+    ...cached,
+    total: current.total,
+  }
+}
+
+function nextNumberingPrefetchPageIndex(
+  pageIndex: number,
+  pageSize: number,
+  status: NumberingStatusResponse
+): number | null {
+  const total = Math.max(
+    status.pagination?.total ?? 0,
+    status.summary.total_dossiers ?? 0,
+    status.dossiers.length
+  )
+  const nextPageIndex = pageIndex + 1
+  return nextPageIndex * pageSize < total ? nextPageIndex : null
+}
 
 function filterNumberingDossierGroups(
   groups: NumberingDossierGroup[],

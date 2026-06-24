@@ -202,10 +202,8 @@ export function DocumentDownloadDialog({
                 pageCount={pagination.pageCount}
                 startNumber={pagination.startNumber}
                 endNumber={pagination.endNumber}
-                pageSizeOptions={pagination.pageSizeOptions}
                 itemLabel="tài liệu"
                 onPageChange={pagination.setPageIndex}
-                onPageSizeChange={pagination.setPageSize}
               />
             </div>
           )}

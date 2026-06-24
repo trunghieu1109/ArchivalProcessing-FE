@@ -27,6 +27,22 @@ export interface MetadataActorIdentity {
   isCoordinator: boolean
 }
 
+export interface MetadataServerPagination {
+  total: number
+  limit: number | null
+  offset: number
+  returned: number
+  has_more: boolean
+  next_offset?: number | null
+}
+
+export interface MetadataServerPaginationControls {
+  pagination?: MetadataServerPagination | null
+  pageIndex: number
+  pageSize: number
+  onPageChange: (pageIndex: number) => void
+}
+
 export const DEFAULT_METADATA_BATCH_SIZE = 25
 export const MIN_METADATA_BATCH_SIZE = 5
 export const MAX_METADATA_BATCH_SIZE = 1000

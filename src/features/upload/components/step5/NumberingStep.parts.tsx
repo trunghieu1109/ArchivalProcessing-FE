@@ -13,6 +13,7 @@ import {
   Loader2,
   Play,
   RefreshCw,
+  RotateCcw,
   Save,
   Upload,
 } from "lucide-react"
@@ -208,6 +209,7 @@ export function NumberingStepFooter({
   doneCount,
   totalDocuments,
   failedCount,
+  unresolvedCount,
   onContinue,
 }: {
   active: boolean
@@ -216,6 +218,7 @@ export function NumberingStepFooter({
   doneCount: number
   totalDocuments: number
   failedCount: number
+  unresolvedCount: number
   onContinue: () => void
 }) {
   return (
@@ -233,7 +236,11 @@ export function NumberingStepFooter({
           </p>
           <p className="mt-1 text-xs text-[#64748B]">
             Đã đánh số {doneCount}/{totalDocuments} tài liệu
-            {failedCount > 0 ? `, ${failedCount} tài liệu lỗi` : ""}.
+            {failedCount > 0 ? `, ${failedCount} tài liệu lỗi` : ""}
+            {unresolvedCount > 0
+              ? `, còn ${unresolvedCount} tài liệu chưa hoàn tất`
+              : ""}
+            .
           </p>
         </div>
         <Button
@@ -315,7 +322,11 @@ export function NumberingDocumentRow({
   previewing,
   onPreview,
   onUpdateFromPage,
+  onRetry,
   updating,
+  retrying,
+  retryable,
+  stalled,
   disabled,
 }: {
   document: NumberingDocumentStatus
@@ -326,7 +337,11 @@ export function NumberingDocumentRow({
     anchorPageNumber: number,
     newNumber: number
   ) => void
+  onRetry: (document: NumberingDocumentStatus) => void
   updating: boolean
+  retrying: boolean
+  retryable: boolean
+  stalled: boolean
   disabled: boolean
 }) {
   const entries = useMemo(() => numberingEntries(document), [document])
@@ -342,7 +357,12 @@ export function NumberingDocumentRow({
     setNumberValue(String(firstEntry?.label ?? document.document_number_start))
   }, [document.document_number_start, document.session_document_id, entries])
 
-  const badge = statusBadge(document.status)
+  const badge = stalled
+    ? {
+        label: "Chưa hoàn tất",
+        className: "bg-rose-50 text-rose-700",
+      }
+    : statusBadge(document.status)
   const parsedPageNumber = Number.parseInt(pageValue, 10)
   const parsedNewNumber = Number.parseInt(numberValue, 10)
   const selectedEntry = entries.find(
@@ -405,6 +425,11 @@ export function NumberingDocumentRow({
           {document.error ? (
             <p className="mt-1 text-xs text-rose-700">{document.error}</p>
           ) : null}
+          {stalled && !document.error ? (
+            <p className="mt-1 text-xs text-amber-700">
+              Tài liệu chưa có PDF đánh số hợp lệ. Có thể đánh số lại từ dòng này.
+            </p>
+          ) : null}
         </div>
       </div>
       <form
@@ -458,6 +483,22 @@ export function NumberingDocumentRow({
         </button>
       </form>
       <div className="flex shrink-0 flex-wrap items-center gap-1.5 lg:justify-end">
+        {retryable ? (
+          <button
+            type="button"
+            onClick={() => onRetry(document)}
+            disabled={disabled || retrying}
+            title="Đánh số lại tài liệu này"
+            aria-label="Đánh số lại tài liệu này"
+            className="inline-flex size-8 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 text-amber-700 transition-colors hover:border-amber-400 hover:bg-amber-100 disabled:pointer-events-none disabled:opacity-50"
+          >
+            {retrying ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <RotateCcw className="size-3.5" />
+            )}
+          </button>
+        ) : null}
         {document.numbered_pdf_version_id ? (
           <button
             type="button"
