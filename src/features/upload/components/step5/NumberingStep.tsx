@@ -57,7 +57,7 @@ export function NumberingStep({
   onAutoStartHandled,
   onContinue,
 }: NumberingStepProps) {
-  const autoStartHandled = useRef(false)
+  const autoStartedSessionRef = useRef<string | null>(null)
   const [status, setStatus] = useState<NumberingStatusResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState(false)
@@ -458,11 +458,12 @@ export function NumberingStep({
   }, [refreshStatus])
 
   useEffect(() => {
-    if (!autoStart || autoStartHandled.current) return
-    autoStartHandled.current = true
+    if (!autoStart || !sessionId) return
+    if (autoStartedSessionRef.current === sessionId) return
+    autoStartedSessionRef.current = sessionId
     onAutoStartHandled?.()
     void startNumbering(false)
-  }, [autoStart, onAutoStartHandled, startNumbering])
+  }, [autoStart, onAutoStartHandled, sessionId, startNumbering])
 
   useEffect(() => {
     if (!sessionId) return

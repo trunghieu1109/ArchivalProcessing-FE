@@ -379,8 +379,12 @@ export function UploadPageView(props: Record<string, any>) {
                 sessionId={sessionId ?? routeSessionId ?? null}
                 documentNumberingMode={documentNumberingMode}
                 onDocumentNumberingModeChange={selectDocumentNumberingMode}
-                autoStart={searchParams.get("start") === "1"}
-                onAutoStartHandled={handleFinalizeAutoStartHandled}
+                autoStart={Boolean(sessionId ?? routeSessionId)}
+                onAutoStartHandled={
+                  searchParams.get("start") === "1"
+                    ? handleFinalizeAutoStartHandled
+                    : undefined
+                }
                 onContinue={() => {
                   const currentSessionId = sessionId ?? routeSessionId
                   if (!currentSessionId) {

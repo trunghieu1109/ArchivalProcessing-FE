@@ -47,6 +47,20 @@ export function buildResultTree(
   }
 
   groups
+    .filter((group) => group.isTemporary)
+    .forEach((group) => {
+      roots.push({
+        id: `temporary:${group.id}`,
+        label: group.label,
+        type: "temporary",
+        children: [],
+        group,
+        documentCount: group.documents.length,
+        pageCount: dossierPageCount(group),
+      })
+    })
+
+  groups
     .filter((group) => !group.isTemporary)
     .forEach((group) => {
       const fondsLabel =
@@ -77,26 +91,6 @@ export function buildResultTree(
         id: `dossier:${group.id}`,
         label: group.label,
         type: "dossier",
-        children: [],
-        group,
-        documentCount: group.documents.length,
-        pageCount: dossierPageCount(group),
-      })
-    })
-
-  groups
-    .filter((group) => group.isTemporary && group.documents.length > 0)
-    .forEach((group) => {
-      const fondsNode = getOrCreateFondsNode(
-        sessionFondsLabel || group.fondsName?.trim() || fallbackFondsLabel
-      )
-      const discardedNode =
-        fondsNode.children.find((node) => node.label === DISCARDED_RETENTION_LABEL) ??
-        fondsNode.children[2]
-      discardedNode.children.push({
-        id: `temporary:${group.id}`,
-        label: group.label,
-        type: "temporary",
         children: [],
         group,
         documentCount: group.documents.length,
