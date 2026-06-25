@@ -17,6 +17,7 @@ import type {
 import {
   isMetadataFailedItem,
   isMetadataConfirmable,
+  metadataSortScore,
   replaceMetadataItem,
   replaceDocument,
   replaceDocuments,
@@ -115,7 +116,8 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     if (!item) throw new Error("Không tìm thấy tài liệu trong session.")
     if (!sessionId) throw new Error("Chưa có session để xác nhận metadata.")
     const manualFillAllowed =
-      Boolean(meta && Object.keys(meta).length > 0) && isMetadataFailedItem(item)
+      Boolean(meta && Object.keys(meta).length > 0) &&
+      isMetadataFailedItem(item)
     if (!item.metadata_ready && !manualFillAllowed) {
       throw new Error("Metadata của tài liệu này chưa sẵn sàng để xác nhận.")
     }
@@ -129,7 +131,17 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     try {
       const verified = await verifyDocumentMetadata(sessionId, item.id, meta)
       const nextItems = replaceVerifiedDocument(items, verified)
+      const nextDisplayedItems = replaceVerifiedDocument(
+        displayedItems,
+        verified
+      )
+      const nextSelectedItem = firstPreferredMetadataItem(
+        [...nextDisplayedItems].sort(
+          (a, b) => metadataSortScore(a) - metadataSortScore(b)
+        )
+      )
       setItems(nextItems)
+      setSelectedDocumentId(nextSelectedItem?.id ?? null)
       onDocumentsVerified?.([verified])
     } finally {
       setVerifyingIds((previous) => removeId(previous, item.id))
@@ -166,8 +178,7 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
             result
           ): result is PromiseFulfilledResult<
             Awaited<ReturnType<typeof bulkVerifyDocumentMetadata>>
-          > =>
-            result.status === "fulfilled"
+          > => result.status === "fulfilled"
         )
         .flatMap((result) => result.value.documents)
       if (verified.length > 0) {

@@ -373,15 +373,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
                     }
                     submitting={verifyingIds.has(item.id)}
                     retrying={retryingIds.has(item.id)}
-                    onSelect={(expanded) =>
-                      setSelectedDocumentId((current) =>
-                        expanded
-                          ? item.id
-                          : current === item.id
-                            ? null
-                            : current
-                      )
-                    }
+                    onSelect={() => setSelectedDocumentId(item.id)}
                     onApply={handleApply}
                     onRetry={
                       canRestartMetadata
@@ -443,6 +435,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
             <span className="h-16 w-1 rounded-full bg-[#0052FF] opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
           </button>
           <DocumentPdfPreview
+            key={previewDocument?.id ?? "no-preview-document"}
             sessionId={sessionId}
             document={previewDocument}
             className="h-[min(72svh,678px)] min-h-[420px] min-w-0 xl:h-full xl:min-h-0"

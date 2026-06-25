@@ -17,5 +17,6 @@ export interface PreviewVariantState {
 export interface PreviewState {
   status: "idle" | "loading" | "ready" | "error"
   variants: PreviewVariantState[]
+  activeVariantKey: string
   error: string
 }

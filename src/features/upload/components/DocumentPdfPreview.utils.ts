@@ -61,9 +61,14 @@ export function previewVariantNeedsRefresh(
 }
 
 export function preferredPreviewVariant(
-  variants: PreviewVariantState[]
+  variants: PreviewVariantState[],
+  activeVariantKey = ""
 ): PreviewVariantState {
+  const activeVariant = activeVariantKey
+    ? variants.find((variant) => variant.key === activeVariantKey)
+    : undefined
   return (
+    activeVariant ??
     variants.find(
       (variant) => variant.key === "processed" && variant.status === "ready"
     ) ??

@@ -42,6 +42,17 @@ interface DocumentPdfPreviewProps {
 
 const PREVIEW_RETRY_INTERVAL_MS = 2_000
 
+function activeVariantKeyFromResponse(
+  response: DocumentPreviewUrlResponse,
+  variants: PreviewVariantState[]
+): string {
+  const activeKey = String(response.active_variant_key || "").trim()
+  if (activeKey && variants.some((variant) => variant.key === activeKey)) {
+    return activeKey
+  }
+  return preferredPreviewVariant(variants).key
+}
+
 export function DocumentPdfPreview({
   sessionId,
   document,
@@ -53,9 +64,11 @@ export function DocumentPdfPreview({
   const previewResponseCacheRef = useRef<
     Map<string, DocumentPreviewUrlResponse>
   >(new Map())
+  const lastPreviewDocumentKeyRef = useRef("")
   const [state, setState] = useState<PreviewState>({
     status: "idle",
     variants: [],
+    activeVariantKey: "",
     error: "",
   })
   const [selectedVariantKey, setSelectedVariantKey] = useState("")
@@ -76,15 +89,23 @@ export function DocumentPdfPreview({
     }
 
     if (!document) {
-      setState({ status: "idle", variants: [], error: "" })
+      lastPreviewDocumentKeyRef.current = ""
+      setState({
+        status: "idle",
+        variants: [],
+        activeVariantKey: "",
+        error: "",
+      })
       return () => {
         cancelled = true
       }
     }
     if (!sessionId) {
+      lastPreviewDocumentKeyRef.current = ""
       setState({
         status: "error",
         variants: [],
+        activeVariantKey: "",
         error: "Chua co session de lay preview PDF.",
       })
       return () => {
@@ -92,9 +113,11 @@ export function DocumentPdfPreview({
       }
     }
     if (documentId === null) {
+      lastPreviewDocumentKeyRef.current = ""
       setState({
         status: "error",
         variants: [],
+        activeVariantKey: "",
         error: "Tai lieu nay chua co ma trong session.",
       })
       return () => {
@@ -103,22 +126,37 @@ export function DocumentPdfPreview({
     }
 
     const load = async () => {
+      const documentChanged = lastPreviewDocumentKeyRef.current !== documentKey
+      lastPreviewDocumentKeyRef.current = documentKey
       const cachedResponse = previewResponseCacheRef.current.get(documentKey)
       if (cachedResponse) {
         const cachedVariants = normalizePreviewVariants(cachedResponse)
-        setState({ status: "ready", variants: cachedVariants, error: "" })
+        setState({
+          status: "ready",
+          variants: cachedVariants,
+          activeVariantKey: activeVariantKeyFromResponse(
+            cachedResponse,
+            cachedVariants
+          ),
+          error: "",
+        })
         return
       }
 
       setState((current) => ({
         status: "loading",
-        variants: current.variants,
+        variants: documentChanged ? [] : current.variants,
+        activeVariantKey: documentChanged ? "" : current.activeVariantKey,
         error: "",
       }))
 
       try {
         const response = await getDocumentPreviewUrl(sessionId, documentId)
         const variants = normalizePreviewVariants(response)
+        const activeVariantKey = activeVariantKeyFromResponse(
+          response,
+          variants
+        )
         const needsRefresh = variants.some(previewVariantNeedsRefresh)
         const preserveReadyUrls = !manualRefreshRef.current
         manualRefreshRef.current = false
@@ -135,6 +173,7 @@ export function DocumentPdfPreview({
               variants,
               preserveReadyUrls
             ),
+            activeVariantKey,
             error: "",
           }))
           if (needsRefresh) scheduleRetry()
@@ -144,6 +183,7 @@ export function DocumentPdfPreview({
           setState((current) => ({
             status: "error",
             variants: current.variants,
+            activeVariantKey: current.activeVariantKey,
             error:
               err instanceof Error ? err.message : "Khong the tai preview PDF.",
           }))
@@ -159,15 +199,27 @@ export function DocumentPdfPreview({
     }
   }, [document, documentId, documentKey, refreshKey, sessionId])
 
+  useEffect(() => {
+    setSelectedVariantKey("")
+  }, [documentKey])
+
   const canRefresh = Boolean(document && sessionId && document.id !== null)
   const hasPreviewVariants = state.variants.length > 0
   const selectedVariant = useMemo(() => {
     if (!hasPreviewVariants) return null
     return (
       state.variants.find((variant) => variant.key === selectedVariantKey) ??
+      state.variants.find(
+        (variant) => variant.key === state.activeVariantKey
+      ) ??
       preferredPreviewVariant(state.variants)
     )
-  }, [hasPreviewVariants, selectedVariantKey, state.variants])
+  }, [
+    hasPreviewVariants,
+    selectedVariantKey,
+    state.activeVariantKey,
+    state.variants,
+  ])
 
   useEffect(() => {
     if (!hasPreviewVariants) {
@@ -177,8 +229,15 @@ export function DocumentPdfPreview({
     if (state.variants.some((variant) => variant.key === selectedVariantKey)) {
       return
     }
-    setSelectedVariantKey(preferredPreviewVariant(state.variants).key)
-  }, [hasPreviewVariants, selectedVariantKey, state.variants])
+    setSelectedVariantKey(
+      preferredPreviewVariant(state.variants, state.activeVariantKey).key
+    )
+  }, [
+    hasPreviewVariants,
+    selectedVariantKey,
+    state.activeVariantKey,
+    state.variants,
+  ])
 
   const refreshPreview = () => {
     if (documentKey) previewResponseCacheRef.current.delete(documentKey)
