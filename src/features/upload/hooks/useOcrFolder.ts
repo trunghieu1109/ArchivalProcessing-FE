@@ -46,6 +46,11 @@ export interface UseOcrFolderResult {
       confirmedPlanVersionId?: string
       documentNumberingMode?: DocumentNumberingMode
       documentNumberingStylePreset?: DocumentNumberingStylePreset
+      documentNumberingStyleOverrides?: {
+        font_size?: number
+        color?: string
+        opacity?: number
+      }
       sessionFileId?: number
       remoteFileId?: string | number | null
       uploadMode?: UploadMode
@@ -672,6 +677,11 @@ export function useOcrFolder(
         confirmedPlanVersionId?: string
         documentNumberingMode?: DocumentNumberingMode
         documentNumberingStylePreset?: DocumentNumberingStylePreset
+        documentNumberingStyleOverrides?: {
+          font_size?: number
+          color?: string
+          opacity?: number
+        }
         sessionFileId?: number
         remoteFileId?: string | number | null
         uploadMode?: UploadMode
@@ -734,6 +744,8 @@ export function useOcrFolder(
           confirmed_plan_version_id: options.confirmedPlanVersionId,
           document_numbering_mode: options.documentNumberingMode,
           document_numbering_style_preset: options.documentNumberingStylePreset,
+          document_numbering_style_overrides:
+            options.documentNumberingStyleOverrides ?? null,
           session_file_id: options.sessionFileId,
           remote_file_id: options.remoteFileId,
           upload_mode: options.uploadMode,

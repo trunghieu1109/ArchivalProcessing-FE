@@ -39,6 +39,8 @@ export async function enqueueDocumentNumbering(
     force?: boolean
     document_numbering_style_preset?: string
     style_preset?: string
+    document_numbering_style_overrides?: { font_size?: number; color?: string; opacity?: number } | null
+    style_overrides?: { font_size?: number; color?: string; opacity?: number } | null
   } = {}
 ): Promise<EnqueueNumberingResponse> {
   return requestJson<EnqueueNumberingResponse>(

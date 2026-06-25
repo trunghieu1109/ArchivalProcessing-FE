@@ -36,6 +36,7 @@ export function NumberingStepHeader({
   modeLabel,
   documentNumberingMode,
   documentNumberingStylePreset,
+  documentNumberingStyleOverrides,
   numberingStyleOptions,
   changingMode,
   changingStyle,
@@ -47,10 +48,12 @@ export function NumberingStepHeader({
   onStart,
   onModeChange,
   onStyleChange,
+  onOverridesChange,
 }: {
   modeLabel: string
   documentNumberingMode: DocumentNumberingMode
   documentNumberingStylePreset: DocumentNumberingStylePreset
+  documentNumberingStyleOverrides?: { font_size?: number; color?: string; opacity?: number }
   numberingStyleOptions: NumberingStyleOption[]
   changingMode: boolean
   changingStyle: boolean
@@ -64,14 +67,15 @@ export function NumberingStepHeader({
   onStyleChange: (
     stylePreset: DocumentNumberingStylePreset
   ) => void | Promise<unknown>
+  onOverridesChange?: (ov: { font_size?: number; color?: string; opacity?: number }) => void | Promise<unknown>
 }) {
   const selectedStyle = numberingStyleOptions.find(
     (style) => style.style_preset === documentNumberingStylePreset
   )
+  const hasOverrides = documentNumberingStyleOverrides && Object.keys(documentNumberingStyleOverrides).some(k => documentNumberingStyleOverrides[k as keyof typeof documentNumberingStyleOverrides] != null)
   const styleLabel =
-    selectedStyle?.display_name ||
-    selectedStyle?.name ||
-    documentNumberingStylePreset
+    (selectedStyle?.display_name || selectedStyle?.name || documentNumberingStylePreset) +
+    (hasOverrides ? " (tùy chỉnh)" : "")
   return (
     <div className="rounded-2xl border border-[#CBD5E1] bg-white px-5 py-4 shadow-sm">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -158,6 +162,65 @@ export function NumberingStepHeader({
               )
             })}
           </div>
+
+          {/* Compact customization for overrides in numbering page */}
+          {onOverridesChange && (
+            <div className="mt-3 pt-3 border-t border-[#E2E8F0] text-xs">
+              <div className="flex items-center gap-2 text-[#475569] mb-1">
+                <span>Tùy chỉnh:</span>
+                <button
+                  type="button"
+                  onClick={() => void onOverridesChange({})}
+                  className="text-[#64748B] hover:text-[#0052FF] underline-offset-1 hover:underline"
+                >
+                  reset
+                </button>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                {/* size */}
+                <div className="flex items-center gap-1">
+                  <span className="text-[#64748B]">Size</span>
+                  <input
+                    type="number"
+                    min={6} max={48} step={0.5}
+                    value={(() => {
+                      const b: any = numberingStyleOptions.find(s => s.style_preset === documentNumberingStylePreset) || numberingStyleOptions[0] || {}
+                      return documentNumberingStyleOverrides?.font_size ?? b.font_size ?? b.fontSize ?? 14
+                    })()}
+                    onChange={e => {
+                      const v = parseFloat(e.target.value)
+                      const next = { ...(documentNumberingStyleOverrides || {}), font_size: isNaN(v) ? undefined : v }
+                      void onOverridesChange(next)
+                    }}
+                    className="w-16 rounded border border-[#CBD5E1] px-1.5 py-0.5 text-xs"
+                  />
+                </div>
+                {/* color swatches compact */}
+                <div className="flex items-center gap-1">
+                  <span className="text-[#64748B]">Màu</span>
+                  {["#757573","#3D3D3B","#000000","#1E3A5F"].map(c => (
+                    <button key={c} type="button" className="size-4 rounded border border-[#CBD5E1]" style={{background:c}}
+                      onClick={() => void onOverridesChange({ ...(documentNumberingStyleOverrides||{}), color: c })} />
+                  ))}
+                  <input type="color" className="size-4 p-0 border border-[#CBD5E1] rounded"
+                    value={documentNumberingStyleOverrides?.color || "#757573"}
+                    onChange={e => void onOverridesChange({ ...(documentNumberingStyleOverrides||{}), color: e.target.value })} />
+                </div>
+                {/* opacity compact */}
+                <div className="flex items-center gap-1 min-w-[110px]">
+                  <span className="text-[#64748B]">Độ mờ</span>
+                  <input type="range" min={0.2} max={1} step={0.05}
+                    value={documentNumberingStyleOverrides?.opacity ?? 0.75}
+                    onChange={e => {
+                      const v = parseFloat(e.target.value)
+                      void onOverridesChange({ ...(documentNumberingStyleOverrides||{}), opacity: isNaN(v)?undefined : v })
+                    }}
+                    className="accent-[#0052FF] w-16" />
+                  <span className="tabular-nums w-8 text-right">{Math.round((documentNumberingStyleOverrides?.opacity ?? 0.75)*100)}%</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <Button

@@ -9,6 +9,7 @@ export {
   activeClusterBuildStrategy,
   activePlanBuildStrategy,
   activePlanDocumentNumberingMode,
+  activePlanDocumentNumberingStyleOverrides,
   activePlanDocumentNumberingStylePreset,
   activePlanToParsedPlan,
   documentNumberingModeValue,

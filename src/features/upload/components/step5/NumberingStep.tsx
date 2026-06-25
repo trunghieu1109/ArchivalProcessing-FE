@@ -83,8 +83,12 @@ interface NumberingStepProps {
     mode: DocumentNumberingMode
   ) => Promise<boolean | void>
   documentNumberingStylePreset: DocumentNumberingStylePreset
+  documentNumberingStyleOverrides?: { font_size?: number; color?: string; opacity?: number }
   onDocumentNumberingStylePresetChange: (
     stylePreset: DocumentNumberingStylePreset
+  ) => Promise<boolean | void>
+  onDocumentNumberingStyleOverridesChange?: (
+    overrides: { font_size?: number; color?: string; opacity?: number }
   ) => Promise<boolean | void>
   autoStart?: boolean
   onAutoStartHandled?: () => void
@@ -96,7 +100,9 @@ export function NumberingStep({
   documentNumberingMode,
   onDocumentNumberingModeChange,
   documentNumberingStylePreset,
+  documentNumberingStyleOverrides,
   onDocumentNumberingStylePresetChange,
+  onDocumentNumberingStyleOverridesChange,
   autoStart = false,
   onAutoStartHandled,
   onContinue,
@@ -326,6 +332,7 @@ export function NumberingStep({
           created_by: "ui",
           force,
           document_numbering_style_preset: documentNumberingStylePreset,
+          document_numbering_style_overrides: documentNumberingStyleOverrides || null,
         })
         if (response.status === "not_needed") {
           if (response.result) setStatus(response.result)
@@ -430,6 +437,8 @@ export function NumberingStep({
         const response = await enqueueDocumentNumbering(sessionId, {
           created_by: "ui",
           force: false,
+          document_numbering_style_preset: documentNumberingStylePreset,
+          document_numbering_style_overrides: documentNumberingStyleOverrides || null,
         })
         if (response.status === "not_needed") {
           if (response.result) setStatus(response.result)
@@ -765,6 +774,7 @@ export function NumberingStep({
         modeLabel={modeLabel}
         documentNumberingMode={documentNumberingMode}
         documentNumberingStylePreset={documentNumberingStylePreset}
+        documentNumberingStyleOverrides={documentNumberingStyleOverrides}
         numberingStyleOptions={numberingStyleOptions}
         changingMode={changingMode}
         changingStyle={changingStyle}
@@ -776,6 +786,7 @@ export function NumberingStep({
         onStart={() => startNumbering(false)}
         onModeChange={changeNumberingMode}
         onStyleChange={changeNumberingStyle}
+        onOverridesChange={onDocumentNumberingStyleOverridesChange}
       />
       <NumberingMetadataPanel
         metadataImportInputRef={metadataImportInputRef}

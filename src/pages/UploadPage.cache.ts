@@ -19,8 +19,10 @@ import {
   DEFAULT_DOCUMENT_NUMBERING_MODE,
   DEFAULT_DOCUMENT_NUMBERING_STYLE_PRESET,
   DEFAULT_DOSSIER_BUILD_STRATEGY,
+  DEFAULT_NUMBERING_STYLE_OVERRIDES,
   EMPTY_PARSED_PLAN,
   planToTree,
+  type NumberingStyleOverrides,
 } from "./UploadPage.planUtils"
 
 interface UploadPageCache {
@@ -41,6 +43,8 @@ interface UploadPageCache {
   persistedDocumentNumberingMode: DocumentNumberingMode
   documentNumberingStylePreset: DocumentNumberingStylePreset
   persistedDocumentNumberingStylePreset: DocumentNumberingStylePreset
+  documentNumberingStyleOverrides: NumberingStyleOverrides
+  persistedDocumentNumberingStyleOverrides: NumberingStyleOverrides
   documentNumberingModeSavePromise: Promise<ActivePlanResponse> | null
   sessionId: string | null
   sessionMetadata: SessionMetadataValues
@@ -79,6 +83,8 @@ export const uploadPageCache: UploadPageCache = {
   persistedDocumentNumberingMode: DEFAULT_DOCUMENT_NUMBERING_MODE,
   documentNumberingStylePreset: DEFAULT_DOCUMENT_NUMBERING_STYLE_PRESET,
   persistedDocumentNumberingStylePreset: DEFAULT_DOCUMENT_NUMBERING_STYLE_PRESET,
+  documentNumberingStyleOverrides: { ...DEFAULT_NUMBERING_STYLE_OVERRIDES },
+  persistedDocumentNumberingStyleOverrides: { ...DEFAULT_NUMBERING_STYLE_OVERRIDES },
   documentNumberingModeSavePromise: null,
   sessionId: null,
   sessionMetadata: {

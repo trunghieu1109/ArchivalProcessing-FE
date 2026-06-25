@@ -75,7 +75,9 @@ export function UploadPageView(props: Record<string, any>) {
     documentNumberingMode,
     selectDocumentNumberingMode,
     documentNumberingStylePreset,
+    documentNumberingStyleOverrides,
     selectDocumentNumberingStylePreset,
+    selectDocumentNumberingStyleOverrides,
     saveFileRegisterConfig,
     syncFolderTree,
     saveFolderTree,
@@ -243,9 +245,11 @@ export function UploadPageView(props: Record<string, any>) {
                   documentNumberingMode={documentNumberingMode}
                   onDocumentNumberingModeChange={selectDocumentNumberingMode}
                   documentNumberingStylePreset={documentNumberingStylePreset}
+                  documentNumberingStyleOverrides={documentNumberingStyleOverrides}
                   onDocumentNumberingStylePresetChange={
                     selectDocumentNumberingStylePreset
                   }
+                  onDocumentNumberingStyleOverridesChange={selectDocumentNumberingStyleOverrides}
                   onFileRegisterConfigChange={saveFileRegisterConfig}
                   onChange={syncFolderTree}
                   onSaveTree={saveFolderTree}
@@ -386,9 +390,11 @@ export function UploadPageView(props: Record<string, any>) {
                 documentNumberingMode={documentNumberingMode}
                 onDocumentNumberingModeChange={selectDocumentNumberingMode}
                 documentNumberingStylePreset={documentNumberingStylePreset}
+                documentNumberingStyleOverrides={documentNumberingStyleOverrides}
                 onDocumentNumberingStylePresetChange={
                   selectDocumentNumberingStylePreset
                 }
+                onDocumentNumberingStyleOverridesChange={selectDocumentNumberingStyleOverrides}
                 autoStart={Boolean(sessionId ?? routeSessionId)}
                 onAutoStartHandled={
                   searchParams.get("start") === "1"

@@ -78,19 +78,6 @@ const NUMBERING_STYLE_OPTIONS: Array<{
   },
 ]
 
-function numberingStyleDetails(option: (typeof NUMBERING_STYLE_OPTIONS)[number]) {
-  const details = [`Font ${option.fontFamily}`, `${option.fontSize}pt`]
-  const emphasis = [option.fontStyle, option.fontWeight]
-    .filter((value) => value && value !== "normal")
-    .join(" ")
-  if (emphasis) details.push(emphasis)
-  if (option.opacity !== undefined && option.opacity < 1) {
-    details.push(`opacity ${Math.round(option.opacity * 100)}%`)
-  }
-  details.push(option.color)
-  return details.join(" · ")
-}
-
 export function FolderTree({
   tree,
   parsedPlan,
@@ -102,7 +89,9 @@ export function FolderTree({
   documentNumberingMode,
   onDocumentNumberingModeChange,
   documentNumberingStylePreset,
+  documentNumberingStyleOverrides = {},
   onDocumentNumberingStylePresetChange,
+  onDocumentNumberingStyleOverridesChange,
   onFileRegisterConfigChange,
   onChange,
   onSaveTree,
@@ -297,7 +286,7 @@ export function FolderTree({
                   void onDocumentNumberingStylePresetChange(option.value)
                 }
                 className={cn(
-                  "min-h-24 rounded-2xl border p-4 text-left transition-all focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60",
+                  "flex h-full min-h-[9.25rem] flex-col justify-between rounded-2xl border p-4 text-left transition-all focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60",
                   documentNumberingStylePreset === option.value
                     ? "border-[#0052FF] bg-[#EEF4FF] shadow-[0_8px_24px_rgba(0,82,255,0.10)]"
                     : "border-[#D8E1EC] bg-white hover:border-[#0052FF]/40 hover:bg-[#F8FAFC]"
@@ -306,19 +295,161 @@ export function FolderTree({
                 <span className="block font-semibold text-[#0F172A]">
                   {option.label}
                 </span>
-                <span className="mt-1.5 block text-sm leading-6 text-[#64748B]">
+                <span className="mt-1.5 block text-sm leading-5 text-[#64748B]">
                   {option.description}
                 </span>
-                <span className="mt-2 flex flex-wrap items-center gap-1.5 text-xs font-medium text-[#64748B]">
-                  <span
-                    className="inline-block size-3 rounded-full border border-[#CBD5E1]"
-                    style={{ backgroundColor: option.color }}
-                  />
-                  <span>{numberingStyleDetails(option)}</span>
+                <span className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-[#64748B]">
+                  <span className="inline-flex items-center gap-1 rounded-full border border-[#D8E1EC] bg-[#F8FAFC] px-2 py-1">
+                    <span
+                      className="inline-block size-2.5 rounded-full border border-[#CBD5E1]"
+                      style={{ backgroundColor: option.color }}
+                    />
+                    <span>{option.fontFamily}</span>
+                  </span>
+                  <span className="rounded-full border border-[#D8E1EC] bg-[#F8FAFC] px-2 py-1">
+                    {option.fontSize}pt
+                  </span>
+                  <span className="rounded-full border border-[#D8E1EC] bg-[#F8FAFC] px-2 py-1">
+                    {option.opacity !== undefined && option.opacity < 1
+                      ? `${Math.round(option.opacity * 100)}%`
+                      : "100%"}
+                  </span>
                 </span>
               </button>
             ))}
           </div>
+          {/* Customization for selected style: size, color, opacity with preview */}
+          {!readOnly && onDocumentNumberingStyleOverridesChange && (
+            <div className="mt-4 border-t border-[#E2E8F0] pt-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-[#0F172A]">
+                  Tùy chỉnh chi tiết – {NUMBERING_STYLE_OPTIONS.find(o => o.value === documentNumberingStylePreset)?.label || documentNumberingStylePreset}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void onDocumentNumberingStyleOverridesChange?.({})}
+                  className="text-xs text-[#64748B] hover:text-[#0052FF] underline-offset-2 hover:underline"
+                >
+                  Đặt lại mặc định
+                </button>
+              </div>
+
+              {(() => {
+                const base = NUMBERING_STYLE_OPTIONS.find(o => o.value === documentNumberingStylePreset) || NUMBERING_STYLE_OPTIONS[0]
+                const effSize = documentNumberingStyleOverrides?.font_size ?? base.fontSize
+                const effColor = documentNumberingStyleOverrides?.color ?? base.color
+                const effOpacity = documentNumberingStyleOverrides?.opacity ?? (base.opacity ?? 0.75)
+                const currentColor = effColor
+
+                return (
+                  <div className="mt-3 grid gap-4 md:grid-cols-3">
+                    {/* Font size */}
+                    <div>
+                      <label className="block text-xs font-medium text-[#475569]">Cỡ chữ (pt)</label>
+                      <input
+                        type="number"
+                        min={6}
+                        max={48}
+                        step={0.5}
+                        value={effSize}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value)
+                          const next = { ...(documentNumberingStyleOverrides || {}), font_size: isNaN(val) ? undefined : val }
+                          void onDocumentNumberingStyleOverridesChange?.(next)
+                        }}
+                        className="mt-1 w-full rounded-lg border border-[#CBD5E1] px-3 py-1.5 text-sm focus:border-[#0052FF]"
+                      />
+                      <div className="mt-0.5 text-[10px] text-[#94A3B8]">Mặc định: {base.fontSize}pt</div>
+                    </div>
+
+                    {/* Color with table + picker */}
+                    <div>
+                      <label className="block text-xs font-medium text-[#475569]">Màu sắc</label>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        {[base.color, "#757573", "#767570", "#3D3D3B", "#000000", "#333333", "#1E3A5F", "#4B2E2E"].filter((v,i,a)=>a.indexOf(v)===i).map((c) => {
+                          const isActive = currentColor?.toLowerCase() === c.toLowerCase()
+                          return (
+                            <button
+                              key={c}
+                              type="button"
+                              className={cn(
+                                "size-6 rounded border transition-all",
+                                isActive ? "border-[#0052FF] ring-2 ring-[#0052FF]/30" : "border-[#CBD5E1] hover:border-[#0052FF]/50"
+                              )}
+                              style={{ backgroundColor: c }}
+                              title={c}
+                              onClick={() => {
+                                const next = { ...(documentNumberingStyleOverrides || {}), color: c }
+                                void onDocumentNumberingStyleOverridesChange?.(next)
+                              }}
+                            />
+                          )
+                        })}
+                        <input
+                          type="color"
+                          value={currentColor}
+                          onChange={(e) => {
+                            const next = { ...(documentNumberingStyleOverrides || {}), color: e.target.value }
+                            void onDocumentNumberingStyleOverridesChange?.(next)
+                          }}
+                          className="size-6 cursor-pointer rounded border border-[#CBD5E1] p-0.5"
+                          title="Chọn màu khác"
+                        />
+                      </div>
+                      <div className="mt-1 text-[11px] text-[#64748B] font-mono">{currentColor} {documentNumberingStyleOverrides?.color ? "" : "(mặc định)"}</div>
+                    </div>
+
+                    {/* Opacity */}
+                    <div>
+                      <label className="block text-xs font-medium text-[#475569]">
+                        Độ trong suốt: {Math.round(effOpacity * 100)}%
+                      </label>
+                      <input
+                        type="range"
+                        min={0.1}
+                        max={1}
+                        step={0.05}
+                        value={effOpacity}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value)
+                          const next = { ...(documentNumberingStyleOverrides || {}), opacity: isNaN(val) ? undefined : val }
+                          void onDocumentNumberingStyleOverridesChange?.(next)
+                        }}
+                        className="mt-2 w-full accent-[#0052FF]"
+                      />
+                      <div className="mt-0.5 text-[10px] text-[#94A3B8]">Mặc định: {Math.round((base.opacity ?? 0.75) * 100)}%</div>
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* Preview */}
+              <div className="mt-3">
+                <div className="text-xs font-medium text-[#475569] mb-1">Xem trước</div>
+                {(() => {
+                  const base = NUMBERING_STYLE_OPTIONS.find(o => o.value === documentNumberingStylePreset) || NUMBERING_STYLE_OPTIONS[0]
+                  const effSize = documentNumberingStyleOverrides?.font_size ?? base.fontSize
+                  const effColor = documentNumberingStyleOverrides?.color ?? base.color
+                  const effOpacity = documentNumberingStyleOverrides?.opacity ?? (base.opacity ?? 0.75)
+                  return (
+                    <div
+                      className="inline-flex items-center justify-center rounded border border-[#E2E8F0] bg-white px-4 py-2 text-2xl font-semibold select-none"
+                      style={{
+                        fontFamily: base.fontFamily || "monospace",
+                        fontStyle: base.fontStyle,
+                        fontWeight: base.fontWeight,
+                        fontSize: `${effSize}pt`,
+                        color: effColor,
+                        opacity: effOpacity,
+                      }}
+                    >
+                      001
+                    </div>
+                  )
+                })()}
+              </div>
+            </div>
+          )}
         </div>
       </section>
 

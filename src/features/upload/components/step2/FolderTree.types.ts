@@ -23,8 +23,12 @@ export interface FolderTreeProps {
     mode: DocumentNumberingMode
   ) => void | Promise<void>
   documentNumberingStylePreset: DocumentNumberingStylePreset
+  documentNumberingStyleOverrides?: { font_size?: number; color?: string; opacity?: number }
   onDocumentNumberingStylePresetChange: (
     stylePreset: DocumentNumberingStylePreset
+  ) => void | Promise<void>
+  onDocumentNumberingStyleOverridesChange?: (
+    overrides: { font_size?: number; color?: string; opacity?: number }
   ) => void | Promise<void>
   onFileRegisterConfigChange: (
     config: FileRegisterConfig

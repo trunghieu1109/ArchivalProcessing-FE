@@ -11,6 +11,14 @@ export const DEFAULT_DOSSIER_BUILD_STRATEGY: DossierBuildStrategy =
 export const DEFAULT_DOCUMENT_NUMBERING_MODE: DocumentNumberingMode = "page"
 export const DEFAULT_DOCUMENT_NUMBERING_STYLE_PRESET: DocumentNumberingStylePreset =
   "pencil_miama"
+
+export interface NumberingStyleOverrides {
+  font_size?: number
+  color?: string
+  opacity?: number
+}
+
+export const DEFAULT_NUMBERING_STYLE_OVERRIDES: NumberingStyleOverrides = {}
 export const DEFAULT_FILE_REGISTER_CONFIG: FileRegisterConfig = {
   analysis_status: "not_detected",
   summary: "",

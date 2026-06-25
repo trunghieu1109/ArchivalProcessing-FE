@@ -59,6 +59,11 @@ export interface DigitizationBatch {
   status: string
   document_numbering_mode?: DocumentNumberingMode | null
   document_numbering_style_preset?: DocumentNumberingStylePreset | null
+  document_numbering_style_overrides?: {
+    font_size?: number
+    color?: string
+    opacity?: number
+  } | null
   remove_blank_pages_before_ocr?: boolean
   remote_file_id?: string | number | null
   upload_mode?: UploadMode | string | null
@@ -123,6 +128,7 @@ export interface NumberingDocumentStatus {
   mode: DocumentNumberingMode
   style_preset?: DocumentNumberingStylePreset | null
   document_numbering_style_preset?: DocumentNumberingStylePreset | null
+  document_numbering_style_overrides?: { font_size?: number; color?: string; opacity?: number } | null
   document_number_start: number
   document_number_end: number
   entry_count: number
@@ -163,6 +169,11 @@ export interface NumberingStatusResponse {
   cluster_version_id: string
   document_numbering_mode: DocumentNumberingMode
   document_numbering_style_preset?: DocumentNumberingStylePreset | null
+  document_numbering_style_overrides?: {
+    font_size?: number
+    color?: string
+    opacity?: number
+  } | null
   active: boolean
   job: ActiveJobSummary | null
   summary: {

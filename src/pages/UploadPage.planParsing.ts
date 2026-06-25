@@ -18,6 +18,8 @@ import {
   DEFAULT_DOCUMENT_NUMBERING_MODE,
   DEFAULT_DOCUMENT_NUMBERING_STYLE_PRESET,
   DEFAULT_DOSSIER_BUILD_STRATEGY,
+  DEFAULT_NUMBERING_STYLE_OVERRIDES,
+  type NumberingStyleOverrides,
   DEFAULT_FILE_REGISTER_CONFIG,
 } from "./UploadPage.planDefaults"
 
@@ -488,6 +490,20 @@ export function activePlanDocumentNumberingStylePreset(
       plan.document_numbering_style_preset
     ) ?? DEFAULT_DOCUMENT_NUMBERING_STYLE_PRESET
   )
+}
+
+export function activePlanDocumentNumberingStyleOverrides(
+  plan: ActivePlanResponse
+): NumberingStyleOverrides {
+  const raw = plan.document_numbering_style_overrides
+  if (raw && typeof raw === "object") {
+    return {
+      font_size: typeof raw.font_size === "number" ? raw.font_size : undefined,
+      color: typeof raw.color === "string" ? raw.color : undefined,
+      opacity: typeof raw.opacity === "number" ? raw.opacity : undefined,
+    }
+  }
+  return { ...DEFAULT_NUMBERING_STYLE_OVERRIDES }
 }
 
 export function activeClusterBuildStrategy(

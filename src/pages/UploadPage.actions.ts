@@ -26,12 +26,15 @@ import { LAST_SESSION_KEY } from "./UploadPage.progress"
 import {
   activePlanBuildStrategy,
   activePlanDocumentNumberingMode,
+  activePlanDocumentNumberingStyleOverrides,
   activePlanDocumentNumberingStylePreset,
   activePlanToParsedPlan,
   planToTree,
   stageInput,
   treeToFlatGroups,
   treeToPlanGroups,
+  DEFAULT_NUMBERING_STYLE_OVERRIDES,
+  type NumberingStyleOverrides,
 } from "./UploadPage.planUtils"
 
 export function createUploadPageActions(context: Record<string, any>) {
@@ -54,6 +57,7 @@ export function createUploadPageActions(context: Record<string, any>) {
     setDossierBuildStrategy,
     setDocumentNumberingMode,
     setDocumentNumberingStylePreset,
+    setDocumentNumberingStyleOverrides,
     setDoc1Has,
     setDoc2Has,
     setZipHas,
@@ -229,6 +233,24 @@ export function createUploadPageActions(context: Record<string, any>) {
     cache.persistedDocumentNumberingStylePreset = stylePreset
     setDocumentNumberingStylePreset(stylePreset)
   }
+
+  const applyPersistedDocumentNumberingStyleOverrides = (
+    overrides: NumberingStyleOverrides
+  ) => {
+    const clean: NumberingStyleOverrides = {}
+    if (overrides && typeof overrides === "object") {
+      if (typeof overrides.font_size === "number") clean.font_size = overrides.font_size
+      if (typeof overrides.color === "string" && overrides.color.trim()) {
+        clean.color = overrides.color.trim()
+      }
+      if (typeof overrides.opacity === "number") clean.opacity = overrides.opacity
+    }
+    cache.documentNumberingStyleOverrides = clean
+    cache.persistedDocumentNumberingStyleOverrides = clean
+    if (typeof setDocumentNumberingStyleOverrides === "function") {
+      setDocumentNumberingStyleOverrides(clean)
+    }
+  }
   const applyActivePlanResponse = (planResponse: ActivePlanResponse) => {
     cache.activePlanVersionId = planResponse.id ?? ""
     applyPersistedDossierBuildStrategy(activePlanBuildStrategy(planResponse))
@@ -238,6 +260,11 @@ export function createUploadPageActions(context: Record<string, any>) {
     applyPersistedDocumentNumberingStylePreset(
       activePlanDocumentNumberingStylePreset(planResponse)
     )
+    if (typeof applyPersistedDocumentNumberingStyleOverrides === "function") {
+      applyPersistedDocumentNumberingStyleOverrides(
+        activePlanDocumentNumberingStyleOverrides(planResponse)
+      )
+    }
   }
   const selectDocumentNumberingMode = async (mode: DocumentNumberingMode) => {
     cache.documentNumberingMode = mode
@@ -250,6 +277,9 @@ export function createUploadPageActions(context: Record<string, any>) {
     cache.documentNumberingModeSavePromise = savePromise
     try {
       const planResponse = await savePromise
+      if (cache.documentNumberingModeSavePromise !== savePromise) {
+        return true
+      }
       applyActivePlanResponse(planResponse)
       toast.success("Đã lưu cách xử lý trang PDF.")
       return true
@@ -272,17 +302,29 @@ export function createUploadPageActions(context: Record<string, any>) {
   ) => {
     cache.documentNumberingStylePreset = stylePreset
     setDocumentNumberingStylePreset(stylePreset)
+    // reset overrides to defaults of new preset when changing preset (user can re-edit)
+    const resetOverrides = { ...DEFAULT_NUMBERING_STYLE_OVERRIDES }
+    cache.documentNumberingStyleOverrides = resetOverrides
+    // set function will be provided by context
+    if (typeof setDocumentNumberingStyleOverrides === "function") {
+      setDocumentNumberingStyleOverrides(resetOverrides)
+    }
     if (
       !cache.sessionId ||
-      stylePreset === cache.persistedDocumentNumberingStylePreset
+      (stylePreset === cache.persistedDocumentNumberingStylePreset &&
+        JSON.stringify(resetOverrides) === JSON.stringify(cache.persistedDocumentNumberingStyleOverrides))
     )
       return true
     const savePromise = patchActivePlan(cache.sessionId, {
       document_numbering_style_preset: stylePreset,
+      document_numbering_style_overrides: resetOverrides,
     })
     cache.documentNumberingModeSavePromise = savePromise
     try {
       const planResponse = await savePromise
+      if (cache.documentNumberingModeSavePromise !== savePromise) {
+        return true
+      }
       applyActivePlanResponse(planResponse)
       toast.success("Đã lưu kiểu hiển thị số trang.")
       return true
@@ -290,10 +332,57 @@ export function createUploadPageActions(context: Record<string, any>) {
       applyPersistedDocumentNumberingStylePreset(
         cache.persistedDocumentNumberingStylePreset
       )
+      if (typeof applyPersistedDocumentNumberingStyleOverrides === "function") {
+        applyPersistedDocumentNumberingStyleOverrides(cache.persistedDocumentNumberingStyleOverrides)
+      }
       toast.error(
         err instanceof Error
           ? `Không lưu được kiểu hiển thị số trang: ${err.message}`
           : "Không lưu được kiểu hiển thị số trang."
+      )
+      return false
+    } finally {
+      if (cache.documentNumberingModeSavePromise === savePromise) {
+        cache.documentNumberingModeSavePromise = null
+      }
+    }
+  }
+
+  const selectDocumentNumberingStyleOverrides = async (
+    overrides: NumberingStyleOverrides
+  ) => {
+    const clean: NumberingStyleOverrides = {}
+    if (typeof overrides.font_size === "number") clean.font_size = overrides.font_size
+    if (typeof overrides.color === "string" && overrides.color.trim()) {
+      clean.color = overrides.color.trim()
+    }
+    if (typeof overrides.opacity === "number") clean.opacity = overrides.opacity
+    cache.documentNumberingStyleOverrides = clean
+    if (typeof setDocumentNumberingStyleOverrides === "function") {
+      setDocumentNumberingStyleOverrides(clean)
+    }
+    if (!cache.sessionId) return true
+    const savePromise = patchActivePlan(cache.sessionId, {
+      document_numbering_style_preset: cache.documentNumberingStylePreset,
+      document_numbering_style_overrides: clean,
+    })
+    cache.documentNumberingModeSavePromise = savePromise
+    try {
+      const planResponse = await savePromise
+      if (cache.documentNumberingModeSavePromise !== savePromise) {
+        return true
+      }
+      applyActivePlanResponse(planResponse)
+      toast.success("Đã lưu tùy chỉnh kiểu số.")
+      return true
+    } catch (err) {
+      if (typeof applyPersistedDocumentNumberingStyleOverrides === "function") {
+        applyPersistedDocumentNumberingStyleOverrides(cache.persistedDocumentNumberingStyleOverrides)
+      }
+      toast.error(
+        err instanceof Error
+          ? `Không lưu được tùy chỉnh số: ${err.message}`
+          : "Không lưu được tùy chỉnh số."
       )
       return false
     } finally {
@@ -446,9 +535,11 @@ export function createUploadPageActions(context: Record<string, any>) {
     selectDossierBuildStrategy,
     applyPersistedDocumentNumberingMode,
     applyPersistedDocumentNumberingStylePreset,
+    applyPersistedDocumentNumberingStyleOverrides,
     applyActivePlanResponse,
     selectDocumentNumberingMode,
     selectDocumentNumberingStylePreset,
+    selectDocumentNumberingStyleOverrides,
     syncDoc1Has,
     syncDoc2Has,
     syncZipHas,

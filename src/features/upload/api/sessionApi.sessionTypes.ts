@@ -221,6 +221,11 @@ export interface ActivePlanResponse {
   dossier_build_strategy?: DossierBuildStrategy
   document_numbering_mode?: DocumentNumberingMode
   document_numbering_style_preset?: DocumentNumberingStylePreset
+  document_numbering_style_overrides?: {
+    font_size?: number
+    color?: string
+    opacity?: number
+  } | null
   archive_name?: string
   fonds_name: string
   groups?: unknown[]

@@ -11,11 +11,13 @@ import {
   activeClusterBuildStrategy,
   activePlanBuildStrategy,
   activePlanDocumentNumberingMode,
+  activePlanDocumentNumberingStyleOverrides,
   activePlanDocumentNumberingStylePreset,
   activePlanToParsedPlan,
   documentNumberingModeValue,
   dossierBuildStrategyValue,
   planToTree,
+  type NumberingStyleOverrides,
 } from "./UploadPage.planUtils"
 
 export function createConfirmPlanHandler(context: Record<string, any>) {
@@ -25,6 +27,7 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
     dossierBuildStrategy,
     documentNumberingMode,
     documentNumberingStylePreset,
+    documentNumberingStyleOverrides,
     zipFolderPath,
     existingSessionMode,
     uploadMode,
@@ -34,6 +37,7 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
     applyPersistedDossierBuildStrategy,
     applyPersistedDocumentNumberingMode,
     applyPersistedDocumentNumberingStylePreset,
+    applyPersistedDocumentNumberingStyleOverrides,
     parseZipMaxFiles,
     syncZipState,
     goTo,
@@ -71,6 +75,7 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
       const selectedStrategy = dossierBuildStrategy
       const selectedNumberingMode = documentNumberingMode
       const selectedNumberingStylePreset = documentNumberingStylePreset
+      const selectedOverrides: NumberingStyleOverrides = documentNumberingStyleOverrides || {}
       const strategyChangedBeforeSave =
         selectedStrategy !== cache.persistedDossierBuildStrategy
       const numberingModeChangedBeforeSave =
@@ -78,15 +83,19 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
       const numberingStyleChangedBeforeSave =
         selectedNumberingStylePreset !==
         cache.persistedDocumentNumberingStylePreset
+      const overridesChanged =
+        JSON.stringify(selectedOverrides) !== JSON.stringify(cache.persistedDocumentNumberingStyleOverrides)
       if (
         strategyChangedBeforeSave ||
         numberingModeChangedBeforeSave ||
-        numberingStyleChangedBeforeSave
+        numberingStyleChangedBeforeSave ||
+        overridesChanged
       ) {
         const planResponse = await patchActivePlan(cache.sessionId, {
           dossier_build_strategy: selectedStrategy,
           document_numbering_mode: selectedNumberingMode,
           document_numbering_style_preset: selectedNumberingStylePreset,
+          document_numbering_style_overrides: selectedOverrides,
         })
         const plan = activePlanToParsedPlan(planResponse)
         confirmedPlanVersionId = planResponse.id ?? ""
@@ -100,6 +109,11 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
         applyPersistedDocumentNumberingStylePreset(
           activePlanDocumentNumberingStylePreset(planResponse)
         )
+        if (typeof applyPersistedDocumentNumberingStyleOverrides === "function") {
+          applyPersistedDocumentNumberingStyleOverrides(
+            activePlanDocumentNumberingStyleOverrides(planResponse)
+          )
+        }
         cache.parsedPlan = plan
         cache.folderTree = planToTree(plan)
         setParsedPlan(plan)

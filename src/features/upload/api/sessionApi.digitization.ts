@@ -39,6 +39,11 @@ export async function startDigitization(
     confirmed_plan_version_id?: string
     document_numbering_mode?: DocumentNumberingMode
     document_numbering_style_preset?: DocumentNumberingStylePreset
+    document_numbering_style_overrides?: {
+      font_size?: number
+      color?: string
+      opacity?: number
+    } | null
     remove_blank_pages_before_ocr?: boolean
     session_file_id?: number
     remote_file_id?: string | number | null
