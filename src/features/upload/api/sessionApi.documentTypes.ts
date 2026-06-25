@@ -1,6 +1,7 @@
 import type {
   ActiveJobSummary,
   DocumentNumberingMode,
+  DocumentNumberingStylePreset,
   UploadMode,
 } from "./sessionApi.sessionTypes"
 
@@ -57,6 +58,7 @@ export interface DigitizationBatch {
   status_counts: Record<string, number>
   status: string
   document_numbering_mode?: DocumentNumberingMode | null
+  document_numbering_style_preset?: DocumentNumberingStylePreset | null
   remove_blank_pages_before_ocr?: boolean
   remote_file_id?: string | number | null
   upload_mode?: UploadMode | string | null
@@ -119,6 +121,8 @@ export interface NumberingDocumentStatus {
   position_index: number
   status: string
   mode: DocumentNumberingMode
+  style_preset?: DocumentNumberingStylePreset | null
+  document_numbering_style_preset?: DocumentNumberingStylePreset | null
   document_number_start: number
   document_number_end: number
   entry_count: number
@@ -136,6 +140,7 @@ export interface NumberingDocumentStatus {
   remote_render_status?: string | null
   numbered_pdf_version_id?: string | number | null
   download_url?: string | null
+  proxy_download_url?: string | null
   expires_at?: string | number | null
   error?: string | null
   updated_at?: string | null
@@ -157,6 +162,7 @@ export interface NumberingStatusResponse {
   session_id: string
   cluster_version_id: string
   document_numbering_mode: DocumentNumberingMode
+  document_numbering_style_preset?: DocumentNumberingStylePreset | null
   active: boolean
   job: ActiveJobSummary | null
   summary: {
@@ -182,8 +188,30 @@ export interface NumberedDocumentPreviewUrlResponse {
   version_type?: string | null
   object_name?: string | null
   download_url: string
+  proxy_download_url?: string | null
   expires_in?: number | null
   expires_at?: string | number | null
+}
+
+export interface NumberingStyleOption {
+  style_preset: DocumentNumberingStylePreset
+  name?: string
+  display_name?: string
+  description?: string
+  font_family?: string
+  font_style?: string
+  font_weight?: string
+  font_size?: number
+  color?: string
+  opacity?: number
+  circle?: Record<string, unknown>
+}
+
+export interface NumberingStylesResponse {
+  default_style_preset: DocumentNumberingStylePreset
+  style_aliases?: Record<string, DocumentNumberingStylePreset>
+  styles: NumberingStyleOption[]
+  source?: string
 }
 
 export interface EnqueueNumberingResponse {

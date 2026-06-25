@@ -3,6 +3,7 @@ import type {
   ActivePlanResponse,
   DossierBuildStrategy,
   DocumentNumberingMode,
+  DocumentNumberingStylePreset,
   SessionInputUploadResponse,
   UploadMode,
   UploadProgressSnapshot,
@@ -16,6 +17,7 @@ import type {
 import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
 import {
   DEFAULT_DOCUMENT_NUMBERING_MODE,
+  DEFAULT_DOCUMENT_NUMBERING_STYLE_PRESET,
   DEFAULT_DOSSIER_BUILD_STRATEGY,
   EMPTY_PARSED_PLAN,
   planToTree,
@@ -37,6 +39,8 @@ interface UploadPageCache {
   persistedDossierBuildStrategy: DossierBuildStrategy
   documentNumberingMode: DocumentNumberingMode
   persistedDocumentNumberingMode: DocumentNumberingMode
+  documentNumberingStylePreset: DocumentNumberingStylePreset
+  persistedDocumentNumberingStylePreset: DocumentNumberingStylePreset
   documentNumberingModeSavePromise: Promise<ActivePlanResponse> | null
   sessionId: string | null
   sessionMetadata: SessionMetadataValues
@@ -73,6 +77,8 @@ export const uploadPageCache: UploadPageCache = {
   persistedDossierBuildStrategy: DEFAULT_DOSSIER_BUILD_STRATEGY,
   documentNumberingMode: DEFAULT_DOCUMENT_NUMBERING_MODE,
   persistedDocumentNumberingMode: DEFAULT_DOCUMENT_NUMBERING_MODE,
+  documentNumberingStylePreset: DEFAULT_DOCUMENT_NUMBERING_STYLE_PRESET,
+  persistedDocumentNumberingStylePreset: DEFAULT_DOCUMENT_NUMBERING_STYLE_PRESET,
   documentNumberingModeSavePromise: null,
   sessionId: null,
   sessionMetadata: {

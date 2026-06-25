@@ -11,6 +11,7 @@ import {
   activeClusterBuildStrategy,
   activePlanBuildStrategy,
   activePlanDocumentNumberingMode,
+  activePlanDocumentNumberingStylePreset,
   activePlanToParsedPlan,
   documentNumberingModeValue,
   dossierBuildStrategyValue,
@@ -23,6 +24,7 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
     planAnalysisState,
     dossierBuildStrategy,
     documentNumberingMode,
+    documentNumberingStylePreset,
     zipFolderPath,
     existingSessionMode,
     uploadMode,
@@ -31,6 +33,7 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
     applyActivePlanResponse,
     applyPersistedDossierBuildStrategy,
     applyPersistedDocumentNumberingMode,
+    applyPersistedDocumentNumberingStylePreset,
     parseZipMaxFiles,
     syncZipState,
     goTo,
@@ -67,14 +70,23 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
       }
       const selectedStrategy = dossierBuildStrategy
       const selectedNumberingMode = documentNumberingMode
+      const selectedNumberingStylePreset = documentNumberingStylePreset
       const strategyChangedBeforeSave =
         selectedStrategy !== cache.persistedDossierBuildStrategy
       const numberingModeChangedBeforeSave =
         selectedNumberingMode !== cache.persistedDocumentNumberingMode
-      if (strategyChangedBeforeSave || numberingModeChangedBeforeSave) {
+      const numberingStyleChangedBeforeSave =
+        selectedNumberingStylePreset !==
+        cache.persistedDocumentNumberingStylePreset
+      if (
+        strategyChangedBeforeSave ||
+        numberingModeChangedBeforeSave ||
+        numberingStyleChangedBeforeSave
+      ) {
         const planResponse = await patchActivePlan(cache.sessionId, {
           dossier_build_strategy: selectedStrategy,
           document_numbering_mode: selectedNumberingMode,
+          document_numbering_style_preset: selectedNumberingStylePreset,
         })
         const plan = activePlanToParsedPlan(planResponse)
         confirmedPlanVersionId = planResponse.id ?? ""
@@ -84,6 +96,9 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
         )
         applyPersistedDocumentNumberingMode(
           activePlanDocumentNumberingMode(planResponse)
+        )
+        applyPersistedDocumentNumberingStylePreset(
+          activePlanDocumentNumberingStylePreset(planResponse)
         )
         cache.parsedPlan = plan
         cache.folderTree = planToTree(plan)

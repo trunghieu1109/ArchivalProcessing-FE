@@ -9,8 +9,10 @@ export {
   activeClusterBuildStrategy,
   activePlanBuildStrategy,
   activePlanDocumentNumberingMode,
+  activePlanDocumentNumberingStylePreset,
   activePlanToParsedPlan,
   documentNumberingModeValue,
+  documentNumberingStylePresetValue,
   dossierBuildStrategyValue,
 } from "./UploadPage.planParsing"
 

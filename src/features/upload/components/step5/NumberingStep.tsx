@@ -9,11 +9,14 @@ import {
   exportMetadataSnapshot,
   getDocumentNumberingStatus,
   getNumberedDocumentPreviewUrl,
+  getNumberingStyles,
   importMetadataBoxNumbers as importMetadataBoxNumbersApi,
   updateDocumentNumberingFromPage,
   type DocumentNumberingMode,
+  type DocumentNumberingStylePreset,
   type NumberingDocumentStatus,
   type NumberingStatusResponse,
+  type NumberingStyleOption,
 } from "@/features/upload/api/sessionApi"
 import {
   DossierMetaChip,
@@ -37,12 +40,51 @@ const NUMBERING_PROGRESS_PHASES = [
   { id: "rendering_document", label: "Đánh số PDF" },
   { id: "completed", label: "Hoàn tất" },
 ]
+const FALLBACK_NUMBERING_STYLE_OPTIONS: NumberingStyleOption[] = [
+  {
+    style_preset: "pencil_miama",
+    font_family: "Miama Nueva",
+    font_style: "italic",
+    font_weight: "normal",
+    font_size: 14,
+    color: "#757573",
+    opacity: 0.75,
+    display_name: "Bút chì Miama",
+    description: "Đánh số bằng bút chì, nét viết tay mềm.",
+  },
+  {
+    style_preset: "pencil_bradley",
+    font_family: "Bradley Hand ITC",
+    font_style: "normal",
+    font_weight: "normal",
+    font_size: 14,
+    color: "#767570",
+    opacity: 0.75,
+    display_name: "Bút chì Bradley",
+    description: "Đánh số bằng bút chì, nét rõ và dễ nhìn hơn.",
+  },
+  {
+    style_preset: "stamp_times_bold",
+    font_family: "Times New Roman",
+    font_style: "normal",
+    font_weight: "bold",
+    font_size: 16,
+    color: "#3D3D3B",
+    opacity: 1,
+    display_name: "Dập in",
+    description: "Đánh số bằng kiểu dập in, chữ đậm và sắc nét.",
+  },
+]
 
 interface NumberingStepProps {
   sessionId: string | null
   documentNumberingMode: DocumentNumberingMode
   onDocumentNumberingModeChange: (
     mode: DocumentNumberingMode
+  ) => Promise<boolean | void>
+  documentNumberingStylePreset: DocumentNumberingStylePreset
+  onDocumentNumberingStylePresetChange: (
+    stylePreset: DocumentNumberingStylePreset
   ) => Promise<boolean | void>
   autoStart?: boolean
   onAutoStartHandled?: () => void
@@ -53,6 +95,8 @@ export function NumberingStep({
   sessionId,
   documentNumberingMode,
   onDocumentNumberingModeChange,
+  documentNumberingStylePreset,
+  onDocumentNumberingStylePresetChange,
   autoStart = false,
   onAutoStartHandled,
   onContinue,
@@ -62,6 +106,10 @@ export function NumberingStep({
   const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState(false)
   const [changingMode, setChangingMode] = useState(false)
+  const [changingStyle, setChangingStyle] = useState(false)
+  const [numberingStyleOptions, setNumberingStyleOptions] = useState<
+    NumberingStyleOption[]
+  >(FALLBACK_NUMBERING_STYLE_OPTIONS)
   const [updatingDocumentId, setUpdatingDocumentId] = useState<number | null>(
     null
   )
@@ -98,6 +146,30 @@ export function NumberingStep({
     numberingPageCacheRef.current.clear()
     prefetchingNumberingPagesRef.current.clear()
     setNumberingPageIndex(0)
+  }, [sessionId])
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadStyles() {
+      if (!sessionId) {
+        setNumberingStyleOptions(FALLBACK_NUMBERING_STYLE_OPTIONS)
+        return
+      }
+      try {
+        const response = await getNumberingStyles(sessionId)
+        if (!cancelled && response.styles.length > 0) {
+          setNumberingStyleOptions(response.styles)
+        }
+      } catch {
+        if (!cancelled) {
+          setNumberingStyleOptions(FALLBACK_NUMBERING_STYLE_OPTIONS)
+        }
+      }
+    }
+    void loadStyles()
+    return () => {
+      cancelled = true
+    }
   }, [sessionId])
 
   const fetchNumberingPageStatus = useCallback(
@@ -253,6 +325,7 @@ export function NumberingStep({
         const response = await enqueueDocumentNumbering(sessionId, {
           created_by: "ui",
           force,
+          document_numbering_style_preset: documentNumberingStylePreset,
         })
         if (response.status === "not_needed") {
           if (response.result) setStatus(response.result)
@@ -279,7 +352,7 @@ export function NumberingStep({
         setStarting(false)
       }
     },
-    [refreshStatus, sessionId]
+    [documentNumberingStylePreset, refreshStatus, sessionId]
   )
 
   const updateDocumentNumberFromPage = useCallback(
@@ -657,6 +730,32 @@ export function NumberingStep({
       setChangingMode(false)
     }
   }
+  const changeNumberingStyle = async (
+    stylePreset: DocumentNumberingStylePreset
+  ) => {
+    if (
+      active ||
+      changingStyle ||
+      stylePreset === documentNumberingStylePreset
+    )
+      return
+    const hadCompletedNumbering = complete
+    setChangingStyle(true)
+    setError("")
+    try {
+      const saved = await onDocumentNumberingStylePresetChange(stylePreset)
+      if (saved === false) return
+      await refreshStatus({ silent: true, force: true })
+      setProgressPhase(null)
+      setProgressMessage("")
+      setCompletedPhases(new Set())
+      if (hadCompletedNumbering) {
+        toast.info("Đã đổi kiểu hiển thị số. Vui lòng đánh số lại toàn bộ tài liệu.")
+      }
+    } finally {
+      setChangingStyle(false)
+    }
+  }
   const modeLabel =
     documentNumberingMode === "sheet" ? "Đánh số theo tờ" : "Đánh số theo trang"
 
@@ -665,7 +764,10 @@ export function NumberingStep({
       <NumberingStepHeader
         modeLabel={modeLabel}
         documentNumberingMode={documentNumberingMode}
+        documentNumberingStylePreset={documentNumberingStylePreset}
+        numberingStyleOptions={numberingStyleOptions}
         changingMode={changingMode}
+        changingStyle={changingStyle}
         loading={loading}
         starting={starting}
         active={active}
@@ -673,6 +775,7 @@ export function NumberingStep({
         onRefresh={() => refreshStatus({ force: true })}
         onStart={() => startNumbering(false)}
         onModeChange={changeNumberingMode}
+        onStyleChange={changeNumberingStyle}
       />
       <NumberingMetadataPanel
         metadataImportInputRef={metadataImportInputRef}
@@ -944,6 +1047,7 @@ function mergeCachedNumberingPage(
     session_id: current.session_id,
     cluster_version_id: current.cluster_version_id,
     document_numbering_mode: current.document_numbering_mode,
+    document_numbering_style_preset: current.document_numbering_style_preset,
     active: current.active,
     job: current.job,
     summary: current.summary,

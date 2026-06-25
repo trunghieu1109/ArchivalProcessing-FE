@@ -1,6 +1,7 @@
 import type {
   DossierBuildStrategy,
   DocumentNumberingMode,
+  DocumentNumberingStylePreset,
 } from "@/features/upload/api/sessionApi"
 import type { FileRegisterConfig, ParsedPlan } from "@/features/upload/types"
 
@@ -8,6 +9,8 @@ export const easeOut = [0.16, 1, 0.3, 1] as const
 export const DEFAULT_DOSSIER_BUILD_STRATEGY: DossierBuildStrategy =
   "incremental"
 export const DEFAULT_DOCUMENT_NUMBERING_MODE: DocumentNumberingMode = "page"
+export const DEFAULT_DOCUMENT_NUMBERING_STYLE_PRESET: DocumentNumberingStylePreset =
+  "pencil_miama"
 export const DEFAULT_FILE_REGISTER_CONFIG: FileRegisterConfig = {
   analysis_status: "not_detected",
   summary: "",

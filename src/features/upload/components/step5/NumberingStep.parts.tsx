@@ -21,7 +21,9 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/shared/lib/utils"
 import type {
   DocumentNumberingMode,
+  DocumentNumberingStylePreset,
   NumberingDocumentStatus,
+  NumberingStyleOption,
 } from "@/features/upload/api/sessionApi"
 import {
   numberingEntries,
@@ -33,7 +35,10 @@ import {
 export function NumberingStepHeader({
   modeLabel,
   documentNumberingMode,
+  documentNumberingStylePreset,
+  numberingStyleOptions,
   changingMode,
+  changingStyle,
   loading,
   starting,
   active,
@@ -41,10 +46,14 @@ export function NumberingStepHeader({
   onRefresh,
   onStart,
   onModeChange,
+  onStyleChange,
 }: {
   modeLabel: string
   documentNumberingMode: DocumentNumberingMode
+  documentNumberingStylePreset: DocumentNumberingStylePreset
+  numberingStyleOptions: NumberingStyleOption[]
   changingMode: boolean
+  changingStyle: boolean
   loading: boolean
   starting: boolean
   active: boolean
@@ -52,7 +61,17 @@ export function NumberingStepHeader({
   onRefresh: () => void | Promise<unknown>
   onStart: () => void | Promise<unknown>
   onModeChange: (mode: DocumentNumberingMode) => void | Promise<unknown>
+  onStyleChange: (
+    stylePreset: DocumentNumberingStylePreset
+  ) => void | Promise<unknown>
 }) {
+  const selectedStyle = numberingStyleOptions.find(
+    (style) => style.style_preset === documentNumberingStylePreset
+  )
+  const styleLabel =
+    selectedStyle?.display_name ||
+    selectedStyle?.name ||
+    documentNumberingStylePreset
   return (
     <div className="rounded-2xl border border-[#CBD5E1] bg-white px-5 py-4 shadow-sm">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -96,6 +115,49 @@ export function NumberingStepHeader({
               </button>
             ))}
           </div>
+          <div
+            className="mt-3 flex flex-wrap gap-2"
+            role="radiogroup"
+            aria-label="Kiểu hiển thị số trang"
+          >
+            <span className="flex items-center pr-1 text-sm font-semibold text-[#475569]">
+              Kiểu số: {styleLabel}
+            </span>
+            {numberingStyleOptions.map((style) => {
+              const label =
+                style.display_name || style.name || style.style_preset
+              return (
+                <button
+                  key={style.style_preset}
+                  type="button"
+                  role="radio"
+                  aria-checked={
+                    documentNumberingStylePreset === style.style_preset
+                  }
+                  disabled={active || changingStyle || loading}
+                  title={style.description || label}
+                  onClick={() => void onStyleChange(style.style_preset)}
+                  className={cn(
+                    "rounded-lg border px-3 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+                    documentNumberingStylePreset === style.style_preset
+                      ? "border-[#0052FF] bg-[#EEF4FF] text-[#0052FF]"
+                      : "border-[#CBD5E1] bg-white text-[#475569] hover:border-[#0052FF]/40 hover:text-[#0052FF]"
+                  )}
+                >
+                  <span className="block">{label}</span>
+                  <span className="mt-1 flex flex-wrap items-center gap-1.5 text-xs font-medium text-[#64748B]">
+                    {style.color ? (
+                      <span
+                        className="inline-block size-3 rounded-full border border-[#CBD5E1]"
+                        style={{ backgroundColor: style.color }}
+                      />
+                    ) : null}
+                    <span>{numberingStyleDetails(style)}</span>
+                  </span>
+                </button>
+              )
+            })}
+          </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <Button
@@ -110,7 +172,7 @@ export function NumberingStepHeader({
           <Button
             type="button"
             onClick={() => void onStart()}
-            disabled={active || changingMode}
+            disabled={active || changingMode || changingStyle}
           >
             {active ? (
               <Loader2 data-icon="inline-start" className="animate-spin" />
@@ -200,6 +262,23 @@ export function NumberingMetadataPanel({
       </div>
     </div>
   )
+}
+
+function numberingStyleDetails(style: NumberingStyleOption): string {
+  const details: string[] = []
+  if (style.font_family) details.push(`Font ${style.font_family}`)
+  if (style.font_size) details.push(`${style.font_size}pt`)
+  const weight = style.font_weight ? String(style.font_weight) : ""
+  const fontStyle = style.font_style ? String(style.font_style) : ""
+  const emphasis = [fontStyle, weight]
+    .filter((value) => value && value !== "normal")
+    .join(" ")
+  if (emphasis) details.push(emphasis)
+  if (style.opacity !== undefined && style.opacity < 1) {
+    details.push(`opacity ${Math.round(style.opacity * 100)}%`)
+  }
+  if (style.color) details.push(style.color)
+  return details.join(" · ")
 }
 
 export function NumberingStepFooter({

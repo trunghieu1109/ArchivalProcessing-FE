@@ -7,6 +7,10 @@ export type SessionInputFileType =
 
 export type DossierBuildStrategy = "incremental" | "file_register"
 export type DocumentNumberingMode = "page" | "sheet"
+export type DocumentNumberingStylePreset =
+  | "pencil_miama"
+  | "pencil_bradley"
+  | "stamp_times_bold"
 export type UploadMode = "append" | "overwrite"
 
 export interface CreateSessionResponse {
@@ -216,6 +220,7 @@ export interface ActivePlanResponse {
   summary: string
   dossier_build_strategy?: DossierBuildStrategy
   document_numbering_mode?: DocumentNumberingMode
+  document_numbering_style_preset?: DocumentNumberingStylePreset
   archive_name?: string
   fonds_name: string
   groups?: unknown[]

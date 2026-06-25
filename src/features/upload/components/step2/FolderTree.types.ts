@@ -1,6 +1,7 @@
 import type {
   DossierBuildStrategy,
   DocumentNumberingMode,
+  DocumentNumberingStylePreset,
 } from "@/features/upload/api/sessionApi"
 import type {
   FileRegisterConfig,
@@ -20,6 +21,10 @@ export interface FolderTreeProps {
   documentNumberingMode: DocumentNumberingMode
   onDocumentNumberingModeChange: (
     mode: DocumentNumberingMode
+  ) => void | Promise<void>
+  documentNumberingStylePreset: DocumentNumberingStylePreset
+  onDocumentNumberingStylePresetChange: (
+    stylePreset: DocumentNumberingStylePreset
   ) => void | Promise<void>
   onFileRegisterConfigChange: (
     config: FileRegisterConfig

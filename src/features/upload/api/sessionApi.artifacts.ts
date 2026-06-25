@@ -15,6 +15,7 @@ import type {
   MetadataSnapshotResponse,
   NumberedDocumentPreviewUrlResponse,
   NumberingStatusResponse,
+  NumberingStylesResponse,
 } from "./sessionApi.types"
 
 export async function enqueueFinalizeArtifacts(
@@ -33,7 +34,12 @@ export async function enqueueFinalizeArtifacts(
 
 export async function enqueueDocumentNumbering(
   sessionId: string,
-  payload: { created_by?: string; force?: boolean } = {}
+  payload: {
+    created_by?: string
+    force?: boolean
+    document_numbering_style_preset?: string
+    style_preset?: string
+  } = {}
 ): Promise<EnqueueNumberingResponse> {
   return requestJson<EnqueueNumberingResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/numbering/start`,
@@ -42,6 +48,14 @@ export async function enqueueDocumentNumbering(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }
+  )
+}
+
+export async function getNumberingStyles(
+  sessionId: string
+): Promise<NumberingStylesResponse> {
+  return requestJson<NumberingStylesResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/numbering/styles`
   )
 }
 

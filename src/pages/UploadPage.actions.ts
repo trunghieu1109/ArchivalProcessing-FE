@@ -7,6 +7,7 @@ import {
   type ActivePlanResponse,
   type DossierBuildStrategy,
   type DocumentNumberingMode,
+  type DocumentNumberingStylePreset,
   type SessionInputFileType,
   type SessionInputUploadResponse,
   type UploadMode,
@@ -25,6 +26,7 @@ import { LAST_SESSION_KEY } from "./UploadPage.progress"
 import {
   activePlanBuildStrategy,
   activePlanDocumentNumberingMode,
+  activePlanDocumentNumberingStylePreset,
   activePlanToParsedPlan,
   planToTree,
   stageInput,
@@ -51,6 +53,7 @@ export function createUploadPageActions(context: Record<string, any>) {
     setZipUploadProgress,
     setDossierBuildStrategy,
     setDocumentNumberingMode,
+    setDocumentNumberingStylePreset,
     setDoc1Has,
     setDoc2Has,
     setZipHas,
@@ -219,11 +222,21 @@ export function createUploadPageActions(context: Record<string, any>) {
     cache.persistedDocumentNumberingMode = mode
     setDocumentNumberingMode(mode)
   }
+  const applyPersistedDocumentNumberingStylePreset = (
+    stylePreset: DocumentNumberingStylePreset
+  ) => {
+    cache.documentNumberingStylePreset = stylePreset
+    cache.persistedDocumentNumberingStylePreset = stylePreset
+    setDocumentNumberingStylePreset(stylePreset)
+  }
   const applyActivePlanResponse = (planResponse: ActivePlanResponse) => {
     cache.activePlanVersionId = planResponse.id ?? ""
     applyPersistedDossierBuildStrategy(activePlanBuildStrategy(planResponse))
     applyPersistedDocumentNumberingMode(
       activePlanDocumentNumberingMode(planResponse)
+    )
+    applyPersistedDocumentNumberingStylePreset(
+      activePlanDocumentNumberingStylePreset(planResponse)
     )
   }
   const selectDocumentNumberingMode = async (mode: DocumentNumberingMode) => {
@@ -246,6 +259,41 @@ export function createUploadPageActions(context: Record<string, any>) {
         err instanceof Error
           ? `Không lưu được cách xử lý trang PDF: ${err.message}`
           : "Không lưu được cách xử lý trang PDF."
+      )
+      return false
+    } finally {
+      if (cache.documentNumberingModeSavePromise === savePromise) {
+        cache.documentNumberingModeSavePromise = null
+      }
+    }
+  }
+  const selectDocumentNumberingStylePreset = async (
+    stylePreset: DocumentNumberingStylePreset
+  ) => {
+    cache.documentNumberingStylePreset = stylePreset
+    setDocumentNumberingStylePreset(stylePreset)
+    if (
+      !cache.sessionId ||
+      stylePreset === cache.persistedDocumentNumberingStylePreset
+    )
+      return true
+    const savePromise = patchActivePlan(cache.sessionId, {
+      document_numbering_style_preset: stylePreset,
+    })
+    cache.documentNumberingModeSavePromise = savePromise
+    try {
+      const planResponse = await savePromise
+      applyActivePlanResponse(planResponse)
+      toast.success("Đã lưu kiểu hiển thị số trang.")
+      return true
+    } catch (err) {
+      applyPersistedDocumentNumberingStylePreset(
+        cache.persistedDocumentNumberingStylePreset
+      )
+      toast.error(
+        err instanceof Error
+          ? `Không lưu được kiểu hiển thị số trang: ${err.message}`
+          : "Không lưu được kiểu hiển thị số trang."
       )
       return false
     } finally {
@@ -397,8 +445,10 @@ export function createUploadPageActions(context: Record<string, any>) {
     applyPersistedDossierBuildStrategy,
     selectDossierBuildStrategy,
     applyPersistedDocumentNumberingMode,
+    applyPersistedDocumentNumberingStylePreset,
     applyActivePlanResponse,
     selectDocumentNumberingMode,
+    selectDocumentNumberingStylePreset,
     syncDoc1Has,
     syncDoc2Has,
     syncZipHas,

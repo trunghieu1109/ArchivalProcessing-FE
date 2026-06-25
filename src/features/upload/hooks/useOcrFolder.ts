@@ -8,6 +8,7 @@ import {
   restartDocumentMetadata,
   startDigitization,
   type DocumentNumberingMode,
+  type DocumentNumberingStylePreset,
   type SessionDocumentResponse,
   type UploadMode,
 } from "@/features/upload/api/sessionApi"
@@ -44,6 +45,7 @@ export interface UseOcrFolderResult {
       maxFiles?: number
       confirmedPlanVersionId?: string
       documentNumberingMode?: DocumentNumberingMode
+      documentNumberingStylePreset?: DocumentNumberingStylePreset
       sessionFileId?: number
       remoteFileId?: string | number | null
       uploadMode?: UploadMode
@@ -669,6 +671,7 @@ export function useOcrFolder(
         maxFiles?: number
         confirmedPlanVersionId?: string
         documentNumberingMode?: DocumentNumberingMode
+        documentNumberingStylePreset?: DocumentNumberingStylePreset
         sessionFileId?: number
         remoteFileId?: string | number | null
         uploadMode?: UploadMode
@@ -730,6 +733,7 @@ export function useOcrFolder(
           max_files: options.maxFiles,
           confirmed_plan_version_id: options.confirmedPlanVersionId,
           document_numbering_mode: options.documentNumberingMode,
+          document_numbering_style_preset: options.documentNumberingStylePreset,
           session_file_id: options.sessionFileId,
           remote_file_id: options.remoteFileId,
           upload_mode: options.uploadMode,

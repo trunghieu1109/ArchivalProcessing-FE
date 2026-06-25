@@ -3,6 +3,7 @@ import type {
   ClusterVersionResponse,
   DossierBuildStrategy,
   DocumentNumberingMode,
+  DocumentNumberingStylePreset,
 } from "@/features/upload/api/sessionApi"
 import type {
   FileRegisterConfig,
@@ -15,6 +16,7 @@ import type {
 } from "@/features/upload/types"
 import {
   DEFAULT_DOCUMENT_NUMBERING_MODE,
+  DEFAULT_DOCUMENT_NUMBERING_STYLE_PRESET,
   DEFAULT_DOSSIER_BUILD_STRATEGY,
   DEFAULT_FILE_REGISTER_CONFIG,
 } from "./UploadPage.planDefaults"
@@ -478,6 +480,16 @@ export function activePlanDocumentNumberingMode(
   )
 }
 
+export function activePlanDocumentNumberingStylePreset(
+  plan: ActivePlanResponse
+): DocumentNumberingStylePreset {
+  return (
+    documentNumberingStylePresetValue(
+      plan.document_numbering_style_preset
+    ) ?? DEFAULT_DOCUMENT_NUMBERING_STYLE_PRESET
+  )
+}
+
 export function activeClusterBuildStrategy(
   clusterVersion: ClusterVersionResponse | null
 ): DossierBuildStrategy | null {
@@ -505,6 +517,22 @@ export function documentNumberingModeValue(
   value: unknown
 ): DocumentNumberingMode | null {
   return value === "page" || value === "sheet" ? value : null
+}
+
+export function documentNumberingStylePresetValue(
+  value: unknown
+): DocumentNumberingStylePreset | null {
+  if (
+    value === "pencil_miama" ||
+    value === "pencil_bradley" ||
+    value === "stamp_times_bold"
+  ) {
+    return value
+  }
+  if (value === "stamp_time" || value === "stamp") return "stamp_times_bold"
+  if (value === "miama" || value === "pencil") return "pencil_miama"
+  if (value === "bradley") return "pencil_bradley"
+  return null
 }
 
 export function normalizeLeafGroupCandidates(

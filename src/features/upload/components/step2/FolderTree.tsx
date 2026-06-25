@@ -14,6 +14,7 @@ import { PaginationControls } from "@/features/upload/components/PaginationContr
 import { usePagedItems } from "@/features/upload/hooks/usePagedItems"
 import { cn } from "@/shared/lib/utils"
 import type { FolderNode } from "@/features/upload/types"
+import type { DocumentNumberingStylePreset } from "@/features/upload/api/sessionApi"
 
 import {
   FolderNodeItem,
@@ -30,6 +31,66 @@ import {
 } from "./FolderTree.helpers"
 
 import type { FolderTreeProps } from "./FolderTree.types"
+
+const NUMBERING_STYLE_OPTIONS: Array<{
+  value: DocumentNumberingStylePreset
+  label: string
+  description: string
+  fontFamily: string
+  fontStyle?: string
+  fontWeight?: string
+  fontSize: number
+  color: string
+  opacity?: number
+}> = [
+  {
+    value: "pencil_miama",
+    fontFamily: "Miama Nueva",
+    fontStyle: "italic",
+    fontWeight: "normal",
+    fontSize: 14,
+    color: "#757573",
+    opacity: 0.75,
+    label: "Bút chì Miama",
+    description: "Đánh số bằng bút chì, nét viết tay mềm.",
+  },
+  {
+    value: "pencil_bradley",
+    fontFamily: "Bradley Hand ITC",
+    fontStyle: "normal",
+    fontWeight: "normal",
+    fontSize: 14,
+    color: "#767570",
+    opacity: 0.75,
+    label: "Bút chì Bradley",
+    description: "Đánh số bằng bút chì, nét rõ và dễ nhìn hơn.",
+  },
+  {
+    value: "stamp_times_bold",
+    fontFamily: "Times New Roman",
+    fontStyle: "normal",
+    fontWeight: "bold",
+    fontSize: 16,
+    color: "#3D3D3B",
+    opacity: 1,
+    label: "Dập in",
+    description: "Đánh số bằng kiểu dập in, chữ đậm và sắc nét.",
+  },
+]
+
+function numberingStyleDetails(option: (typeof NUMBERING_STYLE_OPTIONS)[number]) {
+  const details = [`Font ${option.fontFamily}`, `${option.fontSize}pt`]
+  const emphasis = [option.fontStyle, option.fontWeight]
+    .filter((value) => value && value !== "normal")
+    .join(" ")
+  if (emphasis) details.push(emphasis)
+  if (option.opacity !== undefined && option.opacity < 1) {
+    details.push(`opacity ${Math.round(option.opacity * 100)}%`)
+  }
+  details.push(option.color)
+  return details.join(" · ")
+}
+
 export function FolderTree({
   tree,
   parsedPlan,
@@ -40,6 +101,8 @@ export function FolderTree({
   onDossierBuildStrategyChange,
   documentNumberingMode,
   onDocumentNumberingModeChange,
+  documentNumberingStylePreset,
+  onDocumentNumberingStylePresetChange,
   onFileRegisterConfigChange,
   onChange,
   onSaveTree,
@@ -213,6 +276,49 @@ export function FolderTree({
               </span>
             </span>
           </button>
+        </div>
+        <div className="mt-5 border-t border-[#E2E8F0] pt-4">
+          <p className="text-sm font-semibold text-[#0F172A]">
+            Kiểu hiển thị số
+          </p>
+          <div
+            className="mt-3 grid gap-3 md:grid-cols-3"
+            role="radiogroup"
+            aria-label="Kiểu hiển thị số trang"
+          >
+            {NUMBERING_STYLE_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                role="radio"
+                aria-checked={documentNumberingStylePreset === option.value}
+                disabled={readOnly}
+                onClick={() =>
+                  void onDocumentNumberingStylePresetChange(option.value)
+                }
+                className={cn(
+                  "min-h-24 rounded-2xl border p-4 text-left transition-all focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60",
+                  documentNumberingStylePreset === option.value
+                    ? "border-[#0052FF] bg-[#EEF4FF] shadow-[0_8px_24px_rgba(0,82,255,0.10)]"
+                    : "border-[#D8E1EC] bg-white hover:border-[#0052FF]/40 hover:bg-[#F8FAFC]"
+                )}
+              >
+                <span className="block font-semibold text-[#0F172A]">
+                  {option.label}
+                </span>
+                <span className="mt-1.5 block text-sm leading-6 text-[#64748B]">
+                  {option.description}
+                </span>
+                <span className="mt-2 flex flex-wrap items-center gap-1.5 text-xs font-medium text-[#64748B]">
+                  <span
+                    className="inline-block size-3 rounded-full border border-[#CBD5E1]"
+                    style={{ backgroundColor: option.color }}
+                  />
+                  <span>{numberingStyleDetails(option)}</span>
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
       </section>
 

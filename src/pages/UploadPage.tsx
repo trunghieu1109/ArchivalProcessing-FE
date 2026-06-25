@@ -9,6 +9,7 @@ import {
   listSessionEvents,
   type DossierBuildStrategy,
   type DocumentNumberingMode,
+  type DocumentNumberingStylePreset,
   type UploadMode,
   type UploadProgressSnapshot,
 } from "@/features/upload/api/sessionApi"
@@ -137,6 +138,8 @@ export function UploadPage() {
     useState<DossierBuildStrategy>(cache.dossierBuildStrategy)
   const [documentNumberingMode, setDocumentNumberingMode] =
     useState<DocumentNumberingMode>(cache.documentNumberingMode)
+  const [documentNumberingStylePreset, setDocumentNumberingStylePreset] =
+    useState<DocumentNumberingStylePreset>(cache.documentNumberingStylePreset)
 
   const [doc1Has, setDoc1Has] = useState(cache.doc1Has)
   const [doc2Has, setDoc2Has] = useState(cache.doc2Has)
@@ -296,8 +299,10 @@ export function UploadPage() {
     applyPersistedDossierBuildStrategy,
     selectDossierBuildStrategy,
     applyPersistedDocumentNumberingMode,
+    applyPersistedDocumentNumberingStylePreset,
     applyActivePlanResponse,
     selectDocumentNumberingMode,
+    selectDocumentNumberingStylePreset,
     syncDoc1Has,
     syncDoc2Has,
     syncZipHas,
@@ -328,6 +333,7 @@ export function UploadPage() {
     setZipUploadProgress,
     setDossierBuildStrategy,
     setDocumentNumberingMode,
+    setDocumentNumberingStylePreset,
     setDoc1Has,
     setDoc2Has,
     setZipHas,
@@ -496,6 +502,7 @@ export function UploadPage() {
       .start(folderPath, {
         maxFiles: maxFilesToProcess,
         documentNumberingMode,
+        documentNumberingStylePreset,
         sessionFileId: cache.zipUpload?.id,
         remoteFileId: cache.zipUpload?.remote_file_id ?? null,
         uploadMode: cache.zipUpload ? uploadMode : undefined,
@@ -513,6 +520,7 @@ export function UploadPage() {
       })
   }, [
     documentNumberingMode,
+    documentNumberingStylePreset,
     ocr,
     parseZipMaxFiles,
     routeSessionId,
@@ -550,6 +558,7 @@ export function UploadPage() {
     planAnalysisState,
     dossierBuildStrategy,
     documentNumberingMode,
+    documentNumberingStylePreset,
     zipFolderPath,
     existingSessionMode,
     uploadMode,
@@ -558,6 +567,7 @@ export function UploadPage() {
     applyActivePlanResponse,
     applyPersistedDossierBuildStrategy,
     applyPersistedDocumentNumberingMode,
+    applyPersistedDocumentNumberingStylePreset,
     parseZipMaxFiles,
     syncZipState,
     goTo,
@@ -670,6 +680,8 @@ export function UploadPage() {
       selectDossierBuildStrategy={selectDossierBuildStrategy}
       documentNumberingMode={documentNumberingMode}
       selectDocumentNumberingMode={selectDocumentNumberingMode}
+      documentNumberingStylePreset={documentNumberingStylePreset}
+      selectDocumentNumberingStylePreset={selectDocumentNumberingStylePreset}
       saveFileRegisterConfig={saveFileRegisterConfig}
       syncFolderTree={syncFolderTree}
       saveFolderTree={saveFolderTree}
