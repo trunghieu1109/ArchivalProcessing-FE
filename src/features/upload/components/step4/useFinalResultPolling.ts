@@ -15,9 +15,10 @@ import {
   clusterJobModeFromSource,
   clusterProgressMessageForPhase,
   completedClusterPhaseSet,
-  completedClusterPhaseSetBefore,
   dossierUiMessage,
   isTerminalClusterProgressMessage,
+  latestClusterProgressPhase,
+  mergeCompletedClusterPhaseSetBefore,
   nextClusterProgressPhase,
   normalizeClusterProgressPhase,
 } from "./FinalResult.progress"
@@ -371,14 +372,21 @@ export function useFinalResultPolling(context: Record<string, any>) {
             const phase = String(event.payload?.phase ?? "")
             if (phase) {
               const normalizedPhase = normalizeClusterProgressPhase(phase)
-              setClusterProgressPhase(normalizedPhase)
-              setClusterCompletedPhases((previous: Set<string>) => {
-                if (phase === "completed") {
-                  return completedClusterPhaseSet()
-                }
-                if (!normalizedPhase) return previous
-                return completedClusterPhaseSetBefore(normalizedPhase)
-              })
+              if (phase === "completed") {
+                setClusterProgressPhase(null)
+                setClusterCompletedPhases(completedClusterPhaseSet())
+              } else if (normalizedPhase) {
+                setClusterProgressPhase((currentPhase: string | null) => {
+                  const nextPhase = latestClusterProgressPhase(
+                    currentPhase,
+                    normalizedPhase
+                  )
+                  setClusterCompletedPhases((previous: Set<string>) =>
+                    mergeCompletedClusterPhaseSetBefore(previous, nextPhase)
+                  )
+                  return nextPhase
+                })
+              }
             }
             if (event.message) {
               setClusterProgressMessage(dossierUiMessage(event.message))
@@ -424,7 +432,9 @@ export function useFinalResultPolling(context: Record<string, any>) {
     const intervalId = window.setInterval(() => {
       setClusterProgressPhase((phase: string | null) => {
         const nextPhase = nextClusterProgressPhase(phase)
-        setClusterCompletedPhases(completedClusterPhaseSetBefore(nextPhase))
+        setClusterCompletedPhases((previous: Set<string>) =>
+          mergeCompletedClusterPhaseSetBefore(previous, nextPhase)
+        )
         setClusterProgressMessage(
           clusterProgressMessageForPhase(nextPhase, clusterJobMode)
         )

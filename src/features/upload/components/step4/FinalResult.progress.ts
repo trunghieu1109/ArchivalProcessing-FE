@@ -40,6 +40,36 @@ export function completedClusterPhaseSetBefore(phaseId: string): Set<string> {
   )
 }
 
+export function clusterProgressPhaseIndex(
+  phaseId: string | null | undefined
+): number {
+  if (!phaseId) return -1
+  return CLUSTER_PROGRESS_PHASES.findIndex((phase) => phase.id === phaseId)
+}
+
+export function latestClusterProgressPhase(
+  currentPhase: string | null | undefined,
+  incomingPhase: string | null | undefined
+): string | null {
+  if (!incomingPhase) return currentPhase ?? null
+  if (!currentPhase) return incomingPhase
+  const currentIndex = clusterProgressPhaseIndex(currentPhase)
+  const incomingIndex = clusterProgressPhaseIndex(incomingPhase)
+  if (incomingIndex < 0) return currentPhase
+  if (currentIndex < 0) return incomingPhase
+  return incomingIndex >= currentIndex ? incomingPhase : currentPhase
+}
+
+export function mergeCompletedClusterPhaseSetBefore(
+  previous: Set<string>,
+  phaseId: string | null | undefined
+): Set<string> {
+  if (!phaseId) return previous
+  const next = completedClusterPhaseSetBefore(phaseId)
+  previous.forEach((item) => next.add(item))
+  return next
+}
+
 export function normalizeClusterProgressPhase(
   phase: string | null | undefined
 ): string | null {
