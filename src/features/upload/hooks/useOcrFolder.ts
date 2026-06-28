@@ -1100,9 +1100,11 @@ function isFailedMetadataJob(
 }
 
 function isProcessingMetadataJob(
-  job: Pick<JobSummary, "status" | "remote_metadata_status">
+  job: Pick<JobSummary, "status" | "remote_metadata_status" | "metadata_ready">
 ) {
-  return METADATA_RUNNING_JOB_STATUSES.has(metadataJobStatus(job))
+  return (
+    !job.metadata_ready && METADATA_RUNNING_JOB_STATUSES.has(metadataJobStatus(job))
+  )
 }
 
 function metadataJobStatus(

@@ -39,6 +39,7 @@ export function sessionDocumentToJobSummary(
     metadata_review_note: document.metadata_review_note,
     status: document.ocr_status,
     remote_metadata_status: document.remote_metadata_status,
+    signature_status: document.signature_status,
     review_status: normalizeDocumentReviewStatus(document, lightMetadata),
     is_reviewed: document.is_reviewed === true,
     metadata_ready: document.metadata_ready,
@@ -58,6 +59,7 @@ export function sessionDocumentToReextractingDocument(
   return {
     ...document,
     remote_metadata_status: "processing",
+    signature_status: "processing",
     ocr_status: "processing",
     review_status: "pending",
     is_reviewed: false,
@@ -91,6 +93,7 @@ export function buildReextractingStatus(
         ...job,
         status: "processing",
         remote_metadata_status: "processing",
+        signature_status: "processing",
         review_status: "pending",
         is_reviewed: false,
         metadata_ready: false,

@@ -275,6 +275,7 @@ export function digitizationToFolderStatus(
       metadata_review_note: document.metadata_review_note,
       status: document.ocr_status,
       remote_metadata_status: document.remote_metadata_status,
+      signature_status: document.signature_status,
       review_status: normalizeDocumentReviewStatus(document, lightMetadata),
       is_reviewed: document.is_reviewed === true,
       metadata_ready: document.metadata_ready,
@@ -362,10 +363,12 @@ function countMetadataRunningStatuses(
 }
 
 function countRunningJobs(jobs: JobSummary[]): number {
-  return jobs.filter((job) =>
-    METADATA_RUNNING_STATUSES.has(
-      normalizeStatus(job.remote_metadata_status || job.status)
-    )
+  return jobs.filter(
+    (job) =>
+      !job.metadata_ready &&
+      METADATA_RUNNING_STATUSES.has(
+        normalizeStatus(job.remote_metadata_status || job.status)
+      )
   ).length
 }
 
@@ -376,7 +379,11 @@ function normalizeStatus(value: unknown): string {
 }
 
 function documentSignatureStatus(document: DigitizationDocument): string {
-  return normalizeStatus(document.remote_metadata_status || document.ocr_status)
+  return normalizeStatus(
+    document.signature_status ||
+      document.remote_metadata_status ||
+      document.ocr_status
+  )
 }
 
 export function normalizeDocumentReviewStatus(
@@ -384,11 +391,15 @@ export function normalizeDocumentReviewStatus(
     review_status: string
     metadata_ready: boolean
     remote_metadata_status?: string | null
+    signature_status?: string | null
     ocr_status?: string | null
   },
   lightMetadata: Record<string, unknown>
 ): string {
-  if (METADATA_RUNNING_STATUSES.has(documentMetadataStatus(document))) {
+  if (
+    !document.metadata_ready &&
+    METADATA_RUNNING_STATUSES.has(documentMetadataStatus(document))
+  ) {
     return "pending"
   }
   const status = String(document.review_status || "")

@@ -227,6 +227,11 @@ function clusterToGroup(
         (item?.remote_metadata_status ??
           stringValue(metadataSource.remote_metadata_status)) ||
         null
+      const signatureStatus =
+        (item?.signature_status ??
+          stringValue(metadataSource.signature_status) ??
+          stringValue(metadataSource.signatureStatus)) ||
+        null
       const ocrStatus =
         item?.status ??
         stringValue(metadataSource.ocr_status ?? metadataSource.status)
@@ -235,6 +240,7 @@ function clusterToGroup(
         normalized_metadata: item?.normalized_metadata,
         raw_metadata: item?.raw_metadata,
         remote_metadata_status: remoteMetadataStatus,
+        signature_status: signatureStatus,
         ocr_status: ocrStatus,
         status: stringValue(metadataSource.status),
       })
@@ -249,6 +255,7 @@ function clusterToGroup(
         remoteMetadataStatus,
         ocrStatus,
         signatureStatus: documentSignatureStatus({
+          signatureStatus,
           remoteMetadataStatus,
           ocrStatus,
         }),
@@ -271,6 +278,11 @@ function clusterToGroup(
         (item?.remote_metadata_status ??
           stringValue(metadataSource.remote_metadata_status)) ||
         null
+      const signatureStatus =
+        (item?.signature_status ??
+          stringValue(metadataSource.signature_status) ??
+          stringValue(metadataSource.signatureStatus)) ||
+        null
       const ocrStatus =
         item?.status ??
         stringValue(metadataSource.ocr_status ?? metadataSource.status)
@@ -279,6 +291,7 @@ function clusterToGroup(
         normalized_metadata: item?.normalized_metadata,
         raw_metadata: item?.raw_metadata,
         remote_metadata_status: remoteMetadataStatus,
+        signature_status: signatureStatus,
         ocr_status: ocrStatus,
         status: stringValue(metadataSource.status),
       })
@@ -292,6 +305,7 @@ function clusterToGroup(
         remoteMetadataStatus,
         ocrStatus,
         signatureStatus: documentSignatureStatus({
+          signatureStatus,
           remoteMetadataStatus,
           ocrStatus,
         }),

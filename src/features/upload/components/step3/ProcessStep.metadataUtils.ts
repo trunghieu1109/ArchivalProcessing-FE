@@ -51,6 +51,7 @@ export function mergeIncomingMetadata(
         import_action: item.import_action,
         status: item.status,
         remote_metadata_status: item.remote_metadata_status,
+        signature_status: item.signature_status,
         metadata_batch_id: item.metadata_batch_id,
         metadata_batch_assigned_to_user_id:
           item.metadata_batch_assigned_to_user_id,
@@ -72,6 +73,7 @@ export function mergeIncomingMetadata(
           normalized_metadata: normalizedMetadata,
           raw_metadata: rawMetadata,
           remote_metadata_status: item.remote_metadata_status,
+          signature_status: item.signature_status,
           status: item.status,
         }),
       }
@@ -116,6 +118,7 @@ export function resetMetadataItemForReextract(item: PdfMetadata): PdfMetadata {
     ...item,
     status: "processing",
     remote_metadata_status: "processing",
+    signature_status: "processing",
     review_status: "pending",
     is_reviewed: false,
     metadata_ready: false,
@@ -195,6 +198,7 @@ export function documentResponseToPdfMetadata(
     metadata_review_note: document.metadata_review_note,
     status: document.ocr_status,
     remote_metadata_status: document.remote_metadata_status,
+    signature_status: document.signature_status,
     review_status: reviewStatus,
     is_reviewed: document.is_reviewed === true,
     metadata_ready: document.metadata_ready,
@@ -218,6 +222,7 @@ export function normalizePdfMetadata(item: PdfMetadata): PdfMetadata {
       review_status: item.review_status,
       metadata_ready: item.metadata_ready,
       remote_metadata_status: item.remote_metadata_status,
+      signature_status: item.signature_status,
       ocr_status: item.status,
     },
     item.light_metadata

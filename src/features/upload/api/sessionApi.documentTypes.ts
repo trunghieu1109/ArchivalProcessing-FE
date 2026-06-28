@@ -33,6 +33,7 @@ export interface DigitizationDocument {
   metadata_verified_at?: string | null
   metadata_review_note?: string | null
   remote_metadata_status?: string | null
+  signature_status?: string | null
   ocr_status: string
   review_status: string
   is_reviewed?: boolean
@@ -337,6 +338,7 @@ export interface SessionDocumentResponse {
   metadata_verified_at?: string | null
   metadata_review_note?: string | null
   remote_metadata_status?: string | null
+  signature_status?: string | null
   ocr_status: string
   review_status: string
   is_reviewed?: boolean

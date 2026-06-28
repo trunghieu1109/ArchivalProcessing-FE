@@ -37,6 +37,7 @@ export function useUploadPageOcr(
           metadata_verified_at: job.metadata_verified_at,
           status: job.status,
           remote_metadata_status: job.remote_metadata_status,
+          signature_status: job.signature_status,
           review_status: reviewStatus,
           is_reviewed: reviewed,
           metadata_ready: job.metadata_ready,
