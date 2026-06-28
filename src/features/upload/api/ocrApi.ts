@@ -62,6 +62,10 @@ export interface FolderStatusResponse {
   upload_mode?: "append" | "overwrite" | string | null
   reextracting?: boolean
   pdf_preprocessing?: Record<string, unknown> | null
+  metadata_extraction_status?: string | null
+  metadata_extraction_complete?: boolean | null
+  metadata_extraction_completed_at?: string | null
+  digitization_complete?: boolean | null
   metadata_ready_documents?: number
   metadata_final_documents?: number
   metadata_complete_documents?: number

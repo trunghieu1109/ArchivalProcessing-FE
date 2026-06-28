@@ -78,7 +78,9 @@ export function useUploadPageOcr(
       ? ocr.error || "Không thể lấy kết quả số hóa."
       : ocrIsReextracting
         ? "Đang trích xuất lại metadata theo cách đánh số mới."
-        : ocr.state === "done"
+        : ocr.state === "metadata_ready"
+          ? "Metadata da san sang de review. Chu ky/final metadata dang cap nhat nen."
+          : ocr.state === "done"
           ? ocrDocumentTotal > 0
             ? `Đã nhận ${ocrMetadataItems.length} tài liệu từ backend.`
             : "Backend chưa trả về tài liệu số hóa."

@@ -311,6 +311,11 @@ export function digitizationToFolderStatus(
     upload_mode: batch?.upload_mode ?? null,
     reextracting: false,
     pdf_preprocessing: batch?.pdf_preprocessing ?? null,
+    metadata_extraction_status: batch?.metadata_extraction_status ?? null,
+    metadata_extraction_complete: batch?.metadata_extraction_complete ?? null,
+    metadata_extraction_completed_at:
+      batch?.metadata_extraction_completed_at ?? null,
+    digitization_complete: batch?.digitization_complete ?? null,
     metadata_ready_documents: summary?.metadata_ready,
     metadata_final_documents: summary?.metadata_final,
     metadata_complete_documents: summary?.complete_documents,
@@ -427,6 +432,9 @@ export function isDigitizationComplete(
   response: DigitizationStatusResponse | null
 ): boolean {
   const batch = response?.batches[0]
+  if (batch?.digitization_complete === true) {
+    return true
+  }
   if (
     !batch ||
     !["done", "completed_with_errors", "failed"].includes(batch.status)
@@ -452,6 +460,33 @@ export function isDigitizationComplete(
     return false
   }
   return documents.every(isDigitizationDocumentComplete)
+}
+
+export function isMetadataExtractionComplete(
+  response: DigitizationStatusResponse | null
+): boolean {
+  const batch = response?.batches[0]
+  if (!batch) return false
+  if (batch.metadata_extraction_complete === true) return true
+  if (isDigitizationComplete(response)) return true
+  const status = String(batch.metadata_extraction_status ?? "")
+    .trim()
+    .toLowerCase()
+  if (["ready", "completed_with_errors"].includes(status)) return true
+  const documents = latestBatchDocuments(response)
+  const totalDocuments = response?.summary?.total_documents ?? documents.length
+  const readyDocuments = response?.summary?.metadata_ready
+  const failedDocuments =
+    response?.summary?.failed_documents ??
+    documents.filter(isDigitizationDocumentTerminalError).length
+  if (
+    totalDocuments > 0 &&
+    readyDocuments !== undefined &&
+    readyDocuments + failedDocuments >= totalDocuments
+  ) {
+    return true
+  }
+  return documents.length > 0 && documents.every(isMetadataReadyOrTerminalError)
 }
 
 function latestBatchDocuments(
@@ -481,4 +516,24 @@ function isDigitizationDocumentComplete(
       "missing_task",
     ].includes(status)
   )
+}
+
+function isMetadataReadyOrTerminalError(document: DigitizationDocument): boolean {
+  return Boolean(document.metadata_ready) || isDigitizationDocumentTerminalError(document)
+}
+
+function isDigitizationDocumentTerminalError(
+  document: DigitizationDocument
+): boolean {
+  const status = String(document.ocr_status ?? "")
+    .trim()
+    .toLowerCase()
+  return [
+    "failed",
+    "final_failed",
+    "signature_failed",
+    "skipped",
+    "cancelled",
+    "missing_task",
+  ].includes(status)
 }

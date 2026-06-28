@@ -259,7 +259,6 @@ export const METADATA_RUNNING_STATUSES = new Set([
   "ocr_done",
   "metadata_priority_running",
   "metadata_running",
-  "signature_pending",
   "cancel_requested",
 ])
 
@@ -279,7 +278,7 @@ export function isMetadataFailedItem(item: PdfMetadata): boolean {
 export function isMetadataExtractionPending(item: PdfMetadata): boolean {
   const status = normalizedMetadataStatus(item)
   return (
-    METADATA_RUNNING_STATUSES.has(status) ||
+    (!item.metadata_ready && METADATA_RUNNING_STATUSES.has(status)) ||
     (!item.metadata_ready && !isMetadataFailedItem(item))
   )
 }

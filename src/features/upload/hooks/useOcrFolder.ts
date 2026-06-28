@@ -5,6 +5,7 @@ import {
   digitizationToFolderStatus,
   getDigitizationStatus,
   isDigitizationComplete,
+  isMetadataExtractionComplete,
   restartDocumentMetadata,
   startDigitization,
   type DocumentNumberingMode,
@@ -20,7 +21,13 @@ import {
   type PendingStartContext,
 } from "./useOcrFolderUtils"
 
-export type OcrFolderState = "idle" | "starting" | "polling" | "done" | "error"
+export type OcrFolderState =
+  | "idle"
+  | "starting"
+  | "polling"
+  | "metadata_ready"
+  | "done"
+  | "error"
 
 const OCR_POLL_INTERVAL_MS = 2_000
 const OCR_POLL_RETRY_INTERVAL_MS = 5_000
@@ -118,7 +125,9 @@ export function useOcrFolder(
       retryMs = OCR_POLL_RETRY_INTERVAL_MS
     ) => {
       setError(`${message} Đang thử lại...`)
-      setState("polling")
+      setState((current) =>
+        current === "metadata_ready" ? "metadata_ready" : "polling"
+      )
       timeoutRef.current = setTimeout(callback, retryMs)
     },
     []
@@ -257,7 +266,7 @@ export function useOcrFolder(
           total_files: Math.max(current.total_files, nextStatus.total_files),
           total_jobs: Math.max(current.total_jobs, nextStatus.total_jobs),
           pagination: nextStatus.pagination,
-          reextracting: !isDigitizationComplete(result),
+          reextracting: !isMetadataExtractionComplete(result),
         }
       })
       setError("")
@@ -301,7 +310,9 @@ export function useOcrFolder(
             setState("done")
             return
           }
-          setState("polling")
+          setState(
+            isMetadataExtractionComplete(result) ? "metadata_ready" : "polling"
+          )
           timeoutRef.current = setTimeout(poll, OCR_POLL_INTERVAL_MS)
         } catch (err) {
           if (tokenRef.current !== token) return
@@ -392,7 +403,9 @@ export function useOcrFolder(
       stop()
       const token = tokenRef.current + 1
       tokenRef.current = token
-      setState("polling")
+      setState(
+        isMetadataExtractionComplete(result) ? "metadata_ready" : "polling"
+      )
       pollUntilComplete(token, fallbackFolderPath)
     }
     return nextStatus
@@ -631,7 +644,9 @@ export function useOcrFolder(
           return
         }
 
-        setState("polling")
+        setState(
+          isMetadataExtractionComplete(result) ? "metadata_ready" : "polling"
+        )
         existingStatusTimeoutRef.current = setTimeout(
           pollExistingStatus,
           OCR_POLL_INTERVAL_MS
@@ -643,7 +658,9 @@ export function useOcrFolder(
             ? err.message
             : "Không thể tải trạng thái số hóa."
         setError(`${message} Đang thử lại...`)
-        setState("polling")
+        setState((current) =>
+          current === "metadata_ready" ? "metadata_ready" : "polling"
+        )
         existingStatusTimeoutRef.current = setTimeout(
           pollExistingStatus,
           OCR_POLL_RETRY_INTERVAL_MS
@@ -748,8 +765,12 @@ export function useOcrFolder(
             options.documentNumberingStyleOverrides ?? null,
           session_file_id: options.sessionFileId,
           remote_file_id: options.remoteFileId,
-          upload_mode: options.uploadMode,
-          overwrite: options.uploadMode === "overwrite",
+          ...(options.uploadMode
+            ? {
+                upload_mode: options.uploadMode,
+                overwrite: options.uploadMode === "overwrite",
+              }
+            : {}),
         })
       } catch (err) {
         pendingStartRef.current = null
@@ -764,13 +785,18 @@ export function useOcrFolder(
 
       try {
         await new Promise<void>((resolve, reject) => {
+          let settled = false
           rejectRef.current = reject
           const resolvePolling = () => {
+            if (settled) return
+            settled = true
             rejectRef.current = null
             pendingStartRef.current = null
             resolve()
           }
           const rejectPolling = (error: Error) => {
+            if (settled) return
+            settled = true
             rejectRef.current = null
             pendingStartRef.current = null
             reject(error)
@@ -800,6 +826,7 @@ export function useOcrFolder(
               pendingStartRef.current = null
               const nextStatus = digitizationToFolderStatus(result, folderPath)
               const complete = isDigitizationComplete(result)
+              const metadataReady = isMetadataExtractionComplete(result)
               setStatus((current) => {
                 if (!current?.reextracting) {
                   if (!current || nextStatus.jobs.length > 0) return nextStatus
@@ -827,7 +854,7 @@ export function useOcrFolder(
                     current.pagination,
                     nextStatus.pagination
                   ),
-                  reextracting: !complete,
+                  reextracting: !metadataReady,
                 }
               })
               setError("")
@@ -840,7 +867,10 @@ export function useOcrFolder(
                 resolvePolling()
                 return
               }
-              setState("polling")
+              setState(metadataReady ? "metadata_ready" : "polling")
+              if (metadataReady) {
+                resolvePolling()
+              }
               timeoutRef.current = setTimeout(poll, OCR_POLL_INTERVAL_MS)
             } catch (err) {
               if (tokenRef.current !== token) return
@@ -951,6 +981,10 @@ function mergeCachedDocumentPage(
     upload_mode: current.upload_mode,
     reextracting: current.reextracting,
     pdf_preprocessing: current.pdf_preprocessing,
+    metadata_extraction_status: current.metadata_extraction_status,
+    metadata_extraction_complete: current.metadata_extraction_complete,
+    metadata_extraction_completed_at: current.metadata_extraction_completed_at,
+    digitization_complete: current.digitization_complete,
     metadata_ready_documents: current.metadata_ready_documents,
     metadata_final_documents: current.metadata_final_documents,
     metadata_complete_documents: current.metadata_complete_documents,

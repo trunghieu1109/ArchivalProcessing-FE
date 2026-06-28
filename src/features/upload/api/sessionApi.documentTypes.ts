@@ -68,6 +68,10 @@ export interface DigitizationBatch {
   remote_file_id?: string | number | null
   upload_mode?: UploadMode | string | null
   pdf_preprocessing?: Record<string, unknown> | null
+  metadata_extraction_status?: string | null
+  metadata_extraction_complete?: boolean | null
+  metadata_extraction_completed_at?: string | null
+  digitization_complete?: boolean | null
 }
 
 export interface DigitizationStatusResponse {
