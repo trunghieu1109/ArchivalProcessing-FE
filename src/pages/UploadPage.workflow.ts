@@ -30,6 +30,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     existingSessionMode,
     zipSupplementUploaded,
     planInputsReuploaded,
+    planAnalysisState,
     allDone,
     hasActivePlan,
     planReanalysisReady,
@@ -205,6 +206,10 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
       return
     }
     if (existingSessionMode) {
+      if (planAnalysisState === "processing" && (doc1Has || doc2Has)) {
+        goTo(2)
+        return
+      }
       if (planInputsReuploaded) {
         await handleReanalyzeExistingSessionPlan()
         return
@@ -213,7 +218,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
         await handleConfirmPlan()
         return
       }
-      if (zipHas && !hasActivePlan) {
+      if (zipHas && !hasActivePlan && !doc1Has && !doc2Has) {
         const currentSessionId = routeSessionId ?? sessionId ?? cache.sessionId
         if (currentSessionId) {
           navigate(

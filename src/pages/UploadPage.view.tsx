@@ -3,6 +3,7 @@ import { ArrowLeft, FileText, Home } from "lucide-react"
 import { toast } from "sonner"
 import { FolderTree } from "@/features/upload/components/step2/FolderTree"
 import { RetentionAppendicesPanel } from "@/features/upload/components/step2/FolderTree.nodes"
+import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import { ProcessStep } from "@/features/upload/components/step3/ProcessStep"
 import { FinalResult } from "@/features/upload/components/step4/FinalResult"
 import { NumberingStep } from "@/features/upload/components/step5/NumberingStep"
@@ -99,6 +100,16 @@ export function UploadPageView(props: Record<string, any>) {
     navigate,
   } = props
   const hasAnalyzedPlan = Boolean(hasAnalyzedArrangementPlan)
+  const planProcessingTitle =
+    doc1State === "processing" && doc2State === "processing"
+      ? "Đang phân tích phương án chỉnh lý và thời hạn bảo quản"
+      : doc2State === "processing" && doc1State !== "processing"
+        ? "Đang phân tích thời hạn bảo quản"
+        : "Đang phân tích phương án chỉnh lý"
+  const planProcessingMessage =
+    planProgressMessage || `${planProcessingTitle}. Kết quả sẽ tự hiển thị khi backend xử lý xong.`
+  const hasAnalyzedRetentionSchedule =
+    doc2Has && parsedPlan.retention_appendices.length > 0
   const goToMetadataStep = () => {
     const targetSessionId = sessionId ?? routeSessionId
     if (targetSessionId) {
@@ -257,16 +268,48 @@ export function UploadPageView(props: Record<string, any>) {
                   onConfirm={handleConfirmPlan}
                   confirming={confirmingPlan}
                 />
+              ) : planAnalyzing ? (
+                <div className="flex flex-col gap-4">
+                  <ProgressTimeline
+                    phases={PLAN_PROGRESS_PHASES}
+                    activePhase={planProgressPhase}
+                    completedPhases={planCompletedPhases}
+                    title={planProcessingTitle}
+                    message={planProcessingMessage}
+                  />
+                  <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-white px-6 py-8 text-center shadow-sm">
+                    <FileText className="mx-auto size-9 text-[#94A3B8]" />
+                    <h2 className="mt-3 text-xl font-semibold text-[#0F172A]">
+                      {planProcessingTitle}
+                    </h2>
+                    <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[#64748B]">
+                      Hệ thống đã nhận file và đang chờ kết quả phân tích. Khi
+                      job hoàn tất, cây phương án hoặc thời hạn bảo quản sẽ tự
+                      cập nhật tại màn hình này.
+                    </p>
+                    {zipHas && (
+                      <button
+                        type="button"
+                        onClick={goToMetadataStep}
+                        className="mt-5 rounded-xl bg-[#0052FF] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0047DB]"
+                      >
+                        Đi tới extract metadata
+                      </button>
+                    )}
+                  </div>
+                </div>
               ) : (
                 <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-white px-6 py-8 text-center shadow-sm">
                   <FileText className="mx-auto size-9 text-[#94A3B8]" />
                   <h2 className="mt-3 text-xl font-semibold text-[#0F172A]">
-                    Chưa có phương án chỉnh lý
+                    {hasAnalyzedRetentionSchedule
+                      ? "Đã phân tích thời hạn bảo quản"
+                      : "Chưa có phương án chỉnh lý"}
                   </h2>
                   <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[#64748B]">
-                    Hãy upload phương án chỉnh lý ở Step 1 để xem cây phân loại
-                    và tiêu chí phân tích. Các phần dữ liệu khác vẫn có thể xử
-                    lý độc lập.
+                    {hasAnalyzedRetentionSchedule
+                      ? "Kết quả thời hạn bảo quản đã sẵn sàng. Bạn vẫn có thể upload phương án chỉnh lý ở Step 1 để xem cây phân loại."
+                      : "Hãy upload phương án chỉnh lý ở Step 1 để xem cây phân loại và tiêu chí phân tích. Các phần dữ liệu khác vẫn có thể xử lý độc lập."}
                   </p>
                   {parsedPlan.retention_appendices.length > 0 && (
                     <div className="mx-auto mt-6 max-w-4xl text-left">

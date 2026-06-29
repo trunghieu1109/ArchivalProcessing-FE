@@ -6,6 +6,7 @@ import { useAuth } from "@/features/auth/lib/AuthContext"
 import type { SessionMetadataValues } from "@/features/upload/components/SessionMetadataBar"
 import {
   ensureClusterBuild,
+  getActivePlan,
   listSessionEvents,
   type DossierBuildStrategy,
   type DocumentNumberingMode,
@@ -37,6 +38,14 @@ import {
   normalizePlanProgressPhase,
   planProgressMessageForPhase,
 } from "./UploadPage.progress"
+import {
+  activePlanBuildStrategy,
+  activePlanDocumentNumberingMode,
+  activePlanDocumentNumberingStyleOverrides,
+  activePlanDocumentNumberingStylePreset,
+  activePlanToParsedPlan,
+  planToTree,
+} from "./UploadPage.planUtils"
 import {
   dossierBuildMissingLabels,
   dossierBuildMissingMessage,
@@ -277,6 +286,59 @@ export function UploadPage() {
       } catch {
         // Progress events are best-effort; the active-plan polling owns errors.
       }
+      try {
+        const planResponse = await getActivePlan(sessionId)
+        if (cancelled) return
+        const currentPlanVersionId = cache.activePlanVersionId
+        const nextPlanVersionId = planResponse?.id ?? ""
+        const shouldApplyPlan =
+          Boolean(planResponse) &&
+          (!currentPlanVersionId ||
+            (nextPlanVersionId && nextPlanVersionId !== currentPlanVersionId))
+        if (planResponse && shouldApplyPlan) {
+          const plan = activePlanToParsedPlan(planResponse)
+          const buildStrategy = activePlanBuildStrategy(planResponse)
+          const numberingMode = activePlanDocumentNumberingMode(planResponse)
+          const numberingStylePreset =
+            activePlanDocumentNumberingStylePreset(planResponse)
+          const numberingStyleOverrides =
+            activePlanDocumentNumberingStyleOverrides(planResponse)
+
+          cache.activePlanVersionId = planResponse.id ?? ""
+          cache.parsedPlan = plan
+          cache.folderTree = planToTree(plan)
+          cache.planAnalysisState = "done"
+          cache.doc1State = doc1Has ? "done" : "idle"
+          cache.doc2State = doc2Has ? "done" : "idle"
+          cache.dossierBuildStrategy = buildStrategy
+          cache.persistedDossierBuildStrategy = buildStrategy
+          cache.documentNumberingMode = numberingMode
+          cache.persistedDocumentNumberingMode = numberingMode
+          cache.documentNumberingStylePreset = numberingStylePreset
+          cache.persistedDocumentNumberingStylePreset = numberingStylePreset
+          cache.documentNumberingStyleOverrides = numberingStyleOverrides
+          cache.persistedDocumentNumberingStyleOverrides =
+            numberingStyleOverrides
+
+          setParsedPlan(plan)
+          setFolderTree(cache.folderTree)
+          setPlanAnalysisState("done")
+          setDoc1State(cache.doc1State)
+          setDoc2State(cache.doc2State)
+          setDossierBuildStrategy(buildStrategy)
+          setDocumentNumberingMode(numberingMode)
+          setDocumentNumberingStylePreset(numberingStylePreset)
+          setDocumentNumberingStyleOverrides(numberingStyleOverrides)
+          setPlanProgressPhase(null)
+          setPlanCompletedPhases(
+            new Set(PLAN_PROGRESS_PHASES.map((phase) => phase.id))
+          )
+          setPlanProgressMessage("Đã phân tích xong phương án chỉnh lý.")
+          return
+        }
+      } catch {
+        // The job may still be queued/running; keep polling quietly.
+      }
       if (!cancelled) {
         timeoutId = window.setTimeout(poll, 1_500)
       }
@@ -287,7 +349,7 @@ export function UploadPage() {
       cancelled = true
       if (timeoutId !== undefined) window.clearTimeout(timeoutId)
     }
-  }, [planAnalysisState, sessionId])
+  }, [doc1Has, doc2Has, planAnalysisState, sessionId])
 
   const {
     ensureSession,
@@ -383,13 +445,15 @@ export function UploadPage() {
       : [doc1Has, doc2Has, zipHas]
   ).filter(Boolean).length
   const requiredFileCount = existingSessionMode ? 1 : 3
+  const arrangementPlanAnalyzing =
+    planAnalysisState === "processing" && doc1State === "processing"
   const statusItems = existingSessionMode
     ? [
         {
           label: "Phương án",
           has: hasAnalyzedArrangementPlan,
           state:
-            planAnalysisState === "processing"
+            arrangementPlanAnalyzing
               ? "processing"
               : hasAnalyzedArrangementPlan
                 ? "done"
@@ -417,7 +481,10 @@ export function UploadPage() {
     doc2State === "processing" ||
     zipProcessingBlocksAction
   const allDone = hasAnalyzedArrangementPlan && !planInputsReuploaded
-  const primaryActionDisabled = allProcessing || sessionLoading
+  const canOpenPlanAnalysisStep =
+    existingSessionMode && planAnalyzing && (doc1Has || doc2Has)
+  const primaryActionDisabled =
+    sessionLoading || (allProcessing && !canOpenPlanAnalysisStep)
 
   const startMetadataExtractionFromZip = useCallback(async () => {
     const currentSessionId = sessionId ?? routeSessionId ?? cache.sessionId
@@ -594,6 +661,7 @@ export function UploadPage() {
     existingSessionMode,
     zipSupplementUploaded,
     planInputsReuploaded,
+    planAnalysisState,
     allDone,
     hasActivePlan: hasAnalyzedArrangementPlan,
     planReanalysisReady,

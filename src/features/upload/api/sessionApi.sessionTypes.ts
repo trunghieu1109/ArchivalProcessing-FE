@@ -72,6 +72,7 @@ export interface DeleteSessionResponse {
 
 export interface SessionDetailResponse extends SessionSummary {
   files: SessionInputUploadResponse[]
+  active_plan_analysis_job?: ActiveJobSummary | null
 }
 
 export interface SessionInputUploadResponse {

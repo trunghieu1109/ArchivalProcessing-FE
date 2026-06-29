@@ -1,6 +1,10 @@
 import { useEffect } from "react"
 import { toast } from "sonner"
-import { getActivePlan, getSession } from "@/features/upload/api/sessionApi"
+import {
+  getActivePlan,
+  getSession,
+  type ActiveJobSummary,
+} from "@/features/upload/api/sessionApi"
 import type { SessionMetadataValues } from "@/features/upload/components/SessionMetadataBar"
 import { uploadPageCache as cache } from "./UploadPage.cache"
 import { LAST_SESSION_KEY } from "./UploadPage.progress"
@@ -13,6 +17,44 @@ import {
   activePlanToParsedPlan,
   planToTree,
 } from "./UploadPage.planUtils"
+
+const ACTIVE_PLAN_JOB_STATUSES = new Set(["scheduled", "queued", "running"])
+
+function isActivePlanAnalysisJob(
+  job: ActiveJobSummary | null | undefined
+): job is ActiveJobSummary {
+  return (
+    Boolean(job) &&
+    job?.job_type === "analyze_plan" &&
+    ACTIVE_PLAN_JOB_STATUSES.has(String(job?.status ?? ""))
+  )
+}
+
+function jobPayloadHasFile(job: ActiveJobSummary, key: string) {
+  const value = job.payload?.[key]
+  return typeof value === "string" && value.trim().length > 0
+}
+
+function pendingPlanAnalysisMessage({
+  job,
+  processingArrangement,
+  processingRetention,
+}: {
+  job: ActiveJobSummary
+  processingArrangement: boolean
+  processingRetention: boolean
+}) {
+  const status = String(job.status ?? "").trim().toLowerCase()
+  const waiting =
+    status === "queued" || status === "scheduled"
+      ? " đang chờ worker xử lý."
+      : " đang được xử lý."
+  if (processingArrangement && processingRetention) {
+    return `Phương án chỉnh lý và thời hạn bảo quản${waiting}`
+  }
+  if (processingRetention) return `Thời hạn bảo quản${waiting}`
+  return `Phương án chỉnh lý${waiting}`
+}
 
 export function useUploadPageLifecycle(context: Record<string, any>) {
   const {
@@ -173,6 +215,21 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
         )
         const zipFiles = files.filter((file) => file.file_type === "raw_zip")
         const zipFile = zipFiles[zipFiles.length - 1]
+        const maybeActivePlanAnalysisJob =
+          sessionDetail.active_plan_analysis_job
+        const activePlanAnalysisJob = isActivePlanAnalysisJob(
+          maybeActivePlanAnalysisJob
+        )
+          ? maybeActivePlanAnalysisJob
+          : null
+        const activeJobHasArrangementFile = activePlanAnalysisJob
+          ? jobPayloadHasFile(activePlanAnalysisJob, "plan_file")
+          : false
+        const activeJobHasRetentionFile = activePlanAnalysisJob
+          ? jobPayloadHasFile(activePlanAnalysisJob, "retention_file")
+          : false
+        const activeJobHasKnownPlanInput =
+          activeJobHasArrangementFile || activeJobHasRetentionFile
         cache.doc1Has = Boolean(arrangementPlanFile)
         cache.doc2Has = Boolean(retentionFile)
         cache.zipHas = Boolean(zipFile)
@@ -216,20 +273,67 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
           setPlanAnalysisState("done")
           setDossierBuildStrategy(buildStrategy)
           setDocumentNumberingMode(numberingMode)
+          setPlanProgressPhase(null)
+          setPlanProgressMessage("")
+          setPlanCompletedPhases(new Set())
         } else {
+          const hasPendingPlanAnalysis =
+            activePlanAnalysisJob !== null &&
+            (Boolean(arrangementPlanFile) || Boolean(retentionFile))
+          const processingArrangement =
+            hasPendingPlanAnalysis &&
+            Boolean(arrangementPlanFile) &&
+            (activeJobHasArrangementFile || !activeJobHasKnownPlanInput)
+          const processingRetention =
+            hasPendingPlanAnalysis &&
+            Boolean(retentionFile) &&
+            (activeJobHasRetentionFile || !activeJobHasKnownPlanInput)
           cache.activePlanVersionId = ""
           cache.parsedPlan = EMPTY_PARSED_PLAN
           cache.folderTree = planToTree(EMPTY_PARSED_PLAN)
-          cache.planAnalysisState = "idle"
           cache.dossierBuildStrategy = DEFAULT_DOSSIER_BUILD_STRATEGY
           cache.persistedDossierBuildStrategy = DEFAULT_DOSSIER_BUILD_STRATEGY
           cache.documentNumberingMode = DEFAULT_DOCUMENT_NUMBERING_MODE
           cache.persistedDocumentNumberingMode = DEFAULT_DOCUMENT_NUMBERING_MODE
+          cache.doc1State = arrangementPlanFile
+            ? processingArrangement
+              ? "processing"
+              : "done"
+            : "idle"
+          cache.doc2State = retentionFile
+            ? processingRetention
+              ? "processing"
+              : "done"
+            : "idle"
+          cache.planAnalysisState = hasPendingPlanAnalysis
+            ? "processing"
+            : "idle"
           setParsedPlan(cache.parsedPlan)
           setFolderTree(cache.folderTree)
-          setPlanAnalysisState("idle")
+          setDoc1State(cache.doc1State)
+          setDoc2State(cache.doc2State)
+          setPlanAnalysisState(cache.planAnalysisState)
           setDossierBuildStrategy(cache.dossierBuildStrategy)
           setDocumentNumberingMode(cache.documentNumberingMode)
+          if (hasPendingPlanAnalysis && activePlanAnalysisJob) {
+            setPlanCompletedPhases(new Set(["upload_inputs"]))
+            setPlanProgressPhase(
+              processingRetention && !processingArrangement
+                ? "retention_schedule"
+                : "preparing_plan_file"
+            )
+            setPlanProgressMessage(
+              pendingPlanAnalysisMessage({
+                job: activePlanAnalysisJob,
+                processingArrangement,
+                processingRetention,
+              })
+            )
+          } else {
+            setPlanProgressPhase(null)
+            setPlanProgressMessage("")
+            setPlanCompletedPhases(new Set())
+          }
         }
         window.localStorage.setItem(LAST_SESSION_KEY, routeSessionId)
       } catch (err) {

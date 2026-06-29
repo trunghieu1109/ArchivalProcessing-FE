@@ -74,8 +74,11 @@ export function UploadPageStepOne(props: Record<string, any>) {
       ? "Phân tích lại phương án và thời hạn"
       : "Phân tích thời hạn bảo quản"
     : "Phân tích lại phương án"
+  const retentionOnlyProcessing =
+    planAnalyzing && doc2State === "processing" && doc1State !== "processing"
   const progressTitle =
-    planReuploadState?.retention && !planReuploadState?.arrangement
+    retentionOnlyProcessing ||
+    (planReuploadState?.retention && !planReuploadState?.arrangement)
       ? "Phân tích thời hạn bảo quản"
       : "Phân tích phương án"
   const handleUploadModeSelect = (mode: UploadMode) => {
@@ -350,7 +353,9 @@ export function UploadPageStepOne(props: Record<string, any>) {
             ) : planAnalyzing ? (
               <span className="flex min-w-0 items-center gap-1.5 truncate text-muted-foreground">
                 <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />{" "}
-                Đang phân tích phương án...
+                {retentionOnlyProcessing
+                  ? "Đang phân tích thời hạn bảo quản..."
+                  : "Đang phân tích phương án..."}
               </span>
             ) : zipUploadProgress ? (
               <span className="flex min-w-0 items-center gap-1.5 overflow-hidden text-muted-foreground">
@@ -427,7 +432,9 @@ export function UploadPageStepOne(props: Record<string, any>) {
             {sessionLoading
               ? "Đang tải..."
               : planAnalyzing
-                ? "Đang phân tích..."
+                ? existingSessionMode
+                  ? "Xem trạng thái phân tích"
+                  : "Đang phân tích..."
                 : allProcessing
                   ? "Đang xử lý..."
                   : planInputsReuploaded
