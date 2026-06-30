@@ -123,6 +123,7 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     setPreviewWidthPercent,
     currentUserIdentity,
     autoBatchPlan,
+    setAutoBatchPlanRequested,
     autoBatchAssigneeIds,
     autoBatchConfirmations,
     setAutoBatchConfirmations,
@@ -303,28 +304,7 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
 
   const handleBatchSizeChange = (value: number) => {
     if (autoAssignmentInProgress) return
-    const nextBatchSize = normalizeBatchSize(value)
-    setBatchSize(nextBatchSize)
-    setActiveBatchIndex(0)
-    const nextGroups =
-      metadataBatchSummaries.length > 0
-        ? buildMetadataBatchGroupsFromSummaries(
-            metadataBatchSummaries,
-            batchScopeItems,
-            nextBatchSize,
-            metadataDocumentScope
-          )
-        : buildMetadataBatchGroups(batchScopeItems, nextBatchSize)
-    const targetGroup = nextGroups[0] ?? null
-    onMetadataDocumentScopeChange?.(
-      targetGroup
-        ? metadataDocumentScopeForGroup(targetGroup)
-        : { scope: "all" }
-    )
-    setSelectedDocumentId(
-      firstPreferredMetadataItem(targetGroup?.items ?? EMPTY_METADATA_ITEMS)
-        ?.id ?? null
-    )
+    setBatchSize(normalizeBatchSize(value))
   }
 
   const handleBatchSizeInputChange = (value: string) => {
@@ -363,6 +343,7 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
       return
     }
     setBatchMode(mode)
+    setAutoBatchPlanRequested(false)
     setManualSplitActive(false)
     setManualSelectedIds(new Set())
     setManualSelectedOnly(false)
@@ -402,6 +383,7 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     if (!canManageMetadataBatches) return
     setReviewMode("batch")
     setBatchMode("manual")
+    setAutoBatchPlanRequested(false)
     setManualSplitActive(true)
     setManualSelectedIds(new Set())
     setManualSelectedOnly(false)
@@ -547,6 +529,11 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
       toast.error("Chọn người phụ trách trước khi xác nhận lô.")
       return
     }
+    const completesPlan = autoBatchPlan.groups.every(
+      (candidate) =>
+        candidate.index === groupIndex ||
+        autoBatchConfirmations.has(candidate.index)
+    )
 
     setConfirmingAutoBatchIndexes((previous) => addId(previous, groupIndex))
     try {
@@ -564,6 +551,17 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
       }
       if (response.documents.length > 0) {
         onDocumentsVerified?.(response.documents)
+      }
+      const responseBatchId = normalizedMetadataBatchId(
+        response.metadata_batch_id ?? response.batch_id
+      )
+      if (completesPlan && responseBatchId && response.documents.length > 0) {
+        onMetadataDocumentScopeChange?.({
+          scope: "batch",
+          batchId: responseBatchId,
+        })
+        setManualSplitActive(false)
+        setSelectedDocumentId(response.documents[0]?.id ?? null)
       }
       setAutoBatchConfirmations((previous) => {
         const next = new Map(previous)
@@ -616,6 +614,8 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     )
     const refreshedDocuments: SessionDocumentResponse[] = []
     const assignedDocuments: SessionDocumentResponse[] = []
+    let selectedBatchId: string | null = null
+    let selectedBatchDocumentId: number | null = null
     let updatedCount = 0
     let skippedCount = 0
     let failedCount = 0
@@ -632,6 +632,17 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
             ...(response.skipped_documents ?? [])
           )
           assignedDocuments.push(...(response.documents ?? []))
+          const responseBatchId = normalizedMetadataBatchId(
+            response.metadata_batch_id ?? response.batch_id
+          )
+          if (
+            !selectedBatchId &&
+            responseBatchId &&
+            response.documents.length > 0
+          ) {
+            selectedBatchId = responseBatchId
+            selectedBatchDocumentId = response.documents[0]?.id ?? null
+          }
           updatedCount += response.updated_count
           skippedCount +=
             response.skipped_count ?? response.skipped_documents?.length ?? 0
@@ -654,6 +665,14 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
       }
       if (assignedDocuments.length > 0) {
         onDocumentsVerified?.(assignedDocuments)
+      }
+      if (selectedBatchId) {
+        onMetadataDocumentScopeChange?.({
+          scope: "batch",
+          batchId: selectedBatchId,
+        })
+        setManualSplitActive(false)
+        setSelectedDocumentId(selectedBatchDocumentId)
       }
       onMetadataDocumentsChanged?.()
       if (failedCount > 0 || skippedCount > 0) {
@@ -753,15 +772,15 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
         setItems((previous) => replaceDocuments(previous, updatedDocuments))
         onDocumentsVerified?.(updatedDocuments)
       }
-      onMetadataDocumentScopeChange?.({ scope: "unassigned" })
-      onMetadataDocumentsChanged?.()
       setManualSelectedIds(new Set())
       setManualSelectedOnly(false)
       setManualSelectedItemSnapshots(new Map())
       manualLastSelectedIdRef.current = null
-      setManualSplitActive(true)
+      setManualSplitActive(false)
       setBatchMode("manual")
-      setSelectedDocumentId(null)
+      onMetadataDocumentScopeChange?.({ scope: "reviewed" })
+      setSelectedDocumentId(updatedDocuments[0]?.id ?? null)
+      onMetadataDocumentsChanged?.()
       toast.success(
         `Đã kết thúc lô: ${response.reviewed_count ?? response.verified_count ?? 0} tài liệu đã review, ${response.unassigned_count} tài liệu quay lại chưa chia.`
       )

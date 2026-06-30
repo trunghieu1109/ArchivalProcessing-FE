@@ -103,6 +103,7 @@ export interface PdfMetadata {
   data_path: string
   import_action?: string | null
   metadata_batch_id?: string | null
+  metadata_batch_name?: string | null
   metadata_batch_assigned_to_user_id?: string | number | null
   metadata_batch_assigned_to_email?: string | null
   metadata_batch_assigned_to_name?: string | null

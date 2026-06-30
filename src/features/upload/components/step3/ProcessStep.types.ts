@@ -19,7 +19,9 @@ export interface MetadataBatchGroup {
   totalCount: number
   readyCount: number
   reviewedCount: number
+  autoVerifiedCount: number
   warningCount: number
+  failedCount: number
   pendingReadyCount: number
   assigneeName?: string | null
   assigneeEmail?: string | null

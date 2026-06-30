@@ -30,6 +30,7 @@ export function mergeIncomingMetadata(
       return {
         ...local,
         metadata_batch_id: item.metadata_batch_id,
+        metadata_batch_name: item.metadata_batch_name,
         metadata_batch_assigned_to_user_id:
           item.metadata_batch_assigned_to_user_id,
         metadata_batch_assigned_to_email: item.metadata_batch_assigned_to_email,
@@ -53,6 +54,7 @@ export function mergeIncomingMetadata(
         remote_metadata_status: item.remote_metadata_status,
         signature_status: item.signature_status,
         metadata_batch_id: item.metadata_batch_id,
+        metadata_batch_name: item.metadata_batch_name,
         metadata_batch_assigned_to_user_id:
           item.metadata_batch_assigned_to_user_id,
         metadata_batch_assigned_to_email: item.metadata_batch_assigned_to_email,
@@ -186,6 +188,7 @@ export function documentResponseToPdfMetadata(
     data_path: document.data_path,
     import_action: document.import_action,
     metadata_batch_id: document.metadata_batch_id,
+    metadata_batch_name: document.metadata_batch_name,
     metadata_batch_assigned_to_user_id:
       document.metadata_batch_assigned_to_user_id,
     metadata_batch_assigned_to_email: document.metadata_batch_assigned_to_email,

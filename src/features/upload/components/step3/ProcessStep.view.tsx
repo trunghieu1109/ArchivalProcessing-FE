@@ -52,6 +52,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     autoBatchPlan,
     autoBatchPlanError,
     autoBatchPlanLoading,
+    autoBatchPlanRequested,
     batchGroups,
     batchMode,
     batchSizeInput,
@@ -84,7 +85,6 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     confirmingAllAutoBatches,
     confirmingAutoBatchIndexes,
     handleApply,
-    handleBatchModeChange,
     handleBatchSizeInputBlur,
     handleBatchSizeInputChange,
     handleExportMetadataReview,
@@ -131,12 +131,13 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     selectedAutoWorkerIds,
     selectedDocumentId,
     sessionId,
+    setAutoBatchAssigneeIds,
+    setAutoBatchPlanRequested,
     setMetadataFileFilter,
     setSelectedAutoWorkerIds,
     setSelectedAssigneeId,
     setSelectedDocumentId,
     signatureStatus,
-    sortedItems,
     startManualSplit,
     toggleBulkReviewSelection,
     toggleBulkReviewSelectionMode,
@@ -266,8 +267,8 @@ export function ProcessStepView(props: ProcessStepViewProps) {
           } as CSSProperties
         }
       >
-        <div className="flex min-w-0 flex-col gap-3">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+        <div className="contents">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3 xl:col-span-2">
             <span className="font-roboto text-[11px] font-semibold tracking-[0.15em] text-muted-foreground uppercase">
               Metadata tài liệu
             </span>
@@ -299,151 +300,156 @@ export function ProcessStepView(props: ProcessStepViewProps) {
               <DocumentDownloadDialog sessionId={sessionId} items={items} />
             </div>
           </div>
-          <ProcessStepReviewControls
-            activeBatch={activeBatch}
-            autoBatchAssigneeIds={autoBatchAssigneeIds}
-            autoBatchConfirmations={autoBatchConfirmations}
-            autoBatchPlan={autoBatchPlan}
-            autoBatchPlanError={autoBatchPlanError}
-            autoBatchPlanLoading={autoBatchPlanLoading}
-            batchGroups={batchGroups}
-            batchMode={batchMode}
-            bulkReviewSelectionActive={bulkReviewSelectionActive}
-            bulkRetryItems={bulkRetryItems}
-            bulkSelectionCount={bulkSelectionCount}
-            bulkVerifyItems={bulkVerifyItems}
-            bulkVerifying={bulkVerifying}
-            canBulkSelectMetadata={canBulkSelectMetadata}
-            canManageMetadataBatches={canManageMetadataBatches}
-            cancelManualSplit={cancelManualSplit}
-            clearBulkReviewSelection={clearBulkReviewSelection}
-            clearManualSelection={clearManualSelection}
-            confirmAllAutoBatches={confirmAllAutoBatches}
-            confirmAutoBatch={confirmAutoBatch}
-            confirmingAllAutoBatches={confirmingAllAutoBatches}
-            confirmingAutoBatchIndexes={confirmingAutoBatchIndexes}
-            closingBatchIds={closingBatchIds}
-            createManualBatchFromSelection={createManualBatchFromSelection}
-            creatingManualBatch={creatingManualBatch}
-            displayedBulkSelectableItems={displayedBulkSelectableItems}
-            displayedItems={displayedItems}
-            finishMetadataBatch={finishMetadataBatch}
-            handleBatchModeChange={handleBatchModeChange}
-            handleBatchSizeInputBlur={handleBatchSizeInputBlur}
-            handleBatchSizeInputChange={handleBatchSizeInputChange}
-            handleRetrySelectedMetadata={handleRetrySelectedMetadata}
-            handleReviewModeChange={handleReviewModeChange}
-            handleSelectBatch={handleSelectBatch}
-            handleVerifyAllReady={handleVerifyAllReady}
-            hasServerPagination={hasServerPagination}
-            manualSelectedIds={manualSelectedIds}
-            manualSelectedOnly={manualSelectedOnly}
-            manualSelectedVisibleItems={manualSelectedVisibleItems}
-            manualSplitActive={manualSplitActive}
-            metadataFileFilter={metadataFileFilter}
-            reviewMode={reviewMode}
-            selectAllDisplayedForBulkReview={selectAllDisplayedForBulkReview}
-            selectAllDisplayedForManualSplit={selectAllDisplayedForManualSplit}
-            selectedAssigneeId={selectedAssigneeId}
-            selectedAutoWorkerIds={selectedAutoWorkerIds}
-            setMetadataFileFilter={setMetadataFileFilter}
-            setSelectedAutoWorkerIds={setSelectedAutoWorkerIds}
-            setSelectedAssigneeId={setSelectedAssigneeId}
-            startManualSplit={startManualSplit}
-            toggleBulkReviewSelectionMode={toggleBulkReviewSelectionMode}
-            toggleManualSelectedOnly={toggleManualSelectedOnly}
-            workers={workers}
-            workersLoading={workersLoading}
-            sortedItems={sortedItems}
-            batchSizeInput={batchSizeInput}
-          />
-          <ScrollArea className="h-[min(70svh,640px)] min-h-[360px]">
-            <div className="flex flex-col gap-2 pr-1">
-              {displayedItems.map((item) => {
-                const canEditItem = canUserEditMetadataItem(
-                  item,
-                  currentUserIdentity
-                )
-                const bulkSelectionDisabled =
-                  bulkReviewSelectionActive &&
-                  ((!isMetadataConfirmable(item) &&
-                    !isMetadataFailedItem(item)) ||
-                    (isMetadataFailedItem(item) && !canRestartMetadata) ||
-                    !canEditItem)
-                return (
-                  <MetadataCard
-                    key={item.id}
-                    item={item}
-                    selected={item.id === selectedDocumentId}
-                    selectionMode={
-                      manualSplitActive || bulkReviewSelectionActive
-                    }
-                    selectionChecked={
-                      manualSplitActive
-                        ? manualSelectedIds.has(item.id)
-                        : bulkSelectedIds.has(item.id)
-                    }
-                    selectionDisabled={bulkSelectionDisabled}
-                    readOnly={!canEditItem}
-                    onSelectionChange={(checked, shiftKey) =>
-                      manualSplitActive
-                        ? toggleManualSelection(item, checked, shiftKey)
-                        : toggleBulkReviewSelection(item, checked, shiftKey)
-                    }
-                    submitting={verifyingIds.has(item.id)}
-                    retrying={retryingIds.has(item.id)}
-                    onSelect={() => setSelectedDocumentId(item.id)}
-                    onApply={handleApply}
-                    onRetry={
-                      canRestartMetadata
-                        ? () => void handleRetryMetadata(item)
-                        : undefined
-                    }
-                  />
-                )
-              })}
-              {Array.from({ length: visibleLoadingPlaceholderCount }).map(
-                (_, i) => (
-                  <div
-                    key={`skel-${i}`}
-                    className="h-14 animate-pulse rounded-xl border border-[#E2E8F0] bg-[#F8FAFC]"
-                  />
-                )
-              )}
-              {manualSplitActive && displayedItems.length === 0 && (
-                <div className="rounded-xl border border-dashed border-[#CBD5E1] bg-white p-6 text-center text-sm text-muted-foreground">
-                  {manualSelectedOnly
-                    ? "Chưa có tài liệu đã chọn trong bộ lọc hiện tại."
-                    : "Không còn tài liệu chưa chia."}
-                </div>
-              )}
-              {!manualSplitActive &&
-                !metadataInProgress &&
-                displayedItems.length === 0 &&
-                items.length > 0 && (
+          <div className="min-w-0 xl:col-span-2">
+            <ProcessStepReviewControls
+              activeBatch={activeBatch}
+              autoBatchAssigneeIds={autoBatchAssigneeIds}
+              autoBatchConfirmations={autoBatchConfirmations}
+              autoBatchPlan={autoBatchPlan}
+              autoBatchPlanError={autoBatchPlanError}
+              autoBatchPlanLoading={autoBatchPlanLoading}
+              autoBatchPlanRequested={autoBatchPlanRequested}
+              batchGroups={batchGroups}
+              batchMode={batchMode}
+              bulkReviewSelectionActive={bulkReviewSelectionActive}
+              bulkRetryItems={bulkRetryItems}
+              bulkSelectionCount={bulkSelectionCount}
+              bulkVerifyItems={bulkVerifyItems}
+              bulkVerifying={bulkVerifying}
+              canBulkSelectMetadata={canBulkSelectMetadata}
+              canManageMetadataBatches={canManageMetadataBatches}
+              cancelManualSplit={cancelManualSplit}
+              clearBulkReviewSelection={clearBulkReviewSelection}
+              clearManualSelection={clearManualSelection}
+              confirmAllAutoBatches={confirmAllAutoBatches}
+              confirmAutoBatch={confirmAutoBatch}
+              confirmingAllAutoBatches={confirmingAllAutoBatches}
+              confirmingAutoBatchIndexes={confirmingAutoBatchIndexes}
+              closingBatchIds={closingBatchIds}
+              createManualBatchFromSelection={createManualBatchFromSelection}
+              creatingManualBatch={creatingManualBatch}
+              displayedBulkSelectableItems={displayedBulkSelectableItems}
+              displayedItems={displayedItems}
+              finishMetadataBatch={finishMetadataBatch}
+              handleBatchSizeInputBlur={handleBatchSizeInputBlur}
+              handleBatchSizeInputChange={handleBatchSizeInputChange}
+              handleRetrySelectedMetadata={handleRetrySelectedMetadata}
+              handleReviewModeChange={handleReviewModeChange}
+              handleSelectBatch={handleSelectBatch}
+              handleVerifyAllReady={handleVerifyAllReady}
+              hasServerPagination={hasServerPagination}
+              manualSelectedIds={manualSelectedIds}
+              manualSelectedOnly={manualSelectedOnly}
+              manualSelectedVisibleItems={manualSelectedVisibleItems}
+              manualSplitActive={manualSplitActive}
+              metadataFileFilter={metadataFileFilter}
+              reviewMode={reviewMode}
+              selectAllDisplayedForBulkReview={selectAllDisplayedForBulkReview}
+              selectAllDisplayedForManualSplit={selectAllDisplayedForManualSplit}
+              selectedAssigneeId={selectedAssigneeId}
+              selectedAutoWorkerIds={selectedAutoWorkerIds}
+              setAutoBatchAssigneeIds={setAutoBatchAssigneeIds}
+              setAutoBatchPlanRequested={setAutoBatchPlanRequested}
+              setMetadataFileFilter={setMetadataFileFilter}
+              setSelectedAutoWorkerIds={setSelectedAutoWorkerIds}
+              setSelectedAssigneeId={setSelectedAssigneeId}
+              startManualSplit={startManualSplit}
+              toggleBulkReviewSelectionMode={toggleBulkReviewSelectionMode}
+              toggleManualSelectedOnly={toggleManualSelectedOnly}
+              workers={workers}
+              workersLoading={workersLoading}
+              batchSizeInput={batchSizeInput}
+            />
+          </div>
+          <div className="flex min-w-0 flex-col gap-3">
+            <ScrollArea className="h-[min(70svh,640px)] min-h-[360px]">
+              <div className="flex flex-col gap-2 pr-1">
+                {displayedItems.map((item) => {
+                  const canEditItem = canUserEditMetadataItem(
+                    item,
+                    currentUserIdentity
+                  )
+                  const bulkSelectionDisabled =
+                    bulkReviewSelectionActive &&
+                    ((!isMetadataConfirmable(item) &&
+                      !isMetadataFailedItem(item)) ||
+                      (isMetadataFailedItem(item) && !canRestartMetadata) ||
+                      !canEditItem)
+                  return (
+                    <MetadataCard
+                      key={item.id}
+                      item={item}
+                      selected={item.id === selectedDocumentId}
+                      selectionMode={
+                        manualSplitActive || bulkReviewSelectionActive
+                      }
+                      selectionChecked={
+                        manualSplitActive
+                          ? manualSelectedIds.has(item.id)
+                          : bulkSelectedIds.has(item.id)
+                      }
+                      selectionDisabled={bulkSelectionDisabled}
+                      readOnly={!canEditItem}
+                      onSelectionChange={(checked, shiftKey) =>
+                        manualSplitActive
+                          ? toggleManualSelection(item, checked, shiftKey)
+                          : toggleBulkReviewSelection(item, checked, shiftKey)
+                      }
+                      submitting={verifyingIds.has(item.id)}
+                      retrying={retryingIds.has(item.id)}
+                      onSelect={() => setSelectedDocumentId(item.id)}
+                      onApply={handleApply}
+                      onRetry={
+                        canRestartMetadata
+                          ? () => void handleRetryMetadata(item)
+                          : undefined
+                      }
+                    />
+                  )
+                })}
+                {Array.from({ length: visibleLoadingPlaceholderCount }).map(
+                  (_, i) => (
+                    <div
+                      key={`skel-${i}`}
+                      className="h-14 animate-pulse rounded-xl border border-[#E2E8F0] bg-[#F8FAFC]"
+                    />
+                  )
+                )}
+                {manualSplitActive && displayedItems.length === 0 && (
                   <div className="rounded-xl border border-dashed border-[#CBD5E1] bg-white p-6 text-center text-sm text-muted-foreground">
-                    Không có tài liệu trong phạm vi này.
+                    {manualSelectedOnly
+                      ? "Chưa có tài liệu đã chọn trong bộ lọc hiện tại."
+                      : "Không còn tài liệu chưa chia."}
                   </div>
                 )}
-              {!metadataInProgress && items.length === 0 && (
-                <div className="rounded-xl border border-dashed border-[#CBD5E1] bg-white p-6 text-center text-sm text-muted-foreground">
-                  Chưa có metadata từ backend.
-                </div>
-              )}
-            </div>
-          </ScrollArea>
-          {displayedPagination.total > 0 && (
-            <PaginationControls
-              total={displayedPagination.total}
-              pageIndex={displayedPagination.pageIndex}
-              pageSize={displayedPagination.pageSize}
-              pageCount={displayedPagination.pageCount}
-              startNumber={displayedPagination.startNumber}
-              endNumber={displayedPagination.endNumber}
-              itemLabel="tài liệu"
-              onPageChange={displayedPagination.setPageIndex}
-            />
-          )}
+                {!manualSplitActive &&
+                  !metadataInProgress &&
+                  displayedItems.length === 0 &&
+                  items.length > 0 && (
+                    <div className="rounded-xl border border-dashed border-[#CBD5E1] bg-white p-6 text-center text-sm text-muted-foreground">
+                      Không có tài liệu trong phạm vi này.
+                    </div>
+                  )}
+                {!metadataInProgress && items.length === 0 && (
+                  <div className="rounded-xl border border-dashed border-[#CBD5E1] bg-white p-6 text-center text-sm text-muted-foreground">
+                    Chưa có metadata từ backend.
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+            {displayedPagination.total > 0 && (
+              <PaginationControls
+                total={displayedPagination.total}
+                pageIndex={displayedPagination.pageIndex}
+                pageSize={displayedPagination.pageSize}
+                pageCount={displayedPagination.pageCount}
+                startNumber={displayedPagination.startNumber}
+                endNumber={displayedPagination.endNumber}
+                itemLabel="tài liệu"
+                onPageChange={displayedPagination.setPageIndex}
+              />
+            )}
+          </div>
         </div>
         <div className="relative min-w-0 self-stretch xl:h-full">
           <button

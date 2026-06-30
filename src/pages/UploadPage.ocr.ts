@@ -25,6 +25,7 @@ export function useUploadPageOcr(
           data_path: job.data_path,
           import_action: job.import_action,
           metadata_batch_id: job.metadata_batch_id,
+          metadata_batch_name: job.metadata_batch_name,
           metadata_batch_assigned_to_user_id:
             job.metadata_batch_assigned_to_user_id,
           metadata_batch_assigned_to_email:

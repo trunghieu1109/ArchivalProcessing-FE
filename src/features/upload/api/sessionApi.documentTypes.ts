@@ -20,6 +20,7 @@ export interface DigitizationDocument {
   document_id: string
   data_path: string
   metadata_batch_id?: string | null
+  metadata_batch_name?: string | null
   last_import_job_id?: string | number | null
   import_action?: string | null
   content_revision?: number | null
@@ -120,11 +121,15 @@ export interface MetadataDocumentScope {
 export interface MetadataBatchSummary {
   kind: "manual" | "reviewed" | "unassigned"
   batch_id?: string | null
+  name?: string | null
+  batch_name?: string | null
   display_index?: number | null
   total_count: number
   ready_count: number
   reviewed_count: number
+  auto_verified_count?: number
   warning_count: number
+  failed_count?: number
   pending_ready_count: number
   assignee_user_id?: string | number | null
   assignee_email?: string | null
@@ -361,6 +366,7 @@ export interface SessionDocumentResponse {
   file_name: string
   import_action?: string | null
   metadata_batch_id?: string | null
+  metadata_batch_name?: string | null
   metadata_batch_assigned_to_user_id?: string | number | null
   metadata_batch_assigned_to_email?: string | null
   metadata_batch_assigned_to_name?: string | null
@@ -403,6 +409,8 @@ export interface CreateMetadataBatchResponse {
   session_id: string
   batch_id: string
   metadata_batch_id?: string
+  batch_name?: string | null
+  metadata_batch_name?: string | null
   assigned_to_user_id?: string | number | null
   assigned_to_email?: string | null
   assigned_to_name?: string | null
@@ -414,6 +422,7 @@ export interface CreateMetadataBatchResponse {
   errors?: Array<{
     document_id: number
     metadata_batch_id?: string | null
+    metadata_batch_name?: string | null
     detail: string
   }>
 }

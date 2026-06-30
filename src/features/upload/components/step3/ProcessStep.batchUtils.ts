@@ -17,6 +17,7 @@ import {
 } from "./ProcessStep.types"
 import {
   isMetadataConfirmable,
+  isMetadataFailedItem,
   needsMetadataReview,
 } from "./ProcessStep.metadataUtils"
 
@@ -106,7 +107,9 @@ export function buildMetadataBatchGroupsFromSummaries(
         totalCount: reviewedSummary.total_count,
         readyCount: reviewedSummary.ready_count,
         reviewedCount: reviewedSummary.reviewed_count,
+        autoVerifiedCount: reviewedSummary.auto_verified_count ?? 0,
         warningCount: reviewedSummary.warning_count,
+        failedCount: reviewedSummary.failed_count ?? 0,
         pendingReadyCount: reviewedSummary.pending_ready_count,
       })
     )
@@ -136,7 +139,8 @@ export function buildMetadataBatchGroupsFromSummaries(
         kind: "manual",
         index: groups.length,
         displayIndex,
-        label: metadataBatchLabel(displayIndex),
+        label:
+          metadataBatchStoredLabel(summary) ?? metadataBatchLabel(displayIndex),
         start: 0,
         end: summary.total_count,
         batchId,
@@ -144,7 +148,9 @@ export function buildMetadataBatchGroupsFromSummaries(
         totalCount: summary.total_count,
         readyCount: summary.ready_count,
         reviewedCount: summary.reviewed_count,
+        autoVerifiedCount: summary.auto_verified_count ?? 0,
         warningCount: summary.warning_count,
+        failedCount: summary.failed_count ?? 0,
         pendingReadyCount: summary.pending_ready_count,
         assigneeName: summary.assignee_name ?? null,
         assigneeEmail: summary.assignee_email ?? null,
@@ -240,19 +246,22 @@ export function buildManualMetadataBatchGroups(
     if (groupItems.length === 0) return
     groupItems.forEach((item) => assignedIds.add(item.id))
     const index = groups.length
+    const batchName = metadataBatchItemLabel(groupItems)
+    const displayIndex =
+      metadataBatchNameDisplayIndex(batchName) ?? manualGroupNumber
     groups.push(
       buildMetadataBatchGroup({
         kind: "manual",
         index,
-        displayIndex: manualGroupNumber,
-        label: metadataBatchLabel(manualGroupNumber),
+        displayIndex,
+        label: batchName ?? metadataBatchLabel(displayIndex),
         start: 0,
         end: 0,
         batchId,
         items: groupItems,
       })
     )
-    manualGroupNumber += 1
+    manualGroupNumber = Math.max(manualGroupNumber + 1, displayIndex + 1)
   })
 
   const unassignedItems = items.filter((item) => !assignedIds.has(item.id))
@@ -307,7 +316,8 @@ export function buildManualMetadataBatchGroupsFromSummaries(
         ? "Tài liệu đã review"
         : kind === "unassigned"
           ? "Chưa chia"
-          : metadataBatchLabel(displayIndex ?? manualGroupNumber)
+          : metadataBatchStoredLabel(summary) ??
+            metadataBatchLabel(displayIndex ?? manualGroupNumber)
     if (kind === "manual" && displayIndex !== null) {
       manualGroupNumber = Math.max(manualGroupNumber + 1, displayIndex + 1)
     }
@@ -323,7 +333,9 @@ export function buildManualMetadataBatchGroupsFromSummaries(
       totalCount: summary.total_count,
       readyCount: summary.ready_count,
       reviewedCount: summary.reviewed_count,
+      autoVerifiedCount: summary.auto_verified_count ?? 0,
       warningCount: summary.warning_count,
+      failedCount: summary.failed_count ?? 0,
       pendingReadyCount: summary.pending_ready_count,
       assigneeName: summary.assignee_name ?? null,
       assigneeEmail: summary.assignee_email ?? null,
@@ -352,6 +364,28 @@ function metadataBatchLabel(displayIndex: number): string {
   return `Lô ${String(Math.max(1, displayIndex)).padStart(2, "0")}`
 }
 
+function metadataBatchStoredLabel(summary: MetadataBatchSummary): string | null {
+  const value = String(summary.name ?? summary.batch_name ?? "").trim()
+  return value || null
+}
+
+function metadataBatchItemLabel(items: PdfMetadata[]): string | null {
+  const item = items.find((entry) =>
+    String(entry.metadata_batch_name ?? "").trim()
+  )
+  const value = String(item?.metadata_batch_name ?? "").trim()
+  return value || null
+}
+
+function metadataBatchNameDisplayIndex(value: string | null): number | null {
+  const match = String(value ?? "")
+    .trim()
+    .match(/(\d+)\s*$/)
+  if (!match) return null
+  const index = Number(match[1])
+  return Number.isFinite(index) && index > 0 ? Math.floor(index) : null
+}
+
 export function isReviewedMetadataBatchId(batchId: string | null): boolean {
   return (
     batchId === METADATA_REVIEWED_BATCH_ID ||
@@ -363,8 +397,7 @@ export function isReviewedMetadataBucketItem(item: PdfMetadata): boolean {
   const batchId = normalizedMetadataBatchId(item.metadata_batch_id)
   return (
     isReviewedMetadataBatchId(batchId) ||
-    (item.is_reviewed === true && !batchId) ||
-    (item.review_status === "verified" && !batchId)
+    (item.is_reviewed === true && !batchId)
   )
 }
 
@@ -436,7 +469,9 @@ export function buildMetadataBatchGroup({
   totalCount,
   readyCount,
   reviewedCount,
+  autoVerifiedCount,
   warningCount,
+  failedCount,
   pendingReadyCount,
   assigneeName,
   assigneeEmail,
@@ -453,7 +488,9 @@ export function buildMetadataBatchGroup({
   totalCount?: number
   readyCount?: number
   reviewedCount?: number
+  autoVerifiedCount?: number
   warningCount?: number
+  failedCount?: number
   pendingReadyCount?: number
   assigneeName?: string | null
   assigneeEmail?: string | null
@@ -464,6 +501,11 @@ export function buildMetadataBatchGroup({
   ).length
   const computedReadyCount = items.filter((item) => item.metadata_ready).length
   const computedWarningCount = items.filter(needsMetadataReview).length
+  const computedFailedCount = items.filter(isMetadataFailedItem).length
+  const computedAutoVerifiedCount = Math.max(
+    0,
+    computedReadyCount - computedReviewedCount - computedWarningCount
+  )
   const computedPendingReadyCount = items.filter(isMetadataConfirmable).length
   const assignedItem = items.find(
     (item) =>
@@ -484,7 +526,9 @@ export function buildMetadataBatchGroup({
     totalCount: totalCount ?? items.length,
     readyCount: readyCount ?? computedReadyCount,
     reviewedCount: reviewedCount ?? computedReviewedCount,
+    autoVerifiedCount: autoVerifiedCount ?? computedAutoVerifiedCount,
     warningCount: warningCount ?? computedWarningCount,
+    failedCount: failedCount ?? computedFailedCount,
     pendingReadyCount: pendingReadyCount ?? computedPendingReadyCount,
     assigneeName:
       assigneeName ?? assignedItem?.metadata_batch_assigned_to_name ?? null,

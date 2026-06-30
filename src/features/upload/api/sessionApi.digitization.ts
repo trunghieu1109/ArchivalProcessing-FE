@@ -296,6 +296,7 @@ export function digitizationToFolderStatus(
       data_path: document.data_path,
       import_action: document.import_action,
       metadata_batch_id: document.metadata_batch_id,
+      metadata_batch_name: document.metadata_batch_name,
       metadata_batch_assigned_to_user_id:
         document.metadata_batch_assigned_to_user_id,
       metadata_batch_assigned_to_email:

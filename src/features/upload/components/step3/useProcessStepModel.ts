@@ -41,6 +41,7 @@ import {
   findUnassignedBatchIndex,
   firstPreferredMetadataItem,
   isMetadataItemAssignedToUser,
+  normalizedMetadataBatchId,
   readStoredBatchSize,
   writeStoredBatchSize,
   writeStoredReviewMode,
@@ -110,6 +111,7 @@ export function useProcessStepModel({
   >(() => new Set())
   const [autoBatchPlan, setAutoBatchPlan] =
     useState<AutoMetadataBatchPlanResponse | null>(null)
+  const [autoBatchPlanRequested, setAutoBatchPlanRequested] = useState(false)
   const [autoBatchPlanLoading, setAutoBatchPlanLoading] = useState(false)
   const [autoBatchPlanError, setAutoBatchPlanError] = useState("")
   const [autoBatchAssigneeIds, setAutoBatchAssigneeIds] = useState<
@@ -156,7 +158,7 @@ export function useProcessStepModel({
       metadataItems
         .map(
           (item) =>
-            `${item.id}:${item.ocr_batch_id ?? ""}:${item.import_action ?? ""}:${item.status}:${item.remote_metadata_status ?? ""}:${item.signature_status ?? ""}:${item.review_status}:${String(item.is_reviewed ?? false)}:${String(item.metadata_ready)}:${String(item.metadata_final)}:${String(item.metadata_user_edited ?? false)}:${item.metadata_batch_id ?? ""}:${item.metadata_batch_assigned_to_user_id ?? ""}:${item.metadata_batch_assigned_to_email ?? ""}:${item.metadata_batch_assigned_to_name ?? ""}:${item.metadata_verified_by_user_id ?? ""}:${item.metadata_verified_by_email ?? ""}:${item.metadata_verified_by_name ?? ""}`
+            `${item.id}:${item.ocr_batch_id ?? ""}:${item.import_action ?? ""}:${item.status}:${item.remote_metadata_status ?? ""}:${item.signature_status ?? ""}:${item.review_status}:${String(item.is_reviewed ?? false)}:${String(item.metadata_ready)}:${String(item.metadata_final)}:${String(item.metadata_user_edited ?? false)}:${item.metadata_batch_id ?? ""}:${item.metadata_batch_name ?? ""}:${item.metadata_batch_assigned_to_user_id ?? ""}:${item.metadata_batch_assigned_to_email ?? ""}:${item.metadata_batch_assigned_to_name ?? ""}:${item.metadata_verified_by_user_id ?? ""}:${item.metadata_verified_by_email ?? ""}:${item.metadata_verified_by_name ?? ""}`
         )
         .join("\n"),
     [metadataItems]
@@ -547,7 +549,7 @@ export function useProcessStepModel({
       !sessionId ||
       !canManageMetadataBatches ||
       reviewMode !== "batch" ||
-      batchMode !== "auto"
+      !autoBatchPlanRequested
     ) {
       setAutoBatchPlan(null)
       setAutoBatchPlanLoading(false)
@@ -585,7 +587,13 @@ export function useProcessStepModel({
     return () => {
       cancelled = true
     }
-  }, [batchMode, batchSize, canManageMetadataBatches, reviewMode, sessionId])
+  }, [
+    autoBatchPlanRequested,
+    batchSize,
+    canManageMetadataBatches,
+    reviewMode,
+    sessionId,
+  ])
 
   const selectedAutoWorkerIdsKey = useMemo(
     () => Array.from(selectedAutoWorkerIds).join("|"),
@@ -695,6 +703,36 @@ export function useProcessStepModel({
       setActiveBatchIndex(batchGroups.length - 1)
     }
   }, [activeBatchIndex, batchGroups.length])
+
+  useEffect(() => {
+    if (reviewMode !== "batch" || manualSplitActive) return
+    let targetIndex = -1
+    if (metadataDocumentScope.scope === "batch") {
+      const targetBatchId = normalizedMetadataBatchId(
+        metadataDocumentScope.batchId
+      )
+      if (targetBatchId) {
+        targetIndex = batchGroups.findIndex(
+          (group) =>
+            group.kind === "manual" &&
+            normalizedMetadataBatchId(group.batchId) === targetBatchId
+        )
+      }
+    } else if (metadataDocumentScope.scope === "unassigned") {
+      targetIndex = findUnassignedBatchIndex(batchGroups)
+    } else if (metadataDocumentScope.scope === "reviewed") {
+      targetIndex = batchGroups.findIndex((group) => group.kind === "reviewed")
+    }
+    if (targetIndex >= 0 && targetIndex !== activeBatchIndex) {
+      setActiveBatchIndex(targetIndex)
+    }
+  }, [
+    activeBatchIndex,
+    batchGroups,
+    manualSplitActive,
+    metadataDocumentScope,
+    reviewMode,
+  ])
 
   useEffect(() => {
     if (
@@ -829,6 +867,8 @@ export function useProcessStepModel({
     setSelectedAutoWorkerIds,
     autoBatchPlan,
     setAutoBatchPlan,
+    autoBatchPlanRequested,
+    setAutoBatchPlanRequested,
     autoBatchPlanLoading,
     setAutoBatchPlanLoading,
     autoBatchPlanError,
