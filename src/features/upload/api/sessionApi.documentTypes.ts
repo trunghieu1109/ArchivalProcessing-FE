@@ -100,6 +100,35 @@ export interface DigitizationStatusResponse {
     signature_failed_documents?: number
     status_counts: Record<string, number>
   }
+  metadata_batches?: MetadataBatchSummary[]
+}
+
+export type MetadataDocumentScopeType =
+  | "all"
+  | "unassigned"
+  | "reviewed"
+  | "auto"
+  | "batch"
+
+export interface MetadataDocumentScope {
+  scope: MetadataDocumentScopeType
+  batchId?: string | null
+  offset?: number
+  size?: number
+}
+
+export interface MetadataBatchSummary {
+  kind: "manual" | "reviewed" | "unassigned"
+  batch_id?: string | null
+  display_index?: number | null
+  total_count: number
+  ready_count: number
+  reviewed_count: number
+  warning_count: number
+  pending_ready_count: number
+  assignee_user_id?: string | number | null
+  assignee_email?: string | null
+  assignee_name?: string | null
 }
 
 export interface SessionArtifact {
@@ -133,7 +162,11 @@ export interface NumberingDocumentStatus {
   mode: DocumentNumberingMode
   style_preset?: DocumentNumberingStylePreset | null
   document_numbering_style_preset?: DocumentNumberingStylePreset | null
-  document_numbering_style_overrides?: { font_size?: number; color?: string; opacity?: number } | null
+  document_numbering_style_overrides?: {
+    font_size?: number
+    color?: string
+    opacity?: number
+  } | null
   document_number_start: number
   document_number_end: number
   entry_count: number
@@ -373,8 +406,33 @@ export interface CreateMetadataBatchResponse {
   assigned_to_user_id?: string | number | null
   assigned_to_email?: string | null
   assigned_to_name?: string | null
+  requested_count?: number
   updated_count: number
+  skipped_count?: number
   documents: SessionDocumentResponse[]
+  skipped_documents?: SessionDocumentResponse[]
+  errors?: Array<{
+    document_id: number
+    metadata_batch_id?: string | null
+    detail: string
+  }>
+}
+
+export interface AutoMetadataBatchPlanGroup {
+  index: number
+  display_index?: number | null
+  start: number
+  end: number
+  total_count: number
+  document_ids: number[]
+}
+
+export interface AutoMetadataBatchPlanResponse {
+  session_id: string
+  batch_size: number
+  existing_batch_count?: number
+  total_count: number
+  groups: AutoMetadataBatchPlanGroup[]
 }
 
 export interface CloseMetadataBatchResponse {

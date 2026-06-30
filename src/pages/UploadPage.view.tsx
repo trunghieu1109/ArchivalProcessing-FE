@@ -349,6 +349,7 @@ export function UploadPageView(props: Record<string, any>) {
                   ocr.status?.total_files ?? ocrMetadataItems.length
                 }
                 metadataItems={ocrMetadataItems}
+                metadataBatchSummaries={ocr.status?.metadata_batches ?? []}
                 metadataLoading={ocrLoading}
                 metadataReloading={ocrIsReextracting}
                 metadataMessage={ocrMessage}
@@ -375,6 +376,16 @@ export function UploadPageView(props: Record<string, any>) {
                     ocr.setDocumentPageIndex(pageIndex)
                     void ocr.refreshDocumentsPage({ pageIndex })
                   },
+                }}
+                metadataDocumentScope={ocr.metadataDocumentScope}
+                onMetadataDocumentScopeChange={(scope) => {
+                  ocr.setMetadataDocumentScope(scope)
+                }}
+                onMetadataDocumentsChanged={() => {
+                  void ocr.refreshDocumentsPage({
+                    pageIndex: 0,
+                    force: true,
+                  })
                 }}
                 hasDataInput={
                   zipHas ||

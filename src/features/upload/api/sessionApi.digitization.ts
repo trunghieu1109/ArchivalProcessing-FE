@@ -16,6 +16,7 @@ import {
 } from "./sessionApi.http"
 import { documentHasUserMetadataEdit } from "./sessionApi.types"
 import type {
+  AutoMetadataBatchPlanResponse,
   BulkVerifyDocumentsResponse,
   CloseMetadataBatchResponse,
   CreateMetadataBatchResponse,
@@ -24,6 +25,7 @@ import type {
   DocumentArchiveDownload,
   DocumentNumberingMode,
   DocumentNumberingStylePreset,
+  MetadataDocumentScope,
   DocumentPreviewUrlResponse,
   SessionDocumentResponse,
   UploadMode,
@@ -73,6 +75,7 @@ export async function getDigitizationStatus(
     summaryOnly?: boolean
     limit?: number
     offset?: number
+    metadataDocumentScope?: MetadataDocumentScope
   } = {}
 ): Promise<DigitizationStatusResponse | null> {
   const searchParams = new URLSearchParams()
@@ -86,6 +89,25 @@ export async function getDigitizationStatus(
     searchParams.set("limit", String(options.limit))
   if (options.offset !== undefined)
     searchParams.set("offset", String(options.offset))
+  const metadataScope = options.metadataDocumentScope
+  if (metadataScope && metadataScope.scope !== "all") {
+    searchParams.set("metadata_batch_scope", metadataScope.scope)
+    if (metadataScope.batchId) {
+      searchParams.set("metadata_batch_id", metadataScope.batchId)
+    }
+    if (metadataScope.scope === "auto") {
+      searchParams.set(
+        "metadata_batch_offset",
+        String(Math.max(0, Math.floor(metadataScope.offset ?? 0)))
+      )
+      if (metadataScope.size !== undefined) {
+        searchParams.set(
+          "metadata_batch_size",
+          String(Math.max(1, Math.floor(metadataScope.size)))
+        )
+      }
+    }
+  }
   const query = searchParams.toString()
   return requestJsonOrNull<DigitizationStatusResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/digitization${query ? `?${query}` : ""}`
@@ -139,6 +161,18 @@ export async function createMetadataBatch(
         assigned_to_user_id: assignedToUserId,
       }),
     }
+  )
+}
+
+export async function getAutoMetadataBatchPlan(
+  sessionId: string,
+  batchSize: number
+): Promise<AutoMetadataBatchPlanResponse> {
+  const query = new URLSearchParams({
+    batch_size: String(Math.max(1, Math.floor(batchSize))),
+  })
+  return requestJson<AutoMetadataBatchPlanResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/metadata-batches/auto-plan?${query.toString()}`
   )
 }
 
@@ -330,6 +364,7 @@ export function digitizationToFolderStatus(
     metadata_verified_documents: summary?.verified,
     metadata_reviewed_documents: summary?.reviewed,
     metadata_warning_documents: summary?.warning,
+    metadata_batches: response?.metadata_batches ?? [],
     signature_extracted_documents:
       summary?.signature_extracted_documents ??
       documents.filter(
@@ -529,8 +564,13 @@ function isDigitizationDocumentComplete(
   )
 }
 
-function isMetadataReadyOrTerminalError(document: DigitizationDocument): boolean {
-  return Boolean(document.metadata_ready) || isDigitizationDocumentTerminalError(document)
+function isMetadataReadyOrTerminalError(
+  document: DigitizationDocument
+): boolean {
+  return (
+    Boolean(document.metadata_ready) ||
+    isDigitizationDocumentTerminalError(document)
+  )
 }
 
 function isDigitizationDocumentTerminalError(

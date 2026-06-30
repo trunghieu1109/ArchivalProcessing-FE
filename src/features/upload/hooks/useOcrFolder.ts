@@ -10,6 +10,7 @@ import {
   startDigitization,
   type DocumentNumberingMode,
   type DocumentNumberingStylePreset,
+  type MetadataDocumentScope,
   type SessionDocumentResponse,
   type UploadMode,
 } from "@/features/upload/api/sessionApi"
@@ -34,6 +35,7 @@ const OCR_POLL_RETRY_INTERVAL_MS = 5_000
 const OCR_DOCUMENT_PAGE_SIZE = 50
 const OCR_EMPTY_STATUS_RETRY_LIMIT = 60
 const DEFAULT_DOCUMENT_NUMBERING_MODE: DocumentNumberingMode = "page"
+const DEFAULT_METADATA_DOCUMENT_SCOPE: MetadataDocumentScope = { scope: "all" }
 
 export interface OcrRefreshOptions {
   includeDocuments?: boolean
@@ -74,6 +76,8 @@ export interface UseOcrFolderResult {
   documentPageIndex: number
   documentPageSize: number
   setDocumentPageIndex: (pageIndex: number) => void
+  metadataDocumentScope: MetadataDocumentScope
+  setMetadataDocumentScope: (scope: MetadataDocumentScope) => void
   restartMetadata: (documentId: number) => Promise<SessionDocumentResponse>
   mergeVerifiedDocuments: (documents: SessionDocumentResponse[]) => void
   reset: () => void
@@ -92,6 +96,8 @@ export function useOcrFolder(
   const [status, setStatus] = useState<FolderStatusResponse | null>(null)
   const [error, setError] = useState("")
   const [documentPageIndex, setDocumentPageIndexState] = useState(0)
+  const [metadataDocumentScope, setMetadataDocumentScopeState] =
+    useState<MetadataDocumentScope>(DEFAULT_METADATA_DOCUMENT_SCOPE)
   const documentPageSize = OCR_DOCUMENT_PAGE_SIZE
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const existingStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -106,6 +112,11 @@ export function useOcrFolder(
     new Map()
   )
   const prefetchingDocumentPagesRef = useRef<Set<number>>(new Set())
+  const metadataDocumentScopeRequestKeyRef = useRef("all")
+  const metadataDocumentScopeStateKeyRef = useRef("all")
+  const metadataDocumentScopeRef = useRef<MetadataDocumentScope>(
+    DEFAULT_METADATA_DOCUMENT_SCOPE
+  )
 
   const stop = useCallback(() => {
     if (timeoutRef.current) {
@@ -137,12 +148,34 @@ export function useOcrFolder(
     setDocumentPageIndexState(Math.max(0, Math.floor(Number(pageIndex) || 0)))
   }, [])
 
+  const setMetadataDocumentScope = useCallback(
+    (scope: MetadataDocumentScope) => {
+      const nextScope = normalizeMetadataDocumentScope(scope)
+      const nextScopeKey = metadataDocumentScopeKey(nextScope)
+      if (metadataDocumentScopeStateKeyRef.current === nextScopeKey) return
+      metadataDocumentScopeStateKeyRef.current = nextScopeKey
+      metadataDocumentScopeRef.current = nextScope
+      documentPageCacheRef.current.clear()
+      prefetchingDocumentPagesRef.current.clear()
+      setDocumentPageIndexState(0)
+      setStatus((current) =>
+        current ? { ...current, jobs: [], pagination: undefined } : current
+      )
+      setMetadataDocumentScopeState(nextScope)
+    },
+    []
+  )
+
   useEffect(() => {
     if (documentPageCacheSessionRef.current === sessionId) return
     documentPageCacheSessionRef.current = sessionId
     documentPageCacheRef.current.clear()
     prefetchingDocumentPagesRef.current.clear()
+    metadataDocumentScopeRequestKeyRef.current = "all"
+    metadataDocumentScopeStateKeyRef.current = "all"
+    metadataDocumentScopeRef.current = DEFAULT_METADATA_DOCUMENT_SCOPE
     setDocumentPageIndexState(0)
+    setMetadataDocumentScopeState(DEFAULT_METADATA_DOCUMENT_SCOPE)
   }, [sessionId])
 
   const applyStatusResult = useCallback(
@@ -177,12 +210,18 @@ export function useOcrFolder(
   const fetchDocumentPageStatus = useCallback(
     async (pageIndex: number) => {
       if (!sessionId) return null
+      const requestScope = metadataDocumentScopeRef.current
+      const requestScopeKey = metadataDocumentScopeKey(requestScope)
       const result = await getDigitizationStatus(sessionId, {
         includeDocuments: true,
         summaryOnly: false,
         limit: documentPageSize,
         offset: pageIndex * documentPageSize,
+        metadataDocumentScope: requestScope,
       })
+      if (metadataDocumentScopeStateKeyRef.current !== requestScopeKey) {
+        return null
+      }
       const fallbackFolderPath =
         result?.batches[0]?.folder_path ?? status?.folder_path ?? ""
       return {
@@ -286,18 +325,32 @@ export function useOcrFolder(
     ]
   )
 
+  useEffect(() => {
+    const scopeKey = metadataDocumentScopeKey(metadataDocumentScope)
+    if (metadataDocumentScopeRequestKeyRef.current === scopeKey) return
+    metadataDocumentScopeRequestKeyRef.current = scopeKey
+    void refreshDocumentsPage({ pageIndex: 0, force: true })
+  }, [metadataDocumentScope, refreshDocumentsPage])
+
   const pollUntilComplete = useCallback(
     (token: number, fallbackFolderPath: string) => {
       const poll = async () => {
         if (tokenRef.current !== token) return
         try {
           if (!sessionId) return
+          const requestScope = metadataDocumentScopeRef.current
+          const requestScopeKey = metadataDocumentScopeKey(requestScope)
           const result = await getDigitizationStatus(sessionId, {
             includeDocuments: true,
             summaryOnly: false,
             limit: documentPageSize,
             offset: documentPageIndex * documentPageSize,
+            metadataDocumentScope: requestScope,
           })
+          if (metadataDocumentScopeStateKeyRef.current !== requestScopeKey) {
+            timeoutRef.current = setTimeout(poll, OCR_POLL_INTERVAL_MS)
+            return
+          }
           applyStatusResult(result, fallbackFolderPath, {
             preserveDocuments: false,
           })
@@ -350,6 +403,10 @@ export function useOcrFolder(
     setStatus(null)
     setError("")
     setDocumentPageIndexState(0)
+    metadataDocumentScopeRequestKeyRef.current = "all"
+    metadataDocumentScopeStateKeyRef.current = "all"
+    metadataDocumentScopeRef.current = DEFAULT_METADATA_DOCUMENT_SCOPE
+    setMetadataDocumentScopeState(DEFAULT_METADATA_DOCUMENT_SCOPE)
   }, [stop])
 
   const refresh = useCallback(async (options: OcrRefreshOptions = {}) => {
@@ -360,6 +417,10 @@ export function useOcrFolder(
       setState("idle")
       setStatus(null)
       setError("")
+      metadataDocumentScopeRequestKeyRef.current = "all"
+      metadataDocumentScopeStateKeyRef.current = "all"
+      metadataDocumentScopeRef.current = DEFAULT_METADATA_DOCUMENT_SCOPE
+      setMetadataDocumentScopeState(DEFAULT_METADATA_DOCUMENT_SCOPE)
       return null
     }
 
@@ -372,12 +433,18 @@ export function useOcrFolder(
       includeDocuments && options.offset === undefined
         ? documentPageIndex * documentPageSize
         : options.offset
+    const requestScope = metadataDocumentScopeRef.current
+    const requestScopeKey = metadataDocumentScopeKey(requestScope)
     const result = await getDigitizationStatus(sessionId, {
       includeDocuments,
       summaryOnly: options.summaryOnly ?? !includeDocuments,
       limit: pageLimit,
       offset: pageOffset,
+      metadataDocumentScope: requestScope,
     })
+    if (metadataDocumentScopeStateKeyRef.current !== requestScopeKey) {
+      return null
+    }
     const fallbackFolderPath = result?.batches[0]?.folder_path ?? ""
     if (!hasDigitizationWork(result)) {
       stop()
@@ -388,6 +455,10 @@ export function useOcrFolder(
       setState("idle")
       setStatus(null)
       setError("")
+      metadataDocumentScopeRequestKeyRef.current = "all"
+      metadataDocumentScopeStateKeyRef.current = "all"
+      metadataDocumentScopeRef.current = DEFAULT_METADATA_DOCUMENT_SCOPE
+      setMetadataDocumentScopeState(DEFAULT_METADATA_DOCUMENT_SCOPE)
       return null
     }
 
@@ -603,13 +674,23 @@ export function useOcrFolder(
     const pollExistingStatus = async () => {
       if (tokenRef.current !== token) return
       try {
+        const requestScope = metadataDocumentScopeRef.current
+        const requestScopeKey = metadataDocumentScopeKey(requestScope)
         const result = await getDigitizationStatus(sessionId, {
           includeDocuments: true,
           summaryOnly: false,
           limit: documentPageSize,
           offset: documentPageIndex * documentPageSize,
+          metadataDocumentScope: requestScope,
         })
         if (tokenRef.current !== token) return
+        if (metadataDocumentScopeStateKeyRef.current !== requestScopeKey) {
+          existingStatusTimeoutRef.current = setTimeout(
+            pollExistingStatus,
+            OCR_POLL_INTERVAL_MS
+          )
+          return
+        }
 
         const fallbackFolderPath = result?.batches[0]?.folder_path ?? ""
         if (!hasDigitizationWork(result)) {
@@ -681,6 +762,7 @@ export function useOcrFolder(
     documentPageIndex,
     documentPageSize,
     enabled,
+    metadataDocumentScope,
     refreshDocumentsPage,
     sessionId,
     stop,
@@ -807,12 +889,21 @@ export function useOcrFolder(
               return
             }
             try {
+              const requestScope = metadataDocumentScopeRef.current
+              const requestScopeKey = metadataDocumentScopeKey(requestScope)
               const result = await getDigitizationStatus(sessionId, {
                 includeDocuments: true,
                 summaryOnly: false,
                 limit: documentPageSize,
                 offset: documentPageIndex * documentPageSize,
+                metadataDocumentScope: requestScope,
               })
+              if (
+                metadataDocumentScopeStateKeyRef.current !== requestScopeKey
+              ) {
+                timeoutRef.current = setTimeout(poll, OCR_POLL_INTERVAL_MS)
+                return
+              }
               const pendingStart = pendingStartRef.current
               if (
                 pendingStart &&
@@ -910,6 +1001,8 @@ export function useOcrFolder(
     documentPageIndex,
     documentPageSize,
     setDocumentPageIndex,
+    metadataDocumentScope,
+    setMetadataDocumentScope,
     restartMetadata,
     mergeVerifiedDocuments,
     reset,
@@ -998,6 +1091,7 @@ function mergeCachedDocumentPage(
     metadata_verified_documents: current.metadata_verified_documents,
     metadata_reviewed_documents: current.metadata_reviewed_documents,
     metadata_warning_documents: current.metadata_warning_documents,
+    metadata_batches: current.metadata_batches,
     signature_extracted_documents: current.signature_extracted_documents,
     signature_pending_documents: current.signature_pending_documents,
     signature_failed_documents: current.signature_failed_documents,
@@ -1026,14 +1120,46 @@ function nextPrefetchPageIndex(
   pageSize: number,
   status: FolderStatusResponse
 ): number | null {
-  const total = Math.max(
-    status.pagination?.total ?? 0,
-    status.total_files,
-    status.total_jobs,
-    status.jobs.length
-  )
+  const total =
+    status.pagination?.total ??
+    Math.max(status.total_files, status.total_jobs, status.jobs.length)
   const nextPageIndex = pageIndex + 1
   return nextPageIndex * pageSize < total ? nextPageIndex : null
+}
+
+function normalizeMetadataDocumentScope(
+  scope: MetadataDocumentScope
+): MetadataDocumentScope {
+  if (scope.scope === "batch") {
+    return {
+      scope: "batch",
+      batchId: String(scope.batchId ?? "").trim(),
+    }
+  }
+  if (scope.scope === "auto") {
+    return {
+      scope: "auto",
+      offset: Math.max(0, Math.floor(Number(scope.offset) || 0)),
+      size: Math.max(1, Math.floor(Number(scope.size) || 1)),
+    }
+  }
+  if (scope.scope === "reviewed" || scope.scope === "unassigned") {
+    return { scope: scope.scope }
+  }
+  return DEFAULT_METADATA_DOCUMENT_SCOPE
+}
+
+function metadataDocumentScopeKey(scope: MetadataDocumentScope): string {
+  if (scope.scope === "batch") {
+    return `batch:${String(scope.batchId ?? "").trim()}`
+  }
+  if (scope.scope === "auto") {
+    return `auto:${Math.max(0, Math.floor(Number(scope.offset) || 0))}:${Math.max(
+      1,
+      Math.floor(Number(scope.size) || 1)
+    )}`
+  }
+  return scope.scope
 }
 
 function replaceCachedDocumentJobs(

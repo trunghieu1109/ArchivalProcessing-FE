@@ -47,6 +47,11 @@ type ProcessStepViewProps = ReturnType<typeof useProcessStepModel> &
 export function ProcessStepView(props: ProcessStepViewProps) {
   const {
     activeBatch,
+    autoBatchAssigneeIds,
+    autoBatchConfirmations,
+    autoBatchPlan,
+    autoBatchPlanError,
+    autoBatchPlanLoading,
     batchGroups,
     batchMode,
     batchSizeInput,
@@ -68,13 +73,16 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     creatingManualBatch,
     currentUserIdentity,
     displayedBulkSelectableItems,
-    displayedConfirmableItems,
     displayedItems,
     displayedPagination,
     dossierReadyItems,
     exportingMetadataReview,
     failedMetadataItems,
     finishMetadataBatch,
+    confirmAllAutoBatches,
+    confirmAutoBatch,
+    confirmingAllAutoBatches,
+    confirmingAutoBatchIndexes,
     handleApply,
     handleBatchModeChange,
     handleBatchSizeInputBlur,
@@ -90,6 +98,8 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     isCoordinator,
     items,
     manualSelectedIds,
+    manualSelectedOnly,
+    manualSelectedVisibleItems,
     manualSplitActive,
     metadataFileFilter,
     metadataLoading,
@@ -121,6 +131,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     selectedDocumentId,
     sessionId,
     setMetadataFileFilter,
+    setAutoBatchAssignee,
     setSelectedAssigneeId,
     setSelectedDocumentId,
     signatureStatus,
@@ -128,6 +139,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     startManualSplit,
     toggleBulkReviewSelection,
     toggleBulkReviewSelectionMode,
+    toggleManualSelectedOnly,
     toggleManualSelection,
     verifyingIds,
     workers,
@@ -288,6 +300,11 @@ export function ProcessStepView(props: ProcessStepViewProps) {
           </div>
           <ProcessStepReviewControls
             activeBatch={activeBatch}
+            autoBatchAssigneeIds={autoBatchAssigneeIds}
+            autoBatchConfirmations={autoBatchConfirmations}
+            autoBatchPlan={autoBatchPlan}
+            autoBatchPlanError={autoBatchPlanError}
+            autoBatchPlanLoading={autoBatchPlanLoading}
             batchGroups={batchGroups}
             batchMode={batchMode}
             bulkReviewSelectionActive={bulkReviewSelectionActive}
@@ -296,43 +313,43 @@ export function ProcessStepView(props: ProcessStepViewProps) {
             bulkVerifyItems={bulkVerifyItems}
             bulkVerifying={bulkVerifying}
             canBulkSelectMetadata={canBulkSelectMetadata}
-            canExportMetadataReview={canExportMetadataReview}
             canManageMetadataBatches={canManageMetadataBatches}
             cancelManualSplit={cancelManualSplit}
             clearBulkReviewSelection={clearBulkReviewSelection}
             clearManualSelection={clearManualSelection}
+            confirmAllAutoBatches={confirmAllAutoBatches}
+            confirmAutoBatch={confirmAutoBatch}
+            confirmingAllAutoBatches={confirmingAllAutoBatches}
+            confirmingAutoBatchIndexes={confirmingAutoBatchIndexes}
             closingBatchIds={closingBatchIds}
             createManualBatchFromSelection={createManualBatchFromSelection}
             creatingManualBatch={creatingManualBatch}
             displayedBulkSelectableItems={displayedBulkSelectableItems}
-            displayedConfirmableItems={displayedConfirmableItems}
             displayedItems={displayedItems}
-            exportingMetadataReview={exportingMetadataReview}
             finishMetadataBatch={finishMetadataBatch}
             handleBatchModeChange={handleBatchModeChange}
             handleBatchSizeInputBlur={handleBatchSizeInputBlur}
             handleBatchSizeInputChange={handleBatchSizeInputChange}
-            handleExportMetadataReview={handleExportMetadataReview}
             handleRetrySelectedMetadata={handleRetrySelectedMetadata}
             handleReviewModeChange={handleReviewModeChange}
             handleSelectBatch={handleSelectBatch}
             handleVerifyAllReady={handleVerifyAllReady}
+            hasServerPagination={hasServerPagination}
             manualSelectedIds={manualSelectedIds}
+            manualSelectedOnly={manualSelectedOnly}
+            manualSelectedVisibleItems={manualSelectedVisibleItems}
             manualSplitActive={manualSplitActive}
             metadataFileFilter={metadataFileFilter}
-            metadataInProgress={metadataInProgress}
-            metadataReloading={metadataReloading}
-            readyItems={readyItems}
-            expectedCount={expectedCount}
             reviewMode={reviewMode}
             selectAllDisplayedForBulkReview={selectAllDisplayedForBulkReview}
             selectAllDisplayedForManualSplit={selectAllDisplayedForManualSplit}
             selectedAssigneeId={selectedAssigneeId}
-            sessionId={sessionId}
             setMetadataFileFilter={setMetadataFileFilter}
+            setAutoBatchAssignee={setAutoBatchAssignee}
             setSelectedAssigneeId={setSelectedAssigneeId}
             startManualSplit={startManualSplit}
             toggleBulkReviewSelectionMode={toggleBulkReviewSelectionMode}
+            toggleManualSelectedOnly={toggleManualSelectedOnly}
             workers={workers}
             workersLoading={workersLoading}
             sortedItems={sortedItems}
@@ -393,7 +410,9 @@ export function ProcessStepView(props: ProcessStepViewProps) {
               )}
               {manualSplitActive && displayedItems.length === 0 && (
                 <div className="rounded-xl border border-dashed border-[#CBD5E1] bg-white p-6 text-center text-sm text-muted-foreground">
-                  Không còn tài liệu chưa chia.
+                  {manualSelectedOnly
+                    ? "Chưa có tài liệu đã chọn trong bộ lọc hiện tại."
+                    : "Không còn tài liệu chưa chia."}
                 </div>
               )}
               {!manualSplitActive &&

@@ -2,6 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import { listChinhlyUsers, type ChinhlyUser } from "@/features/auth/api/authApi"
 import { useAuth } from "@/features/auth/lib/AuthContext"
+import {
+  getAutoMetadataBatchPlan,
+  type AutoMetadataBatchPlanResponse,
+  type CreateMetadataBatchResponse,
+} from "@/features/upload/api/sessionApi"
 import { usePagedItems } from "@/features/upload/hooks/usePagedItems"
 import { hasMetadataWarning } from "@/features/upload/lib/metadata"
 import type { DocumentPreviewTarget } from "@/features/upload/components/DocumentPdfPreview"
@@ -9,7 +14,9 @@ import type { PdfMetadata } from "@/features/upload/types"
 import {
   EMPTY_METADATA_ITEMS,
   type MetadataActorIdentity,
+  type MetadataBatchSummary,
   type MetadataBatchMode,
+  type MetadataDocumentScope,
   type MetadataReviewMode,
   type MetadataServerPaginationControls,
 } from "./ProcessStep.types"
@@ -24,7 +31,9 @@ import {
 } from "./ProcessStep.metadataUtils"
 import {
   buildManualMetadataBatchGroups,
+  buildManualMetadataBatchGroupsFromSummaries,
   buildMetadataBatchGroups,
+  buildMetadataBatchGroupsFromSummaries,
   canUserEditMetadataItem,
   canUserRestartMetadata,
   chinhlyUserId,
@@ -44,6 +53,8 @@ interface UseProcessStepModelParams {
   sessionId: string | null
   pdfPaths: string[]
   metadataItems: PdfMetadata[]
+  metadataBatchSummaries?: MetadataBatchSummary[]
+  metadataDocumentScope?: MetadataDocumentScope
   metadataPagination?: MetadataServerPaginationControls
 }
 
@@ -51,6 +62,8 @@ export function useProcessStepModel({
   sessionId,
   pdfPaths,
   metadataItems,
+  metadataBatchSummaries = [],
+  metadataDocumentScope = { scope: "all" },
   metadataPagination,
 }: UseProcessStepModelParams) {
   const { user } = useAuth()
@@ -77,15 +90,36 @@ export function useProcessStepModel({
   const [manualSelectedIds, setManualSelectedIds] = useState<Set<number>>(
     () => new Set()
   )
+  const [manualSelectedOnly, setManualSelectedOnly] = useState(false)
+  const [manualSelectedItemSnapshots, setManualSelectedItemSnapshots] =
+    useState<Map<number, PdfMetadata>>(() => new Map())
   const [bulkReviewSelectionActive, setBulkReviewSelectionActive] =
     useState(false)
   const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<number>>(
     () => new Set()
   )
+  const [bulkSelectedItemSnapshots, setBulkSelectedItemSnapshots] = useState<
+    Map<number, PdfMetadata>
+  >(() => new Map())
   const [exportingMetadataReview, setExportingMetadataReview] = useState(false)
   const [workers, setWorkers] = useState<ChinhlyUser[]>([])
   const [workersLoading, setWorkersLoading] = useState(false)
   const [selectedAssigneeId, setSelectedAssigneeId] = useState("")
+  const [autoBatchPlan, setAutoBatchPlan] =
+    useState<AutoMetadataBatchPlanResponse | null>(null)
+  const [autoBatchPlanLoading, setAutoBatchPlanLoading] = useState(false)
+  const [autoBatchPlanError, setAutoBatchPlanError] = useState("")
+  const [autoBatchAssigneeIds, setAutoBatchAssigneeIds] = useState<
+    Map<number, string>
+  >(() => new Map())
+  const [autoBatchConfirmations, setAutoBatchConfirmations] = useState<
+    Map<number, CreateMetadataBatchResponse>
+  >(() => new Map())
+  const [confirmingAutoBatchIndexes, setConfirmingAutoBatchIndexes] = useState<
+    Set<number>
+  >(() => new Set())
+  const [confirmingAllAutoBatches, setConfirmingAllAutoBatches] =
+    useState(false)
   const [activeBatchIndex, setActiveBatchIndex] = useState(0)
   const previewLayoutRef = useRef<HTMLDivElement | null>(null)
   const didAutoSelectRef = useRef(false)
@@ -129,6 +163,11 @@ export function useProcessStepModel({
     const sessionChanged = metadataSessionIdRef.current !== sessionId
     if (sessionChanged) {
       metadataSessionIdRef.current = sessionId
+      setManualSelectedIds(new Set())
+      setManualSelectedOnly(false)
+      setManualSelectedItemSnapshots(new Map())
+      setBulkSelectedIds(new Set())
+      setBulkSelectedItemSnapshots(new Map())
     }
     setItems((previous) =>
       mergeIncomingMetadata(
@@ -137,7 +176,13 @@ export function useProcessStepModel({
         { keepMissing: !hasServerPagination }
       )
     )
-  }, [hasServerPagination, isCoordinator, metadataItems, metadataKey, sessionId])
+  }, [
+    hasServerPagination,
+    isCoordinator,
+    metadataItems,
+    metadataKey,
+    sessionId,
+  ])
 
   const paths = useMemo(
     () =>
@@ -201,6 +246,36 @@ export function useProcessStepModel({
           ),
     [currentUserIdentity, isCoordinator, sortedItems]
   )
+  const scopedMetadataBatchSummaries = useMemo(
+    () =>
+      isCoordinator
+        ? metadataBatchSummaries
+        : metadataBatchSummaries.filter((summary) => {
+            if (summary.kind !== "manual") return false
+            const assigneeId = String(summary.assignee_user_id ?? "").trim()
+            const assigneeEmail = String(summary.assignee_email ?? "")
+              .trim()
+              .toLowerCase()
+            const assigneeName = String(summary.assignee_name ?? "").trim()
+            if (
+              currentUserIdentity.id &&
+              assigneeId === currentUserIdentity.id
+            ) {
+              return true
+            }
+            if (
+              currentUserIdentity.email &&
+              assigneeEmail === currentUserIdentity.email.toLowerCase()
+            ) {
+              return true
+            }
+            return Boolean(
+              currentUserIdentity.name &&
+              assigneeName === currentUserIdentity.name
+            )
+          }),
+    [currentUserIdentity, isCoordinator, metadataBatchSummaries]
+  )
   const normalizedMetadataFileFilter = useMemo(
     () => normalizeSearchText(metadataFileFilter),
     [metadataFileFilter]
@@ -224,9 +299,28 @@ export function useProcessStepModel({
   const batchGroups = useMemo(
     () =>
       batchMode === "manual"
-        ? buildManualMetadataBatchGroups(batchScopeItems)
-        : buildMetadataBatchGroups(batchScopeItems, batchSize),
-    [batchMode, batchSize, batchScopeItems]
+        ? metadataBatchSummaries.length > 0
+          ? buildManualMetadataBatchGroupsFromSummaries(
+              scopedMetadataBatchSummaries,
+              batchScopeItems
+            )
+          : buildManualMetadataBatchGroups(batchScopeItems)
+        : metadataBatchSummaries.length > 0
+          ? buildMetadataBatchGroupsFromSummaries(
+              scopedMetadataBatchSummaries,
+              batchScopeItems,
+              batchSize,
+              metadataDocumentScope
+            )
+          : buildMetadataBatchGroups(batchScopeItems, batchSize),
+    [
+      batchMode,
+      batchSize,
+      batchScopeItems,
+      metadataDocumentScope,
+      metadataBatchSummaries.length,
+      scopedMetadataBatchSummaries,
+    ]
   )
   const unassignedBatch = useMemo(
     () => batchGroups.find((group) => group.kind === "unassigned") ?? null,
@@ -249,29 +343,69 @@ export function useProcessStepModel({
       ),
     [normalizedMetadataFileFilter, unassignedBatch]
   )
+  const loadedItemsById = useMemo(
+    () => new Map(items.map((item) => [item.id, item] as const)),
+    [items]
+  )
+  const loadedItemIdsKey = useMemo(
+    () => items.map((item) => item.id).join("|"),
+    [items]
+  )
+  const manualSelectedKnownItems = useMemo(
+    () =>
+      Array.from(manualSelectedIds)
+        .map((id) => manualSelectedItemSnapshots.get(id))
+        .filter((item): item is PdfMetadata => Boolean(item)),
+    [manualSelectedIds, manualSelectedItemSnapshots]
+  )
+  const manualSelectedVisibleItems = useMemo(
+    () =>
+      filterMetadataItemsByFileName(
+        manualSelectedKnownItems,
+        normalizedMetadataFileFilter
+      ),
+    [manualSelectedKnownItems, normalizedMetadataFileFilter]
+  )
+  const manualSplitDisplayItems = manualSelectedOnly
+    ? manualSelectedVisibleItems
+    : unassignedBatchVisibleItems
+  const manualSelectedDocumentIds = useMemo(() => {
+    const remainingIds = new Set(manualSelectedIds)
+    const orderedIds: number[] = []
+    sortedItems.forEach((item) => {
+      if (!remainingIds.has(item.id)) return
+      orderedIds.push(item.id)
+      remainingIds.delete(item.id)
+    })
+    remainingIds.forEach((id) => orderedIds.push(id))
+    return orderedIds
+  }, [manualSelectedIds, sortedItems])
   const unpagedDisplayedItems =
     reviewMode === "batch"
       ? manualSplitActive
-        ? unassignedBatchVisibleItems
+        ? manualSplitDisplayItems
         : activeBatchVisibleItems
       : filteredListScopeItems
   const clientDisplayedPagination = usePagedItems(unpagedDisplayedItems, {
     defaultPageSize: DEFAULT_METADATA_PAGE_SIZE,
     pageSizeOptions: METADATA_PAGE_SIZE_OPTIONS,
-    resetKey: `${sessionId ?? ""}:${reviewMode}:${batchMode}:${manualSplitActive ? "split" : "normal"}:${activeBatch?.index ?? "list"}:${normalizedMetadataFileFilter}`,
+    resetKey: `${sessionId ?? ""}:${reviewMode}:${batchMode}:${manualSplitActive ? "split" : "normal"}:${manualSelectedOnly ? "selected" : "all"}:${activeBatch?.index ?? "list"}:${normalizedMetadataFileFilter}`,
     storageKey: "archival-processing.metadata-display-page-size",
   })
   const serverPagination = metadataPagination?.pagination ?? null
-  const displayedItems = metadataPagination
+  const useServerPaginationForDisplay =
+    Boolean(metadataPagination) && !(manualSplitActive && manualSelectedOnly)
+  const displayedItems = useServerPaginationForDisplay
     ? unpagedDisplayedItems
     : clientDisplayedPagination.items
-  const displayedPagination = metadataPagination
-    ? serverPaginationForControls(
-        metadataPagination,
-        serverPagination,
-        displayedItems.length
-      )
-    : clientDisplayedPagination
+  const displayedPagination =
+    useServerPaginationForDisplay && metadataPagination
+      ? serverPaginationForControls(
+          metadataPagination,
+          serverPagination,
+          displayedItems.length
+        )
+      : clientDisplayedPagination
   const displayedItemIdsKey = useMemo(
     () => displayedItems.map((item) => item.id).join("|"),
     [displayedItems]
@@ -288,9 +422,7 @@ export function useProcessStepModel({
   const displayedRetryableItems = useMemo(
     () =>
       displayedItems.filter(
-        (item) =>
-          isMetadataFailedItem(item) &&
-          canRestartMetadata
+        (item) => isMetadataFailedItem(item) && canRestartMetadata
       ),
     [canRestartMetadata, displayedItems]
   )
@@ -300,12 +432,21 @@ export function useProcessStepModel({
     displayedRetryableItems.forEach((item) => byId.set(item.id, item))
     return displayedItems.filter((item) => byId.has(item.id))
   }, [displayedConfirmableItems, displayedItems, displayedRetryableItems])
+  const bulkSelectedKnownItems = useMemo(
+    () =>
+      Array.from(bulkSelectedIds)
+        .map((id) => bulkSelectedItemSnapshots.get(id))
+        .filter((item): item is PdfMetadata => Boolean(item)),
+    [bulkSelectedIds, bulkSelectedItemSnapshots]
+  )
   const bulkSelectedItems = useMemo(
     () =>
-      displayedBulkSelectableItems.filter((item) =>
-        bulkSelectedIds.has(item.id)
+      bulkSelectedKnownItems.filter(
+        (item) =>
+          (isMetadataConfirmable(item) || isMetadataFailedItem(item)) &&
+          canUserEditMetadataItem(item, currentUserIdentity)
       ),
-    [bulkSelectedIds, displayedBulkSelectableItems]
+    [bulkSelectedKnownItems, currentUserIdentity]
   )
   const bulkRetryItems = bulkReviewSelectionActive
     ? bulkSelectedItems.filter(isMetadataFailedItem)
@@ -346,6 +487,8 @@ export function useProcessStepModel({
     if (!canManageMetadataBatches) {
       setManualSplitActive(false)
       setManualSelectedIds(new Set())
+      setManualSelectedOnly(false)
+      setManualSelectedItemSnapshots(new Map())
       setSelectedAssigneeId("")
       setWorkers([])
       return
@@ -386,15 +529,87 @@ export function useProcessStepModel({
   }, [canManageMetadataBatches])
 
   useEffect(() => {
+    if (
+      !sessionId ||
+      !canManageMetadataBatches ||
+      reviewMode !== "batch" ||
+      batchMode !== "auto"
+    ) {
+      setAutoBatchPlan(null)
+      setAutoBatchPlanLoading(false)
+      setAutoBatchPlanError("")
+      setAutoBatchAssigneeIds(new Map())
+      setAutoBatchConfirmations(new Map())
+      setConfirmingAutoBatchIndexes(new Set())
+      setConfirmingAllAutoBatches(false)
+      return
+    }
+
+    let cancelled = false
+    setAutoBatchPlanLoading(true)
+    setAutoBatchPlanError("")
+    getAutoMetadataBatchPlan(sessionId, batchSize)
+      .then((plan) => {
+        if (cancelled) return
+        setAutoBatchPlan(plan)
+        setAutoBatchConfirmations(new Map())
+        setConfirmingAutoBatchIndexes(new Set())
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setAutoBatchPlan(null)
+        setAutoBatchPlanError(
+          err instanceof Error
+            ? err.message
+            : "Không thể tạo đề xuất phân công tự động."
+        )
+      })
+      .finally(() => {
+        if (!cancelled) setAutoBatchPlanLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [batchMode, batchSize, canManageMetadataBatches, reviewMode, sessionId])
+
+  const workerIdsKey = useMemo(
+    () => workers.map((worker) => chinhlyUserId(worker)).join("|"),
+    [workers]
+  )
+
+  useEffect(() => {
+    if (!autoBatchPlan) return
+    const workerIds = workers
+      .map((worker) => chinhlyUserId(worker))
+      .filter(Boolean)
+    setAutoBatchAssigneeIds(
+      new Map(
+        autoBatchPlan.groups.map((group, index) => [
+          group.index,
+          workerIds.length > 0
+            ? workerIds[
+                ((group.display_index ?? index + 1) - 1) % workerIds.length
+              ]
+            : "",
+        ])
+      )
+    )
+  }, [autoBatchPlan, workerIdsKey, workers])
+
+  useEffect(() => {
     const availableItems = manualSplitActive
-      ? displayedItems
+      ? (unassignedBatch?.items ?? EMPTY_METADATA_ITEMS)
       : filteredListScopeItems
     const availableIds = new Set(availableItems.map((item) => item.id))
+    const loadedIds = new Set(items.map((item) => item.id))
     setManualSelectedIds((previous) => {
       const next = new Set<number>()
       let changed = false
       previous.forEach((id) => {
-        if (availableIds.has(id)) {
+        const keepUnloadedServerSelection =
+          hasServerPagination && manualSplitActive && !loadedIds.has(id)
+        if (availableIds.has(id) || keepUnloadedServerSelection) {
           next.add(id)
         } else {
           changed = true
@@ -403,12 +618,44 @@ export function useProcessStepModel({
       return changed ? next : previous
     })
   }, [
-    displayedItems,
-    displayedItemIdsKey,
-    manualSplitActive,
     filteredListScopeItems,
+    hasServerPagination,
+    items,
+    loadedItemIdsKey,
+    manualSplitActive,
     sortedItemIdsKey,
+    unassignedBatch,
   ])
+
+  useEffect(() => {
+    setManualSelectedItemSnapshots((previous) => {
+      const next = new Map<number, PdfMetadata>()
+      manualSelectedIds.forEach((id) => {
+        const item = loadedItemsById.get(id) ?? previous.get(id)
+        if (item) next.set(id, item)
+      })
+      if (next.size !== previous.size) return next
+      for (const [id, item] of next) {
+        if (previous.get(id) !== item) return next
+      }
+      return previous
+    })
+  }, [loadedItemsById, manualSelectedIds])
+
+  useEffect(() => {
+    setBulkSelectedItemSnapshots((previous) => {
+      const next = new Map<number, PdfMetadata>()
+      bulkSelectedIds.forEach((id) => {
+        const item = loadedItemsById.get(id) ?? previous.get(id)
+        if (item) next.set(id, item)
+      })
+      if (next.size !== previous.size) return next
+      for (const [id, item] of next) {
+        if (previous.get(id) !== item) return next
+      }
+      return previous
+    })
+  }, [bulkSelectedIds, loadedItemsById])
 
   useEffect(() => {
     if (batchGroups.length === 0) {
@@ -533,10 +780,16 @@ export function useProcessStepModel({
     setClosingBatchIds,
     manualSelectedIds,
     setManualSelectedIds,
+    manualSelectedOnly,
+    setManualSelectedOnly,
+    manualSelectedItemSnapshots,
+    setManualSelectedItemSnapshots,
     bulkReviewSelectionActive,
     setBulkReviewSelectionActive,
     bulkSelectedIds,
     setBulkSelectedIds,
+    bulkSelectedItemSnapshots,
+    setBulkSelectedItemSnapshots,
     exportingMetadataReview,
     setExportingMetadataReview,
     workers,
@@ -545,6 +798,20 @@ export function useProcessStepModel({
     setWorkersLoading,
     selectedAssigneeId,
     setSelectedAssigneeId,
+    autoBatchPlan,
+    setAutoBatchPlan,
+    autoBatchPlanLoading,
+    setAutoBatchPlanLoading,
+    autoBatchPlanError,
+    setAutoBatchPlanError,
+    autoBatchAssigneeIds,
+    setAutoBatchAssigneeIds,
+    autoBatchConfirmations,
+    setAutoBatchConfirmations,
+    confirmingAutoBatchIndexes,
+    setConfirmingAutoBatchIndexes,
+    confirmingAllAutoBatches,
+    setConfirmingAllAutoBatches,
     activeBatchIndex,
     setActiveBatchIndex,
     previewLayoutRef,
@@ -555,6 +822,8 @@ export function useProcessStepModel({
     currentUserIdentity,
     isCoordinator,
     hasServerPagination,
+    metadataBatchSummaries: scopedMetadataBatchSummaries,
+    metadataDocumentScope,
     canManageMetadataBatches,
     canExportMetadataReview,
     canRestartMetadata,
@@ -576,6 +845,11 @@ export function useProcessStepModel({
     batchGroups,
     unassignedBatch,
     activeBatch,
+    unassignedBatchVisibleItems,
+    manualSelectedKnownItems,
+    manualSelectedVisibleItems,
+    manualSplitDisplayItems,
+    manualSelectedDocumentIds,
     unpagedDisplayedItems,
     displayedPagination,
     displayedItems,
@@ -584,6 +858,7 @@ export function useProcessStepModel({
     displayedRetryableItems,
     displayedBulkSelectableItems,
     bulkSelectedItems,
+    bulkSelectedKnownItems,
     bulkRetryItems,
     bulkVerifyItems,
     bulkSelectionCount,

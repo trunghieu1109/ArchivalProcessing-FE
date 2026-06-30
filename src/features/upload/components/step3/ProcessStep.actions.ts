@@ -12,6 +12,7 @@ import type { PdfMetadata } from "@/features/upload/types"
 import type {
   MetadataBatchGroup,
   MetadataBatchMode,
+  MetadataDocumentScope,
   MetadataReviewMode,
 } from "./ProcessStep.types"
 import {
@@ -30,10 +31,13 @@ import {
   addId,
   addTextId,
   buildManualMetadataBatchGroups,
+  buildManualMetadataBatchGroupsFromSummaries,
   buildMetadataBatchGroups,
+  buildMetadataBatchGroupsFromSummaries,
   canUserEditMetadataItem,
   findUnassignedBatchIndex,
   firstPreferredMetadataItem,
+  metadataDocumentScopeForGroup,
   normalizeBatchSize,
   normalizedMetadataBatchId,
   removeId,
@@ -49,6 +53,8 @@ type ProcessStepActionContext = ReturnType<typeof useProcessStepModel> & {
   sessionId: string | null
   onDocumentsVerified?: (documents: SessionDocumentResponse[]) => void
   onRetryMetadata?: (documentId: number) => Promise<SessionDocumentResponse>
+  onMetadataDocumentScopeChange?: (scope: MetadataDocumentScope) => void
+  onMetadataDocumentsChanged?: () => void
 }
 
 const BULK_ACTION_BATCH_SIZE = readPositiveEnvInt(
@@ -61,6 +67,7 @@ const BULK_ACTION_CONCURRENCY = readPositiveEnvInt(
   4,
   32
 )
+const MAX_MANUAL_METADATA_BATCH_DOCUMENTS = 1000
 
 export function createProcessStepActions(context: ProcessStepActionContext) {
   const {
@@ -71,13 +78,19 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     bulkVerifyItems,
     bulkRetryItems,
     onDocumentsVerified,
+    onMetadataDocumentScopeChange,
+    onMetadataDocumentsChanged,
     setBulkVerifying,
     setReviewMode,
     setManualSplitActive,
     setManualSelectedIds,
+    setManualSelectedOnly,
+    setManualSelectedItemSnapshots,
     setSelectedDocumentId,
     activeBatch,
     batchScopeItems,
+    metadataBatchSummaries,
+    metadataDocumentScope,
     setBatchSize,
     setActiveBatchIndex,
     setBatchSizeInput,
@@ -86,10 +99,13 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     setBatchMode,
     sortedItems,
     displayedItems,
+    manualSelectedKnownItems,
+    manualSelectedDocumentIds,
     manualLastSelectedIdRef,
     setSelectedAssigneeId,
     setBulkReviewSelectionActive,
     setBulkSelectedIds,
+    setBulkSelectedItemSnapshots,
     bulkLastSelectedIdRef,
     bulkReviewSelectionActive,
     displayedBulkSelectableItems,
@@ -106,13 +122,28 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     previewLayoutRef,
     setPreviewWidthPercent,
     currentUserIdentity,
+    autoBatchPlan,
+    autoBatchAssigneeIds,
+    setAutoBatchAssigneeIds,
+    autoBatchConfirmations,
+    setAutoBatchConfirmations,
+    confirmingAutoBatchIndexes,
+    setConfirmingAutoBatchIndexes,
+    confirmingAllAutoBatches,
+    setConfirmingAllAutoBatches,
   } = context
+  const autoAssignmentInProgress =
+    confirmingAllAutoBatches || confirmingAutoBatchIndexes.size > 0
 
   const handleApply = async (
     dataPath: string,
     meta?: Record<string, unknown>
   ) => {
-    const item = items.find((candidate) => candidate.data_path === dataPath)
+    const item =
+      items.find((candidate) => candidate.data_path === dataPath) ??
+      manualSelectedKnownItems.find(
+        (candidate) => candidate.data_path === dataPath
+      )
     if (!item) throw new Error("Không tìm thấy tài liệu trong session.")
     if (!sessionId) throw new Error("Chưa có session để xác nhận metadata.")
     const manualFillAllowed =
@@ -143,6 +174,7 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
       setItems(nextItems)
       setSelectedDocumentId(nextSelectedItem?.id ?? null)
       onDocumentsVerified?.([verified])
+      onMetadataDocumentsChanged?.()
     } finally {
       setVerifyingIds((previous) => removeId(previous, item.id))
     }
@@ -185,6 +217,18 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
         const nextItems = replaceVerifiedDocuments(items, verified)
         setItems(nextItems)
         onDocumentsVerified?.(verified)
+        onMetadataDocumentsChanged?.()
+        const verifiedIds = new Set(verified.map((document) => document.id))
+        setBulkSelectedIds((previous) => {
+          const next = new Set(previous)
+          verifiedIds.forEach((id) => next.delete(id))
+          return next
+        })
+        setBulkSelectedItemSnapshots((previous) => {
+          const next = new Map(previous)
+          verifiedIds.forEach((id) => next.delete(id))
+          return next
+        })
       }
 
       const failedCount = results.reduce((count, result, index) => {
@@ -193,9 +237,23 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
         }
         return count + (requestGroups[index]?.length ?? 0)
       }, 0)
+      const failedDetails = results.flatMap((result) => {
+        if (result.status === "fulfilled") {
+          return (result.value.errors ?? [])
+            .map((error) => String(error.detail ?? "").trim())
+            .filter(Boolean)
+        }
+        const reason =
+          result.reason instanceof Error
+            ? result.reason.message
+            : String(result.reason ?? "").trim()
+        return reason ? [reason] : []
+      })
       if (failedCount > 0) {
         toast.error(
-          `${failedCount} tài liệu chưa xác nhận được. Vui lòng kiểm tra lại.`
+          failedDetails[0]
+            ? `${failedCount} tài liệu chưa xác nhận được. ${failedDetails[0]}`
+            : `${failedCount} tài liệu chưa xác nhận được. Vui lòng kiểm tra lại.`
         )
       }
       if (verified.length > 0) {
@@ -214,29 +272,59 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
   const resetBulkReviewSelection = () => {
     setBulkReviewSelectionActive(false)
     setBulkSelectedIds(new Set())
+    setBulkSelectedItemSnapshots(new Map())
     bulkLastSelectedIdRef.current = null
   }
 
   const handleReviewModeChange = (mode: MetadataReviewMode) => {
+    if (autoAssignmentInProgress) {
+      toast.info("Đợi hoàn tất xác nhận phân công hiện tại.")
+      return
+    }
     setReviewMode(mode)
     setManualSplitActive(false)
     setManualSelectedIds(new Set())
+    setManualSelectedOnly(false)
+    setManualSelectedItemSnapshots(new Map())
     resetBulkReviewSelection()
     if (mode === "batch") {
+      if (activeBatch) {
+        onMetadataDocumentScopeChange?.(
+          metadataDocumentScopeForGroup(activeBatch)
+        )
+      }
       setSelectedDocumentId(
         firstPreferredMetadataItem(activeBatch?.items ?? EMPTY_METADATA_ITEMS)
           ?.id ?? null
       )
+    } else {
+      onMetadataDocumentScopeChange?.({ scope: "all" })
     }
   }
 
   const handleBatchSizeChange = (value: number) => {
+    if (autoAssignmentInProgress) return
     const nextBatchSize = normalizeBatchSize(value)
     setBatchSize(nextBatchSize)
     setActiveBatchIndex(0)
+    const nextGroups =
+      metadataBatchSummaries.length > 0
+        ? buildMetadataBatchGroupsFromSummaries(
+            metadataBatchSummaries,
+            batchScopeItems,
+            nextBatchSize,
+            metadataDocumentScope
+          )
+        : buildMetadataBatchGroups(batchScopeItems, nextBatchSize)
+    const targetGroup = nextGroups[0] ?? null
+    onMetadataDocumentScopeChange?.(
+      targetGroup
+        ? metadataDocumentScopeForGroup(targetGroup)
+        : { scope: "all" }
+    )
     setSelectedDocumentId(
-      firstPreferredMetadataItem(batchScopeItems.slice(0, nextBatchSize))?.id ??
-        null
+      firstPreferredMetadataItem(targetGroup?.items ?? EMPTY_METADATA_ITEMS)
+        ?.id ?? null
     )
   }
 
@@ -262,24 +350,51 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     setActiveBatchIndex(group.index)
     setManualSplitActive(false)
     setManualSelectedIds(new Set())
+    setManualSelectedOnly(false)
+    setManualSelectedItemSnapshots(new Map())
     setSelectedAssigneeId("")
     resetBulkReviewSelection()
+    onMetadataDocumentScopeChange?.(metadataDocumentScopeForGroup(group))
     setSelectedDocumentId(firstPreferredMetadataItem(group.items)?.id ?? null)
   }
 
   const handleBatchModeChange = (mode: MetadataBatchMode) => {
+    if (autoAssignmentInProgress) {
+      toast.info("Đợi hoàn tất xác nhận phân công hiện tại.")
+      return
+    }
     setBatchMode(mode)
     setManualSplitActive(false)
     setManualSelectedIds(new Set())
+    setManualSelectedOnly(false)
+    setManualSelectedItemSnapshots(new Map())
     setSelectedAssigneeId("")
     resetBulkReviewSelection()
     setActiveBatchIndex(0)
     const nextGroups =
       mode === "manual"
-        ? buildManualMetadataBatchGroups(batchScopeItems)
-        : buildMetadataBatchGroups(batchScopeItems, batchSize)
+        ? metadataBatchSummaries.length > 0
+          ? buildManualMetadataBatchGroupsFromSummaries(
+              metadataBatchSummaries,
+              batchScopeItems
+            )
+          : buildManualMetadataBatchGroups(batchScopeItems)
+        : metadataBatchSummaries.length > 0
+          ? buildMetadataBatchGroupsFromSummaries(
+              metadataBatchSummaries,
+              batchScopeItems,
+              batchSize,
+              metadataDocumentScope
+            )
+          : buildMetadataBatchGroups(batchScopeItems, batchSize)
+    const targetGroup = nextGroups[0] ?? null
+    onMetadataDocumentScopeChange?.(
+      targetGroup
+        ? metadataDocumentScopeForGroup(targetGroup)
+        : { scope: "all" }
+    )
     setSelectedDocumentId(
-      firstPreferredMetadataItem(nextGroups[0]?.items ?? batchScopeItems)?.id ??
+      firstPreferredMetadataItem(targetGroup?.items ?? batchScopeItems)?.id ??
         null
     )
   }
@@ -290,20 +405,31 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     setBatchMode("manual")
     setManualSplitActive(true)
     setManualSelectedIds(new Set())
+    setManualSelectedOnly(false)
+    setManualSelectedItemSnapshots(new Map())
     resetBulkReviewSelection()
-    const nextGroups = buildManualMetadataBatchGroups(sortedItems)
+    const nextGroups =
+      metadataBatchSummaries.length > 0
+        ? buildManualMetadataBatchGroupsFromSummaries(
+            metadataBatchSummaries,
+            sortedItems
+          )
+        : buildManualMetadataBatchGroups(sortedItems)
     const unassignedIndex = findUnassignedBatchIndex(nextGroups)
     const targetGroup = nextGroups[unassignedIndex] ?? nextGroups[0] ?? null
     setActiveBatchIndex(unassignedIndex >= 0 ? unassignedIndex : 0)
     setSelectedDocumentId(
       firstPreferredMetadataItem(targetGroup?.items ?? [])?.id ?? null
     )
+    onMetadataDocumentScopeChange?.({ scope: "unassigned" })
     manualLastSelectedIdRef.current = null
   }
 
   const cancelManualSplit = () => {
     setManualSplitActive(false)
     setManualSelectedIds(new Set())
+    setManualSelectedOnly(false)
+    setManualSelectedItemSnapshots(new Map())
     setSelectedAssigneeId("")
     manualLastSelectedIdRef.current = null
   }
@@ -334,14 +460,24 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
   }
 
   const selectAllDisplayedForManualSplit = () => {
-    setManualSelectedIds(new Set(displayedItems.map((item) => item.id)))
+    setManualSelectedIds((previous) => {
+      const next = new Set(previous)
+      displayedItems.forEach((item) => next.add(item.id))
+      return next
+    })
     manualLastSelectedIdRef.current =
       displayedItems[displayedItems.length - 1]?.id ?? null
   }
 
   const clearManualSelection = () => {
     setManualSelectedIds(new Set())
+    setManualSelectedOnly(false)
+    setManualSelectedItemSnapshots(new Map())
     manualLastSelectedIdRef.current = null
+  }
+
+  const toggleManualSelectedOnly = () => {
+    setManualSelectedOnly((previous) => !previous)
   }
 
   const toggleBulkReviewSelectionMode = () => {
@@ -351,6 +487,7 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     }
     setBulkReviewSelectionActive(true)
     setBulkSelectedIds(new Set())
+    setBulkSelectedItemSnapshots(new Map())
     bulkLastSelectedIdRef.current = null
   }
 
@@ -384,9 +521,11 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
   }
 
   const selectAllDisplayedForBulkReview = () => {
-    setBulkSelectedIds(
-      new Set(displayedBulkSelectableItems.map((item) => item.id))
-    )
+    setBulkSelectedIds((previous) => {
+      const next = new Set(previous)
+      displayedBulkSelectableItems.forEach((item) => next.add(item.id))
+      return next
+    })
     bulkLastSelectedIdRef.current =
       displayedBulkSelectableItems[displayedBulkSelectableItems.length - 1]
         ?.id ?? null
@@ -394,7 +533,154 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
 
   const clearBulkReviewSelection = () => {
     setBulkSelectedIds(new Set())
+    setBulkSelectedItemSnapshots(new Map())
     bulkLastSelectedIdRef.current = null
+  }
+
+  const setAutoBatchAssignee = (
+    groupIndex: number,
+    assignedToUserId: string
+  ) => {
+    setAutoBatchAssigneeIds((previous) => {
+      const next = new Map(previous)
+      next.set(groupIndex, assignedToUserId)
+      return next
+    })
+  }
+
+  const confirmAutoBatch = async (groupIndex: number) => {
+    if (!sessionId || !autoBatchPlan) return
+    const group = autoBatchPlan.groups.find(
+      (candidate) => candidate.index === groupIndex
+    )
+    if (!group || autoBatchConfirmations.has(groupIndex)) return
+    const assignedToUserId = autoBatchAssigneeIds.get(groupIndex) ?? ""
+    if (!assignedToUserId) {
+      toast.error("Chọn người phụ trách trước khi xác nhận lô.")
+      return
+    }
+
+    setConfirmingAutoBatchIndexes((previous) => addId(previous, groupIndex))
+    try {
+      const response = await createMetadataBatch(
+        sessionId,
+        group.document_ids,
+        assignedToUserId
+      )
+      const refreshedDocuments = [
+        ...(response.documents ?? []),
+        ...(response.skipped_documents ?? []),
+      ]
+      if (refreshedDocuments.length > 0) {
+        setItems((previous) => replaceDocuments(previous, refreshedDocuments))
+      }
+      if (response.documents.length > 0) {
+        onDocumentsVerified?.(response.documents)
+      }
+      setAutoBatchConfirmations((previous) => {
+        const next = new Map(previous)
+        next.set(groupIndex, response)
+        return next
+      })
+      onMetadataDocumentsChanged?.()
+      const skippedCount =
+        response.skipped_count ?? response.skipped_documents?.length ?? 0
+      if (skippedCount > 0) {
+        toast.warning(
+          `Đã xác nhận lô với ${response.updated_count} tài liệu; bỏ qua ${skippedCount} tài liệu đã được phân công hoặc xác nhận trước đó.`
+        )
+      } else {
+        toast.success(
+          `Đã xác nhận phân công ${response.updated_count} tài liệu.`
+        )
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Không thể xác nhận phân công lô."
+      )
+    } finally {
+      setConfirmingAutoBatchIndexes((previous) =>
+        removeId(previous, groupIndex)
+      )
+    }
+  }
+
+  const confirmAllAutoBatches = async () => {
+    if (!sessionId || !autoBatchPlan) return
+    const pendingGroups = autoBatchPlan.groups.filter(
+      (group) => !autoBatchConfirmations.has(group.index)
+    )
+    if (pendingGroups.length === 0) {
+      toast.info("Tất cả các lô trong đề xuất đã được xác nhận.")
+      return
+    }
+    const missingAssignment = pendingGroups.some(
+      (group) => !(autoBatchAssigneeIds.get(group.index) ?? "")
+    )
+    if (missingAssignment) {
+      toast.error("Chọn người phụ trách cho tất cả các lô trước khi xác nhận.")
+      return
+    }
+
+    setConfirmingAllAutoBatches(true)
+    setConfirmingAutoBatchIndexes(
+      new Set(pendingGroups.map((group) => group.index))
+    )
+    const refreshedDocuments: SessionDocumentResponse[] = []
+    const assignedDocuments: SessionDocumentResponse[] = []
+    let updatedCount = 0
+    let skippedCount = 0
+    let failedCount = 0
+    try {
+      for (const group of pendingGroups) {
+        try {
+          const response = await createMetadataBatch(
+            sessionId,
+            group.document_ids,
+            autoBatchAssigneeIds.get(group.index) ?? ""
+          )
+          refreshedDocuments.push(
+            ...(response.documents ?? []),
+            ...(response.skipped_documents ?? [])
+          )
+          assignedDocuments.push(...(response.documents ?? []))
+          updatedCount += response.updated_count
+          skippedCount +=
+            response.skipped_count ?? response.skipped_documents?.length ?? 0
+          setAutoBatchConfirmations((previous) => {
+            const next = new Map(previous)
+            next.set(group.index, response)
+            return next
+          })
+        } catch {
+          failedCount += 1
+        } finally {
+          setConfirmingAutoBatchIndexes((previous) =>
+            removeId(previous, group.index)
+          )
+        }
+      }
+
+      if (refreshedDocuments.length > 0) {
+        setItems((previous) => replaceDocuments(previous, refreshedDocuments))
+      }
+      if (assignedDocuments.length > 0) {
+        onDocumentsVerified?.(assignedDocuments)
+      }
+      onMetadataDocumentsChanged?.()
+      if (failedCount > 0 || skippedCount > 0) {
+        toast.warning(
+          `Đã phân công ${updatedCount} tài liệu; bỏ qua ${skippedCount} tài liệu; ${failedCount} lô chưa xác nhận được.`
+        )
+      } else {
+        toast.success(
+          `Đã xác nhận tất cả ${pendingGroups.length} lô với ${updatedCount} tài liệu.`
+        )
+      }
+    } finally {
+      setConfirmingAllAutoBatches(false)
+      setConfirmingAutoBatchIndexes(new Set())
+    }
   }
 
   const createManualBatchFromSelection = async () => {
@@ -410,10 +696,13 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
       toast.error("Chon nhan vien phu trach lo truoc khi tao.")
       return
     }
-    const selectedIds = new Set(manualSelectedIds)
-    const orderedSelectedIds = displayedItems
-      .filter((item) => selectedIds.has(item.id))
-      .map((item) => item.id)
+    if (manualSelectedIds.size > MAX_MANUAL_METADATA_BATCH_DOCUMENTS) {
+      toast.error(
+        `Moi lo metadata toi da ${MAX_MANUAL_METADATA_BATCH_DOCUMENTS} tai lieu.`
+      )
+      return
+    }
+    const orderedSelectedIds = manualSelectedDocumentIds
     if (orderedSelectedIds.length === 0) return
 
     setCreatingManualBatch(true)
@@ -424,17 +713,32 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
         selectedAssigneeId
       )
       const updatedDocuments = response.documents ?? []
+      const skippedDocuments = response.skipped_documents ?? []
+      const refreshedDocuments = [...updatedDocuments, ...skippedDocuments]
+      if (refreshedDocuments.length > 0) {
+        setItems((previous) => replaceDocuments(previous, refreshedDocuments))
+      }
       if (updatedDocuments.length > 0) {
-        setItems((previous) => replaceDocuments(previous, updatedDocuments))
         onDocumentsVerified?.(updatedDocuments)
       }
       setManualSelectedIds(new Set())
+      setManualSelectedOnly(false)
+      setManualSelectedItemSnapshots(new Map())
       setSelectedAssigneeId("")
       manualLastSelectedIdRef.current = null
       setManualSplitActive(true)
       setBatchMode("manual")
       setSelectedDocumentId(null)
-      toast.success(`Đã tạo lô mới với ${response.updated_count} tài liệu.`)
+      const skippedCount = response.skipped_count ?? skippedDocuments.length
+      if (response.updated_count > 0) {
+        toast.success(`Da tao lo moi voi ${response.updated_count} tai lieu.`)
+      }
+      if (skippedCount > 0) {
+        toast.warning(
+          `${skippedCount} tai lieu da duoc assign hoac xac nhan tu truoc nen duoc bo qua.`
+        )
+      }
+      onMetadataDocumentsChanged?.()
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Không thể tạo lô metadata."
@@ -461,7 +765,11 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
         setItems((previous) => replaceDocuments(previous, updatedDocuments))
         onDocumentsVerified?.(updatedDocuments)
       }
+      onMetadataDocumentScopeChange?.({ scope: "unassigned" })
+      onMetadataDocumentsChanged?.()
       setManualSelectedIds(new Set())
+      setManualSelectedOnly(false)
+      setManualSelectedItemSnapshots(new Map())
       manualLastSelectedIdRef.current = null
       setManualSplitActive(true)
       setBatchMode("manual")
@@ -612,10 +920,14 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     toggleManualSelection,
     selectAllDisplayedForManualSplit,
     clearManualSelection,
+    toggleManualSelectedOnly,
     toggleBulkReviewSelectionMode,
     toggleBulkReviewSelection,
     selectAllDisplayedForBulkReview,
     clearBulkReviewSelection,
+    setAutoBatchAssignee,
+    confirmAutoBatch,
+    confirmAllAutoBatches,
     createManualBatchFromSelection,
     finishMetadataBatch,
     handleRetryMetadata,

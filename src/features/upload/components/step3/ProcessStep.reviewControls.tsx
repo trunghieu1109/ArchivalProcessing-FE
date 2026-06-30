@@ -1,5 +1,6 @@
 import {
   CheckCircle2,
+  Eye,
   FolderOpen,
   List,
   Loader2,
@@ -18,14 +19,86 @@ import {
 } from "./ProcessStep.parts"
 import {
   METADATA_BATCH_SIZE_OPTIONS,
+  type MetadataBatchMode,
   type MetadataBatchGroup,
+  type MetadataReviewMode,
 } from "./ProcessStep.types"
+import type {
+  AutoMetadataBatchPlanResponse,
+  CreateMetadataBatchResponse,
+} from "@/features/upload/api/sessionApi"
+import type { PdfMetadata } from "@/features/upload/types"
 import type { ChinhlyUser } from "@/features/auth/api/authApi"
 import { chinhlyUserId, chinhlyUserLabel } from "./ProcessStep.batchUtils"
 
-export function ProcessStepReviewControls(props: Record<string, any>) {
+interface ProcessStepReviewControlsProps {
+  activeBatch: MetadataBatchGroup | null
+  autoBatchAssigneeIds: Map<number, string>
+  autoBatchConfirmations: Map<number, CreateMetadataBatchResponse>
+  autoBatchPlan: AutoMetadataBatchPlanResponse | null
+  autoBatchPlanError: string
+  autoBatchPlanLoading: boolean
+  batchGroups: MetadataBatchGroup[]
+  batchMode: MetadataBatchMode
+  bulkReviewSelectionActive: boolean
+  bulkRetryItems: PdfMetadata[]
+  bulkSelectionCount: number
+  bulkVerifyItems: PdfMetadata[]
+  bulkVerifying: boolean
+  canBulkSelectMetadata: boolean
+  canManageMetadataBatches: boolean
+  cancelManualSplit: () => void
+  clearBulkReviewSelection: () => void
+  clearManualSelection: () => void
+  confirmAllAutoBatches: () => Promise<void>
+  confirmAutoBatch: (groupIndex: number) => Promise<void>
+  confirmingAllAutoBatches: boolean
+  confirmingAutoBatchIndexes: Set<number>
+  closingBatchIds: Set<string>
+  createManualBatchFromSelection: () => Promise<void>
+  creatingManualBatch: boolean
+  displayedBulkSelectableItems: PdfMetadata[]
+  displayedItems: PdfMetadata[]
+  finishMetadataBatch: (group: MetadataBatchGroup) => Promise<void>
+  handleBatchModeChange: (mode: MetadataBatchMode) => void
+  handleBatchSizeInputBlur: () => void
+  handleBatchSizeInputChange: (value: string) => void
+  handleReviewModeChange: (mode: MetadataReviewMode) => void
+  handleSelectBatch: (group: MetadataBatchGroup) => void
+  handleRetrySelectedMetadata: () => Promise<void>
+  handleVerifyAllReady: () => Promise<void>
+  hasServerPagination: boolean
+  manualSelectedIds: Set<number>
+  manualSelectedOnly: boolean
+  manualSelectedVisibleItems: PdfMetadata[]
+  manualSplitActive: boolean
+  metadataFileFilter: string
+  reviewMode: MetadataReviewMode
+  selectAllDisplayedForBulkReview: () => void
+  selectAllDisplayedForManualSplit: () => void
+  selectedAssigneeId: string
+  setAutoBatchAssignee: (groupIndex: number, assignedToUserId: string) => void
+  setMetadataFileFilter: (value: string) => void
+  setSelectedAssigneeId: (value: string) => void
+  sortedItems: PdfMetadata[]
+  startManualSplit: () => void
+  toggleBulkReviewSelectionMode: () => void
+  toggleManualSelectedOnly: () => void
+  workers: ChinhlyUser[]
+  workersLoading: boolean
+  batchSizeInput: string
+}
+
+export function ProcessStepReviewControls(
+  props: ProcessStepReviewControlsProps
+) {
   const {
     activeBatch,
+    autoBatchAssigneeIds,
+    autoBatchConfirmations,
+    autoBatchPlan,
+    autoBatchPlanError,
+    autoBatchPlanLoading,
     batchGroups,
     batchMode,
     bulkReviewSelectionActive,
@@ -38,6 +111,10 @@ export function ProcessStepReviewControls(props: Record<string, any>) {
     cancelManualSplit,
     clearBulkReviewSelection,
     clearManualSelection,
+    confirmAllAutoBatches,
+    confirmAutoBatch,
+    confirmingAllAutoBatches,
+    confirmingAutoBatchIndexes,
     closingBatchIds,
     createManualBatchFromSelection,
     creatingManualBatch,
@@ -51,7 +128,10 @@ export function ProcessStepReviewControls(props: Record<string, any>) {
     handleSelectBatch,
     handleRetrySelectedMetadata,
     handleVerifyAllReady,
+    hasServerPagination,
     manualSelectedIds,
+    manualSelectedOnly,
+    manualSelectedVisibleItems,
     manualSplitActive,
     metadataFileFilter,
     reviewMode,
@@ -59,14 +139,38 @@ export function ProcessStepReviewControls(props: Record<string, any>) {
     selectAllDisplayedForManualSplit,
     selectedAssigneeId,
     setMetadataFileFilter,
+    setAutoBatchAssignee,
     setSelectedAssigneeId,
     startManualSplit,
     toggleBulkReviewSelectionMode,
+    toggleManualSelectedOnly,
     workers,
     workersLoading,
     sortedItems,
     batchSizeInput,
   } = props
+  const manualSelectionLimit = 1000
+  const manualSelectedCount = manualSelectedIds.size
+  const manualSelectionOverLimit = manualSelectedCount > manualSelectionLimit
+  const manualSelectedVisibleCount = manualSelectedVisibleItems?.length ?? 0
+  const activeBatchPageCount = activeBatch?.items.length ?? 0
+  const activeBatchTotalCount = activeBatch?.totalCount ?? activeBatchPageCount
+  const pageScopedBatchMode =
+    hasServerPagination &&
+    reviewMode === "batch" &&
+    activeBatchTotalCount > activeBatchPageCount
+  const pageScopeNote = pageScopedBatchMode
+    ? `Đang hiển thị ${activeBatchPageCount}/${activeBatchTotalCount} tài liệu trong lô này. Chuyển trang để xem hoặc chọn tiếp.`
+    : ""
+  const batchMetricScopeLabel =
+    activeBatch?.kind === "auto" && pageScopedBatchMode ? " (trang)" : ""
+  const activeBatchDescription = activeBatch
+    ? getMetadataBatchDescription(activeBatch, sortedItems.length)
+    : ""
+  const pendingAutoBatchCount =
+    autoBatchPlan?.groups.filter(
+      (group: { index: number }) => !autoBatchConfirmations.has(group.index)
+    ).length ?? 0
 
   return (
     <>
@@ -114,6 +218,10 @@ export function ProcessStepReviewControls(props: Record<string, any>) {
                       handleBatchSizeInputChange(event.target.value)
                     }
                     onBlur={handleBatchSizeInputBlur}
+                    disabled={
+                      confirmingAllAutoBatches ||
+                      confirmingAutoBatchIndexes.size > 0
+                    }
                     className="h-6 w-14 rounded-md border border-[#CBD5E1] bg-white px-2 text-xs text-[#0F172A] outline-none focus-visible:border-[#0052FF] focus-visible:ring-2 focus-visible:ring-[#0052FF]/20"
                     list="metadata-batch-size-options"
                   />
@@ -127,7 +235,7 @@ export function ProcessStepReviewControls(props: Record<string, any>) {
             {reviewMode === "batch" && activeBatch && (
               <span className="rounded-full bg-[#EFF6FF] px-2.5 py-1 text-xs font-medium text-[#475569]">
                 {activeBatch.label}: {activeBatch.reviewedCount}/
-                {activeBatch.items.length} đã review
+                {activeBatch.totalCount} đã review
               </span>
             )}
             <label className="flex h-8 min-w-[14rem] flex-1 items-center gap-1.5 rounded-lg border border-[#CBD5E1] bg-white px-2 text-xs text-[#475569] transition-colors focus-within:border-[#0052FF] focus-within:ring-2 focus-within:ring-[#0052FF]/15">
@@ -182,7 +290,8 @@ export function ProcessStepReviewControls(props: Record<string, any>) {
                   }
                   className="h-8 gap-1.5 text-xs"
                 >
-                  Chọn tất cả
+                  <List className="size-3" />
+                  Trang này: Chọn tất cả
                 </Button>
                 <Button
                   type="button"
@@ -282,14 +391,26 @@ export function ProcessStepReviewControls(props: Record<string, any>) {
                     disabled={displayedItems.length === 0}
                     className="h-8 gap-1.5 text-xs"
                   >
-                    Chọn tất cả
+                    <List data-icon="inline-start" className="size-3" />
+                    Trang này: Chọn tất cả
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={manualSelectedOnly ? "default" : "outline"}
+                    size="sm"
+                    onClick={toggleManualSelectedOnly}
+                    disabled={!manualSelectedOnly && manualSelectedCount === 0}
+                    className="h-8 gap-1.5 text-xs"
+                  >
+                    <EyeIcon active={manualSelectedOnly} />
+                    Chỉ đã chọn
                   </Button>
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     onClick={clearManualSelection}
-                    disabled={manualSelectedIds.size === 0}
+                    disabled={manualSelectedCount === 0}
                     className="h-8 gap-1.5 text-xs"
                   >
                     Bỏ chọn
@@ -325,7 +446,8 @@ export function ProcessStepReviewControls(props: Record<string, any>) {
                     size="sm"
                     onClick={() => void createManualBatchFromSelection()}
                     disabled={
-                      manualSelectedIds.size === 0 ||
+                      manualSelectedCount === 0 ||
+                      manualSelectionOverLimit ||
                       !selectedAssigneeId ||
                       creatingManualBatch
                     }
@@ -356,9 +478,21 @@ export function ProcessStepReviewControls(props: Record<string, any>) {
           canManageMetadataBatches &&
           batchMode === "manual" &&
           manualSplitActive && (
-            <div className="rounded-lg border border-[#BFD3FF] bg-[#EFF6FF] px-3 py-2 text-xs font-medium text-[#0F172A]">
-              Đã chọn {manualSelectedIds.size} tài liệu để tạo lô mới. Giữ Shift
-              khi chọn để chọn một dải.
+            <div
+              className={`rounded-lg border px-3 py-2 text-xs font-medium ${
+                manualSelectionOverLimit
+                  ? "border-[#FCA5A5] bg-[#FEF2F2] text-[#991B1B]"
+                  : "border-[#BFD3FF] bg-[#F8FAFC] text-[#0F172A]"
+              }`}
+            >
+              Đã chọn {manualSelectedCount}/{manualSelectionLimit} tài liệu.
+              {manualSelectedOnly
+                ? ` Đang hiển thị ${manualSelectedVisibleCount} tài liệu đã chọn.`
+                : " Hãy đi qua các trang để chọn thêm tài liệu."}
+              {" Giữ Shift khi chọn để chọn một dải."}
+              {hasServerPagination
+                ? " Lựa chọn được giữ khi chuyển trang."
+                : ""}
             </div>
           )}
         {bulkReviewSelectionActive && !manualSplitActive && (
@@ -376,14 +510,13 @@ export function ProcessStepReviewControls(props: Record<string, any>) {
                 {activeBatch.label}
               </p>
               <p className="text-[11px] text-[#64748B]">
-                {activeBatch.kind === "manual"
-                  ? `${activeBatch.items.length} tài liệu trong lô thủ công`
-                  : activeBatch.kind === "reviewed"
-                    ? `${activeBatch.items.length} tài liệu đã review`
-                    : activeBatch.kind === "unassigned"
-                      ? `${activeBatch.items.length} tài liệu chưa chia`
-                      : `Tài liệu ${activeBatch.start}-${activeBatch.end} / ${sortedItems.length}`}
+                {activeBatchDescription}
               </p>
+              {pageScopeNote ? (
+                <p className="mt-0.5 text-[11px] font-medium text-[#475569]">
+                  {pageScopeNote}
+                </p>
+              ) : null}
               {activeBatch.assigneeName || activeBatch.assigneeEmail ? (
                 <p className="mt-0.5 text-[11px] text-[#475569]">
                   Phụ trách:{" "}
@@ -394,10 +527,16 @@ export function ProcessStepReviewControls(props: Record<string, any>) {
               ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-2 text-[11px] text-[#475569]">
-              <BatchMetric label="Sẵn sàng" value={activeBatch.readyCount} />
-              <BatchMetric label="Cảnh báo" value={activeBatch.warningCount} />
               <BatchMetric
-                label="Còn lại"
+                label={`Sẵn sàng${batchMetricScopeLabel}`}
+                value={activeBatch.readyCount}
+              />
+              <BatchMetric
+                label={`Cảnh báo${batchMetricScopeLabel}`}
+                value={activeBatch.warningCount}
+              />
+              <BatchMetric
+                label={`Còn lại${batchMetricScopeLabel}`}
                 value={activeBatch.pendingReadyCount}
               />
             </div>
@@ -414,6 +553,202 @@ export function ProcessStepReviewControls(props: Record<string, any>) {
           </div>
         </div>
       )}
+      {reviewMode === "batch" &&
+        batchMode === "auto" &&
+        canManageMetadataBatches && (
+          <div className="flex flex-col gap-2 rounded-xl border border-[#D8E1EC] bg-white p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold text-[#0F172A]">
+                  Phân công đề xuất
+                </p>
+                <p className="text-[11px] text-[#64748B]">
+                  {autoBatchPlan
+                    ? `${autoBatchPlan.groups.length} lô · ${autoBatchPlan.total_count} tài liệu`
+                    : "Chưa có kế hoạch phân công"}
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => void confirmAllAutoBatches()}
+                disabled={
+                  autoBatchPlanLoading ||
+                  workersLoading ||
+                  confirmingAllAutoBatches ||
+                  !autoBatchPlan ||
+                  pendingAutoBatchCount === 0
+                }
+                className="h-8 gap-1.5 text-xs"
+              >
+                {confirmingAllAutoBatches ? (
+                  <Loader2 className="size-3 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="size-3" />
+                )}
+                Xác nhận tất cả ({pendingAutoBatchCount})
+              </Button>
+            </div>
+
+            {autoBatchPlanLoading ? (
+              <div className="flex items-center gap-2 py-3 text-xs text-[#64748B]">
+                <Loader2 className="size-3.5 animate-spin" />
+                Đang tạo đề xuất...
+              </div>
+            ) : autoBatchPlanError ? (
+              <p className="py-2 text-xs text-red-600">{autoBatchPlanError}</p>
+            ) : autoBatchPlan?.groups.length ? (
+              <div className="max-h-[22rem] overflow-y-auto border-y border-[#E2E8F0]">
+                {autoBatchPlan.groups.map(
+                  (planGroup: {
+                    index: number
+                    display_index?: number | null
+                    start: number
+                    end: number
+                    total_count: number
+                  }) => {
+                    const planDisplayIndex =
+                      planGroup.display_index ?? planGroup.index + 1
+                    const matchingGroup = batchGroups.find(
+                      (group: MetadataBatchGroup) =>
+                        group.kind === "auto" && group.start === planGroup.start
+                    )
+                    const confirmation = autoBatchConfirmations.get(
+                      planGroup.index
+                    )
+                    const confirmationSkippedCount = confirmation
+                      ? (confirmation.skipped_count ??
+                        confirmation.skipped_documents?.length ??
+                        0)
+                      : 0
+                    const confirming = confirmingAutoBatchIndexes.has(
+                      planGroup.index
+                    )
+                    return (
+                      <div
+                        key={planGroup.index}
+                        className="grid grid-cols-1 items-center gap-2 border-b border-[#E2E8F0] py-2 last:border-b-0 sm:grid-cols-[minmax(7rem,1fr)_minmax(12rem,1.5fr)_auto]"
+                      >
+                        <button
+                          type="button"
+                          className="min-w-0 text-left"
+                          onClick={() =>
+                            matchingGroup && handleSelectBatch(matchingGroup)
+                          }
+                          disabled={!matchingGroup}
+                        >
+                          <span className="block text-xs font-semibold text-[#0F172A]">
+                            Lô {String(planDisplayIndex).padStart(2, "0")}
+                          </span>
+                          <span className="block text-[10px] text-[#64748B]">
+                            {planGroup.total_count} tài liệu · {planGroup.start}
+                            -{planGroup.end}
+                          </span>
+                        </button>
+                        <select
+                          value={
+                            autoBatchAssigneeIds.get(planGroup.index) ?? ""
+                          }
+                          onChange={(event) =>
+                            setAutoBatchAssignee(
+                              planGroup.index,
+                              event.target.value
+                            )
+                          }
+                          disabled={
+                            workersLoading ||
+                            confirming ||
+                            Boolean(confirmation)
+                          }
+                          className="h-8 min-w-0 rounded-md border border-[#CBD5E1] bg-white px-2 text-xs text-[#0F172A] outline-none focus:border-[#0052FF]"
+                          aria-label={`Người phụ trách lô ${planDisplayIndex}`}
+                        >
+                          <option value="">
+                            {workersLoading
+                              ? "Đang tải nhân viên..."
+                              : "Chọn người phụ trách"}
+                          </option>
+                          {workers.map((worker: ChinhlyUser) => {
+                            const workerId = chinhlyUserId(worker)
+                            return (
+                              <option key={workerId} value={workerId}>
+                                {chinhlyUserLabel(worker)}
+                              </option>
+                            )
+                          })}
+                        </select>
+                        {confirmation ? (
+                          <span
+                            className={
+                              confirmationSkippedCount > 0
+                                ? "inline-flex h-8 items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 text-[11px] font-semibold whitespace-nowrap text-amber-700"
+                                : "inline-flex h-8 items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 text-[11px] font-semibold whitespace-nowrap text-emerald-700"
+                            }
+                          >
+                            <CheckCircle2 className="size-3" />
+                            {confirmationSkippedCount > 0
+                              ? `${confirmation.updated_count}/${planGroup.total_count} đã gán`
+                              : "Đã xác nhận"}
+                          </span>
+                        ) : (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              void confirmAutoBatch(planGroup.index)
+                            }
+                            disabled={
+                              confirming ||
+                              confirmingAllAutoBatches ||
+                              !autoBatchAssigneeIds.get(planGroup.index)
+                            }
+                            className="h-8 gap-1 text-xs whitespace-nowrap"
+                          >
+                            {confirming ? (
+                              <Loader2 className="size-3 animate-spin" />
+                            ) : (
+                              <CheckCircle2 className="size-3" />
+                            )}
+                            Xác nhận
+                          </Button>
+                        )}
+                      </div>
+                    )
+                  }
+                )}
+              </div>
+            ) : (
+              <p className="py-2 text-xs text-[#64748B]">
+                Không có tài liệu cần phân lô.
+              </p>
+            )}
+          </div>
+        )}
     </>
+  )
+}
+
+function getMetadataBatchDescription(
+  group: MetadataBatchGroup,
+  loadedBatchItemCount: number
+) {
+  if (group.kind === "manual") {
+    return `${group.totalCount} tài liệu trong lô thủ công`
+  }
+  if (group.kind === "reviewed") {
+    return `${group.totalCount} tài liệu đã review`
+  }
+  if (group.kind === "unassigned") {
+    return `${group.totalCount} tài liệu chưa chia`
+  }
+  return `${group.totalCount || loadedBatchItemCount} tài liệu trong lô tự động, vị trí ${group.start}-${group.end} trong toàn bộ danh sách chưa review`
+}
+
+function EyeIcon({ active }: { active: boolean }) {
+  return active ? (
+    <CheckCircle2 data-icon="inline-start" className="size-3" />
+  ) : (
+    <Eye data-icon="inline-start" className="size-3" />
   )
 }

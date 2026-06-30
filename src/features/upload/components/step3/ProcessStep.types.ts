@@ -1,4 +1,8 @@
 import type { PdfMetadata } from "@/features/upload/types"
+import type {
+  MetadataBatchSummary,
+  MetadataDocumentScope,
+} from "@/features/upload/api/sessionApi"
 
 export type MetadataReviewMode = "list" | "batch"
 export type MetadataBatchMode = "auto" | "manual"
@@ -7,10 +11,12 @@ export interface MetadataBatchGroup {
   index: number
   kind: "auto" | "manual" | "reviewed" | "unassigned"
   batchId?: string | null
+  displayIndex?: number | null
   label: string
   start: number
   end: number
   items: PdfMetadata[]
+  totalCount: number
   readyCount: number
   reviewedCount: number
   warningCount: number
@@ -42,6 +48,8 @@ export interface MetadataServerPaginationControls {
   pageSize: number
   onPageChange: (pageIndex: number) => void
 }
+
+export type { MetadataBatchSummary, MetadataDocumentScope }
 
 export const DEFAULT_METADATA_BATCH_SIZE = 25
 export const MIN_METADATA_BATCH_SIZE = 5

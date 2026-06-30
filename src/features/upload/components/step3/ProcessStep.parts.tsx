@@ -48,23 +48,24 @@ export function MetadataBatchButton({
   group,
   active,
   onClick,
+  scopeLabel,
 }: {
   group: MetadataBatchGroup
   active: boolean
   onClick: () => void
+  scopeLabel?: string
 }) {
   const progress =
-    group.items.length > 0
-      ? (group.reviewedCount / group.items.length) * 100
-      : 0
-  const done = group.reviewedCount === group.items.length
+    group.totalCount > 0 ? (group.reviewedCount / group.totalCount) * 100 : 0
+  const done = group.reviewedCount === group.totalCount
   const needsReview = group.warningCount > 0 || group.pendingReadyCount > 0
+  const scopedTitleSuffix = scopeLabel ? ` (${scopeLabel})` : ""
 
   return (
     <button
       type="button"
       onClick={onClick}
-      title={`${group.label}: ${group.reviewedCount}/${group.items.length} đã review`}
+      title={`${group.label}${scopedTitleSuffix}: ${group.reviewedCount}/${group.totalCount} đã review`}
       className={cn(
         "min-w-[9.5rem] rounded-lg border px-3 py-2 text-left transition-colors",
         active
@@ -79,14 +80,17 @@ export function MetadataBatchButton({
       <span className="flex items-center justify-between gap-2">
         <span className="text-xs font-semibold">{group.label}</span>
         <span className="text-[10px]">
-          {group.reviewedCount}/{group.items.length}
+          {group.reviewedCount}/{group.totalCount}
+          {scopeLabel ? (
+            <span className="ml-1 opacity-75">{scopeLabel}</span>
+          ) : null}
         </span>
       </span>
       <span className="mt-1 block text-[10px] opacity-80">
         {group.kind === "manual"
           ? group.assigneeName || group.assigneeEmail
             ? (group.assigneeName ?? group.assigneeEmail)
-            : `${group.items.length} tài liệu`
+            : `${group.totalCount} tài liệu`
           : group.kind === "reviewed"
             ? "Đã review"
             : group.kind === "unassigned"

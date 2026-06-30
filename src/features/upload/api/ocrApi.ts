@@ -1,6 +1,6 @@
 // Shared digitization response types used by the session-backed OCR flow.
 
-import type { PaginationMeta } from "./sessionApi.types"
+import type { MetadataBatchSummary, PaginationMeta } from "./sessionApi.types"
 
 export interface FolderPreviewRequest {
   folder_path: string
@@ -83,6 +83,7 @@ export interface FolderStatusResponse {
   signature_extracted_documents: number
   signature_pending_documents: number
   signature_failed_documents: number
+  metadata_batches?: MetadataBatchSummary[]
   pagination?: PaginationMeta
   jobs: JobSummary[]
 }

@@ -10,7 +10,9 @@ import {
   MIN_METADATA_BATCH_SIZE,
   REVIEW_MODE_STORAGE_KEY,
   type MetadataActorIdentity,
+  type MetadataBatchSummary,
   type MetadataBatchGroup,
+  type MetadataDocumentScope,
   type MetadataReviewMode,
 } from "./ProcessStep.types"
 import {
@@ -49,15 +51,146 @@ export function buildMetadataBatchGroups(
   ) {
     const groupItems = pendingItems.slice(start, start + normalizedBatchSize)
     const index = groups.length
+    const displayIndex = index + (reviewedItems.length ? 0 : 1)
     groups.push(
       buildMetadataBatchGroup({
         kind: "auto",
         index,
-        label: `Lô ${String(index + (reviewedItems.length ? 0 : 1)).padStart(2, "0")}`,
+        displayIndex,
+        label: metadataBatchLabel(displayIndex),
         start: start + 1,
         end: start + groupItems.length,
         batchId: null,
         items: groupItems,
+      })
+    )
+  }
+
+  return groups
+}
+
+export function buildMetadataBatchGroupsFromSummaries(
+  summaries: MetadataBatchSummary[],
+  pageItems: PdfMetadata[],
+  batchSize: number,
+  documentScope: MetadataDocumentScope
+): MetadataBatchGroup[] {
+  if (summaries.length === 0) return []
+
+  const normalizedBatchSize = normalizeBatchSize(batchSize)
+  const groups: MetadataBatchGroup[] = []
+  const reviewedSummary = summaries.find(
+    (summary) => summary.kind === "reviewed"
+  )
+  const pageItemsByBucketKey = new Map<string, PdfMetadata[]>()
+  pageItems.forEach((item) => {
+    const key = metadataBatchBucketKeyFromItem(item)
+    const bucketItems = pageItemsByBucketKey.get(key) ?? []
+    bucketItems.push(item)
+    pageItemsByBucketKey.set(key, bucketItems)
+  })
+
+  if (reviewedSummary && reviewedSummary.total_count > 0) {
+    const reviewedPageItems =
+      documentScope.scope === "reviewed"
+        ? pageItems.filter(isReviewedMetadataItem)
+        : []
+    groups.push(
+      buildMetadataBatchGroup({
+        kind: "reviewed",
+        index: groups.length,
+        label: "Tài liệu đã review",
+        start: 0,
+        end: reviewedSummary.total_count,
+        batchId: METADATA_REVIEWED_BATCH_ID,
+        items: reviewedPageItems,
+        totalCount: reviewedSummary.total_count,
+        readyCount: reviewedSummary.ready_count,
+        reviewedCount: reviewedSummary.reviewed_count,
+        warningCount: reviewedSummary.warning_count,
+        pendingReadyCount: reviewedSummary.pending_ready_count,
+      })
+    )
+  }
+
+  const manualSummaries = summaries.filter(
+    (summary) =>
+      summary.kind === "manual" &&
+      Boolean(normalizedMetadataBatchId(summary.batch_id)) &&
+      summary.total_count > 0
+  )
+  let nextFallbackDisplayIndex = 1
+  manualSummaries.forEach((summary) => {
+    const batchId = normalizedMetadataBatchId(summary.batch_id)
+    if (!batchId) return
+    const displayIndex = metadataBatchDisplayIndex(
+      summary,
+      nextFallbackDisplayIndex
+    )
+    nextFallbackDisplayIndex = Math.max(
+      nextFallbackDisplayIndex + 1,
+      displayIndex + 1
+    )
+    const key = metadataBatchBucketKey("manual", batchId)
+    groups.push(
+      buildMetadataBatchGroup({
+        kind: "manual",
+        index: groups.length,
+        displayIndex,
+        label: metadataBatchLabel(displayIndex),
+        start: 0,
+        end: summary.total_count,
+        batchId,
+        items: pageItemsByBucketKey.get(key) ?? [],
+        totalCount: summary.total_count,
+        readyCount: summary.ready_count,
+        reviewedCount: summary.reviewed_count,
+        warningCount: summary.warning_count,
+        pendingReadyCount: summary.pending_ready_count,
+        assigneeName: summary.assignee_name ?? null,
+        assigneeEmail: summary.assignee_email ?? null,
+        assigneeUserId: summary.assignee_user_id ?? null,
+      })
+    )
+  })
+
+  const existingBatchCount = Math.max(
+    manualSummaries.length,
+    ...manualSummaries.map((summary) => metadataBatchDisplayIndex(summary, 0))
+  )
+  const unassignedSummary = summaries.find(
+    (summary) => summary.kind === "unassigned"
+  )
+  const pendingTotal = unassignedSummary?.total_count ?? 0
+  const activeAutoOffset =
+    documentScope.scope === "auto"
+      ? Math.max(0, Math.floor(Number(documentScope.offset) || 0))
+      : -1
+
+  for (let start = 0; start < pendingTotal; start += normalizedBatchSize) {
+    const totalCount = Math.min(normalizedBatchSize, pendingTotal - start)
+    const index = groups.length
+    const displayIndex =
+      existingBatchCount + Math.floor(start / normalizedBatchSize) + 1
+    const groupItems =
+      activeAutoOffset === start
+        ? pageItems.filter(
+            (item) =>
+              !isReviewedMetadataItem(item) &&
+              !normalizedMetadataBatchId(item.metadata_batch_id)
+          )
+        : []
+    groups.push(
+      buildMetadataBatchGroup({
+        kind: "auto",
+        index,
+        displayIndex,
+        label: metadataBatchLabel(displayIndex),
+        start: start + 1,
+        end: start + totalCount,
+        batchId: null,
+        items: groupItems,
+        totalCount,
       })
     )
   }
@@ -111,7 +244,8 @@ export function buildManualMetadataBatchGroups(
       buildMetadataBatchGroup({
         kind: "manual",
         index,
-        label: `Lô ${String(manualGroupNumber).padStart(2, "0")}`,
+        displayIndex: manualGroupNumber,
+        label: metadataBatchLabel(manualGroupNumber),
         start: 0,
         end: 0,
         batchId,
@@ -139,11 +273,83 @@ export function buildManualMetadataBatchGroups(
   return groups
 }
 
+export function buildManualMetadataBatchGroupsFromSummaries(
+  summaries: MetadataBatchSummary[],
+  pageItems: PdfMetadata[]
+): MetadataBatchGroup[] {
+  if (summaries.length === 0) return []
+
+  const pageItemsByBucketKey = new Map<string, PdfMetadata[]>()
+  pageItems.forEach((item) => {
+    const key = metadataBatchBucketKeyFromItem(item)
+    const bucketItems = pageItemsByBucketKey.get(key) ?? []
+    bucketItems.push(item)
+    pageItemsByBucketKey.set(key, bucketItems)
+  })
+
+  let manualGroupNumber = 1
+  return summaries.map((summary, index) => {
+    const kind = summary.kind
+    const displayIndex =
+      kind === "manual"
+        ? metadataBatchDisplayIndex(summary, manualGroupNumber)
+        : null
+    const batchId =
+      kind === "reviewed"
+        ? METADATA_REVIEWED_BATCH_ID
+        : kind === "manual"
+          ? normalizedMetadataBatchId(summary.batch_id)
+          : null
+    const key = metadataBatchBucketKey(kind, batchId)
+    const items = pageItemsByBucketKey.get(key) ?? []
+    const label =
+      kind === "reviewed"
+        ? "Tài liệu đã review"
+        : kind === "unassigned"
+          ? "Chưa chia"
+          : metadataBatchLabel(displayIndex ?? manualGroupNumber)
+    if (kind === "manual" && displayIndex !== null) {
+      manualGroupNumber = Math.max(manualGroupNumber + 1, displayIndex + 1)
+    }
+    return buildMetadataBatchGroup({
+      kind,
+      index,
+      displayIndex,
+      label,
+      start: kind === "unassigned" ? 1 : 0,
+      end: summary.total_count,
+      batchId,
+      items,
+      totalCount: summary.total_count,
+      readyCount: summary.ready_count,
+      reviewedCount: summary.reviewed_count,
+      warningCount: summary.warning_count,
+      pendingReadyCount: summary.pending_ready_count,
+      assigneeName: summary.assignee_name ?? null,
+      assigneeEmail: summary.assignee_email ?? null,
+      assigneeUserId: summary.assignee_user_id ?? null,
+    })
+  })
+}
+
 export function normalizedMetadataBatchId(
   value: string | null | undefined
 ): string | null {
   const text = String(value ?? "").trim()
   return text || null
+}
+
+function metadataBatchDisplayIndex(
+  summary: MetadataBatchSummary,
+  fallback: number
+): number {
+  const value = Number(summary.display_index)
+  if (Number.isFinite(value) && value > 0) return Math.floor(value)
+  return Math.max(1, Math.floor(fallback))
+}
+
+function metadataBatchLabel(displayIndex: number): string {
+  return `Lô ${String(Math.max(1, displayIndex)).padStart(2, "0")}`
 }
 
 export function isReviewedMetadataBatchId(batchId: string | null): boolean {
@@ -157,7 +363,8 @@ export function isReviewedMetadataBucketItem(item: PdfMetadata): boolean {
   const batchId = normalizedMetadataBatchId(item.metadata_batch_id)
   return (
     isReviewedMetadataBatchId(batchId) ||
-    (item.is_reviewed === true && !batchId)
+    (item.is_reviewed === true && !batchId) ||
+    (item.review_status === "verified" && !batchId)
   )
 }
 
@@ -220,24 +427,44 @@ export function chinhlyUserLabel(user: ChinhlyUser): string {
 export function buildMetadataBatchGroup({
   kind,
   index,
+  displayIndex,
   label,
   start,
   end,
   batchId,
   items,
+  totalCount,
+  readyCount,
+  reviewedCount,
+  warningCount,
+  pendingReadyCount,
+  assigneeName,
+  assigneeEmail,
+  assigneeUserId,
 }: {
   kind: MetadataBatchGroup["kind"]
   index: number
+  displayIndex?: number | null
   label: string
   start: number
   end: number
   batchId?: string | null
   items: PdfMetadata[]
+  totalCount?: number
+  readyCount?: number
+  reviewedCount?: number
+  warningCount?: number
+  pendingReadyCount?: number
+  assigneeName?: string | null
+  assigneeEmail?: string | null
+  assigneeUserId?: string | number | null
 }): MetadataBatchGroup {
-  const reviewedCount = items.filter((item) => item.is_reviewed === true).length
-  const readyCount = items.filter((item) => item.metadata_ready).length
-  const warningCount = items.filter(needsMetadataReview).length
-  const pendingReadyCount = items.filter(isMetadataConfirmable).length
+  const computedReviewedCount = items.filter(
+    (item) => item.is_reviewed === true
+  ).length
+  const computedReadyCount = items.filter((item) => item.metadata_ready).length
+  const computedWarningCount = items.filter(needsMetadataReview).length
+  const computedPendingReadyCount = items.filter(isMetadataConfirmable).length
   const assignedItem = items.find(
     (item) =>
       item.metadata_batch_assigned_to_user_id ||
@@ -248,19 +475,63 @@ export function buildMetadataBatchGroup({
   return {
     kind,
     index,
+    displayIndex: displayIndex ?? null,
     label,
     start,
     end,
     batchId: batchId ?? null,
     items,
-    readyCount,
-    reviewedCount,
-    warningCount,
-    pendingReadyCount,
-    assigneeName: assignedItem?.metadata_batch_assigned_to_name ?? null,
-    assigneeEmail: assignedItem?.metadata_batch_assigned_to_email ?? null,
-    assigneeUserId: assignedItem?.metadata_batch_assigned_to_user_id ?? null,
+    totalCount: totalCount ?? items.length,
+    readyCount: readyCount ?? computedReadyCount,
+    reviewedCount: reviewedCount ?? computedReviewedCount,
+    warningCount: warningCount ?? computedWarningCount,
+    pendingReadyCount: pendingReadyCount ?? computedPendingReadyCount,
+    assigneeName:
+      assigneeName ?? assignedItem?.metadata_batch_assigned_to_name ?? null,
+    assigneeEmail:
+      assigneeEmail ?? assignedItem?.metadata_batch_assigned_to_email ?? null,
+    assigneeUserId:
+      assigneeUserId ??
+      assignedItem?.metadata_batch_assigned_to_user_id ??
+      null,
   }
+}
+
+export function metadataDocumentScopeForGroup(
+  group: MetadataBatchGroup
+): MetadataDocumentScope {
+  if (group.kind === "unassigned") return { scope: "unassigned" as const }
+  if (group.kind === "reviewed") return { scope: "reviewed" as const }
+  if (group.kind === "auto") {
+    return {
+      scope: "auto",
+      offset: Math.max(0, group.start - 1),
+      size: Math.max(1, group.totalCount),
+    }
+  }
+  if (group.kind === "manual" && group.batchId) {
+    return { scope: "batch" as const, batchId: group.batchId }
+  }
+  return { scope: "all" as const }
+}
+
+function metadataBatchBucketKeyFromItem(item: PdfMetadata): string {
+  if (isReviewedMetadataBucketItem(item)) {
+    return metadataBatchBucketKey("reviewed", METADATA_REVIEWED_BATCH_ID)
+  }
+  const batchId = normalizedMetadataBatchId(item.metadata_batch_id)
+  if (batchId) return metadataBatchBucketKey("manual", batchId)
+  return metadataBatchBucketKey("unassigned", null)
+}
+
+function metadataBatchBucketKey(
+  kind: MetadataBatchGroup["kind"],
+  batchId: string | null
+): string {
+  if (kind === "reviewed") return "reviewed"
+  if (kind === "manual") return `manual:${batchId ?? ""}`
+  if (kind === "unassigned") return "unassigned"
+  return "auto"
 }
 
 export function selectedRange(
