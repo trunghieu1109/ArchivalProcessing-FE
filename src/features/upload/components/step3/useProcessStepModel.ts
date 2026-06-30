@@ -105,6 +105,9 @@ export function useProcessStepModel({
   const [workers, setWorkers] = useState<ChinhlyUser[]>([])
   const [workersLoading, setWorkersLoading] = useState(false)
   const [selectedAssigneeId, setSelectedAssigneeId] = useState("")
+  const [selectedAutoWorkerIds, setSelectedAutoWorkerIds] = useState<
+    Set<string>
+  >(() => new Set())
   const [autoBatchPlan, setAutoBatchPlan] =
     useState<AutoMetadataBatchPlanResponse | null>(null)
   const [autoBatchPlanLoading, setAutoBatchPlanLoading] = useState(false)
@@ -490,6 +493,7 @@ export function useProcessStepModel({
       setManualSelectedOnly(false)
       setManualSelectedItemSnapshots(new Map())
       setSelectedAssigneeId("")
+      setSelectedAutoWorkerIds(new Set())
       setWorkers([])
       return
     }
@@ -508,6 +512,16 @@ export function useProcessStepModel({
             return current
           }
           return ""
+        })
+        setSelectedAutoWorkerIds((current) => {
+          const validWorkerIds = new Set(
+            nextWorkers.map((worker) => chinhlyUserId(worker)).filter(Boolean)
+          )
+          return new Set(
+            Array.from(current).filter((workerId) =>
+              validWorkerIds.has(workerId)
+            )
+          )
         })
       })
       .catch((err) => {
@@ -573,6 +587,10 @@ export function useProcessStepModel({
     }
   }, [batchMode, batchSize, canManageMetadataBatches, reviewMode, sessionId])
 
+  const selectedAutoWorkerIdsKey = useMemo(
+    () => Array.from(selectedAutoWorkerIds).join("|"),
+    [selectedAutoWorkerIds]
+  )
   const workerIdsKey = useMemo(
     () => workers.map((worker) => chinhlyUserId(worker)).join("|"),
     [workers]
@@ -582,20 +600,29 @@ export function useProcessStepModel({
     if (!autoBatchPlan) return
     const workerIds = workers
       .map((worker) => chinhlyUserId(worker))
-      .filter(Boolean)
-    setAutoBatchAssigneeIds(
-      new Map(
+      .filter((workerId) => workerId && selectedAutoWorkerIds.has(workerId))
+    setAutoBatchAssigneeIds((previous) => {
+      return new Map(
         autoBatchPlan.groups.map((group, index) => [
           group.index,
-          workerIds.length > 0
+          autoBatchConfirmations.has(group.index)
+            ? (previous.get(group.index) ?? "")
+            : workerIds.length > 0
             ? workerIds[
                 ((group.display_index ?? index + 1) - 1) % workerIds.length
               ]
             : "",
         ])
       )
-    )
-  }, [autoBatchPlan, workerIdsKey, workers])
+    })
+  }, [
+    autoBatchConfirmations,
+    autoBatchPlan,
+    selectedAutoWorkerIds,
+    selectedAutoWorkerIdsKey,
+    workerIdsKey,
+    workers,
+  ])
 
   useEffect(() => {
     const availableItems = manualSplitActive
@@ -798,6 +825,8 @@ export function useProcessStepModel({
     setWorkersLoading,
     selectedAssigneeId,
     setSelectedAssigneeId,
+    selectedAutoWorkerIds,
+    setSelectedAutoWorkerIds,
     autoBatchPlan,
     setAutoBatchPlan,
     autoBatchPlanLoading,

@@ -124,7 +124,6 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     currentUserIdentity,
     autoBatchPlan,
     autoBatchAssigneeIds,
-    setAutoBatchAssigneeIds,
     autoBatchConfirmations,
     setAutoBatchConfirmations,
     confirmingAutoBatchIndexes,
@@ -537,17 +536,6 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     bulkLastSelectedIdRef.current = null
   }
 
-  const setAutoBatchAssignee = (
-    groupIndex: number,
-    assignedToUserId: string
-  ) => {
-    setAutoBatchAssigneeIds((previous) => {
-      const next = new Map(previous)
-      next.set(groupIndex, assignedToUserId)
-      return next
-    })
-  }
-
   const confirmAutoBatch = async (groupIndex: number) => {
     if (!sessionId || !autoBatchPlan) return
     const group = autoBatchPlan.groups.find(
@@ -925,7 +913,6 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     toggleBulkReviewSelection,
     selectAllDisplayedForBulkReview,
     clearBulkReviewSelection,
-    setAutoBatchAssignee,
     confirmAutoBatch,
     confirmAllAutoBatches,
     createManualBatchFromSelection,

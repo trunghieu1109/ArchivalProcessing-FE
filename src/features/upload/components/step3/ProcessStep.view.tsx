@@ -128,10 +128,11 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     selectAllDisplayedForBulkReview,
     selectAllDisplayedForManualSplit,
     selectedAssigneeId,
+    selectedAutoWorkerIds,
     selectedDocumentId,
     sessionId,
     setMetadataFileFilter,
-    setAutoBatchAssignee,
+    setSelectedAutoWorkerIds,
     setSelectedAssigneeId,
     setSelectedDocumentId,
     signatureStatus,
@@ -344,8 +345,9 @@ export function ProcessStepView(props: ProcessStepViewProps) {
             selectAllDisplayedForBulkReview={selectAllDisplayedForBulkReview}
             selectAllDisplayedForManualSplit={selectAllDisplayedForManualSplit}
             selectedAssigneeId={selectedAssigneeId}
+            selectedAutoWorkerIds={selectedAutoWorkerIds}
             setMetadataFileFilter={setMetadataFileFilter}
-            setAutoBatchAssignee={setAutoBatchAssignee}
+            setSelectedAutoWorkerIds={setSelectedAutoWorkerIds}
             setSelectedAssigneeId={setSelectedAssigneeId}
             startManualSplit={startManualSplit}
             toggleBulkReviewSelectionMode={toggleBulkReviewSelectionMode}

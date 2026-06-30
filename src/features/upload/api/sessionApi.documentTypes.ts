@@ -430,6 +430,7 @@ export interface AutoMetadataBatchPlanGroup {
 export interface AutoMetadataBatchPlanResponse {
   session_id: string
   batch_size: number
+  batch_count?: number
   existing_batch_count?: number
   total_count: number
   groups: AutoMetadataBatchPlanGroup[]

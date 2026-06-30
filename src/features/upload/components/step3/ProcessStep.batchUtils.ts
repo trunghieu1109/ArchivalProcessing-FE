@@ -24,7 +24,7 @@ export function buildMetadataBatchGroups(
   items: PdfMetadata[],
   batchSize: number
 ): MetadataBatchGroup[] {
-  const normalizedBatchSize = normalizeBatchSize(batchSize)
+  const normalizedBatchCount = normalizeBatchSize(batchSize)
   const groups: MetadataBatchGroup[] = []
   const reviewedItems = items.filter(isReviewedMetadataItem)
   const reviewedIds = new Set(reviewedItems.map((item) => item.id))
@@ -44,12 +44,11 @@ export function buildMetadataBatchGroups(
     )
   }
 
-  for (
-    let start = 0;
-    start < pendingItems.length;
-    start += normalizedBatchSize
-  ) {
-    const groupItems = pendingItems.slice(start, start + normalizedBatchSize)
+  for (const [start, end] of metadataBatchRanges(
+    pendingItems.length,
+    normalizedBatchCount
+  )) {
+    const groupItems = pendingItems.slice(start, end)
     const index = groups.length
     const displayIndex = index + (reviewedItems.length ? 0 : 1)
     groups.push(
@@ -77,7 +76,7 @@ export function buildMetadataBatchGroupsFromSummaries(
 ): MetadataBatchGroup[] {
   if (summaries.length === 0) return []
 
-  const normalizedBatchSize = normalizeBatchSize(batchSize)
+  const normalizedBatchCount = normalizeBatchSize(batchSize)
   const groups: MetadataBatchGroup[] = []
   const reviewedSummary = summaries.find(
     (summary) => summary.kind === "reviewed"
@@ -167,33 +166,34 @@ export function buildMetadataBatchGroupsFromSummaries(
       ? Math.max(0, Math.floor(Number(documentScope.offset) || 0))
       : -1
 
-  for (let start = 0; start < pendingTotal; start += normalizedBatchSize) {
-    const totalCount = Math.min(normalizedBatchSize, pendingTotal - start)
-    const index = groups.length
-    const displayIndex =
-      existingBatchCount + Math.floor(start / normalizedBatchSize) + 1
-    const groupItems =
-      activeAutoOffset === start
-        ? pageItems.filter(
-            (item) =>
-              !isReviewedMetadataItem(item) &&
-              !normalizedMetadataBatchId(item.metadata_batch_id)
-          )
-        : []
-    groups.push(
-      buildMetadataBatchGroup({
-        kind: "auto",
-        index,
-        displayIndex,
-        label: metadataBatchLabel(displayIndex),
-        start: start + 1,
-        end: start + totalCount,
-        batchId: null,
-        items: groupItems,
-        totalCount,
-      })
-    )
-  }
+  metadataBatchRanges(pendingTotal, normalizedBatchCount).forEach(
+    ([start, end], autoIndex) => {
+      const totalCount = end - start
+      const index = groups.length
+      const displayIndex = existingBatchCount + autoIndex + 1
+      const groupItems =
+        activeAutoOffset === start
+          ? pageItems.filter(
+              (item) =>
+                !isReviewedMetadataItem(item) &&
+                !normalizedMetadataBatchId(item.metadata_batch_id)
+            )
+          : []
+      groups.push(
+        buildMetadataBatchGroup({
+          kind: "auto",
+          index,
+          displayIndex,
+          label: metadataBatchLabel(displayIndex),
+          start: start + 1,
+          end: start + totalCount,
+          batchId: null,
+          items: groupItems,
+          totalCount,
+        })
+      )
+    }
+  )
 
   return groups
 }
@@ -568,6 +568,25 @@ export function normalizeBatchSize(value: number): number {
     MAX_METADATA_BATCH_SIZE,
     Math.max(MIN_METADATA_BATCH_SIZE, Math.round(value))
   )
+}
+
+function metadataBatchRanges(
+  totalCount: number,
+  batchCount: number
+): Array<[number, number]> {
+  if (totalCount <= 0) return []
+  const groupCount = Math.min(totalCount, normalizeBatchSize(batchCount))
+  const baseSize = Math.floor(totalCount / groupCount)
+  const remainder = totalCount % groupCount
+  const ranges: Array<[number, number]> = []
+  let start = 0
+  for (let index = 0; index < groupCount; index += 1) {
+    const size = baseSize + (index < remainder ? 1 : 0)
+    const end = start + size
+    ranges.push([start, end])
+    start = end
+  }
+  return ranges
 }
 
 export function saveBlob(blob: Blob, fileName: string) {

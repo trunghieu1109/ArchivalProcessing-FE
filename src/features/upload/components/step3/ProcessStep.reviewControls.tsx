@@ -77,8 +77,9 @@ interface ProcessStepReviewControlsProps {
   selectAllDisplayedForBulkReview: () => void
   selectAllDisplayedForManualSplit: () => void
   selectedAssigneeId: string
-  setAutoBatchAssignee: (groupIndex: number, assignedToUserId: string) => void
+  selectedAutoWorkerIds: Set<string>
   setMetadataFileFilter: (value: string) => void
+  setSelectedAutoWorkerIds: (value: Set<string>) => void
   setSelectedAssigneeId: (value: string) => void
   sortedItems: PdfMetadata[]
   startManualSplit: () => void
@@ -139,7 +140,8 @@ export function ProcessStepReviewControls(
     selectAllDisplayedForManualSplit,
     selectedAssigneeId,
     setMetadataFileFilter,
-    setAutoBatchAssignee,
+    selectedAutoWorkerIds,
+    setSelectedAutoWorkerIds,
     setSelectedAssigneeId,
     startManualSplit,
     toggleBulkReviewSelectionMode,
@@ -171,6 +173,22 @@ export function ProcessStepReviewControls(
     autoBatchPlan?.groups.filter(
       (group: { index: number }) => !autoBatchConfirmations.has(group.index)
     ).length ?? 0
+  const selectedAutoWorkerCount = selectedAutoWorkerIds.size
+  const toggleAutoWorker = (workerId: string, checked: boolean) => {
+    const next = new Set(selectedAutoWorkerIds)
+    if (checked) {
+      next.add(workerId)
+    } else {
+      next.delete(workerId)
+    }
+    setSelectedAutoWorkerIds(next)
+  }
+  const autoWorkerLabelById = (workerId: string) => {
+    const worker = workers.find(
+      (candidate: ChinhlyUser) => chinhlyUserId(candidate) === workerId
+    )
+    return worker ? chinhlyUserLabel(worker) : workerId
+  }
 
   return (
     <>
@@ -209,7 +227,7 @@ export function ProcessStepReviewControls(
               reviewMode === "batch" &&
               batchMode === "auto" && (
                 <label className="flex h-8 items-center gap-2 rounded-lg border border-[#CBD5E1] bg-[#F8FAFC] px-2 text-xs font-medium text-[#475569]">
-                  Cỡ lô
+                  Số lô
                   <input
                     type="text"
                     inputMode="numeric"
@@ -223,9 +241,9 @@ export function ProcessStepReviewControls(
                       confirmingAutoBatchIndexes.size > 0
                     }
                     className="h-6 w-14 rounded-md border border-[#CBD5E1] bg-white px-2 text-xs text-[#0F172A] outline-none focus-visible:border-[#0052FF] focus-visible:ring-2 focus-visible:ring-[#0052FF]/20"
-                    list="metadata-batch-size-options"
+                    list="metadata-batch-count-options"
                   />
-                  <datalist id="metadata-batch-size-options">
+                  <datalist id="metadata-batch-count-options">
                     {METADATA_BATCH_SIZE_OPTIONS.map((value) => (
                       <option key={value} value={value} />
                     ))}
@@ -564,7 +582,7 @@ export function ProcessStepReviewControls(
                 </p>
                 <p className="text-[11px] text-[#64748B]">
                   {autoBatchPlan
-                    ? `${autoBatchPlan.groups.length} lô · ${autoBatchPlan.total_count} tài liệu`
+                    ? `${autoBatchPlan.groups.length} lô · ${autoBatchPlan.total_count} tài liệu · ${selectedAutoWorkerCount} worker`
                     : "Chưa có kế hoạch phân công"}
                 </p>
               </div>
@@ -577,6 +595,7 @@ export function ProcessStepReviewControls(
                   workersLoading ||
                   confirmingAllAutoBatches ||
                   !autoBatchPlan ||
+                  selectedAutoWorkerCount === 0 ||
                   pendingAutoBatchCount === 0
                 }
                 className="h-8 gap-1.5 text-xs"
@@ -588,6 +607,57 @@ export function ProcessStepReviewControls(
                 )}
                 Xác nhận tất cả ({pendingAutoBatchCount})
               </Button>
+            </div>
+
+            <div className="flex flex-col gap-2 border-y border-[#E2E8F0] py-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-[#0F172A]">
+                  Worker nhận lô
+                </p>
+                <span className="text-[11px] font-medium text-[#64748B]">
+                  {selectedAutoWorkerCount}/{workers.length} đã chọn
+                </span>
+              </div>
+              {workersLoading ? (
+                <div className="flex items-center gap-2 py-1 text-xs text-[#64748B]">
+                  <Loader2 className="size-3.5 animate-spin" />
+                  Đang tải worker...
+                </div>
+              ) : workers.length > 0 ? (
+                <div className="grid max-h-28 grid-cols-1 gap-1 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3">
+                  {workers.map((worker: ChinhlyUser) => {
+                    const workerId = chinhlyUserId(worker)
+                    if (!workerId) return null
+                    const checked = selectedAutoWorkerIds.has(workerId)
+                    return (
+                      <label
+                        key={workerId}
+                        className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-xs text-[#0F172A] hover:bg-[#F8FAFC]"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(event) =>
+                            toggleAutoWorker(workerId, event.target.checked)
+                          }
+                          disabled={
+                            confirmingAllAutoBatches ||
+                            confirmingAutoBatchIndexes.size > 0
+                          }
+                          className="size-3.5 shrink-0"
+                        />
+                        <span className="min-w-0 truncate">
+                          {chinhlyUserLabel(worker)}
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              ) : (
+                <p className="py-1 text-xs text-[#64748B]">
+                  Không có worker đang hoạt động.
+                </p>
+              )}
             </div>
 
             {autoBatchPlanLoading ? (
@@ -624,6 +694,8 @@ export function ProcessStepReviewControls(
                     const confirming = confirmingAutoBatchIndexes.has(
                       planGroup.index
                     )
+                    const assignedToUserId =
+                      autoBatchAssigneeIds.get(planGroup.index) ?? ""
                     return (
                       <div
                         key={planGroup.index}
@@ -645,38 +717,13 @@ export function ProcessStepReviewControls(
                             -{planGroup.end}
                           </span>
                         </button>
-                        <select
-                          value={
-                            autoBatchAssigneeIds.get(planGroup.index) ?? ""
-                          }
-                          onChange={(event) =>
-                            setAutoBatchAssignee(
-                              planGroup.index,
-                              event.target.value
-                            )
-                          }
-                          disabled={
-                            workersLoading ||
-                            confirming ||
-                            Boolean(confirmation)
-                          }
-                          className="h-8 min-w-0 rounded-md border border-[#CBD5E1] bg-white px-2 text-xs text-[#0F172A] outline-none focus:border-[#0052FF]"
-                          aria-label={`Người phụ trách lô ${planDisplayIndex}`}
-                        >
-                          <option value="">
-                            {workersLoading
-                              ? "Đang tải nhân viên..."
-                              : "Chọn người phụ trách"}
-                          </option>
-                          {workers.map((worker: ChinhlyUser) => {
-                            const workerId = chinhlyUserId(worker)
-                            return (
-                              <option key={workerId} value={workerId}>
-                                {chinhlyUserLabel(worker)}
-                              </option>
-                            )
-                          })}
-                        </select>
+                        <div className="min-w-0 rounded-md border border-[#CBD5E1] bg-[#F8FAFC] px-2 py-1.5 text-xs text-[#0F172A]">
+                          <span className="block truncate">
+                            {assignedToUserId
+                              ? autoWorkerLabelById(assignedToUserId)
+                              : "Chưa chọn worker"}
+                          </span>
+                        </div>
                         {confirmation ? (
                           <span
                             className={
@@ -701,7 +748,7 @@ export function ProcessStepReviewControls(
                             disabled={
                               confirming ||
                               confirmingAllAutoBatches ||
-                              !autoBatchAssigneeIds.get(planGroup.index)
+                              !assignedToUserId
                             }
                             className="h-8 gap-1 text-xs whitespace-nowrap"
                           >

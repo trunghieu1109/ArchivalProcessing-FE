@@ -166,10 +166,10 @@ export async function createMetadataBatch(
 
 export async function getAutoMetadataBatchPlan(
   sessionId: string,
-  batchSize: number
+  batchCount: number
 ): Promise<AutoMetadataBatchPlanResponse> {
   const query = new URLSearchParams({
-    batch_size: String(Math.max(1, Math.floor(batchSize))),
+    batch_count: String(Math.max(1, Math.floor(batchCount))),
   })
   return requestJson<AutoMetadataBatchPlanResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/metadata-batches/auto-plan?${query.toString()}`
