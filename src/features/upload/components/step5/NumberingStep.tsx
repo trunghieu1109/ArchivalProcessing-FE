@@ -325,7 +325,11 @@ export function NumberingStep({
       setStarting(true)
       setError("")
       setProgressPhase("loading_data")
-      setProgressMessage("Đang gửi yêu cầu đánh số trang.")
+      setProgressMessage(
+        force
+          ? "Đang gửi yêu cầu đánh số lại theo cấu hình hiện tại."
+          : "Đang gửi yêu cầu đánh số trang."
+      )
       setCompletedPhases(new Set())
       try {
         const response = await enqueueDocumentNumbering(sessionId, {
@@ -343,7 +347,11 @@ export function NumberingStep({
           setProgressMessage("Đã lấy kết quả đánh số hiện có.")
           toast.info("Tài liệu đã được đánh số theo chế độ hiện tại.")
         } else if (response.created) {
-          toast.success("Đã gửi task đánh số trang.")
+          toast.success(
+            force
+              ? "Đã gửi task đánh số lại."
+              : "Đã gửi task đánh số trang."
+          )
         } else {
           toast.info("Task đánh số trang đang được xử lý.")
         }
@@ -359,7 +367,12 @@ export function NumberingStep({
         setStarting(false)
       }
     },
-    [documentNumberingStylePreset, refreshStatus, sessionId]
+    [
+      documentNumberingStyleOverrides,
+      documentNumberingStylePreset,
+      refreshStatus,
+      sessionId,
+    ]
   )
 
   const updateDocumentNumberFromPage = useCallback(
@@ -460,7 +473,14 @@ export function NumberingStep({
         setRetryingDocumentId(null)
       }
     },
-    [refreshStatus, sessionId, starting, status?.active]
+    [
+      documentNumberingStyleOverrides,
+      documentNumberingStylePreset,
+      refreshStatus,
+      sessionId,
+      starting,
+      status?.active,
+    ]
   )
 
   const exportMetadata = useCallback(async () => {
@@ -720,6 +740,7 @@ export function NumberingStep({
     status?.job?.status === "running" ? status.job.locked_by : null
   const metadataBusy = metadataExporting || metadataImporting
   const canContinue = complete && failedCount === 0 && unresolvedCount === 0
+  const canRestartNumbering = hasNumberingOutput
   const changeNumberingMode = async (mode: DocumentNumberingMode) => {
     if (active || changingMode || mode === documentNumberingMode) return
     const hadCompletedNumbering = complete
@@ -765,6 +786,32 @@ export function NumberingStep({
       setChangingStyle(false)
     }
   }
+  const changeNumberingStyleOverrides = async (overrides: {
+    font_size?: number
+    color?: string
+    opacity?: number
+  }) => {
+    if (!onDocumentNumberingStyleOverridesChange || active || changingStyle)
+      return
+    const hadNumberingOutput = hasNumberingOutput
+    setChangingStyle(true)
+    setError("")
+    try {
+      const saved = await onDocumentNumberingStyleOverridesChange(overrides)
+      if (saved === false) return
+      await refreshStatus({ silent: true, force: true })
+      setProgressPhase(null)
+      setProgressMessage("")
+      setCompletedPhases(new Set())
+      if (hadNumberingOutput) {
+        toast.info(
+          "Đã lưu tùy chỉnh kiểu số. Bấm Đánh số lại để áp dụng vào toàn bộ tài liệu."
+        )
+      }
+    } finally {
+      setChangingStyle(false)
+    }
+  }
   const modeLabel =
     documentNumberingMode === "sheet" ? "Đánh số theo tờ" : "Đánh số theo trang"
 
@@ -782,11 +829,17 @@ export function NumberingStep({
         starting={starting}
         active={active}
         complete={complete}
+        canRestart={canRestartNumbering}
         onRefresh={() => refreshStatus({ force: true })}
         onStart={() => startNumbering(false)}
+        onRestart={() => startNumbering(true)}
         onModeChange={changeNumberingMode}
         onStyleChange={changeNumberingStyle}
-        onOverridesChange={onDocumentNumberingStyleOverridesChange}
+        onOverridesChange={
+          onDocumentNumberingStyleOverridesChange
+            ? changeNumberingStyleOverrides
+            : undefined
+        }
       />
       <NumberingMetadataPanel
         metadataImportInputRef={metadataImportInputRef}

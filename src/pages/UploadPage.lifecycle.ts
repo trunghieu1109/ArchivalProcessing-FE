@@ -10,10 +10,14 @@ import { uploadPageCache as cache } from "./UploadPage.cache"
 import { LAST_SESSION_KEY } from "./UploadPage.progress"
 import {
   DEFAULT_DOCUMENT_NUMBERING_MODE,
+  DEFAULT_DOCUMENT_NUMBERING_STYLE_PRESET,
   DEFAULT_DOSSIER_BUILD_STRATEGY,
+  DEFAULT_NUMBERING_STYLE_OVERRIDES,
   EMPTY_PARSED_PLAN,
   activePlanBuildStrategy,
   activePlanDocumentNumberingMode,
+  activePlanDocumentNumberingStyleOverrides,
+  activePlanDocumentNumberingStylePreset,
   activePlanToParsedPlan,
   planToTree,
 } from "./UploadPage.planUtils"
@@ -69,6 +73,8 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     setPlanAnalysisState,
     setDossierBuildStrategy,
     setDocumentNumberingMode,
+    setDocumentNumberingStylePreset,
+    setDocumentNumberingStyleOverrides,
     setDoc1Has,
     setDoc2Has,
     setZipHas,
@@ -105,6 +111,8 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     setPlanAnalysisState(cache.planAnalysisState)
     setDossierBuildStrategy(cache.dossierBuildStrategy)
     setDocumentNumberingMode(cache.documentNumberingMode)
+    setDocumentNumberingStylePreset(cache.documentNumberingStylePreset)
+    setDocumentNumberingStyleOverrides(cache.documentNumberingStyleOverrides)
     setDoc1Has(cache.doc1Has)
     setDoc2Has(cache.doc2Has)
     setZipHas(cache.zipHas)
@@ -146,6 +154,15 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     cache.persistedDossierBuildStrategy = DEFAULT_DOSSIER_BUILD_STRATEGY
     cache.documentNumberingMode = DEFAULT_DOCUMENT_NUMBERING_MODE
     cache.persistedDocumentNumberingMode = DEFAULT_DOCUMENT_NUMBERING_MODE
+    cache.documentNumberingStylePreset = DEFAULT_DOCUMENT_NUMBERING_STYLE_PRESET
+    cache.persistedDocumentNumberingStylePreset =
+      DEFAULT_DOCUMENT_NUMBERING_STYLE_PRESET
+    cache.documentNumberingStyleOverrides = {
+      ...DEFAULT_NUMBERING_STYLE_OVERRIDES,
+    }
+    cache.persistedDocumentNumberingStyleOverrides = {
+      ...DEFAULT_NUMBERING_STYLE_OVERRIDES,
+    }
     cache.documentNumberingModeSavePromise = null
     cache.sessionId = nextSessionId
     cache.sessionMetadata = {
@@ -260,6 +277,10 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
           const plan = activePlanToParsedPlan(activePlan)
           const buildStrategy = activePlanBuildStrategy(activePlan)
           const numberingMode = activePlanDocumentNumberingMode(activePlan)
+          const numberingStylePreset =
+            activePlanDocumentNumberingStylePreset(activePlan)
+          const numberingStyleOverrides =
+            activePlanDocumentNumberingStyleOverrides(activePlan)
           cache.activePlanVersionId = activePlan.id ?? ""
           cache.parsedPlan = plan
           cache.folderTree = planToTree(plan)
@@ -268,11 +289,18 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
           cache.persistedDossierBuildStrategy = buildStrategy
           cache.documentNumberingMode = numberingMode
           cache.persistedDocumentNumberingMode = numberingMode
+          cache.documentNumberingStylePreset = numberingStylePreset
+          cache.persistedDocumentNumberingStylePreset = numberingStylePreset
+          cache.documentNumberingStyleOverrides = numberingStyleOverrides
+          cache.persistedDocumentNumberingStyleOverrides =
+            numberingStyleOverrides
           setParsedPlan(plan)
           setFolderTree(cache.folderTree)
           setPlanAnalysisState("done")
           setDossierBuildStrategy(buildStrategy)
           setDocumentNumberingMode(numberingMode)
+          setDocumentNumberingStylePreset(numberingStylePreset)
+          setDocumentNumberingStyleOverrides(numberingStyleOverrides)
           setPlanProgressPhase(null)
           setPlanProgressMessage("")
           setPlanCompletedPhases(new Set())

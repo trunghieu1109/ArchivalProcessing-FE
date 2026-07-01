@@ -210,6 +210,8 @@ export function UploadPage() {
     setPlanAnalysisState,
     setDossierBuildStrategy,
     setDocumentNumberingMode,
+    setDocumentNumberingStylePreset,
+    setDocumentNumberingStyleOverrides,
     setDoc1Has,
     setDoc2Has,
     setZipHas,

@@ -44,8 +44,10 @@ export function NumberingStepHeader({
   starting,
   active,
   complete,
+  canRestart,
   onRefresh,
   onStart,
+  onRestart,
   onModeChange,
   onStyleChange,
   onOverridesChange,
@@ -61,8 +63,10 @@ export function NumberingStepHeader({
   starting: boolean
   active: boolean
   complete: boolean
+  canRestart: boolean
   onRefresh: () => void | Promise<unknown>
   onStart: () => void | Promise<unknown>
+  onRestart: () => void | Promise<unknown>
   onModeChange: (mode: DocumentNumberingMode) => void | Promise<unknown>
   onStyleChange: (
     stylePreset: DocumentNumberingStylePreset
@@ -76,6 +80,7 @@ export function NumberingStepHeader({
   const styleLabel =
     (selectedStyle?.display_name || selectedStyle?.name || documentNumberingStylePreset) +
     (hasOverrides ? " (tùy chỉnh)" : "")
+  const controlsDisabled = active || changingStyle || loading
   return (
     <div className="rounded-2xl border border-[#CBD5E1] bg-white px-5 py-4 shadow-sm">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -171,7 +176,8 @@ export function NumberingStepHeader({
                 <button
                   type="button"
                   onClick={() => void onOverridesChange({})}
-                  className="text-[#64748B] hover:text-[#0052FF] underline-offset-1 hover:underline"
+                  disabled={controlsDisabled}
+                  className="text-[#64748B] hover:text-[#0052FF] underline-offset-1 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   reset
                 </button>
@@ -183,6 +189,7 @@ export function NumberingStepHeader({
                   <input
                     type="number"
                     min={6} max={48} step={0.5}
+                    disabled={controlsDisabled}
                     value={(() => {
                       const b: any = numberingStyleOptions.find(s => s.style_preset === documentNumberingStylePreset) || numberingStyleOptions[0] || {}
                       return documentNumberingStyleOverrides?.font_size ?? b.font_size ?? b.fontSize ?? 14
@@ -199,10 +206,11 @@ export function NumberingStepHeader({
                 <div className="flex items-center gap-1">
                   <span className="text-[#64748B]">Màu</span>
                   {["#757573","#3D3D3B","#000000","#1E3A5F"].map(c => (
-                    <button key={c} type="button" className="size-4 rounded border border-[#CBD5E1]" style={{background:c}}
+                    <button key={c} type="button" disabled={controlsDisabled} className="size-4 rounded border border-[#CBD5E1] disabled:cursor-not-allowed disabled:opacity-50" style={{background:c}}
                       onClick={() => void onOverridesChange({ ...(documentNumberingStyleOverrides||{}), color: c })} />
                   ))}
                   <input type="color" className="size-4 p-0 border border-[#CBD5E1] rounded"
+                    disabled={controlsDisabled}
                     value={documentNumberingStyleOverrides?.color || "#757573"}
                     onChange={e => void onOverridesChange({ ...(documentNumberingStyleOverrides||{}), color: e.target.value })} />
                 </div>
@@ -210,6 +218,7 @@ export function NumberingStepHeader({
                 <div className="flex items-center gap-1 min-w-[110px]">
                   <span className="text-[#64748B]">Độ mờ</span>
                   <input type="range" min={0.2} max={1} step={0.05}
+                    disabled={controlsDisabled}
                     value={documentNumberingStyleOverrides?.opacity ?? 0.75}
                     onChange={e => {
                       const v = parseFloat(e.target.value)
@@ -232,6 +241,21 @@ export function NumberingStepHeader({
             <RefreshCw data-icon="inline-start" />
             Làm mới
           </Button>
+          {canRestart ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void onRestart()}
+              disabled={active || changingMode || changingStyle || loading}
+            >
+              {active ? (
+                <Loader2 data-icon="inline-start" className="animate-spin" />
+              ) : (
+                <RotateCcw data-icon="inline-start" />
+              )}
+              Đánh số lại
+            </Button>
+          ) : null}
           <Button
             type="button"
             onClick={() => void onStart()}

@@ -108,7 +108,7 @@ export function statusBadge(status: string): {
     }
   }
   return {
-    label: "Chờ xử lý",
+    label: "Chưa đánh số",
     className: "bg-slate-100 text-slate-700",
   }
 }
