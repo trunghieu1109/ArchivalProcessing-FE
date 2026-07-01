@@ -471,3 +471,66 @@ export function moveDocumentLocally(
     return group
   })
 }
+
+export function moveSelectedDocumentsLocally(
+  groups: ClusterGroup[],
+  sessionDocumentIds: Iterable<number>,
+  targetGroupId: string
+): ClusterGroup[] {
+  const selectedIds = new Set(sessionDocumentIds)
+  if (selectedIds.size === 0) return groups
+
+  const movingDocuments: ClusterGroup["documents"] = []
+  const movedSessionDocumentIds = new Set<number>()
+  const groupsWithoutSelected = groups.map((group) => {
+    if (group.id === targetGroupId) return group
+    const documents = group.documents.filter((document) => {
+      const sessionDocumentId = document.sessionDocumentId
+      if (sessionDocumentId === null || !selectedIds.has(sessionDocumentId)) {
+        return true
+      }
+      if (!movedSessionDocumentIds.has(sessionDocumentId)) {
+        movingDocuments.push(document)
+        movedSessionDocumentIds.add(sessionDocumentId)
+      }
+      return false
+    })
+    if (documents.length === group.documents.length) return group
+    return {
+      ...group,
+      documents,
+      files: documents.map((document) => document.filePath),
+    }
+  })
+
+  if (movingDocuments.length === 0) return groups
+
+  return groupsWithoutSelected.map((group) => {
+    if (group.id !== targetGroupId) return group
+    const existingSessionDocumentIds = new Set(
+      group.documents
+        .map((document) => document.sessionDocumentId)
+        .filter((id): id is number => id !== null)
+    )
+    const documentsToAppend = movingDocuments.filter((document) => {
+      const sessionDocumentId = document.sessionDocumentId
+      return (
+        sessionDocumentId === null ||
+        !existingSessionDocumentIds.has(sessionDocumentId)
+      )
+    })
+    if (documentsToAppend.length === 0) return group
+    const documents = [
+      ...group.documents,
+      ...documentsToAppend.map((document, index) => ({
+        ...document,
+        positionIndex: group.documents.length + index,
+      })),
+    ]
+    return {
+      ...group,
+      documents,
+      files: documents.map((document) => document.filePath),
+    }
+  })
+}

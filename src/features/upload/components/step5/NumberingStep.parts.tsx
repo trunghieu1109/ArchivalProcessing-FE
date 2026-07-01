@@ -81,6 +81,40 @@ export function NumberingStepHeader({
     (selectedStyle?.display_name || selectedStyle?.name || documentNumberingStylePreset) +
     (hasOverrides ? " (tùy chỉnh)" : "")
   const controlsDisabled = active || changingStyle || loading
+  const baseFontSize =
+    selectedStyle?.font_size ??
+    (selectedStyle as { fontSize?: number } | undefined)?.fontSize ??
+    14
+  const currentFontSize = documentNumberingStyleOverrides?.font_size ?? baseFontSize
+  const [fontSizeDraft, setFontSizeDraft] = useState(String(currentFontSize))
+  const [fontSizeDirty, setFontSizeDirty] = useState(false)
+  useEffect(() => {
+    setFontSizeDraft(String(currentFontSize))
+    setFontSizeDirty(false)
+  }, [currentFontSize])
+  const commitFontSizeDraft = () => {
+    if (controlsDisabled || !onOverridesChange) return
+    if (!fontSizeDirty) return
+    const trimmed = fontSizeDraft.trim()
+    const value = trimmed === "" ? undefined : Number(trimmed)
+    if (
+      trimmed !== "" &&
+      (typeof value !== "number" || !Number.isFinite(value) || value < 1 || value > 200)
+    ) {
+      setFontSizeDraft(String(currentFontSize))
+      setFontSizeDirty(false)
+      return
+    }
+    if (value === currentFontSize) {
+      setFontSizeDirty(false)
+      return
+    }
+    setFontSizeDirty(false)
+    void onOverridesChange({
+      ...(documentNumberingStyleOverrides || {}),
+      font_size: value,
+    })
+  }
   return (
     <div className="rounded-2xl border border-[#CBD5E1] bg-white px-5 py-4 shadow-sm">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -190,14 +224,15 @@ export function NumberingStepHeader({
                     type="number"
                     min={6} max={48} step={0.5}
                     disabled={controlsDisabled}
-                    value={(() => {
-                      const b: any = numberingStyleOptions.find(s => s.style_preset === documentNumberingStylePreset) || numberingStyleOptions[0] || {}
-                      return documentNumberingStyleOverrides?.font_size ?? b.font_size ?? b.fontSize ?? 14
-                    })()}
-                    onChange={e => {
-                      const v = parseFloat(e.target.value)
-                      const next = { ...(documentNumberingStyleOverrides || {}), font_size: isNaN(v) ? undefined : v }
-                      void onOverridesChange(next)
+                    value={fontSizeDraft}
+                    onChange={(event) => {
+                      setFontSizeDraft(event.target.value)
+                      setFontSizeDirty(true)
+                    }}
+                    onBlur={commitFontSizeDraft}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter") return
+                      event.currentTarget.blur()
                     }}
                     className="w-16 rounded border border-[#CBD5E1] px-1.5 py-0.5 text-xs"
                   />

@@ -19,7 +19,6 @@ import {
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { PaginationControls } from "@/features/upload/components/PaginationControls"
-import { usePagedItems } from "@/features/upload/hooks/usePagedItems"
 import {
   downloadPublicationArchiveArtifact,
   downloadPublicationDocument,
@@ -28,6 +27,8 @@ import {
   getPublicationManifest,
   updatePublicationName,
   type PublicationArchiveScope,
+  type PublicationBox,
+  type PublicationDossier,
   type PublicationManifest,
 } from "@/features/upload/api/sessionApi"
 import { cn } from "@/shared/lib/utils"
@@ -44,6 +45,12 @@ const PUBLICATION_ARCHIVE_FAILED_STATUSES = new Set([
   "cancelled",
   "canceled",
 ])
+const DEFAULT_FONDS_LABEL = "Chưa đặt tên phông"
+const DEFAULT_RETENTION_GROUPS = [
+  "Vĩnh viễn",
+  "Có thời hạn",
+  "Tài liệu loại",
+]
 
 export function PublicationStep({ sessionId }: PublicationStepProps) {
   const [manifest, setManifest] = useState<PublicationManifest | null>(null)
@@ -172,12 +179,10 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
       ] as const,
     [manifest]
   )
-  const boxPagination = usePagedItems(manifest?.boxes ?? [], {
-    defaultPageSize: 25,
-    resetKey: manifest?.fingerprint ?? "",
-    storageKey: "archival-processing.publication-box-page-size",
-  })
-  const pagedBoxes = boxPagination.items
+  const publicationTree = useMemo(
+    () => buildPublicationTree(manifest),
+    [manifest]
+  )
   const publicationSearchMatches = useMemo(
     () => buildPublicationSearchMatches(manifest, publicationSearch),
     [manifest, publicationSearch]
@@ -196,22 +201,22 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
 
   useEffect(() => {
     if (!activePublicationSearchMatch) return
-    boxPagination.setPageIndex(
-      Math.floor(
-        activePublicationSearchMatch.boxIndex / boxPagination.pageSize
+    if (activePublicationSearchMatch.boxNumber) {
+      setCollapsedBoxes((current) =>
+        removeSetValue(current, activePublicationSearchMatch.boxNumber!)
       )
-    )
-    setCollapsedBoxes((current) =>
-      removeSetValue(current, activePublicationSearchMatch.boxNumber)
-    )
-    if (activePublicationSearchMatch.dossierIndex !== undefined) {
+    }
+    if (
+      activePublicationSearchMatch.boxNumber &&
+      activePublicationSearchMatch.dossierIndex !== undefined
+    ) {
       const pageIndex = Math.floor(
         activePublicationSearchMatch.dossierIndex / dossierPageSize
       )
       setDossierPageByBox((current) =>
         setRecordPage(
           current,
-          activePublicationSearchMatch.boxNumber,
+          activePublicationSearchMatch.boxNumber!,
           pageIndex
         )
       )
@@ -242,8 +247,6 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
     return () => window.clearTimeout(timeoutId)
   }, [
     activePublicationSearchMatch,
-    boxPagination.pageSize,
-    boxPagination.setPageIndex,
     dossierPageSize,
     documentPageSize,
   ])
@@ -371,7 +374,7 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
                   Cấu trúc gói xuất bản
                 </p>
                 <p className="text-xs text-[#64748B]">
-                  Hộp / Hồ sơ / Tài liệu
+                  Phông / Loại tài liệu / Hộp / Hồ sơ / Tài liệu
                 </p>
               </div>
             </div>
@@ -395,7 +398,7 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
               <input
                 value={publicationSearch}
                 onChange={(event) => setPublicationSearch(event.target.value)}
-                placeholder="Tìm hộp, hồ sơ hoặc tài liệu"
+                placeholder="Tìm phông, loại tài liệu, hộp, hồ sơ hoặc tài liệu"
                 className="min-w-0 flex-1 bg-transparent text-sm text-[#0F172A] outline-none placeholder:text-[#94A3B8]"
               />
               {publicationSearch ? (
@@ -442,351 +445,358 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
           </div>
         </div>
         <div className="max-h-[min(68svh,620px)] overflow-y-auto p-3">
-          {pagedBoxes.map((box) => {
-            const boxCollapsed = collapsedBoxes.has(box.box_number)
-            const boxKey = `box:${box.box_number}`
-            const dossierPagination = paginationFromState(
-              box.dossiers.length,
-              dossierPageByBox[box.box_number] ?? 0,
-              dossierPageSize
-            )
-            const pagedDossiers = box.dossiers.slice(
-              dossierPagination.startIndex,
-              dossierPagination.endIndex
-            )
-            return (
-              <section key={box.box_number}>
-                <div
-                  data-publication-node-id={boxKey}
-                  className={cn(
-                    "group/row flex items-center gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-[#F1F5F9]",
-                    activePublicationSearchMatch?.id === boxKey &&
-                      "bg-[#EAF1FF] ring-2 ring-[#0052FF]/25"
-                  )}
-                >
-                  <button
-                    type="button"
-                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                    onClick={() =>
-                      setCollapsedBoxes((current) =>
-                        toggleSet(current, box.box_number)
-                      )
-                    }
-                  >
-                    <ChevronDown
-                      className={cn(
-                        "size-3.5 shrink-0 text-[#64748B] transition-transform",
-                        boxCollapsed && "-rotate-90"
-                      )}
-                    />
-                    <Box className="size-4 shrink-0 text-[#0052FF]" />
-                    <EditablePublicationName
-                      value={box.name}
-                      editing={editingName?.type === "box" && editingName.id === box.box_number}
-                      draft={editingName?.value ?? ""}
-                      saving={savingNameKey === `box:${box.box_number}`}
-                      textClassName="text-sm font-semibold text-[#0F172A]"
-                      onStart={(event) => {
-                        event.stopPropagation()
-                        setEditingName({
-                          type: "box",
-                          id: box.box_number,
-                          value: box.name,
-                        })
-                      }}
-                      onChange={(value) =>
-                        setEditingName((current) =>
-                          current ? { ...current, value } : current
-                        )
-                      }
-                      onSave={(event) => {
-                        event.stopPropagation()
-                        void saveName()
-                      }}
-                      onCancel={(event) => {
-                        event.stopPropagation()
-                        setEditingName(null)
-                      }}
-                    />
-                    <CountBadge>{box.dossiers.length} hồ sơ</CountBadge>
-                  </button>
-                  <IconDownloadButton
-                    loading={downloadingKey === boxKey}
-                    disabled={!box.download_ready || downloadingKey !== ""}
-                    label={`Tải ${box.name}`}
-                    onClick={() =>
-                      sessionId &&
-                      void downloadArchive(boxKey, {
-                        scope: "box",
-                        box_number: box.box_number,
-                      })
-                    }
-                  />
-                </div>
+          {publicationTree.map((fonds) => (
+            <section key={fonds.label}>
+              <div
+                data-publication-node-id="fonds:root"
+                className={cn(
+                  "flex items-center gap-2 rounded-lg px-2 py-2",
+                  activePublicationSearchMatch?.id === "fonds:root" &&
+                    "bg-[#EAF1FF] ring-2 ring-[#0052FF]/25"
+                )}
+              >
+                <FolderOpen className="size-4 shrink-0 text-[#0052FF]" />
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[#0F172A]">
+                  {fonds.label}
+                </span>
+              </div>
 
-                {!boxCollapsed ? (
-                  <div className="ml-[15px] border-l border-[#D8E1EC] pl-3">
-                    {pagedDossiers.map((dossier) => {
-                      const dossierCollapsed = collapsedDossiers.has(
-                        dossier.session_dossier_id
-                      )
-                      const dossierKey = `dossier:${dossier.session_dossier_id}`
-                      const documentPagination = paginationFromState(
-                        dossier.documents.length,
-                        documentPageByDossier[
-                          dossier.session_dossier_id
-                        ] ?? 0,
-                        documentPageSize
-                      )
-                      const pagedDocuments = dossier.documents.slice(
-                        documentPagination.startIndex,
-                        documentPagination.endIndex
-                      )
-                      return (
-                        <div key={dossier.session_dossier_id}>
-                          <div
-                            data-publication-node-id={dossierKey}
-                            className={cn(
-                              "group/row flex items-center gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-[#F1F5F9]",
-                              activePublicationSearchMatch?.id === dossierKey &&
-                                "bg-[#EAF1FF] ring-2 ring-[#0052FF]/25"
-                            )}
-                          >
-                            <button
-                              type="button"
-                              className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                              onClick={() =>
-                                setCollapsedDossiers((current) =>
-                                  toggleSet(current, dossier.session_dossier_id)
-                                )
-                              }
-                            >
-                              <ChevronDown
+              <div className="ml-[15px] border-l border-[#D8E1EC] pl-3">
+                {fonds.retentionGroups.map((group) => {
+                  const groupKey = `retention:${group.label}`
+                  return (
+                    <section key={group.label}>
+                      <div
+                        data-publication-node-id={groupKey}
+                        className={cn(
+                          "flex items-center gap-2 rounded-lg px-2 py-2",
+                          activePublicationSearchMatch?.id === groupKey &&
+                            "bg-[#EAF1FF] ring-2 ring-[#0052FF]/25"
+                        )}
+                      >
+                        <Folder className="size-4 shrink-0 text-[#0052FF]" />
+                        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[#0F172A]">
+                          {group.label}
+                        </span>
+                      </div>
+
+                      <div className="ml-[15px] border-l border-[#D8E1EC] pl-3">
+                        {group.boxes.map((box) => {
+                          const boxCollapsed = collapsedBoxes.has(box.box_number)
+                          const boxKey = `box:${box.box_number}`
+                          const dossierPagination = paginationFromState(
+                            box.dossiers.length,
+                            dossierPageByBox[box.box_number] ?? 0,
+                            dossierPageSize
+                          )
+                          const pagedDossiers = box.dossiers.slice(
+                            dossierPagination.startIndex,
+                            dossierPagination.endIndex
+                          )
+                          return (
+                            <section key={`${group.label}:${box.box_number}`}>
+                              <div
+                                data-publication-node-id={boxKey}
                                 className={cn(
-                                  "size-3.5 shrink-0 text-[#64748B] transition-transform",
-                                  dossierCollapsed && "-rotate-90"
+                                  "group/row flex items-center gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-[#F1F5F9]",
+                                  activePublicationSearchMatch?.id === boxKey &&
+                                    "bg-[#EAF1FF] ring-2 ring-[#0052FF]/25"
                                 )}
-                              />
-                              {dossierCollapsed ? (
-                                <Folder className="size-4 shrink-0 text-[#0052FF]" />
-                              ) : (
-                                <FolderOpen className="size-4 shrink-0 text-[#0052FF]" />
-                              )}
-                              <span className="min-w-0 flex-1">
-                                <EditablePublicationName
-                                  value={dossier.standard_name}
-                                  editing={
-                                    editingName?.type === "dossier" &&
-                                    editingName.id ===
-                                      dossier.session_dossier_id
-                                  }
-                                  draft={editingName?.value ?? ""}
-                                  saving={
-                                    savingNameKey ===
-                                    `dossier:${dossier.session_dossier_id}`
-                                  }
-                                  textClassName="text-sm font-medium text-[#0F172A]"
-                                  onStart={(event) => {
-                                    event.stopPropagation()
-                                    setEditingName({
-                                      type: "dossier",
-                                      id: dossier.session_dossier_id,
-                                      value: dossier.standard_name,
-                                    })
-                                  }}
-                                  onChange={(value) =>
-                                    setEditingName((current) =>
-                                      current ? { ...current, value } : current
+                              >
+                                <button
+                                  type="button"
+                                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                  onClick={() =>
+                                    setCollapsedBoxes((current) =>
+                                      toggleSet(current, box.box_number)
                                     )
                                   }
-                                  onSave={(event) => {
-                                    event.stopPropagation()
-                                    void saveName()
-                                  }}
-                                  onCancel={(event) => {
-                                    event.stopPropagation()
-                                    setEditingName(null)
-                                  }}
-                                />
-                                <span className="block truncate text-xs text-[#64748B]">
-                                  {dossier.title}
-                                </span>
-                              </span>
-                              <CountBadge>
-                                {dossier.documents.length}
-                              </CountBadge>
-                            </button>
-                            <IconDownloadButton
-                              loading={downloadingKey === dossierKey}
-                              disabled={
-                                !dossier.download_ready || downloadingKey !== ""
-                              }
-                              label={`Tải hồ sơ ${dossier.standard_name}`}
-                              onClick={() =>
-                                sessionId &&
-                                void downloadArchive(dossierKey, {
-                                  scope: "dossier",
-                                  session_dossier_id:
-                                    dossier.session_dossier_id,
-                                })
-                              }
-                            />
-                          </div>
-
-                          {!dossierCollapsed ? (
-                            <div className="ml-[15px] border-l border-[#E2E8F0] pl-3">
-                              {pagedDocuments.map((document) => {
-                                const documentKey = `document:${document.session_document_id}`
-                                return (
-                                  <div
-                                    key={document.session_document_id}
-                                    data-publication-node-id={documentKey}
+                                >
+                                  <ChevronDown
                                     className={cn(
-                                      "group/row flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-[#F8FAFC]",
-                                      activePublicationSearchMatch?.id ===
-                                        documentKey &&
-                                        "bg-[#EAF1FF] ring-2 ring-[#0052FF]/25"
+                                      "size-3.5 shrink-0 text-[#64748B] transition-transform",
+                                      boxCollapsed && "-rotate-90"
                                     )}
-                                  >
-                                    <span className="block size-3.5 shrink-0" />
-                                    <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-[#E8F0FF] text-[#0052FF]">
-                                      <FileText className="size-3.5" />
-                                    </span>
-                                    <div className="min-w-0 flex-1">
-                                      <EditablePublicationName
-                                        value={document.standard_file_name}
-                                        editing={
-                                          editingName?.type === "document" &&
-                                          editingName.id ===
-                                            document.session_document_id
-                                        }
-                                        draft={editingName?.value ?? ""}
-                                        saving={
-                                          savingNameKey ===
-                                          `document:${document.session_document_id}`
-                                        }
-                                        textClassName="text-sm text-[#0F172A]"
-                                        onStart={(event) => {
-                                          event.stopPropagation()
-                                          setEditingName({
-                                            type: "document",
-                                            id: document.session_document_id,
-                                            value: document.standard_file_name,
-                                          })
-                                        }}
-                                        onChange={(value) =>
-                                          setEditingName((current) =>
-                                            current
-                                              ? { ...current, value }
-                                              : current
-                                          )
-                                        }
-                                        onSave={(event) => {
-                                          event.stopPropagation()
-                                          void saveName()
-                                        }}
-                                        onCancel={(event) => {
-                                          event.stopPropagation()
-                                          setEditingName(null)
-                                        }}
-                                      />
-                                      <p className="truncate text-xs text-[#94A3B8]">
-                                        {document.source_file_name} ·{" "}
-                                        {document.issued_date || "Chưa có ngày"}
-                                      </p>
-                                    </div>
-                                    <IconDownloadButton
-                                      loading={downloadingKey === documentKey}
-                                      disabled={
-                                        !document.download_ready ||
-                                        downloadingKey !== ""
-                                      }
-                                      label={`Tải ${document.standard_file_name}`}
-                                      onClick={() =>
-                                        sessionId &&
-                                        void download(documentKey, () =>
-                                          downloadPublicationDocument(
-                                            sessionId,
-                                            document.session_document_id
-                                          )
-                                        )
-                                      }
-                                    />
-                                  </div>
-                                )
-                              })}
-                              {dossier.documents.length >
-                                documentPagination.pageSize && (
-                                <PaginationControls
-                                  total={documentPagination.total}
-                                  pageIndex={documentPagination.pageIndex}
-                                  pageSize={documentPagination.pageSize}
-                                  pageCount={documentPagination.pageCount}
-                                  startNumber={documentPagination.startNumber}
-                                  endNumber={documentPagination.endNumber}
-                                  itemLabel="tài liệu"
-                                  onPageChange={(pageIndex) =>
-                                    setDocumentPageByDossier((current) => ({
-                                      ...current,
-                                      [dossier.session_dossier_id]: pageIndex,
-                                    }))
+                                  />
+                                  <Box className="size-4 shrink-0 text-[#0052FF]" />
+                                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[#0F172A]">
+                                    {box.name}
+                                  </span>
+                                </button>
+                                <IconDownloadButton
+                                  loading={downloadingKey === boxKey}
+                                  disabled={
+                                    !box.download_ready || downloadingKey !== ""
                                   }
-                                  onPageSizeChange={(pageSize) => {
-                                    setDocumentPageSize(pageSize)
-                                    setDocumentPageByDossier({})
-                                  }}
-                                  className="my-2"
+                                  label={`Tải ${box.name}`}
+                                  onClick={() =>
+                                    sessionId &&
+                                    void downloadArchive(boxKey, {
+                                      scope: "box",
+                                      box_number: box.box_number,
+                                    })
+                                  }
                                 />
-                              )}
-                            </div>
-                          ) : null}
-                        </div>
-                      )
-                    })}
-                    {box.dossiers.length > dossierPagination.pageSize && (
-                      <PaginationControls
-                        total={dossierPagination.total}
-                        pageIndex={dossierPagination.pageIndex}
-                        pageSize={dossierPagination.pageSize}
-                        pageCount={dossierPagination.pageCount}
-                        startNumber={dossierPagination.startNumber}
-                        endNumber={dossierPagination.endNumber}
-                        itemLabel="hồ sơ"
-                        onPageChange={(pageIndex) =>
-                          setDossierPageByBox((current) => ({
-                            ...current,
-                            [box.box_number]: pageIndex,
-                          }))
-                        }
-                        onPageSizeChange={(pageSize) => {
-                          setDossierPageSize(pageSize)
-                          setDossierPageByBox({})
-                        }}
-                        className="my-2"
-                      />
-                    )}
-                  </div>
-                ) : null}
-              </section>
-            )
-          })}
+                              </div>
+
+                              {!boxCollapsed ? (
+                                <div className="ml-[15px] border-l border-[#D8E1EC] pl-3">
+                                  {pagedDossiers.map((dossier) => {
+                                    const dossierCollapsed = collapsedDossiers.has(
+                                      dossier.session_dossier_id
+                                    )
+                                    const dossierKey = `dossier:${dossier.session_dossier_id}`
+                                    const documentPagination = paginationFromState(
+                                      dossier.documents.length,
+                                      documentPageByDossier[
+                                        dossier.session_dossier_id
+                                      ] ?? 0,
+                                      documentPageSize
+                                    )
+                                    const pagedDocuments = dossier.documents.slice(
+                                      documentPagination.startIndex,
+                                      documentPagination.endIndex
+                                    )
+                                    return (
+                                      <div key={dossier.session_dossier_id}>
+                                        <div
+                                          data-publication-node-id={dossierKey}
+                                          className={cn(
+                                            "group/row flex items-center gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-[#F1F5F9]",
+                                            activePublicationSearchMatch?.id ===
+                                              dossierKey &&
+                                              "bg-[#EAF1FF] ring-2 ring-[#0052FF]/25"
+                                          )}
+                                        >
+                                          <button
+                                            type="button"
+                                            className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                            onClick={() =>
+                                              setCollapsedDossiers((current) =>
+                                                toggleSet(
+                                                  current,
+                                                  dossier.session_dossier_id
+                                                )
+                                              )
+                                            }
+                                          >
+                                            <ChevronDown
+                                              className={cn(
+                                                "size-3.5 shrink-0 text-[#64748B] transition-transform",
+                                                dossierCollapsed && "-rotate-90"
+                                              )}
+                                            />
+                                            {dossierCollapsed ? (
+                                              <Folder className="size-4 shrink-0 text-[#0052FF]" />
+                                            ) : (
+                                              <FolderOpen className="size-4 shrink-0 text-[#0052FF]" />
+                                            )}
+                                            <span className="min-w-0 flex-1">
+                                              <span className="block truncate text-sm font-medium text-[#0F172A]">
+                                                {dossier.standard_name}
+                                              </span>
+                                              <span className="block truncate text-xs text-[#64748B]">
+                                                {dossier.title}
+                                              </span>
+                                            </span>
+                                          </button>
+                                          <IconDownloadButton
+                                            loading={downloadingKey === dossierKey}
+                                            disabled={
+                                              !dossier.download_ready ||
+                                              downloadingKey !== ""
+                                            }
+                                            label={`Tải hồ sơ ${dossier.standard_name}`}
+                                            onClick={() =>
+                                              sessionId &&
+                                              void downloadArchive(dossierKey, {
+                                                scope: "dossier",
+                                                session_dossier_id:
+                                                  dossier.session_dossier_id,
+                                              })
+                                            }
+                                          />
+                                        </div>
+
+                                        {!dossierCollapsed ? (
+                                          <div className="ml-[15px] border-l border-[#E2E8F0] pl-3">
+                                            {pagedDocuments.map((document) => {
+                                              const documentKey = `document:${document.session_document_id}`
+                                              return (
+                                                <div
+                                                  key={
+                                                    document.session_document_id
+                                                  }
+                                                  data-publication-node-id={
+                                                    documentKey
+                                                  }
+                                                  className={cn(
+                                                    "group/row flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-[#F8FAFC]",
+                                                    activePublicationSearchMatch?.id ===
+                                                      documentKey &&
+                                                      "bg-[#EAF1FF] ring-2 ring-[#0052FF]/25"
+                                                  )}
+                                                >
+                                                  <span className="block size-3.5 shrink-0" />
+                                                  <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-[#E8F0FF] text-[#0052FF]">
+                                                    <FileText className="size-3.5" />
+                                                  </span>
+                                                  <div className="min-w-0 flex-1">
+                                                    <EditablePublicationName
+                                                      value={
+                                                        document.standard_file_name
+                                                      }
+                                                      editing={
+                                                        editingName?.type ===
+                                                          "document" &&
+                                                        editingName.id ===
+                                                          document.session_document_id
+                                                      }
+                                                      draft={
+                                                        editingName?.value ?? ""
+                                                      }
+                                                      saving={
+                                                        savingNameKey ===
+                                                        `document:${document.session_document_id}`
+                                                      }
+                                                      textClassName="text-sm text-[#0F172A]"
+                                                      onStart={(event) => {
+                                                        event.stopPropagation()
+                                                        setEditingName({
+                                                          type: "document",
+                                                          id: document.session_document_id,
+                                                          value:
+                                                            document.standard_file_name,
+                                                        })
+                                                      }}
+                                                      onChange={(value) =>
+                                                        setEditingName(
+                                                          (current) =>
+                                                            current
+                                                              ? {
+                                                                  ...current,
+                                                                  value,
+                                                                }
+                                                              : current
+                                                        )
+                                                      }
+                                                      onSave={(event) => {
+                                                        event.stopPropagation()
+                                                        void saveName()
+                                                      }}
+                                                      onCancel={(event) => {
+                                                        event.stopPropagation()
+                                                        setEditingName(null)
+                                                      }}
+                                                    />
+                                                    <p className="truncate text-xs text-[#94A3B8]">
+                                                      {document.source_file_name} ·{" "}
+                                                      {document.issued_date ||
+                                                        "Chưa có ngày"}
+                                                    </p>
+                                                  </div>
+                                                  <IconDownloadButton
+                                                    loading={
+                                                      downloadingKey ===
+                                                      documentKey
+                                                    }
+                                                    disabled={
+                                                      !document.download_ready ||
+                                                      downloadingKey !== ""
+                                                    }
+                                                    label={`Tải ${document.standard_file_name}`}
+                                                    onClick={() =>
+                                                      sessionId &&
+                                                      void download(
+                                                        documentKey,
+                                                        () =>
+                                                          downloadPublicationDocument(
+                                                            sessionId,
+                                                            document.session_document_id
+                                                          )
+                                                      )
+                                                    }
+                                                  />
+                                                </div>
+                                              )
+                                            })}
+                                            {dossier.documents.length >
+                                              documentPagination.pageSize && (
+                                              <PaginationControls
+                                                total={documentPagination.total}
+                                                pageIndex={
+                                                  documentPagination.pageIndex
+                                                }
+                                                pageSize={
+                                                  documentPagination.pageSize
+                                                }
+                                                pageCount={
+                                                  documentPagination.pageCount
+                                                }
+                                                startNumber={
+                                                  documentPagination.startNumber
+                                                }
+                                                endNumber={
+                                                  documentPagination.endNumber
+                                                }
+                                                itemLabel="tài liệu"
+                                                onPageChange={(pageIndex) =>
+                                                  setDocumentPageByDossier(
+                                                    (current) => ({
+                                                      ...current,
+                                                      [dossier.session_dossier_id]:
+                                                        pageIndex,
+                                                    })
+                                                  )
+                                                }
+                                                onPageSizeChange={(pageSize) => {
+                                                  setDocumentPageSize(pageSize)
+                                                  setDocumentPageByDossier({})
+                                                }}
+                                                className="my-2"
+                                              />
+                                            )}
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                    )
+                                  })}
+                                  {box.dossiers.length >
+                                    dossierPagination.pageSize && (
+                                    <PaginationControls
+                                      total={dossierPagination.total}
+                                      pageIndex={dossierPagination.pageIndex}
+                                      pageSize={dossierPagination.pageSize}
+                                      pageCount={dossierPagination.pageCount}
+                                      startNumber={dossierPagination.startNumber}
+                                      endNumber={dossierPagination.endNumber}
+                                      itemLabel="hồ sơ"
+                                      onPageChange={(pageIndex) =>
+                                        setDossierPageByBox((current) => ({
+                                          ...current,
+                                          [box.box_number]: pageIndex,
+                                        }))
+                                      }
+                                      onPageSizeChange={(pageSize) => {
+                                        setDossierPageSize(pageSize)
+                                        setDossierPageByBox({})
+                                      }}
+                                      className="my-2"
+                                    />
+                                  )}
+                                </div>
+                              ) : null}
+                            </section>
+                          )
+                        })}
+                      </div>
+                    </section>
+                  )
+                })}
+              </div>
+            </section>
+          ))}
         </div>
-        {(manifest?.boxes.length ?? 0) > 0 && (
-          <div className="border-t border-[#E2E8F0] px-4 py-3">
-            <PaginationControls
-              total={boxPagination.total}
-              pageIndex={boxPagination.pageIndex}
-              pageSize={boxPagination.pageSize}
-              pageCount={boxPagination.pageCount}
-              startNumber={boxPagination.startNumber}
-              endNumber={boxPagination.endNumber}
-              pageSizeOptions={boxPagination.pageSizeOptions}
-              itemLabel="hộp"
-              onPageChange={boxPagination.setPageIndex}
-              onPageSizeChange={boxPagination.setPageSize}
-            />
-          </div>
-        )}
       </div>
     </div>
   )
@@ -912,12 +922,91 @@ function IconDownloadButton({
   )
 }
 
-function CountBadge({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="shrink-0 rounded-full bg-[#E8F0FF] px-2 py-0.5 text-[10px] font-semibold text-[#0052FF]">
-      {children}
-    </span>
-  )
+interface PublicationRetentionGroup {
+  label: string
+  boxes: PublicationBox[]
+}
+
+interface PublicationFondsGroup {
+  label: string
+  retentionGroups: PublicationRetentionGroup[]
+}
+
+function buildPublicationTree(
+  manifest: PublicationManifest | null
+): PublicationFondsGroup[] {
+  if (!manifest) return []
+  const labels = retentionLabelsForManifest(manifest)
+  const groupsByLabel = new Map<string, PublicationRetentionGroup>()
+  const ensureGroup = (label: string) => {
+    const existing = groupsByLabel.get(label)
+    if (existing) return existing
+    const group: PublicationRetentionGroup = {
+      label,
+      boxes: [],
+    }
+    groupsByLabel.set(label, group)
+    if (!labels.includes(label)) labels.push(label)
+    return group
+  }
+
+  manifest.boxes.forEach((box) => {
+    const dossiersByGroup = new Map<string, PublicationDossier[]>()
+    box.dossiers.forEach((dossier) => {
+      const label = retentionGroupLabel(dossier)
+      const dossiers = dossiersByGroup.get(label) ?? []
+      dossiers.push(dossier)
+      dossiersByGroup.set(label, dossiers)
+      ensureGroup(label)
+    })
+
+    dossiersByGroup.forEach((dossiers, label) => {
+      const group = ensureGroup(label)
+      group.boxes.push({
+        ...box,
+        dossiers,
+      })
+    })
+  })
+
+  return [
+    {
+      label: (manifest.fonds_name ?? "").trim() || DEFAULT_FONDS_LABEL,
+      retentionGroups: labels
+        .map((label) => groupsByLabel.get(label))
+        .filter(
+          (group): group is PublicationRetentionGroup =>
+            Boolean(group && group.boxes.length > 0)
+        ),
+    },
+  ]
+}
+
+function retentionLabelsForManifest(manifest: PublicationManifest): string[] {
+  const labels = manifest.retention_groups?.length
+    ? [...manifest.retention_groups]
+    : [...DEFAULT_RETENTION_GROUPS]
+  manifest.boxes.forEach((box) => {
+    box.dossiers.forEach((dossier) => {
+      const label = retentionGroupLabel(dossier)
+      if (!labels.includes(label)) labels.push(label)
+    })
+  })
+  return labels.filter((label, index) => label && labels.indexOf(label) === index)
+}
+
+function retentionGroupLabel(dossier: PublicationDossier): string {
+  const direct = (dossier.retention_group ?? "").trim()
+  if (direct) return direct
+  const normalized = normalizeSearchText(dossier.retention_period)
+  if (!normalized) return "Có thời hạn"
+  if (normalized.includes("loai") || normalized.includes("huy")) {
+    return "Tài liệu loại"
+  }
+  if (normalized.includes("vinh vien") || normalized.replace(/\s+/g, "") === "vv") {
+    return "Vĩnh viễn"
+  }
+  return "Có thời hạn"
 }
 
 function toggleSet<T>(current: Set<T>, value: T): Set<T> {
@@ -929,8 +1018,8 @@ function toggleSet<T>(current: Set<T>, value: T): Set<T> {
 
 interface PublicationSearchMatch {
   id: string
-  boxIndex: number
-  boxNumber: string
+  boxIndex?: number
+  boxNumber?: string
   dossierIndex?: number
   dossierId?: number
   documentIndex?: number
@@ -943,6 +1032,14 @@ function buildPublicationSearchMatches(
   const normalizedQuery = normalizeSearchText(query)
   if (!manifest || !normalizedQuery) return []
   const matches: PublicationSearchMatch[] = []
+  const fondsLabel = (manifest.fonds_name ?? "").trim() || DEFAULT_FONDS_LABEL
+  if (normalizeSearchText(fondsLabel).includes(normalizedQuery)) {
+    matches.push({ id: "fonds:root" })
+  }
+  retentionLabelsForManifest(manifest).forEach((label) => {
+    if (!normalizeSearchText(label).includes(normalizedQuery)) return
+    matches.push({ id: `retention:${label}` })
+  })
   manifest.boxes.forEach((box, boxIndex) => {
     const boxId = `box:${box.box_number}`
     if (
@@ -966,6 +1063,9 @@ function buildPublicationSearchMatches(
             dossier.dossier_id,
             dossier.dossier_number,
             dossier.dossier_code,
+            dossier.retention_group,
+            dossier.retention_period,
+            dossier.fonds_name,
           ].join(" ")
         ).includes(normalizedQuery)
       ) {

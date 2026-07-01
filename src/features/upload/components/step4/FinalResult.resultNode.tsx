@@ -172,6 +172,8 @@ export function ResultNode({
             ? "bg-[#EAF1FF] shadow-[0_8px_24px_rgba(0,82,255,0.10)] ring-2 ring-[#0052FF]/25"
             : canDrop && dropTargetId === node.id
               ? "border-[#0052FF]/40 bg-[#EAF1FF] shadow-[0_8px_24px_rgba(0,82,255,0.10)]"
+              : group?.hasPendingFeedback
+                ? "border-cyan-300 bg-cyan-50/90 shadow-[0_8px_24px_rgba(8,145,178,0.10)]"
               : "hover:bg-[#F8FAFC]"
         )}
         style={{ paddingLeft: `${8 + depth * indentStep}px` }}
@@ -261,6 +263,17 @@ export function ResultNode({
               >
                 <FolderPlus className="size-3" />
                 Thủ công
+              </span>
+            )}
+            {group?.hasPendingFeedback && (
+              <span
+                className="flex h-6 shrink-0 items-center rounded-full border border-cyan-300 bg-cyan-100 px-2.5 text-[11px] font-bold text-cyan-800"
+                title="Feedback đã ghi nhận và đang chờ cập nhật hồ sơ"
+              >
+                Chờ cập nhật
+                {group.pendingFeedbackCount
+                  ? ` · ${group.pendingFeedbackCount}`
+                  : ""}
               </span>
             )}
             {group?.requiresReview && !isTemporary && (

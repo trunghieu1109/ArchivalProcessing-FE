@@ -32,6 +32,7 @@ export function FinalResultView(props: Record<string, any>) {
     activeClusterVersionId,
     activeResultTreeSearchNodeId,
     canRestoreFileRegisterVersion,
+    cancelingPendingFeedback,
     checkingClusters,
     clusterCompletedPhases,
     clusterJobMode,
@@ -44,6 +45,7 @@ export function FinalResultView(props: Record<string, any>) {
     dropTargetId,
     handleActivateDisplayedClusterVersion,
     handleApplyPendingClusterVersion,
+    handleCancelPendingFeedback,
     handleCreateDossierFromSelection,
     handleDropOnDossier,
     handleFinish,
@@ -496,7 +498,9 @@ export function FinalResultView(props: Record<string, any>) {
       </div>
       <FinalResultFeedbackPanel
         canRestoreFileRegisterVersion={canRestoreFileRegisterVersion}
+        cancelingPendingFeedback={cancelingPendingFeedback}
         clusterJobMode={clusterJobMode}
+        handleCancelPendingFeedback={handleCancelPendingFeedback}
         handleCreateDossierFromSelection={handleCreateDossierFromSelection}
         handleFinish={handleFinish}
         handleRebuildClusters={handleRebuildClusters}

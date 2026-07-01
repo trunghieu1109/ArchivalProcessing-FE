@@ -13,7 +13,10 @@ import {
   dossierPatchPayloadFromDraft,
   updateDossierGroupFromResponse,
 } from "./FinalResult.metadataUtils"
-import { moveDocumentLocally } from "./FinalResult.treeUtils"
+import {
+  moveDocumentLocally,
+  moveSelectedDocumentsLocally,
+} from "./FinalResult.treeUtils"
 
 const RESULT_TREE_AUTO_SCROLL_EDGE_PX = 84
 const RESULT_TREE_AUTO_SCROLL_MAX_STEP_PX = 22
@@ -22,7 +25,6 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
   const {
     draggedDocument,
     groups,
-    handleRebuildClusters,
     loading,
     movingSelectedDocumentsTargetId,
     pendingClusterVersion,
@@ -43,6 +45,7 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
     setMovingSelectedDocumentsTargetId,
     setOpenNodeIds,
     setPendingFeedbackCount,
+    setPendingFeedbackRefreshKey,
     setPromotingSelectedDocuments,
     setPromotingTemporaryFolder,
     setSavingDossierMetadataId,
@@ -203,6 +206,7 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
         },
       })
       setPendingFeedbackCount((count: number) => count + 1)
+      setPendingFeedbackRefreshKey((key: number) => key + 1)
       setStatus(
         targetIsTemporary
           ? "Đã lưu việc chuyển tài liệu vào Thư mục tạm. Bấm Cập nhật hồ sơ để áp dụng."
@@ -315,12 +319,12 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
       setPendingFeedbackCount(
         (count: number) => count + Math.max(1, response.feedback_count)
       )
+      setPendingFeedbackRefreshKey((key: number) => key + 1)
       setSelectedSessionDocumentIds(new Set())
       setStatus(
-        `Đã ghi nhận ${response.promoted_document_ids.length} tài liệu thành hồ sơ mới. Đang gửi job cập nhật hồ sơ.`
+        `Đã ghi nhận ${response.promoted_document_ids.length} tài liệu thành hồ sơ mới. Bấm Cập nhật hồ sơ để áp dụng.`
       )
       toast.success("Đã ghi nhận hồ sơ mới từ tài liệu đã chọn.")
-      await handleRebuildClusters("update")
     } catch (err) {
       toast.error(
         err instanceof Error
@@ -372,6 +376,11 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
 
     const targetIsTemporary = Boolean(group.isTemporary)
     setMovingSelectedDocumentsTargetId(group.id)
+    let previousGroups: ClusterGroup[] | null = null
+    setGroups((previous: ClusterGroup[]) => {
+      previousGroups = previous
+      return moveSelectedDocumentsLocally(previous, sessionDocumentIds, group.id)
+    })
     try {
       const response = await moveSelectedDocumentsToCluster(sessionId, {
         session_document_ids: sessionDocumentIds,
@@ -380,18 +389,18 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
       setPendingFeedbackCount(
         (count: number) => count + Math.max(1, response.feedback_count)
       )
+      setPendingFeedbackRefreshKey((key: number) => key + 1)
       setSelectedSessionDocumentIds(new Set())
       setStatus(
         targetIsTemporary
-          ? `Đã ghi nhận ${response.moved_document_ids.length} tài liệu chuyển vào Thư mục tạm. Đang gửi job cập nhật hồ sơ.`
-          : `Đã ghi nhận ${response.moved_document_ids.length} tài liệu chuyển tới hồ sơ "${group.label}". Đang gửi job cập nhật hồ sơ.`
+          ? `Đã ghi nhận ${response.moved_document_ids.length} tài liệu chuyển vào Thư mục tạm. Bấm Cập nhật hồ sơ để áp dụng.`
+          : `Đã ghi nhận ${response.moved_document_ids.length} tài liệu chuyển tới hồ sơ "${group.label}". Bấm Cập nhật hồ sơ để áp dụng.`
       )
       toast.success(
         targetIsTemporary
           ? "Đã ghi nhận chuyển tài liệu vào Thư mục tạm."
           : "Đã ghi nhận chuyển tài liệu tới hồ sơ."
       )
-      await handleRebuildClusters("update")
     } catch (err) {
       toast.error(
         err instanceof Error
@@ -400,6 +409,9 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
             ? "Không thể chuyển tài liệu đã chọn vào Thư mục tạm."
             : "Không thể chuyển tài liệu đã chọn tới hồ sơ."
       )
+      if (previousGroups) {
+        setGroups(previousGroups)
+      }
     } finally {
       setMovingSelectedDocumentsTargetId(null)
     }
@@ -453,11 +465,11 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
       setPendingFeedbackCount(
         (count: number) => count + Math.max(1, response.feedback_count)
       )
+      setPendingFeedbackRefreshKey((key: number) => key + 1)
       setStatus(
-        `Đã ghi nhận ${response.promoted_document_ids.length} tài liệu trong Thư mục tạm thành hồ sơ mới. Đang gửi job cập nhật hồ sơ.`
+        `Đã ghi nhận ${response.promoted_document_ids.length} tài liệu trong Thư mục tạm thành hồ sơ mới. Bấm Cập nhật hồ sơ để áp dụng.`
       )
       toast.success("Đã ghi nhận Thư mục tạm thành hồ sơ mới.")
-      await handleRebuildClusters("update")
     } catch (err) {
       toast.error(
         err instanceof Error

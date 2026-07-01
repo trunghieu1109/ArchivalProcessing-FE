@@ -1,6 +1,8 @@
 import { requestJson, requestJsonOrNull } from "./sessionApi.http"
 import type {
+  CancelPendingClusterFeedbackResponse,
   ClusterBuildStatusResponse,
+  ClusterFeedbackListResponse,
   ClusterGroupInformationTableResponse,
   ClusterVersionListResponse,
   ClusterVersionResponse,
@@ -187,6 +189,31 @@ export async function moveDocumentBetweenClusters(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         weight: 1,
+        created_by: "ui",
+        ...payload,
+      }),
+    }
+  )
+}
+
+export async function listClusterFeedback(
+  sessionId: string
+): Promise<ClusterFeedbackListResponse> {
+  return requestJson<ClusterFeedbackListResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/clusters/feedback`
+  )
+}
+
+export async function cancelPendingClusterFeedback(
+  sessionId: string,
+  payload: { created_by?: string } = {}
+): Promise<CancelPendingClusterFeedbackResponse> {
+  return requestJson<CancelPendingClusterFeedbackResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/clusters/feedback/cancel-pending`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         created_by: "ui",
         ...payload,
       }),

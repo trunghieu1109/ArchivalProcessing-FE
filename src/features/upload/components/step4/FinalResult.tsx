@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { DocumentPreviewTarget } from "@/features/upload/components/DocumentPdfPreview"
 import {
+  cancelPendingClusterFeedback,
   getClusterGroupInformationTable,
+  listClusterFeedback,
   patchSessionDossier,
   type ClusterGroupInformationTableResponse,
   type ClusterVersionResponse,
@@ -41,6 +43,10 @@ import {
   completedClusterPhaseSet,
   type ClusterJobMode,
 } from "./FinalResult.progress"
+import {
+  applyPendingFeedbackOverlay,
+  clearPendingFeedbackMarkers,
+} from "./FinalResult.pendingFeedback"
 
 export function FinalResult({
   sessionId,
@@ -98,6 +104,9 @@ export function FinalResult({
     string | null
   >(null)
   const [pendingFeedbackCount, setPendingFeedbackCount] = useState(0)
+  const [pendingFeedbackRefreshKey, setPendingFeedbackRefreshKey] = useState(0)
+  const [cancelingPendingFeedback, setCancelingPendingFeedback] =
+    useState(false)
   const [selectedSessionDocumentIds, setSelectedSessionDocumentIds] = useState<
     Set<number>
   >(() => new Set())
@@ -259,6 +268,67 @@ export function FinalResult({
     activeClusterVersionId &&
     displayedClusterVersionId !== activeClusterVersionId
   )
+
+  useEffect(() => {
+    let cancelled = false
+    const displayingActiveVersion = Boolean(
+      sessionId &&
+        displayedClusterVersion &&
+        displayedClusterVersionId &&
+        activeClusterVersionId &&
+        displayedClusterVersionId === activeClusterVersionId
+    )
+    if (
+      !displayingActiveVersion ||
+      pendingClusterVersion ||
+      loading ||
+      rebuildBaselineVersionId
+    ) {
+      const timeoutId = window.setTimeout(() => {
+        if (cancelled) return
+        if (!displayingActiveVersion || pendingClusterVersion || loading) {
+          setPendingFeedbackCount(0)
+        }
+        if (displayingActiveVersion && displayedClusterVersion) {
+          setGroups(versionToGroups(displayedClusterVersion, metadataItems))
+        }
+      }, 0)
+      return () => {
+        cancelled = true
+        window.clearTimeout(timeoutId)
+      }
+    }
+
+    listClusterFeedback(sessionId!)
+      .then((response) => {
+        if (cancelled) return
+        const baseGroups = versionToGroups(displayedClusterVersion, metadataItems)
+        const overlay = applyPendingFeedbackOverlay(
+          baseGroups,
+          response.feedback ?? [],
+          displayedClusterVersion
+        )
+        setGroups(overlay.groups)
+        setPendingFeedbackCount(overlay.pendingFeedbackCount)
+      })
+      .catch(() => {
+        if (!cancelled) setPendingFeedbackCount(0)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    activeClusterVersionId,
+    displayedClusterVersion,
+    displayedClusterVersionId,
+    loading,
+    metadataItems,
+    pendingClusterVersion,
+    pendingFeedbackRefreshKey,
+    rebuildBaselineVersionId,
+    sessionId,
+  ])
 
   useEffect(() => {
     setOpenNodeIds(
@@ -487,6 +557,7 @@ export function FinalResult({
     setLoadingClusterVersionId,
     setPendingClusterVersion,
     setPendingFeedbackCount,
+    setPendingFeedbackRefreshKey,
     setPreviewWidthPercent,
     setRebuildBaselineVersionId,
     setRebuildPollKey,
@@ -533,6 +604,7 @@ export function FinalResult({
     setMovingSelectedDocumentsTargetId,
     setOpenNodeIds,
     setPendingFeedbackCount,
+    setPendingFeedbackRefreshKey,
     setPromotingSelectedDocuments,
     setPromotingTemporaryFolder,
     setSavingDossierMetadataId,
@@ -644,6 +716,78 @@ export function FinalResult({
     ]
   )
 
+  const handleCancelPendingFeedback = useCallback(async () => {
+    if (viewingHistoricalClusterVersion) {
+      toast.error(
+        "Bạn đang xem phiên bản cũ. Hãy quay về phiên bản đang dùng trước khi hủy feedback."
+      )
+      return
+    }
+    if (!sessionId) {
+      toast.error("Chưa có session để hủy feedback.")
+      return
+    }
+    if (pendingFeedbackCount <= 0) {
+      toast.info("Không có feedback đang chờ cập nhật.")
+      return
+    }
+    if (
+      loading ||
+      checkingClusters ||
+      rebuildSubmitting ||
+      restoringClusterVersion ||
+      Boolean(rebuildBaselineVersionId) ||
+      Boolean(pendingClusterVersion)
+    ) {
+      toast.error("Đang cập nhật hồ sơ. Vui lòng chờ xong rồi hủy feedback.")
+      return
+    }
+
+    setCancelingPendingFeedback(true)
+    try {
+      const response = await cancelPendingClusterFeedback(sessionId)
+      if (displayedClusterVersion) {
+        setGroups(versionToGroups(displayedClusterVersion, metadataItems))
+      } else {
+        setGroups((previous) => clearPendingFeedbackMarkers(previous))
+      }
+      setSelectedSessionDocumentIds(new Set())
+      setPendingFeedbackCount(0)
+      setPendingFeedbackRefreshKey((key) => key + 1)
+      const cancelledCount = response.cancelled_feedback_count ?? 0
+      setStatus(
+        cancelledCount > 0
+          ? `Đã hủy ${cancelledCount} feedback đang chờ cập nhật hồ sơ.`
+          : "Không có feedback đang chờ cập nhật để hủy."
+      )
+      if (cancelledCount > 0) {
+        toast.success("Đã hủy các thay đổi feedback đang chờ cập nhật.")
+      } else {
+        toast.info("Không có feedback đang chờ cập nhật để hủy.")
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Không thể hủy feedback đang chờ cập nhật."
+      )
+    } finally {
+      setCancelingPendingFeedback(false)
+    }
+  }, [
+    checkingClusters,
+    displayedClusterVersion,
+    loading,
+    metadataItems,
+    pendingClusterVersion,
+    pendingFeedbackCount,
+    rebuildBaselineVersionId,
+    rebuildSubmitting,
+    restoringClusterVersion,
+    sessionId,
+    viewingHistoricalClusterVersion,
+  ])
+
   const activeClusterProgressLabel = clusterProgressPhase
     ? clusterProgressLabel(clusterProgressPhase)
     : ""
@@ -699,6 +843,7 @@ export function FinalResult({
     <FinalResultView
       activeClusterVersionId={activeClusterVersionId}
       canRestoreFileRegisterVersion={canRestoreFileRegisterVersion}
+      cancelingPendingFeedback={cancelingPendingFeedback}
       checkingClusters={checkingClusters}
       clusterCompletedPhases={clusterCompletedPhases}
       clusterJobMode={clusterJobMode}
@@ -713,6 +858,7 @@ export function FinalResult({
         handleActivateDisplayedClusterVersion
       }
       handleApplyPendingClusterVersion={handleApplyPendingClusterVersion}
+      handleCancelPendingFeedback={handleCancelPendingFeedback}
       handleCreateDossierFromSelection={handleCreateDossierFromSelection}
       handleDropOnDossier={handleDropOnDossier}
       handleFinish={handleFinish}

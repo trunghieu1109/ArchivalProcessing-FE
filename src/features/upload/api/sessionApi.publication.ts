@@ -26,6 +26,9 @@ export interface PublicationDossier {
   dossier_number: string
   box_number: string
   formation_year: string
+  retention_period?: string | null
+  retention_group?: string | null
+  fonds_name?: string | null
   dossier_code: string
   standard_name: string
   download_ready: boolean
@@ -47,8 +50,10 @@ export interface PublicationManifest {
   generated_at: string
   artifact_id: number
   archive_code: string
+  fonds_name?: string | null
   fonds_creator_code: string
   naming_separator: string
+  retention_groups?: string[]
   ready: boolean
   reused: boolean
   validation_errors: string[]

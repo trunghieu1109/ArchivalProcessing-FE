@@ -27,6 +27,7 @@ import {
   signatureTagClass,
   truncateWithDots,
 } from "./FinalResult.metadataUtils"
+import { pendingFeedbackActionLabel } from "./FinalResult.pendingFeedback"
 
 export function DocumentRow({
   document,
@@ -120,9 +121,11 @@ export function DocumentRow({
           window.setTimeout(() => setDragging(false), 0)
         }}
         className={cn(
-          "mr-1 flex max-w-full min-w-0 cursor-pointer items-start gap-2 overflow-hidden rounded-xl px-2 py-1.5 transition-colors active:cursor-grabbing",
+          "mr-1 flex max-w-full min-w-0 cursor-pointer items-start gap-2 overflow-hidden rounded-xl border border-transparent px-2 py-1.5 transition-colors active:cursor-grabbing",
           selected
             ? "bg-[#EAF1FF] ring-1 ring-[#0052FF]/30"
+            : document.pendingFeedback
+              ? "border-amber-300 bg-amber-50/90 ring-1 ring-amber-300/70"
             : expanded
               ? "bg-[#F8FAFC]"
               : "hover:bg-[#F8FAFC]"
@@ -184,6 +187,14 @@ export function DocumentRow({
                 >
                   {signatureTag.label}
                 </span>
+              </span>
+            )}
+            {document.pendingFeedback && (
+              <span
+                title="Feedback đã ghi nhận và đang chờ cập nhật hồ sơ"
+                className="flex shrink-0 items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800"
+              >
+                {pendingFeedbackActionLabel(document.pendingFeedback.action)}
               </span>
             )}
             {clusterWarning && (

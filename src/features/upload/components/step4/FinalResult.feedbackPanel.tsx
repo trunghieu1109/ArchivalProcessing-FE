@@ -1,6 +1,7 @@
 import {
   Archive,
   CheckCircle2,
+  CircleX,
   FolderPlus,
   Loader2,
   RefreshCw,
@@ -11,7 +12,9 @@ import { Button } from "@/components/ui/button"
 export function FinalResultFeedbackPanel(props: Record<string, any>) {
   const {
     canRestoreFileRegisterVersion,
+    cancelingPendingFeedback,
     clusterJobMode,
+    handleCancelPendingFeedback,
     handleCreateDossierFromSelection,
     handleFinish,
     handleRebuildClusters,
@@ -42,7 +45,7 @@ export function FinalResultFeedbackPanel(props: Record<string, any>) {
             ? `Có ${pendingFeedbackCount} feedback đã lưu và đang chờ cập nhật hồ sơ.`
             : "Chọn tài liệu bằng checkbox hoặc kéo tài liệu vào Thư mục tạm để xử lý sau."}
       </p>
-      <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:flex xl:w-auto xl:flex-wrap xl:items-center xl:justify-end">
+      <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5 xl:flex xl:w-auto xl:flex-wrap xl:items-center xl:justify-end">
         <Button
           variant="outline"
           onClick={() =>
@@ -117,6 +120,32 @@ export function FinalResultFeedbackPanel(props: Record<string, any>) {
             <RefreshCw data-icon="inline-start" />
           )}
           Cập nhật hồ sơ
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => void handleCancelPendingFeedback()}
+          className="w-full xl:w-auto"
+          disabled={
+            pendingFeedbackCount <= 0 ||
+            cancelingPendingFeedback ||
+            rebuildSubmitting ||
+            restoringClusterVersion ||
+            promotingTemporaryFolder ||
+            promotingSelectedDocuments ||
+            Boolean(movingSelectedDocumentsTargetId) ||
+            loading ||
+            !sessionId ||
+            viewingHistoricalClusterVersion ||
+            Boolean(rebuildBaselineVersionId) ||
+            Boolean(pendingClusterVersion)
+          }
+        >
+          {cancelingPendingFeedback ? (
+            <Loader2 data-icon="inline-start" className="animate-spin" />
+          ) : (
+            <CircleX data-icon="inline-start" />
+          )}
+          Hủy feedback
         </Button>
         <Button
           onClick={handleFinish}

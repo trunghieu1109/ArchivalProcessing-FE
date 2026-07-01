@@ -234,6 +234,36 @@ export interface ClusterVersionListResponse {
   versions: ClusterVersionResponse[]
 }
 
+export interface ClusterFeedbackResponse {
+  id: number
+  session_id: string
+  session_document_id: number | null
+  document_id?: string | null
+  feedback_type: string
+  source_cluster_id?: string | null
+  target_cluster_id?: string | null
+  weight?: number | null
+  status: string
+  details: Record<string, unknown>
+  created_by?: string | null
+  created_at: string
+}
+
+export interface ClusterFeedbackListResponse {
+  session_id: string
+  feedback: ClusterFeedbackResponse[]
+}
+
+export interface CancelPendingClusterFeedbackResponse {
+  session_id: string
+  active_version_id?: string | null
+  active_version_created_at?: string | null
+  cancelled_feedback_count: number
+  cancelled_feedback_ids: number[]
+  feedback_event_id?: number | null
+  status: string
+}
+
 export interface DossierPromoteResponse {
   session_id: string
   target_cluster_id: string

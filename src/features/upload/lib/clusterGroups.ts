@@ -47,6 +47,8 @@ export interface ClusterGroup {
   sheetCount?: number | null
   startDate?: string | null
   endDate?: string | null
+  pendingFeedbackCount?: number
+  hasPendingFeedback?: boolean
 }
 
 export interface ClusterDocument {
@@ -63,6 +65,15 @@ export interface ClusterDocument {
   requiresReview: boolean
   metadata: Record<string, unknown>
   clusterWarning: ClusterDocumentWarning | null
+  pendingFeedback?: PendingClusterFeedbackMarker | null
+}
+
+export interface PendingClusterFeedbackMarker {
+  id: number
+  action: string
+  sourceClusterId?: string | null
+  targetClusterId?: string | null
+  createdAt: string
 }
 
 export interface ClusterDocumentWarning {
