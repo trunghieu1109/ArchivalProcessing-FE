@@ -179,18 +179,20 @@ export function hasExpectedStartedBatch(
   } | null,
   pendingStart: PendingStartContext
 ): boolean {
-  const latestBatch = result?.batches[0]
-  if (!latestBatch) return false
-  if (
-    pendingStart.previousBatchId !== null &&
-    latestBatch.id === pendingStart.previousBatchId
-  ) {
-    return false
-  }
-  const latestMode = normalizeDocumentNumberingMode(
-    latestBatch.document_numbering_mode
+  return Boolean(
+    result?.batches.some((batch) => {
+      if (
+        pendingStart.previousBatchId !== null &&
+        batch.id <= pendingStart.previousBatchId
+      ) {
+        return false
+      }
+      return (
+        normalizeDocumentNumberingMode(batch.document_numbering_mode) ===
+        pendingStart.expectedMode
+      )
+    })
   )
-  return latestMode === pendingStart.expectedMode
 }
 
 function normalizeDocumentNumberingMode(

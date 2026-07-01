@@ -89,6 +89,8 @@ export function UploadPageView(props: Record<string, any>) {
     ocrMetadataItems,
     ocrLoading,
     ocrIsReextracting,
+    ocrPendingIngestionCount,
+    ocrPendingIngestionMessage,
     ocrMessage,
     ocrSignatureStatus,
     handleContinueToResults,
@@ -352,6 +354,8 @@ export function UploadPageView(props: Record<string, any>) {
                 metadataBatchSummaries={ocr.status?.metadata_batches ?? []}
                 metadataLoading={ocrLoading}
                 metadataReloading={ocrIsReextracting}
+                pendingIngestionCount={ocrPendingIngestionCount}
+                pendingIngestionMessage={ocrPendingIngestionMessage}
                 metadataMessage={ocrMessage}
                 metadataReadyTotal={ocr.status?.metadata_ready_documents ?? 0}
                 metadataProcessingTotal={

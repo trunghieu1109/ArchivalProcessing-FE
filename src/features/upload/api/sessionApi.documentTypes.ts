@@ -52,6 +52,7 @@ export interface DigitizationDocument {
 
 export interface DigitizationBatch {
   id: number
+  ingestion_run_id?: number | null
   folder_path: string
   recursive: boolean
   total_files: number | null
@@ -78,6 +79,7 @@ export interface DigitizationBatch {
 
 export interface DigitizationStatusResponse {
   session_id: string
+  ingestion_runs: import("./sessionApi.sessionTypes").SessionIngestionRun[]
   batches: DigitizationBatch[]
   documents: DigitizationDocument[]
   pagination?: PaginationMeta
@@ -99,6 +101,9 @@ export interface DigitizationStatusResponse {
     signature_extracted_documents?: number
     signature_pending_documents?: number
     signature_failed_documents?: number
+    extracting_ingestion_runs?: number
+    ready_ingestion_runs?: number
+    failed_ingestion_runs?: number
     status_counts: Record<string, number>
   }
   metadata_batches?: MetadataBatchSummary[]

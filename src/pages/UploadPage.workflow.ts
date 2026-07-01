@@ -288,6 +288,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
         })
       }
       if (zipFile) {
+        const parsedZipMaxFiles = Number(cache.zipMaxFiles)
         syncZipState("processing")
         syncZipUploadProgress(zipUploadProgressForFile(zipFile, "uploading"))
         zipUploadTask = uploadSessionInput(
@@ -295,6 +296,11 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
           "raw_zip",
           zipFile,
           {
+            uploadMode: cache.uploadMode,
+            maxFiles:
+              Number.isInteger(parsedZipMaxFiles) && parsedZipMaxFiles > 0
+                ? parsedZipMaxFiles
+                : undefined,
             onProgress: syncZipUploadProgress,
           }
         ).then((response) => {

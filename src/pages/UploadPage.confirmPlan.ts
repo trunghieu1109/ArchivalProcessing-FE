@@ -259,7 +259,10 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
         documentNumberingMode,
         sessionFileId: cache.zipUpload?.id,
         remoteFileId: cache.zipUpload?.remote_file_id ?? null,
-        uploadMode: cache.zipUpload ? uploadMode : undefined,
+        uploadMode:
+          cache.zipUpload && !cache.zipUpload.ingestion_run
+            ? uploadMode
+            : undefined,
         force: forceDigitization,
         reextract: forceDigitization || zipSupplementUploaded,
         previousStatus: existingStatus ?? null,

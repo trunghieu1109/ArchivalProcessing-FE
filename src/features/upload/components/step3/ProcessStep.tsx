@@ -20,6 +20,8 @@ interface ProcessStepProps {
   metadataBatchSummaries?: MetadataBatchSummary[]
   metadataLoading?: boolean
   metadataReloading?: boolean
+  pendingIngestionCount?: number
+  pendingIngestionMessage?: string
   metadataMessage?: string
   metadataPagination?: MetadataServerPaginationControls
   metadataReadyTotal?: number
@@ -50,6 +52,8 @@ export function ProcessStep({
   metadataBatchSummaries = [],
   metadataLoading = false,
   metadataReloading = false,
+  pendingIngestionCount = 0,
+  pendingIngestionMessage = "",
   metadataPagination,
   metadataReadyTotal,
   metadataProcessingTotal,
@@ -111,6 +115,8 @@ export function ProcessStep({
       metadataTotal={metadataTotal}
       metadataLoading={metadataLoading}
       metadataReloading={metadataReloading}
+      pendingIngestionCount={pendingIngestionCount}
+      pendingIngestionMessage={pendingIngestionMessage}
       metadataMessage={metadataMessage}
       metadataReadyTotal={metadataReadyTotal}
       metadataProcessingTotal={metadataProcessingTotal}

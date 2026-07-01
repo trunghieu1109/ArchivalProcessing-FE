@@ -75,9 +75,23 @@ export function useUploadPageOcr(
     ocr.status?.pagination?.total ?? 0,
     ocrMetadataItems.length
   )
+  const extractingIngestionRuns =
+    ocr.status?.ingestion_runs?.filter((run) =>
+      ["extract_starting", "extracting", "legacy_unknown"].includes(run.status)
+    ).length ?? 0
+  const pendingIngestionRuns = Math.max(
+    extractingIngestionRuns,
+    ocr.status?.extracting_ingestion_runs ?? 0
+  )
+  const ocrPendingIngestionMessage =
+    pendingIngestionRuns > 0
+      ? `Đang giải nén ${pendingIngestionRuns} file ZIP. Tài liệu mới sẽ tự động xuất hiện khi sẵn sàng.`
+      : ""
   const ocrMessage =
     ocr.state === "error"
       ? ocr.error || "Không thể lấy kết quả số hóa."
+      : extractingIngestionRuns > 0
+        ? `Đang giải nén ${extractingIngestionRuns} file ZIP. Tài liệu mới sẽ tự động xuất hiện khi sẵn sàng.`
       : ocrIsReextracting
         ? "Đang trích xuất lại metadata theo cách đánh số mới."
         : ocr.state === "metadata_ready"
@@ -95,6 +109,8 @@ export function useUploadPageOcr(
     ocrPdfPaths,
     ocrSignatureStatus,
     ocrIsReextracting,
+    ocrPendingIngestionCount: pendingIngestionRuns,
+    ocrPendingIngestionMessage,
     ocrMessage,
     ocrLoading,
   }

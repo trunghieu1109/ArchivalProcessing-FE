@@ -91,6 +91,29 @@ export interface SessionInputUploadResponse {
   remote_status?: string | null
   size_bytes?: number | null
   content_type?: string | null
+  ingestion_run?: SessionIngestionRun | null
+}
+
+export interface SessionIngestionRun {
+  id: number
+  session_id: string
+  session_file_id?: number | null
+  file_name?: string | null
+  remote_ingestion_batch_id?: string | null
+  remote_file_id?: string | null
+  remote_extract_job_id?: string | null
+  upload_mode: UploadMode | string
+  max_files?: number | null
+  status: string
+  total_pdf_files?: number | null
+  extracted_count: number
+  skipped_count: number
+  error?: string | null
+  last_polled_at?: string | null
+  extract_started_at?: string | null
+  extract_completed_at?: string | null
+  created_at?: string
+  updated_at?: string
 }
 
 export interface SessionInputRemoteUploadPresignResponse {
@@ -212,6 +235,8 @@ export interface SessionEventResponse {
 
 export interface UploadSessionInputOptions {
   createdBy?: string
+  uploadMode?: UploadMode
+  maxFiles?: number
   onProgress?: (progress: UploadProgressSnapshot) => void
 }
 

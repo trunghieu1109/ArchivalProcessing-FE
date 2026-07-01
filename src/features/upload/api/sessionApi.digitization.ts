@@ -20,6 +20,7 @@ import type {
   BulkVerifyDocumentsResponse,
   CloseMetadataBatchResponse,
   CreateMetadataBatchResponse,
+  DigitizationBatch,
   DigitizationDocument,
   DigitizationStatusResponse,
   DocumentArchiveDownload,
@@ -263,30 +264,42 @@ export function digitizationToFolderStatus(
   response: DigitizationStatusResponse | null,
   fallbackFolderPath: string
 ): FolderStatusResponse {
-  const batch = response?.batches[0]
+  const batches = response?.batches ?? []
+  const batch = batches[0]
+  const ingestionRuns = response?.ingestion_runs ?? []
   const documents = response?.documents ?? []
   const summary = response?.summary
   const responseDocumentTotal = summary?.total_documents ?? documents.length
-  const batchComplete = ["done", "completed_with_errors", "failed"].includes(
-    String(batch?.status || "")
-      .trim()
-      .toLowerCase()
+  const pendingBatchCounts = batches
+    .filter((candidate) => !isTerminalBatch(candidate))
+    .map((candidate) => {
+      const knownDocuments = Math.max(
+        statusCountTotal(candidate.status_counts),
+        response?.pagination === undefined
+          ? documents.filter(
+              (document) => document.ocr_batch_id === candidate.id
+            ).length
+          : 0
+      )
+      return {
+        uploadMode: candidate.upload_mode,
+        total: Math.max(0, candidate.total_files ?? candidate.total_jobs ?? 0),
+        pending: Math.max(
+          0,
+          (candidate.total_files ?? candidate.total_jobs ?? 0) - knownDocuments
+        ),
+      }
+    })
+  const appendPendingDocumentCount = pendingBatchCounts
+    .filter(({ uploadMode }) => uploadMode === "append")
+    .reduce((total, candidate) => total + candidate.pending, 0)
+  const overwriteExpectedDocumentCount = pendingBatchCounts
+    .filter(({ uploadMode }) => uploadMode !== "append")
+    .reduce((total, candidate) => Math.max(total, candidate.total), 0)
+  const cumulativeDocumentCount = Math.max(
+    responseDocumentTotal + appendPendingDocumentCount,
+    overwriteExpectedDocumentCount
   )
-  const latestBatchDocumentCount =
-    response?.pagination !== undefined
-      ? responseDocumentTotal
-      : batch?.id == null
-        ? documents.length
-        : documents.filter((document) => document.ocr_batch_id === batch.id)
-            .length
-  const pendingBatchDocumentCount = Math.max(
-    0,
-    batchComplete ? 0 : (batch?.total_files ?? 0) - latestBatchDocumentCount
-  )
-  const cumulativeDocumentCount =
-    batch?.upload_mode === "append"
-      ? responseDocumentTotal + pendingBatchDocumentCount
-      : Math.max(responseDocumentTotal, batch?.total_files ?? 0)
   const jobs: JobSummary[] = documents.map((document) => {
     const lightMetadata = buildDisplayMetadata(document)
     return {
@@ -329,17 +342,14 @@ export function digitizationToFolderStatus(
     summary?.processing_documents ??
     countMetadataRunningStatuses(statusCounts) ??
     countRunningJobs(jobs)
+  const digitizationComplete = isDigitizationComplete(response)
   return {
     batch_id: batch?.id ?? null,
     folder_path: batch?.folder_path ?? fallbackFolderPath,
     recursive: batch?.recursive ?? true,
-    total_files: cumulativeDocumentCount,
-    total_jobs: Math.max(
-      cumulativeDocumentCount,
-      responseDocumentTotal +
-        Math.max(0, (batch?.total_jobs ?? 0) - latestBatchDocumentCount)
-    ),
-    missing_files: batch?.missing_files ?? [],
+    total_files: Math.max(responseDocumentTotal, cumulativeDocumentCount),
+    total_jobs: Math.max(responseDocumentTotal, cumulativeDocumentCount),
+    missing_files: batches.flatMap((candidate) => candidate.missing_files ?? []),
     status_counts: statusCounts,
     pagination: response?.pagination,
     document_numbering_mode: batch?.document_numbering_mode ?? null,
@@ -351,7 +361,7 @@ export function digitizationToFolderStatus(
     metadata_extraction_complete: batch?.metadata_extraction_complete ?? null,
     metadata_extraction_completed_at:
       batch?.metadata_extraction_completed_at ?? null,
-    digitization_complete: batch?.digitization_complete ?? null,
+    digitization_complete: digitizationComplete,
     metadata_ready_documents: summary?.metadata_ready,
     metadata_final_documents: summary?.metadata_final,
     metadata_complete_documents: summary?.complete_documents,
@@ -366,6 +376,7 @@ export function digitizationToFolderStatus(
     metadata_reviewed_documents: summary?.reviewed,
     metadata_warning_documents: summary?.warning,
     metadata_batches: response?.metadata_batches ?? [],
+    ingestion_runs: ingestionRuns,
     signature_extracted_documents:
       summary?.signature_extracted_documents ??
       documents.filter(
@@ -381,6 +392,19 @@ export function digitizationToFolderStatus(
       documents.filter(
         (document) => documentSignatureStatus(document) === "signature_failed"
       ).length,
+    extracting_ingestion_runs:
+      summary?.extracting_ingestion_runs ??
+      ingestionRuns.filter((run) =>
+        ["extract_starting", "extracting", "legacy_unknown"].includes(
+          String(run.status || "").trim().toLowerCase()
+        )
+      ).length,
+    ready_ingestion_runs:
+      summary?.ready_ingestion_runs ??
+      ingestionRuns.filter((run) => run.status === "ready").length,
+    failed_ingestion_runs:
+      summary?.failed_ingestion_runs ??
+      ingestionRuns.filter((run) => run.status === "extract_failed").length,
     jobs,
   }
 }
@@ -406,6 +430,13 @@ function countRunningJobs(jobs: JobSummary[]): number {
         normalizeStatus(job.remote_metadata_status || job.status)
       )
   ).length
+}
+
+function statusCountTotal(counts: Record<string, number>): number {
+  return Object.values(counts).reduce(
+    (total, value) => total + Math.max(0, Number(value) || 0),
+    0
+  )
 }
 
 function normalizeStatus(value: unknown): string {
@@ -478,114 +509,51 @@ function documentMetadataStatus(document: {
 export function isDigitizationComplete(
   response: DigitizationStatusResponse | null
 ): boolean {
-  const batch = response?.batches[0]
-  if (batch?.digitization_complete === true) {
-    return true
+  const batches = response?.batches ?? []
+  if (batches.length === 0) return false
+
+  const ingestionRuns = response?.ingestion_runs ?? []
+  if (ingestionRuns.length > 0) {
+    return ingestionRuns.every((run) => {
+      if (!["ready", "extract_failed"].includes(run.status)) return false
+      const linkedBatches = batches.filter(
+        (batch) => batch.ingestion_run_id === run.id
+      )
+      return (
+        linkedBatches.length > 0 &&
+        linkedBatches.every((batch) => isTerminalBatch(batch))
+      )
+    })
   }
-  if (
-    !batch ||
-    !["done", "completed_with_errors", "failed"].includes(batch.status)
-  ) {
-    return false
-  }
-  const documents = latestBatchDocuments(response)
-  const totalDocuments = response.summary?.total_documents ?? documents.length
-  const completeDocuments = response.summary?.complete_documents
-  if (
-    response.pagination !== undefined &&
-    totalDocuments > 0 &&
-    completeDocuments !== undefined
-  ) {
-    return completeDocuments >= totalDocuments
-  }
-  const expectedDocuments = Math.max(
-    batch.total_jobs ?? 0,
-    batch.total_files ?? 0,
-    documents.length
-  )
-  if (expectedDocuments > 0 && documents.length < expectedDocuments) {
-    return false
-  }
-  return documents.every(isDigitizationDocumentComplete)
+
+  return batches.every((batch) => isTerminalBatch(batch))
 }
 
 export function isMetadataExtractionComplete(
   response: DigitizationStatusResponse | null
 ): boolean {
-  const batch = response?.batches[0]
-  if (!batch) return false
-  if (batch.metadata_extraction_complete === true) return true
-  if (isDigitizationComplete(response)) return true
-  const status = String(batch.metadata_extraction_status ?? "")
-    .trim()
-    .toLowerCase()
-  if (["ready", "completed_with_errors"].includes(status)) return true
-  const documents = latestBatchDocuments(response)
-  const totalDocuments = response?.summary?.total_documents ?? documents.length
-  const readyDocuments = response?.summary?.metadata_ready
-  const failedDocuments =
-    response?.summary?.failed_documents ??
-    documents.filter(isDigitizationDocumentTerminalError).length
+  const batches = response?.batches ?? []
+  if (batches.length === 0) return false
   if (
-    totalDocuments > 0 &&
-    readyDocuments !== undefined &&
-    readyDocuments + failedDocuments >= totalDocuments
+    (response?.ingestion_runs ?? []).some(
+      (run) => !["ready", "extract_failed"].includes(run.status)
+    )
   ) {
-    return true
+    return false
   }
-  return documents.length > 0 && documents.every(isMetadataReadyOrTerminalError)
+  return batches.every((batch) => {
+    if (batch.metadata_extraction_complete === true) return true
+    if (isTerminalBatch(batch)) return true
+    const status = normalizeStatus(batch.metadata_extraction_status)
+    return ["ready", "completed_with_errors"].includes(status)
+  })
 }
 
-function latestBatchDocuments(
-  response: DigitizationStatusResponse | null
-): DigitizationDocument[] {
-  const documents = response?.documents ?? []
-  const latestBatchId = response?.batches[0]?.id
-  if (latestBatchId === undefined || latestBatchId === null) return documents
-  return documents.filter((document) => document.ocr_batch_id === latestBatchId)
-}
-
-function isDigitizationDocumentComplete(
-  document: DigitizationDocument
-): boolean {
-  const status = String(document.ocr_status ?? "")
-    .trim()
-    .toLowerCase()
+function isTerminalBatch(batch: DigitizationBatch): boolean {
   return (
-    Boolean(document.metadata_final) ||
-    [
-      "done",
-      "failed",
-      "final_failed",
-      "signature_failed",
-      "skipped",
-      "cancelled",
-      "missing_task",
-    ].includes(status)
+    batch.digitization_complete === true ||
+    ["done", "completed_with_errors", "failed"].includes(
+      normalizeStatus(batch.status)
+    )
   )
-}
-
-function isMetadataReadyOrTerminalError(
-  document: DigitizationDocument
-): boolean {
-  return (
-    Boolean(document.metadata_ready) ||
-    isDigitizationDocumentTerminalError(document)
-  )
-}
-
-function isDigitizationDocumentTerminalError(
-  document: DigitizationDocument
-): boolean {
-  const status = String(document.ocr_status ?? "")
-    .trim()
-    .toLowerCase()
-  return [
-    "failed",
-    "final_failed",
-    "signature_failed",
-    "skipped",
-    "cancelled",
-    "missing_task",
-  ].includes(status)
 }

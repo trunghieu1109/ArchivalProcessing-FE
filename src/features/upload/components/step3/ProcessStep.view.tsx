@@ -27,6 +27,8 @@ type ProcessStepViewProps = ReturnType<typeof useProcessStepModel> &
     metadataTotal: number
     metadataLoading: boolean
     metadataReloading: boolean
+    pendingIngestionCount?: number
+    pendingIngestionMessage?: string
     metadataMessage: string
     metadataReadyTotal?: number
     metadataProcessingTotal?: number
@@ -105,6 +107,8 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     metadataLoading,
     metadataMessage,
     metadataReloading,
+    pendingIngestionCount = 0,
+    pendingIngestionMessage = "",
     metadataReadyTotal,
     metadataProcessingTotal,
     metadataFailedTotal,
@@ -255,6 +259,23 @@ export function ProcessStepView(props: ProcessStepViewProps) {
         reviewedPercent={reviewedPercent}
         metadataStartingWithoutCount={metadataStartingWithoutCount}
       />
+
+      {pendingIngestionCount > 0 && (
+        <div className="flex items-start gap-3 rounded-2xl border border-[#BFD3FF] bg-[#F8FAFF] px-4 py-3 text-sm text-[#1E3A8A] shadow-sm">
+          <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-[#0052FF]" />
+          <div className="min-w-0">
+            <p className="font-semibold">
+              {pendingIngestionMessage ||
+                `Đang giải nén ${pendingIngestionCount} file ZIP.`}
+            </p>
+            <p className="mt-1 text-xs leading-5 text-[#475569]">
+              Các tài liệu đã sẵn sàng vẫn có thể review bình thường. Khi batch
+              ZIP mới giải nén xong, hệ thống sẽ tự chạy OCR và danh sách tài
+              liệu sẽ được cập nhật.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div
         ref={previewLayoutRef}

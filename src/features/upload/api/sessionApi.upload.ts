@@ -145,6 +145,8 @@ async function uploadRawZipSessionInputDirect(
       remote_file_id: presign.remote_file_id,
       upload_url: presign.upload_url,
       created_by: options.createdBy ?? "ui",
+      upload_mode: options.uploadMode ?? "append",
+      ...(options.maxFiles === undefined ? {} : { max_files: options.maxFiles }),
     }
   )
   options.onProgress?.(uploadProgressSnapshot("done", file.size, file.size))
@@ -263,6 +265,8 @@ async function uploadRawZipSessionInputChunked(
         remote_file_id: chunked.remote_file_id,
         delete_parts: true,
         created_by: options.createdBy ?? "ui",
+        upload_mode: options.uploadMode ?? "append",
+        ...(options.maxFiles === undefined ? {} : { max_files: options.maxFiles }),
       }),
     }
   )
@@ -450,7 +454,11 @@ async function proxyPresignedRawZipUpload(
     created_by: options.createdBy ?? "ui",
     remote_batch_id: presign.remote_batch_id,
     remote_file_id: presign.remote_file_id ?? "",
+    upload_mode: options.uploadMode ?? "append",
   })
+  if (options.maxFiles !== undefined) {
+    query.set("max_files", String(options.maxFiles))
+  }
   const proxyUpload =
     requestJsonWithBinaryUploadProgress<SessionInputUploadResponse>(
       `/sessions/${encodeURIComponent(sessionId)}/inputs/remote-upload/proxy?${query.toString()}`,

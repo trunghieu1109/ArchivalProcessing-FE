@@ -1015,6 +1015,7 @@ function hasDigitizationWork(
   return Boolean(
     result &&
       (result.batches.length > 0 ||
+        result.ingestion_runs.length > 0 ||
         result.documents.length > 0 ||
         (result.summary?.total_documents ?? 0) > 0)
   )
@@ -1026,12 +1027,14 @@ function shouldRefreshDocumentsFromStatus(
   if (!result) return false
   if (result.documents.length > 0) return true
   if ((result.summary?.total_documents ?? 0) > 0) return true
-  const batch = result.batches[0]
   return (
-    (batch?.total_files ?? 0) > 0 ||
-    (batch?.total_jobs ?? 0) > 0 ||
+    result.batches.some(
+      (batch) => (batch.total_files ?? 0) > 0 || (batch.total_jobs ?? 0) > 0
+    ) ||
     statusCountTotal(result.summary?.status_counts) > 0 ||
-    statusCountTotal(batch?.status_counts) > 0
+    result.batches.some(
+      (batch) => statusCountTotal(batch.status_counts) > 0
+    )
   )
 }
 

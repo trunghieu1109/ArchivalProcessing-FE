@@ -59,7 +59,7 @@ export function UploadPageStepOne(props: Record<string, any>) {
     ? zipUploadProgress.phase === "error"
       ? "Upload ZIP thất bại"
       : zipUploadProgress.phase === "done"
-        ? "Đã upload ZIP xong. Đang chuẩn bị sang extract metadata..."
+        ? "Đã tải ZIP lên. Hệ thống đang giải nén trong nền."
         : zipUploadProgress.phase === "processing"
           ? "Đang xác nhận upload ZIP..."
           : "Đang upload ZIP..."

@@ -237,6 +237,8 @@ export function UploadPage() {
     ocrPdfPaths,
     ocrSignatureStatus,
     ocrIsReextracting,
+    ocrPendingIngestionCount,
+    ocrPendingIngestionMessage,
     ocrMessage,
     ocrLoading,
   } = useUploadPageOcr(sessionId, { enabled: currentStep === 3 })
@@ -774,6 +776,8 @@ export function UploadPage() {
       ocrMetadataItems={ocrMetadataItems}
       ocrLoading={ocrLoading}
       ocrIsReextracting={ocrIsReextracting}
+      ocrPendingIngestionCount={ocrPendingIngestionCount}
+      ocrPendingIngestionMessage={ocrPendingIngestionMessage}
       ocrMessage={ocrMessage}
       ocrSignatureStatus={ocrSignatureStatus}
       handleContinueToResults={handleContinueToResults}

@@ -112,6 +112,12 @@ export function createUploadPageActions(context: Record<string, any>) {
     let uploaded: SessionInputUploadResponse
     try {
       uploaded = await uploadSessionInput(currentSessionId, fileType, file, {
+        ...(fileType === "raw_zip"
+          ? {
+              uploadMode: cache.uploadMode,
+              maxFiles: parseZipMaxFiles(),
+            }
+          : {}),
         onProgress: fileType === "raw_zip" ? syncZipUploadProgress : undefined,
       })
     } catch (err) {
