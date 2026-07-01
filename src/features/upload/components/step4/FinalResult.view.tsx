@@ -56,6 +56,7 @@ export function FinalResultView(props: Record<string, any>) {
     handleRestorePreviousClusterVersion,
     handleResultTreeDragOver,
     handleSaveDossierMetadata,
+    handleSaveDocumentMetadata,
     handleSelectDossierMetadata,
     handleSelectGroupInformation,
     handleSelectPreviewDocument,
@@ -433,6 +434,7 @@ export function FinalResultView(props: Record<string, any>) {
                   onSelectGroupInformation={handleSelectGroupInformation}
                   onSelectPreview={handleSelectPreviewDocument}
                   onSelectDossierMetadata={handleSelectDossierMetadata}
+                  onSaveDocumentMetadata={handleSaveDocumentMetadata}
                   onPromoteTemporaryFolder={handlePromoteTemporaryFolder}
                 />
               ))}

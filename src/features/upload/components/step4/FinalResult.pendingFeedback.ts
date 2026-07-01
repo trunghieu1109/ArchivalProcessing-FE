@@ -8,7 +8,11 @@ import {
   type ClusterGroup,
 } from "@/features/upload/lib/clusterGroups"
 
-const PENDING_FEEDBACK_TYPES = new Set(["manual_move", "temporary_dossier"])
+const PENDING_FEEDBACK_TYPES = new Set([
+  "manual_move",
+  "temporary_dossier",
+  "metadata_edit_keep_cluster",
+])
 
 export interface PendingFeedbackOverlayResult {
   groups: ClusterGroup[]
@@ -18,22 +22,27 @@ export interface PendingFeedbackOverlayResult {
 export function applyPendingFeedbackOverlay(
   baseGroups: ClusterGroup[],
   feedbackItems: ClusterFeedbackResponse[],
-  activeVersion: ClusterVersionResponse | null | undefined
+  activeVersion: ClusterVersionResponse | null | undefined,
+  serverFiltered = false
 ): PendingFeedbackOverlayResult {
-  const pendingFeedback = pendingClusterFeedbackItems(
-    feedbackItems,
-    activeVersion
-  )
+  const pendingFeedback = serverFiltered
+    ? activeSupportedFeedbackItems(feedbackItems)
+    : pendingClusterFeedbackItems(feedbackItems, activeVersion)
   const groups = cloneGroupsWithoutPendingMarkers(baseGroups)
   const groupIndex = indexGroups(groups)
 
   pendingFeedback.forEach((feedback) => {
+    if (feedback.feedback_type === "metadata_edit_keep_cluster") {
+      markFeedbackDocument(groups, feedback)
+      return
+    }
+
     const targetClusterId = feedbackTargetClusterId(feedback)
     if (!targetClusterId) return
 
     let targetGroup = findGroupByClusterId(groupIndex, targetClusterId)
     if (!targetGroup && feedback.feedback_type === "temporary_dossier") {
-      targetGroup = createPendingDossierGroup(targetClusterId)
+      targetGroup = createPendingDossierGroup(targetClusterId, feedback)
       groups.unshift(targetGroup)
       addGroupToIndex(groupIndex, targetGroup)
     }
@@ -54,7 +63,8 @@ export function applyPendingFeedbackOverlay(
         createdAt: feedback.created_at,
       },
     })
-    targetGroup.pendingFeedbackCount = (targetGroup.pendingFeedbackCount ?? 0) + 1
+    targetGroup.pendingFeedbackCount =
+      (targetGroup.pendingFeedbackCount ?? 0) + 1
     targetGroup.hasPendingFeedback = true
   })
 
@@ -82,12 +92,8 @@ export function clearPendingFeedbackMarkers(
 }
 
 export function pendingFeedbackActionLabel(
-  action: string | null | undefined
+  _action: string | null | undefined
 ): string {
-  if (action === "move_to_temporary_folder") return "Chờ xử lý"
-  if (action === "temporary_dossier") return "Hồ sơ mới"
-  if (action === "promote_temporary_folder") return "Hồ sơ mới"
-  if (action === "promote_selected_documents") return "Hồ sơ mới"
   return "Chờ cập nhật"
 }
 
@@ -110,7 +116,21 @@ function pendingClusterFeedbackItems(
     .sort((a, b) => a.id - b.id)
 }
 
-function cloneGroupsWithoutPendingMarkers(groups: ClusterGroup[]): ClusterGroup[] {
+function activeSupportedFeedbackItems(
+  feedbackItems: ClusterFeedbackResponse[]
+): ClusterFeedbackResponse[] {
+  return feedbackItems
+    .filter(
+      (feedback) =>
+        feedback.status === "active" &&
+        PENDING_FEEDBACK_TYPES.has(feedback.feedback_type)
+    )
+    .sort((a, b) => a.id - b.id)
+}
+
+function cloneGroupsWithoutPendingMarkers(
+  groups: ClusterGroup[]
+): ClusterGroup[] {
   return groups.map((group) => ({
     ...group,
     pendingFeedbackCount: 0,
@@ -167,6 +187,32 @@ function takeFeedbackDocument(
   return null
 }
 
+function markFeedbackDocument(
+  groups: ClusterGroup[],
+  feedback: ClusterFeedbackResponse
+) {
+  for (const group of groups) {
+    const documentIndex = group.documents.findIndex((document) =>
+      feedbackMatchesDocument(feedback, document)
+    )
+    if (documentIndex < 0) continue
+    const document = group.documents[documentIndex]
+    group.documents[documentIndex] = {
+      ...document,
+      pendingFeedback: {
+        id: feedback.id,
+        action: feedbackAction(feedback),
+        sourceClusterId: feedback.source_cluster_id ?? null,
+        targetClusterId: feedbackTargetClusterId(feedback),
+        createdAt: feedback.created_at,
+      },
+    }
+    group.pendingFeedbackCount = (group.pendingFeedbackCount ?? 0) + 1
+    group.hasPendingFeedback = true
+    return
+  }
+}
+
 function feedbackMatchesDocument(
   feedback: ClusterFeedbackResponse,
   document: ClusterDocument
@@ -177,7 +223,9 @@ function feedbackMatchesDocument(
   ) {
     return true
   }
-  return Boolean(feedback.document_id && document.documentId === feedback.document_id)
+  return Boolean(
+    feedback.document_id && document.documentId === feedback.document_id
+  )
 }
 
 function feedbackTargetClusterId(
@@ -199,15 +247,20 @@ function feedbackAction(feedback: ClusterFeedbackResponse): string {
   )
 }
 
-function createPendingDossierGroup(targetClusterId: string): ClusterGroup {
+function createPendingDossierGroup(
+  targetClusterId: string,
+  feedback: ClusterFeedbackResponse
+): ClusterGroup {
+  const action = feedbackAction(feedback)
   return {
     id: targetClusterId,
     clusterId: targetClusterId,
     dossierId: targetClusterId,
-    label: "Hồ sơ mới chờ cập nhật",
+    label: "Hồ sơ tạm thời",
     files: [],
     documents: [],
-    createdFromTemporaryFolder: true,
+    isPendingDossier: true,
+    createdFromTemporaryFolder: action === "promote_temporary_folder",
     classificationPath: [],
     requiresReview: false,
     hasPendingFeedback: true,

@@ -53,6 +53,7 @@ export function ResultNode({
   onSelectGroupInformation,
   onSelectPreview,
   onSelectDossierMetadata,
+  onSaveDocumentMetadata,
   onPromoteTemporaryFolder,
 }: {
   node: ResultTreeNode
@@ -85,10 +86,16 @@ export function ResultNode({
   onSelectGroupInformation: (node: ResultTreeNode) => void
   onSelectPreview: (document: ClusterDocument) => void
   onSelectDossierMetadata: (group: ClusterGroup) => void
+  onSaveDocumentMetadata: (
+    document: ClusterDocument,
+    clusterId: string,
+    metadata: Record<string, unknown>
+  ) => Promise<void>
   onPromoteTemporaryFolder: (group: ClusterGroup) => void
 }) {
   const open = openNodeIds.has(node.id)
-  const isDossier = node.type === "dossier"
+  const isPendingDossier = node.type === "pending_dossier"
+  const isDossier = node.type === "dossier" || isPendingDossier
   const isTemporary = node.type === "temporary"
   const isDropFolder = isDossier || isTemporary
   const group = node.group
@@ -172,8 +179,6 @@ export function ResultNode({
             ? "bg-[#EAF1FF] shadow-[0_8px_24px_rgba(0,82,255,0.10)] ring-2 ring-[#0052FF]/25"
             : canDrop && dropTargetId === node.id
               ? "border-[#0052FF]/40 bg-[#EAF1FF] shadow-[0_8px_24px_rgba(0,82,255,0.10)]"
-              : group?.hasPendingFeedback
-                ? "border-cyan-300 bg-cyan-50/90 shadow-[0_8px_24px_rgba(8,145,178,0.10)]"
               : "hover:bg-[#F8FAFC]"
         )}
         style={{ paddingLeft: `${8 + depth * indentStep}px` }}
@@ -216,7 +221,7 @@ export function ResultNode({
           />
         )}
 
-        {isTemporary ? (
+        {isTemporary || isPendingDossier ? (
           <FolderClock className="size-4 shrink-0 text-amber-600" />
         ) : open ? (
           <FolderOpen className="size-4 shrink-0 text-[#0052FF]" />
@@ -240,7 +245,7 @@ export function ResultNode({
           >
             <span
               className={cn(
-                "min-w-0 flex-1 text-sm",
+                "min-w-0 text-sm",
                 isDossier
                   ? compact
                     ? "line-clamp-3 leading-5 [overflow-wrap:anywhere] break-words whitespace-normal"
@@ -256,7 +261,9 @@ export function ResultNode({
             >
               {displayLabel}
             </span>
-            {group?.createdFromTemporaryFolder && !isTemporary && (
+            {group?.createdFromTemporaryFolder &&
+              !isTemporary &&
+              !isPendingDossier && (
               <span
                 className="flex h-6 shrink-0 items-center gap-1 rounded-full border border-[#0052FF] bg-[#0052FF] px-2.5 text-[11px] font-bold text-white shadow-[0_4px_12px_rgba(0,82,255,0.22)]"
                 title="Hồ sơ được tạo thủ công từ Thư mục tạm"
@@ -267,13 +274,10 @@ export function ResultNode({
             )}
             {group?.hasPendingFeedback && (
               <span
-                className="flex h-6 shrink-0 items-center rounded-full border border-cyan-300 bg-cyan-100 px-2.5 text-[11px] font-bold text-cyan-800"
+                className="flex h-6 shrink-0 items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 text-[11px] font-bold text-amber-700"
                 title="Feedback đã ghi nhận và đang chờ cập nhật hồ sơ"
               >
                 Chờ cập nhật
-                {group.pendingFeedbackCount
-                  ? ` · ${group.pendingFeedbackCount}`
-                  : ""}
               </span>
             )}
             {group?.requiresReview && !isTemporary && (
@@ -282,7 +286,7 @@ export function ResultNode({
               </span>
             )}
           </div>
-          {isDossier && group && (
+          {isDossier && !isPendingDossier && group && (
             <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] text-[#64748B]">
               <span>
                 {group.dossierNumber
@@ -307,6 +311,15 @@ export function ResultNode({
               )}
             </div>
           )}
+          {isPendingDossier && group && (
+            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] text-amber-700">
+              <span>Hồ sơ tạm thời</span>
+              <span>·</span>
+              <span>{group.documents.length} tài liệu</span>
+              <span>·</span>
+              <span>{dossierPageCount(group)} trang</span>
+            </div>
+          )}
           {isTemporary && group && (
             <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] text-amber-700">
               <span>Chưa xử lý khi tạo mục lục</span>
@@ -327,7 +340,10 @@ export function ResultNode({
               </span>
             </span>
           )}
-          {isDropFolder && group && selectedDocumentCount > 0 && (
+          {isDropFolder &&
+            group &&
+            !isPendingDossier &&
+            selectedDocumentCount > 0 && (
             <Button
               type="button"
               variant="outline"
@@ -377,7 +393,7 @@ export function ResultNode({
               </span>
             </Button>
           )}
-          {isDossier && group && (
+          {node.type === "dossier" && group && (
             <Button
               type="button"
               variant={selectedDossierMetadata ? "default" : "outline"}
@@ -417,6 +433,7 @@ export function ResultNode({
                 key={`${group.id}-${document.documentId}`}
                 document={document}
                 clusterId={group.id}
+                metadataFeedbackClusterId={group.clusterId}
                 depth={depth + 1}
                 compact={compact}
                 selected={
@@ -432,6 +449,7 @@ export function ResultNode({
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
                 onSelectPreview={onSelectPreview}
+                onSaveMetadata={onSaveDocumentMetadata}
               />
             ))}
           {group && documentPagination.total > documentPagination.pageSize && (
@@ -483,6 +501,7 @@ export function ResultNode({
               onSelectGroupInformation={onSelectGroupInformation}
               onSelectPreview={onSelectPreview}
               onSelectDossierMetadata={onSelectDossierMetadata}
+              onSaveDocumentMetadata={onSaveDocumentMetadata}
               onPromoteTemporaryFolder={onPromoteTemporaryFolder}
             />
           ))}

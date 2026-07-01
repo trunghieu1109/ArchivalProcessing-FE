@@ -2,6 +2,7 @@ import { requestJson, requestJsonOrNull } from "./sessionApi.http"
 import type {
   CancelPendingClusterFeedbackResponse,
   ClusterBuildStatusResponse,
+  ClusterFeedbackResponse,
   ClusterFeedbackListResponse,
   ClusterGroupInformationTableResponse,
   ClusterVersionListResponse,
@@ -29,7 +30,8 @@ export async function getActiveClusters(
   }
   const query = searchParams.toString()
   return requestJsonOrNull<ClusterVersionResponse>(
-    `/sessions/${encodeURIComponent(sessionId)}/clusters${query ? `?${query}` : ""}`
+    `/sessions/${encodeURIComponent(sessionId)}/clusters${query ? `?${query}` : ""}`,
+    { cache: "no-store" }
   )
 }
 
@@ -125,7 +127,8 @@ export async function getClusterBuildStatus(
   sessionId: string
 ): Promise<ClusterBuildStatusResponse> {
   return requestJson<ClusterBuildStatusResponse>(
-    `/sessions/${encodeURIComponent(sessionId)}/clustering/build/status`
+    `/sessions/${encodeURIComponent(sessionId)}/clustering/build/status`,
+    { cache: "no-store" }
   )
 }
 
@@ -181,8 +184,8 @@ export async function moveDocumentBetweenClusters(
     details?: Record<string, unknown>
     created_by?: string
   }
-): Promise<Record<string, unknown>> {
-  return requestJson<Record<string, unknown>>(
+): Promise<ClusterFeedbackResponse> {
+  return requestJson<ClusterFeedbackResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/clusters/manual-move`,
     {
       method: "POST",
@@ -196,11 +199,37 @@ export async function moveDocumentBetweenClusters(
   )
 }
 
+export async function addMetadataEditKeepClusterFeedback(
+  sessionId: string,
+  payload: {
+    session_document_id: number
+    target_cluster_id: string
+    weight?: number
+    details?: Record<string, unknown>
+    created_by?: string
+  }
+): Promise<ClusterFeedbackResponse> {
+  return requestJson<ClusterFeedbackResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/clusters/feedback`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        feedback_type: "metadata_edit_keep_cluster",
+        weight: 1,
+        created_by: "ui",
+        ...payload,
+      }),
+    }
+  )
+}
+
 export async function listClusterFeedback(
   sessionId: string
 ): Promise<ClusterFeedbackListResponse> {
   return requestJson<ClusterFeedbackListResponse>(
-    `/sessions/${encodeURIComponent(sessionId)}/clusters/feedback`
+    `/sessions/${encodeURIComponent(sessionId)}/clusters/feedback`,
+    { cache: "no-store" }
   )
 }
 

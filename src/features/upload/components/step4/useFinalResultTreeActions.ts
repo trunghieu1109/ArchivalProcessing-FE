@@ -1,13 +1,25 @@
 import { useEffect, type DragEvent as ReactDragEvent } from "react"
 import { toast } from "sonner"
 import {
+  addMetadataEditKeepClusterFeedback,
   moveDocumentBetweenClusters,
   moveSelectedDocumentsToCluster,
   patchSessionDossier,
+  patchDocumentMetadata,
   promoteSelectedDocumentsToDossier,
   promoteTemporaryFolderDocuments,
+  type ClusterFeedbackResponse,
+  type DossierPromoteResponse,
+  type SessionDocumentResponse,
 } from "@/features/upload/api/sessionApi"
-import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
+import { buildDisplayMetadata } from "@/features/upload/lib/metadata"
+import { documentSignatureStatus } from "@/features/upload/lib/signatureStatus"
+import { numberValue } from "@/features/upload/lib/clusterGroupUtils"
+import type {
+  ClusterDocument,
+  ClusterGroup,
+  PendingClusterFeedbackMarker,
+} from "@/features/upload/lib/clusterGroups"
 import type { DossierMetadataDraft } from "./FinalResult.metadataUtils"
 import {
   dossierPatchPayloadFromDraft,
@@ -182,16 +194,22 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
     const moving = draggedDocument
     const targetIsTemporary = Boolean(targetGroup?.isTemporary)
     const sessionDocumentId = draggedDocument.document.sessionDocumentId
+    const optimisticFeedback = pendingFeedbackMarker({
+      id: -sessionDocumentId,
+      action: targetIsTemporary ? "move_to_temporary_folder" : "manual_move",
+      sourceClusterId: sourceFeedbackClusterId,
+      targetClusterId: targetFeedbackClusterId,
+    })
     stopResultTreeAutoScroll()
     setDraggedDocument(null)
     setDropTargetId(null)
     setGroups((previous: any) =>
-      moveDocumentLocally(previous, moving, targetClusterId)
+      moveDocumentLocally(previous, moving, targetClusterId, optimisticFeedback)
     )
     setStatus("Đang lưu feedback di chuyển tài liệu...")
 
     try {
-      await moveDocumentBetweenClusters(sessionId, {
+      const response = await moveDocumentBetweenClusters(sessionId, {
         session_document_id: sessionDocumentId,
         source_cluster_id: sourceFeedbackClusterId,
         target_cluster_id: targetFeedbackClusterId,
@@ -205,7 +223,18 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
           target_cluster_id: targetFeedbackClusterId,
         },
       })
-      setPendingFeedbackCount((count: number) => count + 1)
+      const cancelledFeedbackCount =
+        response.cancelled_metadata_keep_feedback_ids?.length ?? 0
+      setGroups((previous: ClusterGroup[]) =>
+        replacePendingFeedbackMarkerLocally(
+          previous,
+          sessionDocumentId,
+          response
+        )
+      )
+      setPendingFeedbackCount((count: number) =>
+        Math.max(0, count - cancelledFeedbackCount + 1)
+      )
       setPendingFeedbackRefreshKey((key: number) => key + 1)
       setStatus(
         targetIsTemporary
@@ -218,6 +247,16 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
           : "Đã lưu feedback chuyển tài liệu."
       )
     } catch (err) {
+      setGroups((previous: ClusterGroup[]) =>
+        moveDocumentLocally(
+          previous,
+          {
+            document: moving.document,
+            fromClusterId: targetClusterId,
+          },
+          moving.fromClusterId
+        )
+      )
       setStatus("Không lưu được feedback di chuyển tài liệu. Vui lòng thử lại.")
       toast.error(
         err instanceof Error
@@ -273,6 +312,114 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
     }
   }
 
+  const handleSaveDocumentMetadata = async (
+    document: ClusterDocument,
+    clusterId: string,
+    metadata: Record<string, unknown>
+  ) => {
+    if (viewingHistoricalClusterVersion) {
+      toast.error(
+        "Bạn đang xem phiên bản cũ. Hãy kích hoạt phiên bản này trước khi sửa metadata tài liệu."
+      )
+      throw new Error("Cannot edit a historical cluster version")
+    }
+    if (!sessionId) {
+      toast.error("Chưa có session để cập nhật metadata tài liệu.")
+      throw new Error("Missing session id")
+    }
+    const sessionDocumentId = document.sessionDocumentId
+    if (!sessionDocumentId) {
+      toast.error("Tài liệu này chưa có mã session để cập nhật metadata.")
+      throw new Error("Missing session document id")
+    }
+    if (pendingClusterVersion) {
+      toast.error(
+        "Có phiên bản hồ sơ mới. Hãy áp dụng trước khi sửa metadata tài liệu."
+      )
+      throw new Error("Pending cluster version exists")
+    }
+    if (
+      loading ||
+      rebuildSubmitting ||
+      rebuildBaselineVersionId ||
+      promotingTemporaryFolder ||
+      promotingSelectedDocuments ||
+      movingSelectedDocumentsTargetId
+    ) {
+      toast.error("Đang cập nhật hồ sơ. Vui lòng chờ xong rồi thử lại.")
+      throw new Error("Cluster update is busy")
+    }
+
+    let updatedDocument: SessionDocumentResponse | null = null
+    try {
+      const patchedDocument = await patchDocumentMetadata(
+        sessionId,
+        sessionDocumentId,
+        metadata
+      )
+      updatedDocument = patchedDocument
+      const feedback = await addMetadataEditKeepClusterFeedback(sessionId, {
+        session_document_id: sessionDocumentId,
+        target_cluster_id: clusterId,
+        details: {
+          action: "metadata_edit_keep_cluster",
+          document_id: document.documentId,
+          file_name: document.fileName,
+          target_cluster_id: clusterId,
+        },
+      })
+      setGroups((previous: ClusterGroup[]) =>
+        updateDocumentMetadataLocally(
+          previous,
+          sessionDocumentId,
+          patchedDocument,
+          {
+            id: feedback.id,
+            action: "metadata_edit_keep_cluster",
+            sourceClusterId: feedback.source_cluster_id ?? null,
+            targetClusterId: feedback.target_cluster_id ?? clusterId,
+            createdAt: feedback.created_at,
+          }
+        )
+      )
+      const cancelledFeedbackCount =
+        feedback.cancelled_metadata_keep_feedback_ids?.length ?? 0
+      setPendingFeedbackCount((count: number) =>
+        Math.max(0, count - cancelledFeedbackCount + 1)
+      )
+      setPendingFeedbackRefreshKey((key: number) => key + 1)
+      setStatus(
+        "Đã lưu metadata tài liệu. Bấm Cập nhật hồ sơ để áp dụng vào lập cụm."
+      )
+      toast.success("Đã lưu metadata tài liệu.")
+    } catch (err) {
+      if (updatedDocument) {
+        const persistedDocument = updatedDocument
+        setGroups((previous: ClusterGroup[]) =>
+          updateDocumentMetadataOnlyLocally(
+            previous,
+            sessionDocumentId,
+            persistedDocument
+          )
+        )
+        setStatus(
+          "Metadata đã được lưu, nhưng chưa ghi nhận được feedback giữ cụm."
+        )
+        toast.error(
+          "Metadata đã được lưu. Không ghi nhận được feedback giữ cụm; vui lòng thử lưu lại."
+        )
+      } else {
+        setStatus("Không thể lưu metadata tài liệu.")
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : "Không thể lưu metadata tài liệu."
+        )
+      }
+      throw err
+    }
+  }
+
   const handleCreateDossierFromSelection = async () => {
     if (viewingHistoricalClusterVersion) {
       toast.error(
@@ -316,8 +463,17 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
       const response = await promoteSelectedDocumentsToDossier(sessionId, {
         session_document_ids: sessionDocumentIds,
       })
-      setPendingFeedbackCount(
-        (count: number) => count + Math.max(1, response.feedback_count)
+      setGroups((previous: ClusterGroup[]) =>
+        applyPendingDossierPromotionLocally(
+          previous,
+          response,
+          response.action ?? "promote_selected_documents"
+        )
+      )
+      const cancelledFeedbackCount =
+        response.cancelled_metadata_keep_feedback_ids?.length ?? 0
+      setPendingFeedbackCount((count: number) =>
+        Math.max(0, count - cancelledFeedbackCount + response.feedback_count)
       )
       setPendingFeedbackRefreshKey((key: number) => key + 1)
       setSelectedSessionDocumentIds(new Set())
@@ -375,19 +531,32 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
     }
 
     const targetIsTemporary = Boolean(group.isTemporary)
+    const optimisticFeedback = pendingFeedbackMarker({
+      id: -Date.now(),
+      action: targetIsTemporary ? "move_to_temporary_folder" : "manual_move",
+      sourceClusterId: null,
+      targetClusterId: group.clusterId,
+    })
     setMovingSelectedDocumentsTargetId(group.id)
     let previousGroups: ClusterGroup[] | null = null
     setGroups((previous: ClusterGroup[]) => {
       previousGroups = previous
-      return moveSelectedDocumentsLocally(previous, sessionDocumentIds, group.id)
+      return moveSelectedDocumentsLocally(
+        previous,
+        sessionDocumentIds,
+        group.id,
+        optimisticFeedback
+      )
     })
     try {
       const response = await moveSelectedDocumentsToCluster(sessionId, {
         session_document_ids: sessionDocumentIds,
         target_cluster_id: group.clusterId,
       })
-      setPendingFeedbackCount(
-        (count: number) => count + Math.max(1, response.feedback_count)
+      const cancelledFeedbackCount =
+        response.cancelled_metadata_keep_feedback_ids?.length ?? 0
+      setPendingFeedbackCount((count: number) =>
+        Math.max(0, count - cancelledFeedbackCount + response.feedback_count)
       )
       setPendingFeedbackRefreshKey((key: number) => key + 1)
       setSelectedSessionDocumentIds(new Set())
@@ -462,8 +631,17 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
       const response = await promoteTemporaryFolderDocuments(sessionId, {
         session_document_ids: sessionDocumentIds,
       })
-      setPendingFeedbackCount(
-        (count: number) => count + Math.max(1, response.feedback_count)
+      setGroups((previous: ClusterGroup[]) =>
+        applyPendingDossierPromotionLocally(
+          previous,
+          response,
+          response.action ?? "promote_temporary_folder"
+        )
+      )
+      const cancelledFeedbackCount =
+        response.cancelled_metadata_keep_feedback_ids?.length ?? 0
+      setPendingFeedbackCount((count: number) =>
+        Math.max(0, count - cancelledFeedbackCount + response.feedback_count)
       )
       setPendingFeedbackRefreshKey((key: number) => key + 1)
       setStatus(
@@ -488,11 +666,178 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
     handlePromoteTemporaryFolder,
     handleResultTreeDragOver,
     handleSaveDossierMetadata,
+    handleSaveDocumentMetadata,
     handleToggleDocumentSelection,
     handleToggleGroupSelection,
     stopResultTreeAutoScroll,
     toggleNode,
   }
+}
+
+function pendingFeedbackMarker({
+  id,
+  action,
+  sourceClusterId,
+  targetClusterId,
+}: {
+  id: number
+  action: string
+  sourceClusterId: string | null
+  targetClusterId: string
+}): PendingClusterFeedbackMarker {
+  return {
+    id,
+    action,
+    sourceClusterId,
+    targetClusterId,
+    createdAt: new Date().toISOString(),
+  }
+}
+
+function applyPendingDossierPromotionLocally(
+  groups: ClusterGroup[],
+  response: DossierPromoteResponse,
+  action: string
+): ClusterGroup[] {
+  const promotedSessionDocumentIds = new Set(
+    response.promoted_session_document_ids
+  )
+  if (promotedSessionDocumentIds.size === 0) return groups
+
+  const pendingFeedback = pendingFeedbackMarker({
+    id: -(response.feedback_event_id ?? Date.now()),
+    action,
+    sourceClusterId: null,
+    targetClusterId: response.target_cluster_id,
+  })
+  const promotedDocuments: ClusterDocument[] = []
+  const groupsWithoutPromotedDocuments = groups.map((group) => {
+    const documents = group.documents.filter((document) => {
+      const sessionDocumentId = document.sessionDocumentId
+      if (
+        sessionDocumentId !== null &&
+        promotedSessionDocumentIds.has(sessionDocumentId)
+      ) {
+        promotedDocuments.push(document)
+        return false
+      }
+      return true
+    })
+    if (documents.length === group.documents.length) return group
+    return groupWithDocumentSnapshot(group, documents)
+  })
+
+  if (promotedDocuments.length === 0) return groups
+
+  const targetGroupIndex = groupsWithoutPromotedDocuments.findIndex(
+    (group) => group.id === response.target_cluster_id
+  )
+  const pendingDocuments = promotedDocuments.map((document, index) => ({
+    ...document,
+    positionIndex: index,
+    pendingFeedback,
+  }))
+
+  if (targetGroupIndex >= 0) {
+    return groupsWithoutPromotedDocuments.map((group, index) => {
+      if (index !== targetGroupIndex) return group
+      return groupWithDocumentSnapshot(
+        {
+          ...group,
+          isPendingDossier: true,
+          createdFromTemporaryFolder: action === "promote_temporary_folder",
+          hasPendingFeedback: true,
+        },
+        [
+          ...group.documents,
+          ...pendingDocuments.map((document, offset) => ({
+            ...document,
+            positionIndex: group.documents.length + offset,
+          })),
+        ]
+      )
+    })
+  }
+
+  const pendingGroup = groupWithDocumentSnapshot(
+    {
+      id: response.target_cluster_id,
+      clusterId: response.target_cluster_id,
+      dossierId: response.target_cluster_id,
+      label: "Hồ sơ tạm thời",
+      files: [],
+      documents: [],
+      isPendingDossier: true,
+      createdFromTemporaryFolder: action === "promote_temporary_folder",
+      classificationPath: [],
+      requiresReview: false,
+      hasPendingFeedback: true,
+      pendingFeedbackCount: pendingDocuments.length,
+      pageCount: 0,
+      sheetCount: 0,
+    },
+    pendingDocuments
+  )
+
+  return [pendingGroup, ...groupsWithoutPromotedDocuments]
+}
+
+function groupWithDocumentSnapshot(
+  group: ClusterGroup,
+  documents: ClusterDocument[]
+): ClusterGroup {
+  const pendingFeedbackCount = documents.filter(
+    (document) => document.pendingFeedback
+  ).length
+  return {
+    ...group,
+    documents,
+    files: documents.map((document) => document.filePath),
+    pageCount: documents.reduce(
+      (sum, document) => sum + (document.pageCount ?? 0),
+      0
+    ),
+    sheetCount: documents.reduce(
+      (sum, document) => sum + (document.sheetCount ?? 0),
+      0
+    ),
+    pendingFeedbackCount,
+    hasPendingFeedback: pendingFeedbackCount > 0,
+  }
+}
+
+function replacePendingFeedbackMarkerLocally(
+  groups: ClusterGroup[],
+  sessionDocumentId: number,
+  feedback: ClusterFeedbackResponse
+): ClusterGroup[] {
+  return groups.map((group) => {
+    let changed = false
+    const documents = group.documents.map((document) => {
+      if (document.sessionDocumentId !== sessionDocumentId) return document
+      changed = true
+      return {
+        ...document,
+        pendingFeedback: {
+          id: feedback.id,
+          action: String(feedback.details?.action ?? feedback.feedback_type),
+          sourceClusterId: feedback.source_cluster_id ?? null,
+          targetClusterId: feedback.target_cluster_id ?? null,
+          createdAt: feedback.created_at,
+        },
+      }
+    })
+    if (!changed) return group
+    const pendingFeedbackCount = documents.filter(
+      (document) => document.pendingFeedback
+    ).length
+    return {
+      ...group,
+      documents,
+      pendingFeedbackCount,
+      hasPendingFeedback: pendingFeedbackCount > 0,
+    }
+  })
 }
 
 function autoScrollResultTree(container: HTMLDivElement, clientY: number) {
@@ -521,4 +866,99 @@ function autoScrollResultTree(container: HTMLDivElement, clientY: number) {
 
 function clampScrollIntensity(value: number): number {
   return Math.min(1, Math.max(0.15, value))
+}
+
+function updateDocumentMetadataLocally(
+  groups: ClusterGroup[],
+  sessionDocumentId: number,
+  updatedDocument: SessionDocumentResponse,
+  pendingFeedback: NonNullable<ClusterDocument["pendingFeedback"]>
+): ClusterGroup[] {
+  return groups.map((group) => {
+    let changed = false
+    let pendingDelta = 0
+    const documents = group.documents.map((document) => {
+      if (document.sessionDocumentId !== sessionDocumentId) return document
+      changed = true
+      pendingDelta = document.pendingFeedback ? 0 : 1
+      return updatedClusterDocument(document, updatedDocument, pendingFeedback)
+    })
+    if (!changed) return group
+    return {
+      ...group,
+      documents,
+      files: documents.map((document) => document.filePath),
+      pageCount: documents.reduce(
+        (sum, document) => sum + (document.pageCount ?? 0),
+        0
+      ),
+      sheetCount: documents.reduce(
+        (sum, document) => sum + (document.sheetCount ?? 0),
+        0
+      ),
+      pendingFeedbackCount: (group.pendingFeedbackCount ?? 0) + pendingDelta,
+      hasPendingFeedback: true,
+    }
+  })
+}
+
+function updateDocumentMetadataOnlyLocally(
+  groups: ClusterGroup[],
+  sessionDocumentId: number,
+  updatedDocument: SessionDocumentResponse
+): ClusterGroup[] {
+  return groups.map((group) => {
+    let changed = false
+    const documents = group.documents.map((document) => {
+      if (document.sessionDocumentId !== sessionDocumentId) return document
+      changed = true
+      return updatedClusterDocument(
+        document,
+        updatedDocument,
+        document.pendingFeedback ?? null
+      )
+    })
+    if (!changed) return group
+    return {
+      ...group,
+      documents,
+      files: documents.map((document) => document.filePath),
+      pageCount: documents.reduce(
+        (sum, document) => sum + (document.pageCount ?? 0),
+        0
+      ),
+      sheetCount: documents.reduce(
+        (sum, document) => sum + (document.sheetCount ?? 0),
+        0
+      ),
+    }
+  })
+}
+
+function updatedClusterDocument(
+  document: ClusterDocument,
+  updatedDocument: SessionDocumentResponse,
+  pendingFeedback: ClusterDocument["pendingFeedback"]
+): ClusterDocument {
+  const metadata = buildDisplayMetadata(updatedDocument)
+  const remoteMetadataStatus =
+    updatedDocument.remote_metadata_status ?? document.remoteMetadataStatus
+  const ocrStatus = updatedDocument.ocr_status ?? document.ocrStatus
+  const signatureStatus =
+    updatedDocument.signature_status ??
+    String(metadata.signature_status ?? metadata.signatureStatus ?? "")
+  return {
+    ...document,
+    metadata,
+    remoteMetadataStatus,
+    ocrStatus,
+    signatureStatus: documentSignatureStatus({
+      signatureStatus,
+      remoteMetadataStatus,
+      ocrStatus,
+    }),
+    pageCount: numberValue(metadata.page_count) ?? document.pageCount,
+    sheetCount: numberValue(metadata.sheet_count) ?? document.sheetCount,
+    pendingFeedback,
+  }
 }

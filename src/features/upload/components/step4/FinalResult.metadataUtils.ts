@@ -141,7 +141,9 @@ export function updateDossierGroupFromResponse(
 }
 
 export function regularDossierCount(groups: ClusterGroup[]): number {
-  return groups.filter((group) => !group.isTemporary).length
+  return groups.filter(
+    (group) => !group.isTemporary && !group.isPendingDossier
+  ).length
 }
 
 export function temporaryDocumentCount(groups: ClusterGroup[]): number {

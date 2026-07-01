@@ -3,17 +3,26 @@ import { motion } from "framer-motion"
 import {
   AlertTriangle,
   CalendarDays,
+  Check,
   ChevronDown,
   ChevronRight,
+  Edit2,
   Eye,
   FileText,
   GripVertical,
+  Loader2,
   Signature,
+  X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/shared/lib/utils"
 import type { ClusterDocument } from "@/features/upload/lib/clusterGroups"
 import { signatureTagInfo } from "@/features/upload/lib/signatureStatus"
+import {
+  METADATA_FIELDS,
+  metadataEditorRows,
+  metadataFieldText,
+} from "@/features/upload/components/step3/metadataCardUtils"
 import { ClusterWarningPanel } from "./FinalResult.warningPanel"
 import { SelectionCheckbox } from "./FinalResult.selection"
 import {
@@ -32,6 +41,7 @@ import { pendingFeedbackActionLabel } from "./FinalResult.pendingFeedback"
 export function DocumentRow({
   document,
   clusterId,
+  metadataFeedbackClusterId,
   depth,
   compact,
   selected,
@@ -41,9 +51,11 @@ export function DocumentRow({
   onDragStart,
   onDragEnd,
   onSelectPreview,
+  onSaveMetadata,
 }: {
   document: ClusterDocument
   clusterId: string
+  metadataFeedbackClusterId: string
   depth: number
   compact: boolean
   selected: boolean
@@ -53,10 +65,18 @@ export function DocumentRow({
   onDragStart: (document: ClusterDocument, fromClusterId: string) => void
   onDragEnd: () => void
   onSelectPreview: (document: ClusterDocument) => void
+  onSaveMetadata: (
+    document: ClusterDocument,
+    clusterId: string,
+    metadata: Record<string, unknown>
+  ) => Promise<void>
 }) {
   const [expanded, setExpanded] = useState(false)
   const [showWarningDetails, setShowWarningDetails] = useState(true)
   const [dragging, setDragging] = useState(false)
+  const [editingMetadata, setEditingMetadata] = useState(false)
+  const [savingMetadata, setSavingMetadata] = useState(false)
+  const [metadataDraft, setMetadataDraft] = useState<Record<string, string>>({})
   const clusterWarning = document.clusterWarning
   const summary = metadataText(document.metadata, [
     "document_summary",
@@ -101,6 +121,44 @@ export function DocumentRow({
     const nextExpanded = !expanded
     setExpanded(nextExpanded)
     setShowWarningDetails(nextExpanded)
+    if (!nextExpanded) setEditingMetadata(false)
+  }
+
+  const startMetadataEdit = () => {
+    const nextDraft: Record<string, string> = {}
+    METADATA_FIELDS.forEach((field) => {
+      nextDraft[field.key] = metadataFieldText(document.metadata, field.aliases)
+    })
+    setMetadataDraft(nextDraft)
+    setEditingMetadata(true)
+    setExpanded(true)
+    setShowWarningDetails(true)
+  }
+
+  const cancelMetadataEdit = () => {
+    setEditingMetadata(false)
+    setMetadataDraft({})
+  }
+
+  const saveMetadataEdit = async () => {
+    if (document.sessionDocumentId === null) return
+    const updated: Record<string, unknown> = { ...document.metadata }
+    METADATA_FIELDS.forEach((field) => {
+      field.aliases.forEach((alias) => {
+        if (alias !== field.key) delete updated[alias]
+      })
+      updated[field.key] = metadataDraft[field.key] ?? ""
+    })
+    updated["_warnings"] = {}
+    setSavingMetadata(true)
+    try {
+      await onSaveMetadata(document, metadataFeedbackClusterId, updated)
+      setEditingMetadata(false)
+    } catch {
+      // The parent action reports the failure and keeps the editor open for retry.
+    } finally {
+      setSavingMetadata(false)
+    }
   }
 
   return (
@@ -124,8 +182,6 @@ export function DocumentRow({
           "mr-1 flex max-w-full min-w-0 cursor-pointer items-start gap-2 overflow-hidden rounded-xl border border-transparent px-2 py-1.5 transition-colors active:cursor-grabbing",
           selected
             ? "bg-[#EAF1FF] ring-1 ring-[#0052FF]/30"
-            : document.pendingFeedback
-              ? "border-amber-300 bg-amber-50/90 ring-1 ring-amber-300/70"
             : expanded
               ? "bg-[#F8FAFC]"
               : "hover:bg-[#F8FAFC]"
@@ -291,6 +347,55 @@ export function DocumentRow({
                 {document.filePath}
               </p>
             </div>
+            <div className="flex shrink-0 items-center gap-1">
+              {editingMetadata ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    title="Hủy sửa metadata"
+                    disabled={savingMetadata}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      cancelMetadataEdit()
+                    }}
+                  >
+                    <X className="size-3.5" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    title="Lưu metadata"
+                    disabled={savingMetadata}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      void saveMetadataEdit()
+                    }}
+                  >
+                    {savingMetadata ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Check className="size-3.5" />
+                    )}
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon-sm"
+                  title="Sửa metadata"
+                  disabled={document.sessionDocumentId === null}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    startMetadataEdit()
+                  }}
+                >
+                  <Edit2 className="size-3.5" />
+                </Button>
+              )}
+            </div>
           </div>
           <div className="grid min-w-0 gap-2 text-xs">
             {clusterWarning && (
@@ -300,21 +405,97 @@ export function DocumentRow({
                 onToggle={() => setShowWarningDetails((value) => !value)}
               />
             )}
-            <PreviewField label="Trích yếu" value={metadataSummary} wide />
+            <EditablePreviewField
+              label="Trích yếu"
+              value={metadataSummary}
+              fieldKey="document_summary"
+              draftValue={metadataDraft.document_summary ?? ""}
+              editing={editingMetadata}
+              saving={savingMetadata}
+              wide
+              onChange={(value) =>
+                setMetadataDraft((current) => ({
+                  ...current,
+                  document_summary: value,
+                }))
+              }
+            />
             <div
               className={cn(
                 "grid min-w-0 grid-cols-1 gap-2",
                 compact ? "md:grid-cols-2" : "md:grid-cols-3"
               )}
             >
-              <PreviewField label="Cơ quan ban hành" value={agency} />
-              <PreviewField label="Ngày ban hành" value={issuedDate} />
-              <PreviewField label="Loại văn bản" value={docType} />
-              <PreviewField label="Số hiệu" value={documentNumber} />
-              <PreviewField
+              <EditablePreviewField
+                label="Cơ quan ban hành"
+                value={agency}
+                fieldKey="issuing_agency"
+                draftValue={metadataDraft.issuing_agency ?? ""}
+                editing={editingMetadata}
+                saving={savingMetadata}
+                onChange={(value) =>
+                  setMetadataDraft((current) => ({
+                    ...current,
+                    issuing_agency: value,
+                  }))
+                }
+              />
+              <EditablePreviewField
+                label="Ngày ban hành"
+                value={issuedDate}
+                fieldKey="issued_date"
+                draftValue={metadataDraft.issued_date ?? ""}
+                editing={editingMetadata}
+                saving={savingMetadata}
+                onChange={(value) =>
+                  setMetadataDraft((current) => ({
+                    ...current,
+                    issued_date: value,
+                  }))
+                }
+              />
+              <EditablePreviewField
+                label="Loại văn bản"
+                value={docType}
+                fieldKey="document_type"
+                draftValue={metadataDraft.document_type ?? ""}
+                editing={editingMetadata}
+                saving={savingMetadata}
+                onChange={(value) =>
+                  setMetadataDraft((current) => ({
+                    ...current,
+                    document_type: value,
+                  }))
+                }
+              />
+              <EditablePreviewField
+                label="Số hiệu"
+                value={documentNumber}
+                fieldKey="document_number"
+                draftValue={metadataDraft.document_number ?? ""}
+                editing={editingMetadata}
+                saving={savingMetadata}
+                onChange={(value) =>
+                  setMetadataDraft((current) => ({
+                    ...current,
+                    document_number: value,
+                  }))
+                }
+              />
+              <EditablePreviewField
                 label="Người ký"
                 value={signer}
+                fieldKey="signer"
+                draftValue={metadataDraft.signer ?? ""}
+                editing={editingMetadata}
+                saving={savingMetadata}
                 icon={<Signature className="size-3" />}
+                onChange={(value) =>
+                  setMetadataDraft((current) => ({
+                    ...current,
+                    signer: value,
+                  }))
+                }
               />
               <PreviewField
                 label="Số trang"
@@ -324,6 +505,56 @@ export function DocumentRow({
           </div>
         </motion.div>
       )}
+    </div>
+  )
+}
+
+function EditablePreviewField({
+  label,
+  value,
+  fieldKey,
+  draftValue,
+  editing,
+  saving,
+  icon,
+  wide = false,
+  onChange,
+}: {
+  label: string
+  value: string
+  fieldKey: (typeof METADATA_FIELDS)[number]["key"]
+  draftValue: string
+  editing: boolean
+  saving: boolean
+  icon?: React.ReactNode
+  wide?: boolean
+  onChange: (value: string) => void
+}) {
+  if (!editing) {
+    return <PreviewField label={label} value={value} icon={icon} wide={wide} />
+  }
+
+  return (
+    <div
+      className={cn(
+        "min-w-0 overflow-hidden rounded-lg bg-[#F8FAFC] px-2.5 py-2",
+        wide && "col-span-full"
+      )}
+    >
+      <p className="mb-1 flex items-center gap-1 text-[10px] font-semibold tracking-[0.08em] text-[#94A3B8] uppercase">
+        {icon}
+        {label}
+      </p>
+      <textarea
+        value={draftValue}
+        onChange={(event) => onChange(event.target.value)}
+        rows={metadataEditorRows(fieldKey)}
+        disabled={saving}
+        className={cn(
+          "w-full min-w-0 resize-y rounded-md border border-[#CBD5E1] bg-white px-2.5 py-1.5 text-xs leading-5 font-medium [overflow-wrap:anywhere] whitespace-pre-wrap text-[#0F172A] transition-colors outline-none placeholder:text-[#94A3B8] focus-visible:border-[#0052FF] focus-visible:ring-3 focus-visible:ring-[#0052FF]/20 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-[#F8FAFC] disabled:opacity-70",
+          fieldKey === "document_summary" ? "min-h-24" : "min-h-16"
+        )}
+      />
     </div>
   )
 }

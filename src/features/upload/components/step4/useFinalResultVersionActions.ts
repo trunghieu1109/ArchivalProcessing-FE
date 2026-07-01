@@ -22,7 +22,6 @@ import {
   regularDossierCount,
   temporaryDocumentCount,
 } from "./FinalResult.metadataUtils"
-import { clearPendingFeedbackMarkers } from "./FinalResult.pendingFeedback"
 
 const NO_CLUSTER_VERSION = "__none__"
 
@@ -128,11 +127,6 @@ export function useFinalResultVersionActions(context: Record<string, any>) {
       setRebuildPollKey((key: number) => key + 1)
       setLoading(true)
       setCheckingClusters(false)
-      setGroups((previous: ClusterGroup[]) =>
-        clearPendingFeedbackMarkers(previous)
-      )
-      setPendingFeedbackCount(0)
-      setPendingFeedbackRefreshKey((key: number) => key + 1)
       setClusterJobMode(mode)
       setClusterProgressPhase(FIRST_CLUSTER_PROGRESS_PHASE_ID)
       setClusterProgressMessage(

@@ -245,6 +245,7 @@ export interface ClusterFeedbackResponse {
   weight?: number | null
   status: string
   details: Record<string, unknown>
+  cancelled_metadata_keep_feedback_ids?: number[]
   created_by?: string | null
   created_at: string
 }
@@ -252,6 +253,9 @@ export interface ClusterFeedbackResponse {
 export interface ClusterFeedbackListResponse {
   session_id: string
   feedback: ClusterFeedbackResponse[]
+  pending_feedback?: ClusterFeedbackResponse[]
+  active_version_id?: string | null
+  active_version_created_at?: string | null
 }
 
 export interface CancelPendingClusterFeedbackResponse {
@@ -271,6 +275,7 @@ export interface DossierPromoteResponse {
   promoted_document_ids: string[]
   promoted_session_document_ids: number[]
   feedback_count: number
+  cancelled_metadata_keep_feedback_ids?: number[]
   feedback_event_id?: number
   recompute_status?: string
   worker_required?: boolean
@@ -289,6 +294,7 @@ export interface SelectedDocumentsMoveResponse {
   moved_document_ids: string[]
   moved_session_document_ids: number[]
   feedback_count: number
+  cancelled_metadata_keep_feedback_ids?: number[]
   feedback_event_id?: number
   recompute_status?: string
   worker_required?: boolean

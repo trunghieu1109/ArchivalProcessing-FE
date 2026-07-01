@@ -25,6 +25,7 @@ export interface ClusterGroup {
   files: string[]
   documents: ClusterDocument[]
   isTemporary?: boolean
+  isPendingDossier?: boolean
   createdFromTemporaryFolder?: boolean
   dossierId?: string | null
   dossierNumber?: string | null

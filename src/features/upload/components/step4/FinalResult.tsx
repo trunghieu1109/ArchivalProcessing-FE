@@ -146,7 +146,10 @@ export function FinalResult({
       ),
     [metadataItems]
   )
-  const tree = useMemo(() => buildResultTree(groups, fondsName), [groups, fondsName])
+  const tree = useMemo(
+    () => buildResultTree(groups, fondsName),
+    [groups, fondsName]
+  )
   const [resultTreeSearch, setResultTreeSearch] = useState("")
   const [resultTreeSearchIndex, setResultTreeSearchIndex] = useState(0)
   const resultTreeSearchMatches = useMemo(
@@ -273,17 +276,17 @@ export function FinalResult({
     let cancelled = false
     const displayingActiveVersion = Boolean(
       sessionId &&
-        displayedClusterVersion &&
-        displayedClusterVersionId &&
-        activeClusterVersionId &&
-        displayedClusterVersionId === activeClusterVersionId
+      displayedClusterVersion &&
+      displayedClusterVersionId &&
+      activeClusterVersionId &&
+      displayedClusterVersionId === activeClusterVersionId
     )
-    if (
-      !displayingActiveVersion ||
-      pendingClusterVersion ||
-      loading ||
-      rebuildBaselineVersionId
-    ) {
+    if (rebuildBaselineVersionId) {
+      return () => {
+        cancelled = true
+      }
+    }
+    if (!displayingActiveVersion || pendingClusterVersion || loading) {
       const timeoutId = window.setTimeout(() => {
         if (cancelled) return
         if (!displayingActiveVersion || pendingClusterVersion || loading) {
@@ -302,11 +305,20 @@ export function FinalResult({
     listClusterFeedback(sessionId!)
       .then((response) => {
         if (cancelled) return
-        const baseGroups = versionToGroups(displayedClusterVersion, metadataItems)
+        const hasServerPendingFeedback = Array.isArray(
+          response.pending_feedback
+        )
+        const baseGroups = versionToGroups(
+          displayedClusterVersion,
+          metadataItems
+        )
         const overlay = applyPendingFeedbackOverlay(
           baseGroups,
-          response.feedback ?? [],
-          displayedClusterVersion
+          hasServerPendingFeedback
+            ? response.pending_feedback!
+            : (response.feedback ?? []),
+          displayedClusterVersion,
+          hasServerPendingFeedback
         )
         setGroups(overlay.groups)
         setPendingFeedbackCount(overlay.pendingFeedbackCount)
@@ -508,6 +520,8 @@ export function FinalResult({
     setGroups,
     setLoading,
     setPendingClusterVersion,
+    setPendingFeedbackCount,
+    setPendingFeedbackRefreshKey,
     setRebuildBaselineVersionId,
     setStatus,
   })
@@ -576,6 +590,7 @@ export function FinalResult({
     handlePromoteTemporaryFolder,
     handleResultTreeDragOver,
     handleSaveDossierMetadata,
+    handleSaveDocumentMetadata,
     handleToggleDocumentSelection,
     handleToggleGroupSelection,
     stopResultTreeAutoScroll,
@@ -869,6 +884,7 @@ export function FinalResult({
       handleRestorePreviousClusterVersion={handleRestorePreviousClusterVersion}
       handleResultTreeDragOver={handleResultTreeDragOver}
       handleSaveDossierMetadata={handleSaveDossierMetadata}
+      handleSaveDocumentMetadata={handleSaveDocumentMetadata}
       handleSelectDossierMetadata={handleSelectDossierMetadataFromTree}
       handleSelectGroupInformation={handleSelectGroupInformation}
       handleSelectRetentionCandidate={handleSelectRetentionCandidate}

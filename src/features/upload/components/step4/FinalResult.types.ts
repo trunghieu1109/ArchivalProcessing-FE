@@ -32,6 +32,7 @@ export interface ResultTreeNode {
     | "year"
     | "classification"
     | "dossier"
+    | "pending_dossier"
     | "temporary"
   children: ResultTreeNode[]
   group?: ClusterGroup

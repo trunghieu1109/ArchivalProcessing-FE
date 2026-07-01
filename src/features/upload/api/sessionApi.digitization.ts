@@ -130,6 +130,21 @@ export async function verifyDocumentMetadata(
   )
 }
 
+export async function patchDocumentMetadata(
+  sessionId: string,
+  documentId: number,
+  metadata: Record<string, unknown>
+): Promise<SessionDocumentResponse> {
+  return requestJson<SessionDocumentResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/documents/${encodeURIComponent(String(documentId))}/metadata`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ metadata, created_by: "ui" }),
+    }
+  )
+}
+
 export async function bulkVerifyDocumentMetadata(
   sessionId: string,
   documentIds: number[]
@@ -349,7 +364,9 @@ export function digitizationToFolderStatus(
     recursive: batch?.recursive ?? true,
     total_files: Math.max(responseDocumentTotal, cumulativeDocumentCount),
     total_jobs: Math.max(responseDocumentTotal, cumulativeDocumentCount),
-    missing_files: batches.flatMap((candidate) => candidate.missing_files ?? []),
+    missing_files: batches.flatMap(
+      (candidate) => candidate.missing_files ?? []
+    ),
     status_counts: statusCounts,
     pagination: response?.pagination,
     document_numbering_mode: batch?.document_numbering_mode ?? null,
@@ -396,7 +413,9 @@ export function digitizationToFolderStatus(
       summary?.extracting_ingestion_runs ??
       ingestionRuns.filter((run) =>
         ["extract_starting", "extracting", "legacy_unknown"].includes(
-          String(run.status || "").trim().toLowerCase()
+          String(run.status || "")
+            .trim()
+            .toLowerCase()
         )
       ).length,
     ready_ingestion_runs:

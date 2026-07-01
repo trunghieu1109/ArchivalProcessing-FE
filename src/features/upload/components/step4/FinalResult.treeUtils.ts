@@ -1,4 +1,8 @@
-import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
+import type {
+  ClusterDocument,
+  ClusterGroup,
+  PendingClusterFeedbackMarker,
+} from "@/features/upload/lib/clusterGroups"
 import {
   UNKNOWN_YEAR_LABEL,
   dossierPageCount,
@@ -61,7 +65,21 @@ export function buildResultTree(
     })
 
   groups
-    .filter((group) => !group.isTemporary)
+    .filter((group) => group.isPendingDossier)
+    .forEach((group) => {
+      roots.push({
+        id: `pending-dossier:${group.id}`,
+        label: group.label,
+        type: "pending_dossier",
+        children: [],
+        group,
+        documentCount: group.documents.length,
+        pageCount: dossierPageCount(group),
+      })
+    })
+
+  groups
+    .filter((group) => !group.isTemporary && !group.isPendingDossier)
     .forEach((group) => {
       const fondsLabel =
         sessionFondsLabel || resultTreeFondsLabel(group, fallbackFondsLabel)
@@ -115,7 +133,9 @@ export function resultTreeRetentionLabel(group: ClusterGroup): string {
     : TIMED_RETENTION_LABEL
 }
 
-export function isPermanentRetention(value: string | null | undefined): boolean {
+export function isPermanentRetention(
+  value: string | null | undefined
+): boolean {
   const normalized = normalizePathSegment(value ?? "")
   const compact = normalized.replace(/\s+/g, "")
   return normalized.includes("vinh vien") || compact === "vv"
@@ -203,7 +223,11 @@ function collectResultTreeDossierMatches(
 }
 
 function isSearchableResultTreeNode(node: ResultTreeNode): boolean {
-  return node.type === "dossier" || node.type === "temporary"
+  return (
+    node.type === "dossier" ||
+    node.type === "pending_dossier" ||
+    node.type === "temporary"
+  )
 }
 
 function resultTreeNodeMatchesSearch(
@@ -264,6 +288,8 @@ export function compareResultTreeNodes(
 ): number {
   if (a.type === "temporary" && b.type !== "temporary") return -1
   if (b.type === "temporary" && a.type !== "temporary") return 1
+  if (a.type === "pending_dossier" && b.type !== "pending_dossier") return -1
+  if (b.type === "pending_dossier" && a.type !== "pending_dossier") return 1
   if (a.type === "retention" && b.type === "retention") {
     return retentionSortValue(a.label) - retentionSortValue(b.label)
   }
@@ -444,29 +470,26 @@ export function dossierGroupsFromNode(node: ResultTreeNode): ClusterGroup[] {
 export function moveDocumentLocally(
   groups: ClusterGroup[],
   moving: DraggedDocument,
-  targetClusterId: string
+  targetClusterId: string,
+  pendingFeedback?: PendingClusterFeedbackMarker
 ): ClusterGroup[] {
   return groups.map((group) => {
     if (group.id === moving.fromClusterId) {
       const documents = group.documents.filter(
         (document) => document.documentId !== moving.document.documentId
       )
-      return {
-        ...group,
-        documents,
-        files: documents.map((document) => document.filePath),
-      }
+      return groupWithDocuments(group, documents)
     }
     if (group.id === targetClusterId) {
       const documents = [
         ...group.documents,
-        { ...moving.document, positionIndex: group.documents.length },
+        {
+          ...moving.document,
+          positionIndex: group.documents.length,
+          ...(pendingFeedback ? { pendingFeedback } : {}),
+        },
       ]
-      return {
-        ...group,
-        documents,
-        files: documents.map((document) => document.filePath),
-      }
+      return groupWithDocuments(group, documents)
     }
     return group
   })
@@ -475,7 +498,8 @@ export function moveDocumentLocally(
 export function moveSelectedDocumentsLocally(
   groups: ClusterGroup[],
   sessionDocumentIds: Iterable<number>,
-  targetGroupId: string
+  targetGroupId: string,
+  pendingFeedback?: PendingClusterFeedbackMarker
 ): ClusterGroup[] {
   const selectedIds = new Set(sessionDocumentIds)
   if (selectedIds.size === 0) return groups
@@ -496,11 +520,7 @@ export function moveSelectedDocumentsLocally(
       return false
     })
     if (documents.length === group.documents.length) return group
-    return {
-      ...group,
-      documents,
-      files: documents.map((document) => document.filePath),
-    }
+    return groupWithDocuments(group, documents)
   })
 
   if (movingDocuments.length === 0) return groups
@@ -525,12 +545,33 @@ export function moveSelectedDocumentsLocally(
       ...documentsToAppend.map((document, index) => ({
         ...document,
         positionIndex: group.documents.length + index,
+        ...(pendingFeedback ? { pendingFeedback } : {}),
       })),
     ]
-    return {
-      ...group,
-      documents,
-      files: documents.map((document) => document.filePath),
-    }
+    return groupWithDocuments(group, documents)
   })
+}
+
+function groupWithDocuments(
+  group: ClusterGroup,
+  documents: ClusterDocument[]
+): ClusterGroup {
+  const pendingFeedbackCount = documents.filter(
+    (document) => document.pendingFeedback
+  ).length
+  return {
+    ...group,
+    documents,
+    files: documents.map((document) => document.filePath),
+    pageCount: documents.reduce(
+      (sum, document) => sum + (document.pageCount ?? 0),
+      0
+    ),
+    sheetCount: documents.reduce(
+      (sum, document) => sum + (document.sheetCount ?? 0),
+      0
+    ),
+    pendingFeedbackCount,
+    hasPendingFeedback: pendingFeedbackCount > 0,
+  }
 }
