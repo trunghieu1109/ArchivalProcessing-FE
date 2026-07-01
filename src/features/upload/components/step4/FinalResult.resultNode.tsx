@@ -314,12 +314,16 @@ export function ResultNode({
               </span>
             </span>
           )}
-          {isDossier && group && selectedDocumentCount > 0 && (
+          {isDropFolder && group && selectedDocumentCount > 0 && (
             <Button
               type="button"
               variant="outline"
               size="sm"
-              title="Chuyển các tài liệu đã chọn tới hồ sơ này"
+              title={
+                isTemporary
+                  ? "Chuyển các tài liệu đã chọn vào Thư mục tạm"
+                  : "Chuyển các tài liệu đã chọn tới hồ sơ này"
+              }
               disabled={selectedDocumentsActionDisabled}
               onClick={(event) => {
                 event.stopPropagation()
@@ -332,7 +336,9 @@ export function ResultNode({
                 <MoveRight data-icon="inline-start" />
               )}
               <span className={cn(compact && "hidden 2xl:inline")}>
-                Chuyển tới hồ sơ này
+                {isTemporary
+                  ? "Chuyển vào thư mục tạm"
+                  : "Chuyển tới hồ sơ này"}
               </span>
             </Button>
           )}
@@ -354,7 +360,7 @@ export function ResultNode({
                 <FolderPlus data-icon="inline-start" />
               )}
               <span className={cn(compact && "hidden 2xl:inline")}>
-                Cập nhật
+                Tạo hồ sơ mới
               </span>
             </Button>
           )}

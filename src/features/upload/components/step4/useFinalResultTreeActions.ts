@@ -343,10 +343,6 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
       toast.error("Chưa có session để chuyển tài liệu đã chọn.")
       return
     }
-    if (group.isTemporary) {
-      toast.error("Chỉ có thể chuyển lựa chọn tới một hồ sơ.")
-      return
-    }
     if (pendingClusterVersion) {
       toast.error(
         "Có phiên bản hồ sơ mới. Hãy áp dụng trước khi chuyển tài liệu."
@@ -374,6 +370,7 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
       return
     }
 
+    const targetIsTemporary = Boolean(group.isTemporary)
     setMovingSelectedDocumentsTargetId(group.id)
     try {
       const response = await moveSelectedDocumentsToCluster(sessionId, {
@@ -385,15 +382,23 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
       )
       setSelectedSessionDocumentIds(new Set())
       setStatus(
-        `Đã ghi nhận ${response.moved_document_ids.length} tài liệu chuyển tới hồ sơ "${group.label}". Đang gửi job cập nhật hồ sơ.`
+        targetIsTemporary
+          ? `Đã ghi nhận ${response.moved_document_ids.length} tài liệu chuyển vào Thư mục tạm. Đang gửi job cập nhật hồ sơ.`
+          : `Đã ghi nhận ${response.moved_document_ids.length} tài liệu chuyển tới hồ sơ "${group.label}". Đang gửi job cập nhật hồ sơ.`
       )
-      toast.success("Đã ghi nhận chuyển tài liệu tới hồ sơ.")
+      toast.success(
+        targetIsTemporary
+          ? "Đã ghi nhận chuyển tài liệu vào Thư mục tạm."
+          : "Đã ghi nhận chuyển tài liệu tới hồ sơ."
+      )
       await handleRebuildClusters("update")
     } catch (err) {
       toast.error(
         err instanceof Error
           ? err.message
-          : "Không thể chuyển tài liệu đã chọn tới hồ sơ."
+          : targetIsTemporary
+            ? "Không thể chuyển tài liệu đã chọn vào Thư mục tạm."
+            : "Không thể chuyển tài liệu đã chọn tới hồ sơ."
       )
     } finally {
       setMovingSelectedDocumentsTargetId(null)
