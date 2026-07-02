@@ -83,9 +83,13 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     failedMetadataItems,
     finishMetadataBatch,
     confirmAllAutoBatches,
+    confirmAllManualQuickBatches,
     confirmAutoBatch,
+    confirmManualQuickBatch,
     confirmingAllAutoBatches,
+    confirmingAllManualQuickBatches,
     confirmingAutoBatchIndexes,
+    confirmingManualQuickWorkerIds,
     handleApply,
     handleBatchSizeInputBlur,
     handleBatchSizeInputChange,
@@ -102,6 +106,8 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     manualSelectedIds,
     manualSelectedOnly,
     manualSelectedVisibleItems,
+    manualQuickConfirmations,
+    manualQuickCounts,
     manualSplitActive,
     metadataFileFilter,
     metadataLoading,
@@ -134,12 +140,15 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     selectedAssigneeId,
     selectedAutoWorkerIds,
     selectedDocumentId,
+    selectedManualWorkerIds,
     sessionId,
     setAutoBatchAssigneeIds,
     setAutoBatchPlanRequested,
     setMetadataFileFilter,
     setSelectedAutoWorkerIds,
     setSelectedAssigneeId,
+    setManualQuickCounts,
+    setSelectedManualWorkerIds,
     setSelectedDocumentId,
     signatureStatus,
     startManualSplit,
@@ -343,9 +352,13 @@ export function ProcessStepView(props: ProcessStepViewProps) {
               clearBulkReviewSelection={clearBulkReviewSelection}
               clearManualSelection={clearManualSelection}
               confirmAllAutoBatches={confirmAllAutoBatches}
+              confirmAllManualQuickBatches={confirmAllManualQuickBatches}
               confirmAutoBatch={confirmAutoBatch}
+              confirmManualQuickBatch={confirmManualQuickBatch}
               confirmingAllAutoBatches={confirmingAllAutoBatches}
+              confirmingAllManualQuickBatches={confirmingAllManualQuickBatches}
               confirmingAutoBatchIndexes={confirmingAutoBatchIndexes}
+              confirmingManualQuickWorkerIds={confirmingManualQuickWorkerIds}
               closingBatchIds={closingBatchIds}
               createManualBatchFromSelection={createManualBatchFromSelection}
               creatingManualBatch={creatingManualBatch}
@@ -362,6 +375,8 @@ export function ProcessStepView(props: ProcessStepViewProps) {
               manualSelectedIds={manualSelectedIds}
               manualSelectedOnly={manualSelectedOnly}
               manualSelectedVisibleItems={manualSelectedVisibleItems}
+              manualQuickConfirmations={manualQuickConfirmations}
+              manualQuickCounts={manualQuickCounts}
               manualSplitActive={manualSplitActive}
               metadataFileFilter={metadataFileFilter}
               reviewMode={reviewMode}
@@ -369,11 +384,14 @@ export function ProcessStepView(props: ProcessStepViewProps) {
               selectAllDisplayedForManualSplit={selectAllDisplayedForManualSplit}
               selectedAssigneeId={selectedAssigneeId}
               selectedAutoWorkerIds={selectedAutoWorkerIds}
+              selectedManualWorkerIds={selectedManualWorkerIds}
               setAutoBatchAssigneeIds={setAutoBatchAssigneeIds}
               setAutoBatchPlanRequested={setAutoBatchPlanRequested}
               setMetadataFileFilter={setMetadataFileFilter}
+              setManualQuickCounts={setManualQuickCounts}
               setSelectedAutoWorkerIds={setSelectedAutoWorkerIds}
               setSelectedAssigneeId={setSelectedAssigneeId}
+              setSelectedManualWorkerIds={setSelectedManualWorkerIds}
               startManualSplit={startManualSplit}
               toggleBulkReviewSelectionMode={toggleBulkReviewSelectionMode}
               toggleManualSelectedOnly={toggleManualSelectedOnly}

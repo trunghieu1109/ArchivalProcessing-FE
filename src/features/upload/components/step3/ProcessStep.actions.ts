@@ -5,6 +5,7 @@ import {
   closeMetadataBatch,
   createMetadataBatch,
   downloadSessionMetadataReviewXlsx,
+  getDigitizationStatus,
   verifyDocumentMetadata,
   type SessionDocumentResponse,
 } from "@/features/upload/api/sessionApi"
@@ -35,6 +36,7 @@ import {
   buildMetadataBatchGroups,
   buildMetadataBatchGroupsFromSummaries,
   canUserEditMetadataItem,
+  chinhlyUserId,
   findUnassignedBatchIndex,
   firstPreferredMetadataItem,
   metadataDocumentScopeForGroup,
@@ -112,6 +114,17 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     setCreatingManualBatch,
     manualSelectedIds,
     selectedAssigneeId,
+    selectedManualWorkerIds,
+    setSelectedManualWorkerIds,
+    manualQuickCounts,
+    setManualQuickCounts,
+    manualQuickConfirmations,
+    setManualQuickConfirmations,
+    confirmingManualQuickWorkerIds,
+    setConfirmingManualQuickWorkerIds,
+    confirmingAllManualQuickBatches,
+    setConfirmingAllManualQuickBatches,
+    workers,
     setClosingBatchIds,
     canManageMetadataBatches,
     setRetryingIds,
@@ -134,6 +147,10 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
   } = context
   const autoAssignmentInProgress =
     confirmingAllAutoBatches || confirmingAutoBatchIndexes.size > 0
+  const manualQuickAssignmentInProgress =
+    confirmingAllManualQuickBatches || confirmingManualQuickWorkerIds.size > 0
+  const assignmentInProgress =
+    autoAssignmentInProgress || manualQuickAssignmentInProgress
 
   const handleApply = async (
     dataPath: string,
@@ -276,8 +293,16 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     bulkLastSelectedIdRef.current = null
   }
 
+  const resetManualQuickAssignment = () => {
+    setSelectedManualWorkerIds(new Set())
+    setManualQuickCounts(new Map())
+    setManualQuickConfirmations(new Map())
+    setConfirmingManualQuickWorkerIds(new Set())
+    setConfirmingAllManualQuickBatches(false)
+  }
+
   const handleReviewModeChange = (mode: MetadataReviewMode) => {
-    if (autoAssignmentInProgress) {
+    if (assignmentInProgress) {
       toast.info("Đợi hoàn tất xác nhận phân công hiện tại.")
       return
     }
@@ -286,6 +311,7 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     setManualSelectedIds(new Set())
     setManualSelectedOnly(false)
     setManualSelectedItemSnapshots(new Map())
+    resetManualQuickAssignment()
     resetBulkReviewSelection()
     if (mode === "batch") {
       if (activeBatch) {
@@ -303,7 +329,7 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
   }
 
   const handleBatchSizeChange = (value: number) => {
-    if (autoAssignmentInProgress) return
+    if (assignmentInProgress) return
     setBatchSize(normalizeBatchSize(value))
   }
 
@@ -332,13 +358,14 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     setManualSelectedOnly(false)
     setManualSelectedItemSnapshots(new Map())
     setSelectedAssigneeId("")
+    resetManualQuickAssignment()
     resetBulkReviewSelection()
     onMetadataDocumentScopeChange?.(metadataDocumentScopeForGroup(group))
     setSelectedDocumentId(firstPreferredMetadataItem(group.items)?.id ?? null)
   }
 
   const handleBatchModeChange = (mode: MetadataBatchMode) => {
-    if (autoAssignmentInProgress) {
+    if (assignmentInProgress) {
       toast.info("Đợi hoàn tất xác nhận phân công hiện tại.")
       return
     }
@@ -349,6 +376,7 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     setManualSelectedOnly(false)
     setManualSelectedItemSnapshots(new Map())
     setSelectedAssigneeId("")
+    resetManualQuickAssignment()
     resetBulkReviewSelection()
     setActiveBatchIndex(0)
     const nextGroups =
@@ -388,6 +416,7 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     setManualSelectedIds(new Set())
     setManualSelectedOnly(false)
     setManualSelectedItemSnapshots(new Map())
+    resetManualQuickAssignment()
     resetBulkReviewSelection()
     const nextGroups =
       metadataBatchSummaries.length > 0
@@ -412,6 +441,7 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     setManualSelectedOnly(false)
     setManualSelectedItemSnapshots(new Map())
     setSelectedAssigneeId("")
+    resetManualQuickAssignment()
     manualLastSelectedIdRef.current = null
   }
 
@@ -690,6 +720,267 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     }
   }
 
+  const orderedManualQuickWorkerIds = () =>
+    workers
+      .map((worker) => chinhlyUserId(worker))
+      .filter((workerId) => workerId && selectedManualWorkerIds.has(workerId))
+
+  const manualQuickDocumentCount = (workerId: string) => {
+    const value = String(manualQuickCounts.get(workerId) ?? "").trim()
+    if (!/^\d+$/.test(value)) return 0
+    return Math.floor(Number(value))
+  }
+
+  const nextUnassignedDocuments = async (
+    count: number
+  ): Promise<{ documentIds: number[]; availableCount: number }> => {
+    if (!sessionId) return { documentIds: [], availableCount: 0 }
+    const response = await getDigitizationStatus(sessionId, {
+      includeDocuments: true,
+      limit: count,
+      offset: 0,
+      metadataDocumentScope: { scope: "unassigned" },
+    })
+    const documentIds = (response?.documents ?? [])
+      .map((document) => document.id)
+      .filter((documentId) => Number.isFinite(documentId))
+      .slice(0, count)
+    const availableCount = Math.max(
+      0,
+      Math.floor(Number(response?.pagination?.total ?? documentIds.length) || 0)
+    )
+    return { documentIds, availableCount }
+  }
+
+  const unassignedDocumentCount = async (): Promise<number> => {
+    if (!sessionId) return 0
+    const response = await getDigitizationStatus(sessionId, {
+      includeDocuments: false,
+      summaryOnly: true,
+      limit: 1,
+      offset: 0,
+      metadataDocumentScope: { scope: "unassigned" },
+    })
+    return Math.max(
+      0,
+      Math.floor(Number(response?.pagination?.total ?? 0) || 0)
+    )
+  }
+
+  const warnNotEnoughUnassignedDocuments = (
+    requestedCount: number,
+    availableCount: number
+  ) => {
+    toast.warning(
+      `Chỉ còn ${availableCount} tài liệu chưa chia, không đủ để giao ${requestedCount} tài liệu. Điều chỉnh số lượng rồi xác nhận lại.`
+    )
+  }
+
+  const applyMetadataBatchResponse = (response: {
+    documents?: SessionDocumentResponse[]
+    skipped_documents?: SessionDocumentResponse[]
+  }) => {
+    const updatedDocuments = response.documents ?? []
+    const skippedDocuments = response.skipped_documents ?? []
+    const refreshedDocuments = [...updatedDocuments, ...skippedDocuments]
+    if (refreshedDocuments.length > 0) {
+      setItems((previous) => replaceDocuments(previous, refreshedDocuments))
+    }
+    if (updatedDocuments.length > 0) {
+      onDocumentsVerified?.(updatedDocuments)
+    }
+    onMetadataDocumentsChanged?.()
+  }
+
+  const confirmManualQuickBatch = async (workerId: string) => {
+    if (!sessionId) {
+      toast.error("Chưa có session để tạo lô metadata.")
+      return
+    }
+    if (manualQuickConfirmations.has(workerId)) return
+    if (!selectedManualWorkerIds.has(workerId)) return
+
+    const requestedCount = manualQuickDocumentCount(workerId)
+    if (requestedCount < 1) {
+      toast.error("Nhập số tài liệu cần giao cho worker.")
+      return
+    }
+    if (requestedCount > MAX_MANUAL_METADATA_BATCH_DOCUMENTS) {
+      toast.error(
+        `Mỗi lô metadata tối đa ${MAX_MANUAL_METADATA_BATCH_DOCUMENTS} tài liệu.`
+      )
+      return
+    }
+
+    setCreatingManualBatch(true)
+    setConfirmingManualQuickWorkerIds((previous) =>
+      addTextId(previous, workerId)
+    )
+    try {
+      const { documentIds, availableCount } =
+        await nextUnassignedDocuments(requestedCount)
+      if (documentIds.length === 0) {
+        toast.warning("Không còn tài liệu chưa chia.")
+        return
+      }
+      if (
+        availableCount < requestedCount ||
+        documentIds.length < requestedCount
+      ) {
+        warnNotEnoughUnassignedDocuments(
+          requestedCount,
+          Math.max(availableCount, documentIds.length)
+        )
+        return
+      }
+      const response = await createMetadataBatch(
+        sessionId,
+        documentIds,
+        workerId
+      )
+      applyMetadataBatchResponse(response)
+      setManualQuickConfirmations((previous) => {
+        const next = new Map(previous)
+        next.set(workerId, response)
+        return next
+      })
+      onMetadataDocumentScopeChange?.({ scope: "unassigned" })
+      setSelectedDocumentId(null)
+      const skippedCount =
+        response.skipped_count ?? response.skipped_documents?.length ?? 0
+      const shortageCount = Math.max(0, requestedCount - documentIds.length)
+      if (response.updated_count > 0) {
+        toast.success(`Đã phân công ${response.updated_count} tài liệu.`)
+      }
+      if (skippedCount > 0 || shortageCount > 0) {
+        toast.warning(
+          `Bỏ qua ${skippedCount} tài liệu; thiếu ${shortageCount} tài liệu so với số lượng đã nhập.`
+        )
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Không thể xác nhận phân công nhanh."
+      )
+    } finally {
+      setCreatingManualBatch(false)
+      setConfirmingManualQuickWorkerIds((previous) =>
+        removeTextId(previous, workerId)
+      )
+    }
+  }
+
+  const confirmAllManualQuickBatches = async () => {
+    if (!sessionId) {
+      toast.error("Chưa có session để tạo lô metadata.")
+      return
+    }
+    const pendingWorkerIds = orderedManualQuickWorkerIds().filter(
+      (workerId) => !manualQuickConfirmations.has(workerId)
+    )
+    if (pendingWorkerIds.length === 0) {
+      toast.info("Tất cả phân công nhanh đã được xác nhận.")
+      return
+    }
+    const invalidWorkerId = pendingWorkerIds.find((workerId) => {
+      const count = manualQuickDocumentCount(workerId)
+      return count < 1 || count > MAX_MANUAL_METADATA_BATCH_DOCUMENTS
+    })
+    if (invalidWorkerId) {
+      toast.error(
+        `Nhập số tài liệu từ 1 đến ${MAX_MANUAL_METADATA_BATCH_DOCUMENTS} cho tất cả worker.`
+      )
+      return
+    }
+    const totalRequestedCount = pendingWorkerIds.reduce(
+      (total, workerId) => total + manualQuickDocumentCount(workerId),
+      0
+    )
+    let availableCount = 0
+    try {
+      availableCount = await unassignedDocumentCount()
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Không thể kiểm tra số tài liệu chưa chia."
+      )
+      return
+    }
+    if (availableCount < totalRequestedCount) {
+      warnNotEnoughUnassignedDocuments(totalRequestedCount, availableCount)
+      return
+    }
+
+    setCreatingManualBatch(true)
+    setConfirmingAllManualQuickBatches(true)
+    setConfirmingManualQuickWorkerIds(new Set(pendingWorkerIds))
+    let updatedCount = 0
+    let skippedCount = 0
+    let shortageCount = 0
+    let failedCount = 0
+    try {
+      for (const workerId of pendingWorkerIds) {
+        const requestedCount = manualQuickDocumentCount(workerId)
+        try {
+          const { documentIds, availableCount } =
+            await nextUnassignedDocuments(requestedCount)
+          if (documentIds.length === 0) {
+            shortageCount += requestedCount
+            break
+          }
+          if (
+            availableCount < requestedCount ||
+            documentIds.length < requestedCount
+          ) {
+            shortageCount += Math.max(
+              0,
+              requestedCount - Math.max(availableCount, documentIds.length)
+            )
+            break
+          }
+          const response = await createMetadataBatch(
+            sessionId,
+            documentIds,
+            workerId
+          )
+          applyMetadataBatchResponse(response)
+          setManualQuickConfirmations((previous) => {
+            const next = new Map(previous)
+            next.set(workerId, response)
+            return next
+          })
+          updatedCount += response.updated_count
+          skippedCount +=
+            response.skipped_count ?? response.skipped_documents?.length ?? 0
+          shortageCount += Math.max(0, requestedCount - documentIds.length)
+        } catch {
+          failedCount += 1
+        } finally {
+          setConfirmingManualQuickWorkerIds((previous) =>
+            removeTextId(previous, workerId)
+          )
+        }
+      }
+      onMetadataDocumentScopeChange?.({ scope: "unassigned" })
+      setSelectedDocumentId(null)
+      if (failedCount > 0 || skippedCount > 0 || shortageCount > 0) {
+        toast.warning(
+          `Đã phân công ${updatedCount} tài liệu; bỏ qua ${skippedCount}; thiếu ${shortageCount}; ${failedCount} lô chưa xác nhận được.`
+        )
+      } else {
+        toast.success(
+          `Đã xác nhận ${pendingWorkerIds.length} lô với ${updatedCount} tài liệu.`
+        )
+      }
+    } finally {
+      setCreatingManualBatch(false)
+      setConfirmingAllManualQuickBatches(false)
+      setConfirmingManualQuickWorkerIds(new Set())
+    }
+  }
+
   const createManualBatchFromSelection = async () => {
     if (!sessionId) {
       toast.error("Chưa có session để tạo lô metadata.")
@@ -934,6 +1225,8 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     clearBulkReviewSelection,
     confirmAutoBatch,
     confirmAllAutoBatches,
+    confirmManualQuickBatch,
+    confirmAllManualQuickBatches,
     createManualBatchFromSelection,
     finishMetadataBatch,
     handleRetryMetadata,

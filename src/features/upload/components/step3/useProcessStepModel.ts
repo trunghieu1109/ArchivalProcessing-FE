@@ -109,6 +109,19 @@ export function useProcessStepModel({
   const [selectedAutoWorkerIds, setSelectedAutoWorkerIds] = useState<
     Set<string>
   >(() => new Set())
+  const [selectedManualWorkerIds, setSelectedManualWorkerIds] = useState<
+    Set<string>
+  >(() => new Set())
+  const [manualQuickCounts, setManualQuickCounts] = useState<
+    Map<string, string>
+  >(() => new Map())
+  const [manualQuickConfirmations, setManualQuickConfirmations] = useState<
+    Map<string, CreateMetadataBatchResponse>
+  >(() => new Map())
+  const [confirmingManualQuickWorkerIds, setConfirmingManualQuickWorkerIds] =
+    useState<Set<string>>(() => new Set())
+  const [confirmingAllManualQuickBatches, setConfirmingAllManualQuickBatches] =
+    useState(false)
   const [autoBatchPlan, setAutoBatchPlan] =
     useState<AutoMetadataBatchPlanResponse | null>(null)
   const [autoBatchPlanRequested, setAutoBatchPlanRequested] = useState(false)
@@ -171,6 +184,11 @@ export function useProcessStepModel({
       setManualSelectedIds(new Set())
       setManualSelectedOnly(false)
       setManualSelectedItemSnapshots(new Map())
+      setSelectedManualWorkerIds(new Set())
+      setManualQuickCounts(new Map())
+      setManualQuickConfirmations(new Map())
+      setConfirmingManualQuickWorkerIds(new Set())
+      setConfirmingAllManualQuickBatches(false)
       setBulkSelectedIds(new Set())
       setBulkSelectedItemSnapshots(new Map())
     }
@@ -496,6 +514,11 @@ export function useProcessStepModel({
       setManualSelectedItemSnapshots(new Map())
       setSelectedAssigneeId("")
       setSelectedAutoWorkerIds(new Set())
+      setSelectedManualWorkerIds(new Set())
+      setManualQuickCounts(new Map())
+      setManualQuickConfirmations(new Map())
+      setConfirmingManualQuickWorkerIds(new Set())
+      setConfirmingAllManualQuickBatches(false)
       setWorkers([])
       return
     }
@@ -516,6 +539,16 @@ export function useProcessStepModel({
           return ""
         })
         setSelectedAutoWorkerIds((current) => {
+          const validWorkerIds = new Set(
+            nextWorkers.map((worker) => chinhlyUserId(worker)).filter(Boolean)
+          )
+          return new Set(
+            Array.from(current).filter((workerId) =>
+              validWorkerIds.has(workerId)
+            )
+          )
+        })
+        setSelectedManualWorkerIds((current) => {
           const validWorkerIds = new Set(
             nextWorkers.map((worker) => chinhlyUserId(worker)).filter(Boolean)
           )
@@ -599,10 +632,47 @@ export function useProcessStepModel({
     () => Array.from(selectedAutoWorkerIds).join("|"),
     [selectedAutoWorkerIds]
   )
+  const selectedManualWorkerIdsKey = useMemo(
+    () => Array.from(selectedManualWorkerIds).join("|"),
+    [selectedManualWorkerIds]
+  )
   const workerIdsKey = useMemo(
     () => workers.map((worker) => chinhlyUserId(worker)).join("|"),
     [workers]
   )
+
+  useEffect(() => {
+    setManualQuickCounts((previous) => {
+      const next = new Map<string, string>()
+      selectedManualWorkerIds.forEach((workerId) => {
+        if (previous.has(workerId)) next.set(workerId, previous.get(workerId) ?? "")
+      })
+      if (next.size !== previous.size) return next
+      for (const [workerId, value] of next) {
+        if (previous.get(workerId) !== value) return next
+      }
+      return previous
+    })
+    setManualQuickConfirmations((previous) => {
+      const next = new Map<string, CreateMetadataBatchResponse>()
+      selectedManualWorkerIds.forEach((workerId) => {
+        const response = previous.get(workerId)
+        if (response) next.set(workerId, response)
+      })
+      if (next.size !== previous.size) return next
+      for (const [workerId, response] of next) {
+        if (previous.get(workerId) !== response) return next
+      }
+      return previous
+    })
+    setConfirmingManualQuickWorkerIds((previous) => {
+      const next = new Set<string>()
+      previous.forEach((workerId) => {
+        if (selectedManualWorkerIds.has(workerId)) next.add(workerId)
+      })
+      return next.size === previous.size ? previous : next
+    })
+  }, [selectedManualWorkerIds, selectedManualWorkerIdsKey])
 
   useEffect(() => {
     if (!autoBatchPlan) return
@@ -865,6 +935,16 @@ export function useProcessStepModel({
     setSelectedAssigneeId,
     selectedAutoWorkerIds,
     setSelectedAutoWorkerIds,
+    selectedManualWorkerIds,
+    setSelectedManualWorkerIds,
+    manualQuickCounts,
+    setManualQuickCounts,
+    manualQuickConfirmations,
+    setManualQuickConfirmations,
+    confirmingManualQuickWorkerIds,
+    setConfirmingManualQuickWorkerIds,
+    confirmingAllManualQuickBatches,
+    setConfirmingAllManualQuickBatches,
     autoBatchPlan,
     setAutoBatchPlan,
     autoBatchPlanRequested,
