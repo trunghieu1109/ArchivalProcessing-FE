@@ -393,7 +393,7 @@ export function ResultNode({
               </span>
             </Button>
           )}
-          {node.type === "dossier" && group && (
+          {isDossier && group && (
             <Button
               type="button"
               variant={selectedDossierMetadata ? "default" : "outline"}

@@ -5,6 +5,7 @@ import {
   moveDocumentBetweenClusters,
   moveSelectedDocumentsToCluster,
   patchSessionDossier,
+  patchSessionDossierDraft,
   patchDocumentMetadata,
   promoteSelectedDocumentsToDossier,
   promoteTemporaryFolderDocuments,
@@ -25,6 +26,7 @@ import {
   dossierPatchPayloadFromDraft,
   updateDossierGroupFromResponse,
 } from "./FinalResult.metadataUtils"
+import { applyPendingDossierDrafts } from "./FinalResult.pendingFeedback"
 import {
   moveDocumentLocally,
   moveSelectedDocumentsLocally,
@@ -268,7 +270,8 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
 
   const handleSaveDossierMetadata = async (
     group: ClusterGroup,
-    draft: DossierMetadataDraft
+    draft: DossierMetadataDraft,
+    dirtyFields: ReadonlySet<keyof DossierMetadataDraft>
   ) => {
     if (viewingHistoricalClusterVersion) {
       toast.error(
@@ -285,13 +288,37 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
       toast.error("Hồ sơ này chưa có mã để cập nhật metadata.")
       throw new Error("Missing dossier id")
     }
+    if (dirtyFields.size === 0) {
+      toast.info("Không có thay đổi metadata để lưu.")
+      return
+    }
 
     setSavingDossierMetadataId(dossierId)
     try {
+      const payload = dossierPatchPayloadFromDraft(draft, dirtyFields)
+      if (group.isPendingDossier) {
+        if (!group.draftId) {
+          toast.error("Hồ sơ tạm này chưa có bản nháp metadata để lưu.")
+          throw new Error("Missing dossier draft id")
+        }
+        const response = await patchSessionDossierDraft(
+          sessionId,
+          group.draftId,
+          payload
+        )
+        setGroups((previous: ClusterGroup[]) =>
+          applyPendingDossierDrafts(previous, [response])
+        )
+        setStatus(
+          `Đã lưu metadata nháp hồ sơ "${String(response.metadata?.title || group.label)}". Bấm Cập nhật hồ sơ để áp dụng.`
+        )
+        toast.success("Đã lưu metadata nháp hồ sơ.")
+        return
+      }
       const response = await patchSessionDossier(
         sessionId,
         dossierId,
-        dossierPatchPayloadFromDraft(draft)
+        payload
       )
       setGroups((previous: any) =>
         updateDossierGroupFromResponse(previous, group.id, response)
@@ -739,11 +766,12 @@ function applyPendingDossierPromotionLocally(
   }))
 
   if (targetGroupIndex >= 0) {
-    return groupsWithoutPromotedDocuments.map((group, index) => {
+    const nextGroups = groupsWithoutPromotedDocuments.map((group, index) => {
       if (index !== targetGroupIndex) return group
       return groupWithDocumentSnapshot(
         {
           ...group,
+          draftId: response.draft_id ?? response.draft?.id ?? group.draftId,
           isPendingDossier: true,
           createdFromTemporaryFolder: action === "promote_temporary_folder",
           hasPendingFeedback: true,
@@ -757,6 +785,9 @@ function applyPendingDossierPromotionLocally(
         ]
       )
     })
+    return response.draft
+      ? applyPendingDossierDrafts(nextGroups, [response.draft])
+      : nextGroups
   }
 
   const pendingGroup = groupWithDocumentSnapshot(
@@ -764,6 +795,7 @@ function applyPendingDossierPromotionLocally(
       id: response.target_cluster_id,
       clusterId: response.target_cluster_id,
       dossierId: response.target_cluster_id,
+      draftId: response.draft_id ?? response.draft?.id ?? null,
       label: "Hồ sơ tạm thời",
       files: [],
       documents: [],
@@ -779,7 +811,10 @@ function applyPendingDossierPromotionLocally(
     pendingDocuments
   )
 
-  return [pendingGroup, ...groupsWithoutPromotedDocuments]
+  const nextGroups = [pendingGroup, ...groupsWithoutPromotedDocuments]
+  return response.draft
+    ? applyPendingDossierDrafts(nextGroups, [response.draft])
+    : nextGroups
 }
 
 function groupWithDocumentSnapshot(

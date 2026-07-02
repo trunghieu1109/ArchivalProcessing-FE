@@ -44,6 +44,7 @@ import {
   type ClusterJobMode,
 } from "./FinalResult.progress"
 import {
+  applyPendingDossierDrafts,
   applyPendingFeedbackOverlay,
   clearPendingFeedbackMarkers,
 } from "./FinalResult.pendingFeedback"
@@ -321,7 +322,9 @@ export function FinalResult({
           displayedClusterVersion,
           hasServerPendingFeedback
         )
-        setGroups(overlay.groups)
+        setGroups(
+          applyPendingDossierDrafts(overlay.groups, response.dossier_drafts ?? [])
+        )
         setPendingFeedbackCount(overlay.pendingFeedbackCount)
       })
       .catch(() => {

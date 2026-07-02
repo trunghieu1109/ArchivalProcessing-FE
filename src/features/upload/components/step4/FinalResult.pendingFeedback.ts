@@ -1,6 +1,7 @@
 import type {
   ClusterFeedbackResponse,
   ClusterVersionResponse,
+  SessionDossierDraft,
 } from "@/features/upload/api/sessionApi"
 import {
   TEMPORARY_CLUSTER_ID,
@@ -89,6 +90,48 @@ export function clearPendingFeedbackMarkers(
       ),
     })
   )
+}
+
+export function applyPendingDossierDrafts(
+  groups: ClusterGroup[],
+  drafts: SessionDossierDraft[]
+): ClusterGroup[] {
+  const draftsByClusterId = new Map(
+    drafts.map((draft) => [draft.target_cluster_id, draft])
+  )
+  return groups.map((group) => {
+    const draft = draftsByClusterId.get(group.clusterId)
+    if (!draft) return group
+    const metadata = draft.metadata ?? {}
+    const title = textValue(metadata.title)
+    return {
+      ...group,
+      draftId: draft.id,
+      isPendingDossier: true,
+      label: title ?? group.label,
+      dossierNumber: textValue(metadata.dossier_number),
+      boxNumber: textValue(metadata.box_number),
+      folderName: textValue(metadata.folder_name),
+      archiveName: textValue(metadata.archive_name),
+      fondsName: textValue(metadata.fonds_name),
+      inventoryNumber: textValue(metadata.inventory_number),
+      informationSign: textValue(metadata.information_sign),
+      annotation: textValue(metadata.annotation),
+      startDate: textValue(metadata.start_date),
+      endDate: textValue(metadata.end_date),
+      language: textValue(metadata.language),
+      sheetCount:
+        numericValue(metadata.sheet_count) ?? group.sheetCount ?? null,
+      pageCount:
+        numericValue(metadata.page_count) ?? group.pageCount ?? null,
+      retentionPeriod: textValue(metadata.retention_period),
+      usageMode: textValue(metadata.usage_mode),
+      physicalCondition: textValue(metadata.physical_condition),
+      note: textValue(metadata.note),
+      manualMetadataFields: [...(draft.manual_metadata_fields ?? [])],
+      metadataRevision: draft.metadata_revision,
+    }
+  })
 }
 
 export function pendingFeedbackActionLabel(
@@ -291,4 +334,11 @@ function textValue(value: unknown): string | null {
   if (typeof value !== "string") return null
   const text = value.trim()
   return text || null
+}
+
+function numericValue(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value
+  if (typeof value !== "string" || !value.trim()) return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
 }

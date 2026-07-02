@@ -11,6 +11,8 @@ import type {
   EnsureClusterBuildResponse,
   SelectedDocumentsMoveResponse,
   SelectedDocumentsPromoteResponse,
+  SessionDossierDraft,
+  SessionDossierDraftListResponse,
   SessionDossierRetentionCandidatesResponse,
   SessionDossierPatchPayload,
   SessionDossierSummary,
@@ -97,9 +99,60 @@ export async function patchSessionDossier(
   sessionId: string,
   dossierId: string,
   payload: SessionDossierPatchPayload
-): Promise<SessionDossierSummary & { feedback_event_id?: number }> {
-  return requestJson<SessionDossierSummary & { feedback_event_id?: number }>(
+): Promise<
+  SessionDossierSummary & {
+    feedback_event_id?: number
+    classification_refresh_required?: boolean
+    classification_job?: {
+      job_id: number
+      job_type: string
+      status: string
+      created: boolean
+    }
+  }
+> {
+  return requestJson<
+    SessionDossierSummary & {
+      feedback_event_id?: number
+      classification_refresh_required?: boolean
+      classification_job?: {
+        job_id: number
+        job_type: string
+        status: string
+        created: boolean
+      }
+    }
+  >(
     `/sessions/${encodeURIComponent(sessionId)}/dossiers/${encodeURIComponent(dossierId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        created_by: "ui",
+        ...payload,
+      }),
+    }
+  )
+}
+
+export async function listSessionDossierDrafts(
+  sessionId: string,
+  status = "pending"
+): Promise<SessionDossierDraftListResponse> {
+  const searchParams = new URLSearchParams({ status })
+  return requestJson<SessionDossierDraftListResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/dossier-drafts?${searchParams.toString()}`,
+    { cache: "no-store" }
+  )
+}
+
+export async function patchSessionDossierDraft(
+  sessionId: string,
+  draftId: number,
+  payload: SessionDossierPatchPayload
+): Promise<SessionDossierDraft & { feedback_event_id?: number }> {
+  return requestJson<SessionDossierDraft & { feedback_event_id?: number }>(
+    `/sessions/${encodeURIComponent(sessionId)}/dossier-drafts/${encodeURIComponent(String(draftId))}`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },

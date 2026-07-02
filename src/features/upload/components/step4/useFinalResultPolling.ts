@@ -28,7 +28,10 @@ import {
   regularDossierCount,
   temporaryDocumentCount,
 } from "./FinalResult.metadataUtils"
-import { applyPendingFeedbackOverlay } from "./FinalResult.pendingFeedback"
+import {
+  applyPendingDossierDrafts,
+  applyPendingFeedbackOverlay,
+} from "./FinalResult.pendingFeedback"
 
 const CLUSTER_POLL_INTERVAL_MS = 3_000
 const CLUSTER_POLL_TIMEOUT_MS = 10 * 60 * 1_000
@@ -293,7 +296,10 @@ export function useFinalResultPolling(context: Record<string, any>) {
               version,
               hasServerPendingFeedback
             )
-            nextGroups = overlay.groups
+            nextGroups = applyPendingDossierDrafts(
+              overlay.groups,
+              feedbackResponse.dossier_drafts ?? []
+            )
             setPendingFeedbackCount(overlay.pendingFeedbackCount)
           } catch {
             setPendingFeedbackCount(0)

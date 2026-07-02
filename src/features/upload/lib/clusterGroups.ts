@@ -26,6 +26,10 @@ export interface ClusterGroup {
   documents: ClusterDocument[]
   isTemporary?: boolean
   isPendingDossier?: boolean
+  draftId?: number | null
+  manualMetadataFields?: string[]
+  metadataRevision?: number
+  classificationStatus?: string | null
   createdFromTemporaryFolder?: boolean
   dossierId?: string | null
   dossierNumber?: string | null
@@ -344,6 +348,9 @@ function clusterToGroup(
         cluster.created_from_temporary_folder ||
         dossier?.created_from_temporary_folder
       ),
+    manualMetadataFields: dossier?.manual_metadata_fields ?? [],
+    metadataRevision: dossier?.metadata_revision ?? 0,
+    classificationStatus: dossier?.classification_status ?? null,
     dossierNumber: dossier?.dossier_number ?? null,
     boxNumber: dossier?.box_number ?? null,
     folderName: dossier?.folder_name ?? null,

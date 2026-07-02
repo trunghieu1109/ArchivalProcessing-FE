@@ -59,6 +59,7 @@ export interface DossierClassification {
   confidence: number | null
   rationale: string | null
   requires_review: boolean
+  metadata_revision?: number | null
 }
 
 export interface SessionDossierSummary {
@@ -89,6 +90,10 @@ export interface SessionDossierSummary {
   note?: string | null
   retention_recommendation: Record<string, unknown>
   retention_override?: Record<string, unknown>
+  manual_metadata_fields?: string[]
+  metadata_revision?: number
+  classification_status?: "current" | "pending" | "running" | "failed" | string
+  classified_metadata_revision?: number | null
   status?: string
   source?: string
   created_by?: string | null
@@ -114,10 +119,34 @@ export interface SessionDossierPatchPayload {
   end_date?: string | null
   language?: string | null
   sheet_count?: string | null
+  page_count?: number | string | null
   usage_mode?: string | null
   physical_condition?: string | null
   note?: string | null
   created_by?: string
+}
+
+export interface SessionDossierDraft {
+  id: number
+  session_id: string
+  target_cluster_id: string
+  source: string
+  status: "pending" | "applied" | "cancelled" | string
+  session_document_ids: number[]
+  metadata: Record<string, unknown>
+  manual_metadata_fields: string[]
+  metadata_revision: number
+  created_by?: string | null
+  applied_cluster_version_id?: string | null
+  applied_session_dossier_id?: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface SessionDossierDraftListResponse {
+  session_id: string
+  status?: string | null
+  drafts: SessionDossierDraft[]
 }
 
 export interface SessionDossierRetentionCandidatesResponse {
@@ -281,6 +310,7 @@ export interface ClusterFeedbackListResponse {
   session_id: string
   feedback: ClusterFeedbackResponse[]
   pending_feedback?: ClusterFeedbackResponse[]
+  dossier_drafts?: SessionDossierDraft[]
   active_version_id?: string | null
   active_version_created_at?: string | null
 }
@@ -291,6 +321,7 @@ export interface CancelPendingClusterFeedbackResponse {
   active_version_created_at?: string | null
   cancelled_feedback_count: number
   cancelled_feedback_ids: number[]
+  cancelled_draft_ids?: number[]
   feedback_event_id?: number | null
   status: string
 }
@@ -307,6 +338,8 @@ export interface DossierPromoteResponse {
   recompute_status?: string
   worker_required?: boolean
   action?: string
+  draft_id?: number
+  draft?: SessionDossierDraft
 }
 
 export interface TemporaryFolderPromoteResponse extends DossierPromoteResponse {

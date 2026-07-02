@@ -41,7 +41,11 @@ export function DossierMetadataSidePanel({
   group: ClusterGroup
   saving: boolean
   className?: string
-  onSave: (group: ClusterGroup, draft: DossierMetadataDraft) => Promise<void>
+  onSave: (
+    group: ClusterGroup,
+    draft: DossierMetadataDraft,
+    dirtyFields: ReadonlySet<keyof DossierMetadataDraft>
+  ) => Promise<void>
   onSelectRetentionCandidate?: (
     dossierId: string,
     entryId: string,
@@ -53,6 +57,9 @@ export function DossierMetadataSidePanel({
   const [draft, setDraft] = useState<DossierMetadataDraft>(() =>
     createDossierMetadataDraft(group)
   )
+  const [dirtyFields, setDirtyFields] = useState<
+    Set<keyof DossierMetadataDraft>
+  >(new Set())
   const [candidatePanelOpen, setCandidatePanelOpen] = useState(false)
   const [candidateVersions, setCandidateVersions] = useState<
     RetentionCandidateVersion[]
@@ -63,6 +70,9 @@ export function DossierMetadataSidePanel({
   const [candidatesError, setCandidatesError] = useState("")
   const [selectingEntryId, setSelectingEntryId] = useState("")
   const groupKey = group.dossierId ?? group.id
+  const classificationNotice = classificationStatusNotice(
+    group.classificationStatus
+  )
   const metadataFields: Array<{
     label: string
     value: string
@@ -84,6 +94,11 @@ export function DossierMetadataSidePanel({
       value:
         typeof group.sheetCount === "number" ? String(group.sheetCount) : "",
     },
+    {
+      label: "Số lượng trang",
+      value:
+        typeof group.pageCount === "number" ? String(group.pageCount) : "",
+    },
     { label: "Thời hạn bảo quản", value: group.retentionPeriod ?? "" },
     { label: "Chế độ sử dụng", value: group.usageMode ?? "" },
     {
@@ -96,6 +111,7 @@ export function DossierMetadataSidePanel({
 
   useEffect(() => {
     setDraft(createDossierMetadataDraft(group))
+    setDirtyFields(new Set())
     setEditing(false)
     setCandidatePanelOpen(false)
     setCandidateVersions([])
@@ -110,17 +126,20 @@ export function DossierMetadataSidePanel({
 
   const startEdit = () => {
     setDraft(createDossierMetadataDraft(group))
+    setDirtyFields(new Set())
     setEditing(true)
   }
 
   const cancelEdit = () => {
     setDraft(createDossierMetadataDraft(group))
+    setDirtyFields(new Set())
     setEditing(false)
   }
 
   const saveMetadata = async () => {
     try {
-      await onSave(group, draft)
+      await onSave(group, draft, dirtyFields)
+      setDirtyFields(new Set())
       setEditing(false)
     } catch {
       // The parent handler owns user-facing error messages.
@@ -130,6 +149,10 @@ export function DossierMetadataSidePanel({
   const loadRetentionCandidates = async () => {
     if (!sessionId) {
       toast.error("Chưa có session để tải gợi ý thời hạn bảo quản.")
+      return
+    }
+    if (group.isPendingDossier) {
+      toast.info("Hãy bấm Cập nhật hồ sơ trước khi tải gợi ý THBQ.")
       return
     }
     if (!group.dossierId) {
@@ -187,7 +210,7 @@ export function DossierMetadataSidePanel({
           candidateVersionId
         )
       } else {
-        await onSave(group, nextDraft)
+        await onSave(group, nextDraft, new Set(["retentionPeriod"]))
       }
       setDraft(nextDraft)
       setEditing(false)
@@ -252,7 +275,12 @@ export function DossierMetadataSidePanel({
                 variant="outline"
                 size="sm"
                 onClick={() => void loadRetentionCandidates()}
-                disabled={saving || candidatesLoading}
+                disabled={saving || candidatesLoading || group.isPendingDossier}
+                title={
+                  group.isPendingDossier
+                    ? "Cập nhật hồ sơ trước khi tải gợi ý THBQ"
+                    : undefined
+                }
               >
                 {candidatesLoading ? (
                   <Loader2 data-icon="inline-start" className="animate-spin" />
@@ -284,6 +312,18 @@ export function DossierMetadataSidePanel({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto bg-[#F8FAFC] p-3">
+        {classificationNotice && (
+          <div
+            className={cn(
+              "mb-3 rounded-xl border px-3 py-2 text-xs leading-5",
+              classificationNotice.kind === "error"
+                ? "border-red-200 bg-red-50 text-red-700"
+                : "border-amber-200 bg-amber-50 text-amber-700"
+            )}
+          >
+            {classificationNotice.message}
+          </div>
+        )}
         {editing ? (
           <div className="flex flex-col gap-2 rounded-xl bg-white p-3">
             {DOSSIER_METADATA_EDIT_FIELDS.map((field) => (
@@ -297,10 +337,17 @@ export function DossierMetadataSidePanel({
                 <textarea
                   value={draft[field.key]}
                   onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      [field.key]: event.target.value,
-                    }))
+                    {
+                      setDraft((current) => ({
+                        ...current,
+                        [field.key]: event.target.value,
+                      }))
+                      setDirtyFields((current) => {
+                        const next = new Set(current)
+                        next.add(field.key)
+                        return next
+                      })
+                    }
                   }
                   rows={field.rows}
                   disabled={saving}
@@ -612,6 +659,28 @@ function textValue(value: unknown): string {
   if (typeof value === "string") return value.trim()
   if (typeof value === "number" && Number.isFinite(value)) return String(value)
   return ""
+}
+
+function classificationStatusNotice(
+  status: string | null | undefined
+): { kind: "pending" | "error"; message: string } | null {
+  if (status === "pending" || status === "running") {
+    return {
+      kind: "pending",
+      message:
+        status === "running"
+          ? "Đang phân loại lại hồ sơ theo metadata mới."
+          : "Metadata đã lưu; hồ sơ đang chờ phân loại lại.",
+    }
+  }
+  if (status === "failed") {
+    return {
+      kind: "error",
+      message:
+        "Phân loại lại hồ sơ chưa thành công. Metadata đã được lưu, bạn có thể thử cập nhật lại sau.",
+    }
+  }
+  return null
 }
 
 export function PreviewField({

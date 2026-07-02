@@ -24,6 +24,7 @@ export interface DossierMetadataDraft {
   endDate: string
   language: string
   sheetCount: string
+  pageCount: string
   retentionPeriod: string
   usageMode: string
   physicalCondition: string
@@ -49,6 +50,7 @@ export const DOSSIER_METADATA_EDIT_FIELDS: Array<{
   { key: "endDate", label: "Thời gian kết thúc", rows: 1 },
   { key: "language", label: "Ngôn ngữ", rows: 1 },
   { key: "sheetCount", label: "Số lượng tờ", rows: 1 },
+  { key: "pageCount", label: "Số lượng trang", rows: 1 },
   { key: "retentionPeriod", label: "Thời hạn bảo quản", rows: 2 },
   { key: "usageMode", label: "Chế độ sử dụng", rows: 1 },
   { key: "physicalCondition", label: "Tình trạng vật lý", rows: 2 },
@@ -72,6 +74,8 @@ export function createDossierMetadataDraft(
     language: group?.language ?? "",
     sheetCount:
       typeof group?.sheetCount === "number" ? String(group.sheetCount) : "",
+    pageCount:
+      typeof group?.pageCount === "number" ? String(group.pageCount) : "",
     retentionPeriod: group?.retentionPeriod ?? "",
     usageMode: group?.usageMode ?? "",
     physicalCondition: group?.physicalCondition ?? "",
@@ -80,26 +84,46 @@ export function createDossierMetadataDraft(
 }
 
 export function dossierPatchPayloadFromDraft(
-  draft: DossierMetadataDraft
+  draft: DossierMetadataDraft,
+  dirtyFields?: ReadonlySet<keyof DossierMetadataDraft>
 ): SessionDossierPatchPayload {
-  return {
-    title: trimmedOrNull(draft.title),
-    dossier_number: trimmedOrNull(draft.dossierNumber),
-    box_number: trimmedOrNull(draft.boxNumber),
-    retention_period: trimmedOrNull(draft.retentionPeriod),
-    archive_name: trimmedOrNull(draft.archiveName),
-    fonds_name: trimmedOrNull(draft.fondsName),
-    inventory_number: trimmedOrNull(draft.inventoryNumber),
-    information_sign: trimmedOrNull(draft.informationSign),
-    annotation: trimmedOrNull(draft.annotation),
-    start_date: trimmedOrNull(draft.startDate),
-    end_date: trimmedOrNull(draft.endDate),
-    language: trimmedOrNull(draft.language),
-    sheet_count: trimmedOrNull(draft.sheetCount),
-    usage_mode: trimmedOrNull(draft.usageMode),
-    physical_condition: trimmedOrNull(draft.physicalCondition),
-    note: trimmedOrNull(draft.note),
+  const payloadByField: Record<
+    keyof DossierMetadataDraft,
+    [keyof SessionDossierPatchPayload, string | number | null]
+  > = {
+    archiveName: ["archive_name", trimmedOrNull(draft.archiveName)],
+    fondsName: ["fonds_name", trimmedOrNull(draft.fondsName)],
+    inventoryNumber: ["inventory_number", trimmedOrNull(draft.inventoryNumber)],
+    boxNumber: ["box_number", trimmedOrNull(draft.boxNumber)],
+    dossierNumber: ["dossier_number", trimmedOrNull(draft.dossierNumber)],
+    informationSign: ["information_sign", trimmedOrNull(draft.informationSign)],
+    title: ["title", trimmedOrNull(draft.title)],
+    annotation: ["annotation", trimmedOrNull(draft.annotation)],
+    startDate: ["start_date", trimmedOrNull(draft.startDate)],
+    endDate: ["end_date", trimmedOrNull(draft.endDate)],
+    language: ["language", trimmedOrNull(draft.language)],
+    sheetCount: ["sheet_count", normalizedCountOrNull(draft.sheetCount)],
+    pageCount: ["page_count", normalizedCountOrNull(draft.pageCount)],
+    retentionPeriod: [
+      "retention_period",
+      trimmedOrNull(draft.retentionPeriod),
+    ],
+    usageMode: ["usage_mode", trimmedOrNull(draft.usageMode)],
+    physicalCondition: [
+      "physical_condition",
+      trimmedOrNull(draft.physicalCondition),
+    ],
+    note: ["note", trimmedOrNull(draft.note)],
   }
+  const payload: Record<string, string | number | null> = {}
+  ;(Object.keys(payloadByField) as Array<keyof DossierMetadataDraft>).forEach(
+    (field) => {
+      if (dirtyFields && !dirtyFields.has(field)) return
+      const [apiField, value] = payloadByField[field]
+      payload[String(apiField)] = value
+    }
+  )
+  return payload as SessionDossierPatchPayload
 }
 
 export function updateDossierGroupFromResponse(
@@ -124,12 +148,17 @@ export function updateDossierGroupFromResponse(
       endDate: dossier.end_date ?? group.endDate,
       language: dossier.language ?? null,
       sheetCount:
-        typeof dossier.sheet_count === "string"
-          ? Number(dossier.sheet_count) || null
-          : group.sheetCount,
+        numericValue(dossier.sheet_count) ?? group.sheetCount,
+      pageCount:
+        numericValue(dossier.page_count) ?? group.pageCount,
       usageMode: dossier.usage_mode ?? null,
       physicalCondition: dossier.physical_condition ?? null,
       note: dossier.note ?? null,
+      manualMetadataFields:
+        dossier.manual_metadata_fields ?? group.manualMetadataFields,
+      metadataRevision: dossier.metadata_revision ?? group.metadataRevision,
+      classificationStatus:
+        dossier.classification_status ?? group.classificationStatus,
       retentionPeriod: dossier.retention_period ?? null,
       createdFromTemporaryFolder:
         typeof dossier.created_from_temporary_folder === "boolean"
@@ -138,6 +167,20 @@ export function updateDossierGroupFromResponse(
       label: dossier.title || dossier.generated_title || group.label,
     }
   })
+}
+
+function normalizedCountOrNull(value: string): number | null {
+  const text = value.trim()
+  if (!text) return null
+  const parsed = Number(text)
+  return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : null
+}
+
+function numericValue(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value
+  if (typeof value !== "string" || !value.trim()) return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
 }
 
 export function regularDossierCount(groups: ClusterGroup[]): number {
