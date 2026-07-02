@@ -207,7 +207,7 @@ export function RetentionAppendicesPanel({
               Thông tư thời hạn bảo quản
             </span>
             <span className="mt-0.5 block text-xs text-[#64748B]">
-              {appendices.length} phụ lục, {unitCount} điều khoản
+              {appendices.length} phụ lục nguồn, {unitCount} điều khoản
             </span>
           </span>
         </span>
@@ -255,6 +255,11 @@ function RetentionTreeNode({ node, depth }: RetentionTreeNodeProps) {
               {isAppendix ? "Phụ lục" : "Nhóm"} · {countRetentionUnits([node])}{" "}
               điều khoản
             </span>
+            {isAppendix && (node.source_title || node.source_file_name) && (
+              <span className="mt-1 block text-xs leading-5 text-[#64748B]">
+                {node.source_title || node.source_file_name}
+              </span>
+            )}
           </span>
         </summary>
         <div className="flex flex-col gap-1 border-t border-[#E2E8F0] py-2">

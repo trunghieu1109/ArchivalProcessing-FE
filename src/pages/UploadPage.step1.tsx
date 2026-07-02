@@ -272,11 +272,11 @@ export function UploadPageStepOne(props: Record<string, any>) {
         <DocxSection
           ref={doc2Ref}
           index={2}
-          label="Thời hạn bảo quản"
+          label="Thêm thông tư thời hạn bảo quản"
           sublabel={
             existingSessionMode
-              ? "Tải lại file Word chứa thời hạn bảo quản để phân loại lại hồ sơ."
-              : "Tải lên file Word chứa thời hạn bảo quản."
+              ? "Thêm file Word chứa thông tư thời hạn bảo quản để bổ sung nguồn phân loại hồ sơ."
+              : "Thêm file Word chứa thông tư thời hạn bảo quản."
           }
           processState={doc2State}
           onProcessStateChange={syncDoc2State}

@@ -18,8 +18,12 @@ import type {
   ClusterGroupInformationRow,
   ClusterGroupInformationTableResponse,
   RetentionCandidateSummary,
+  RetentionCandidateVersion,
   RetentionReference,
+  SessionDossierRetentionCandidatesResponse,
 } from "@/features/upload/api/sessionApi"
+
+const LEGACY_RETENTION_VERSION_ID = "__current_retention_candidates__"
 
 export function ClusterGroupInformationPanel({
   table,
@@ -45,14 +49,16 @@ export function ClusterGroupInformationPanel({
   onSelectDocument: (sessionDocumentId: number) => void
   onSelectRetentionCandidate: (
     dossierId: string,
-    entryId: string
+    entryId: string,
+    candidateVersionId?: string | null
   ) => Promise<void>
   retentionSelectionDisabled?: boolean
 }) {
   const rows = table?.rows ?? []
   const [candidatePanel, setCandidatePanel] = useState<{
     row: ClusterGroupInformationRow
-    candidates: RetentionCandidateSummary[]
+    versions: RetentionCandidateVersion[]
+    selectedVersionId: string
     loading: boolean
     error: string
     selectingEntryId: string
@@ -66,7 +72,8 @@ export function ClusterGroupInformationPanel({
     }
     setCandidatePanel({
       row,
-      candidates: [],
+      versions: [],
+      selectedVersionId: "",
       loading: true,
       error: "",
       selectingEntryId: "",
@@ -75,11 +82,16 @@ export function ClusterGroupInformationPanel({
       const response = await listSessionDossierRetentionCandidates(
         sessionId,
         row.dossier_id,
-        20
+        10
       )
+      const versions = retentionCandidateVersionsFromResponse(response)
       setCandidatePanel({
         row,
-        candidates: response.candidates,
+        versions,
+        selectedVersionId:
+          textValue(response.active_candidate_version_id) ||
+          versions[versions.length - 1]?.version_id ||
+          "",
         loading: false,
         error: "",
         selectingEntryId: "",
@@ -87,7 +99,8 @@ export function ClusterGroupInformationPanel({
     } catch (err) {
       setCandidatePanel({
         row,
-        candidates: [],
+        versions: [],
+        selectedVersionId: "",
         loading: false,
         error:
           err instanceof Error
@@ -100,7 +113,8 @@ export function ClusterGroupInformationPanel({
 
   const selectRetentionCandidate = async (
     row: ClusterGroupInformationRow,
-    candidate: RetentionCandidateSummary
+    candidate: RetentionCandidateSummary,
+    candidateVersionId?: string | null
   ) => {
     if (retentionSelectionDisabled) {
       toast.error("Không thể sửa thời hạn bảo quản khi đang xem phiên bản cũ.")
@@ -110,7 +124,11 @@ export function ClusterGroupInformationPanel({
       current ? { ...current, selectingEntryId: candidate.entry_id } : current
     )
     try {
-      await onSelectRetentionCandidate(row.dossier_id, candidate.entry_id)
+      await onSelectRetentionCandidate(
+        row.dossier_id,
+        candidate.entry_id,
+        candidateVersionId
+      )
       setCandidatePanel(null)
     } finally {
       setCandidatePanel((current) =>
@@ -213,14 +231,20 @@ export function ClusterGroupInformationPanel({
       {candidatePanel && (
         <RetentionCandidatePanel
           row={candidatePanel.row}
-          candidates={candidatePanel.candidates}
+          versions={candidatePanel.versions}
+          selectedVersionId={candidatePanel.selectedVersionId}
           loading={candidatePanel.loading}
           error={candidatePanel.error}
           selectingEntryId={candidatePanel.selectingEntryId}
           selectionDisabled={retentionSelectionDisabled}
           onClose={() => setCandidatePanel(null)}
-          onSelect={(candidate) =>
-            selectRetentionCandidate(candidatePanel.row, candidate)
+          onSelectVersion={(versionId) =>
+            setCandidatePanel((current) =>
+              current ? { ...current, selectedVersionId: versionId } : current
+            )
+          }
+          onSelect={(candidate, versionId) =>
+            selectRetentionCandidate(candidatePanel.row, candidate, versionId)
           }
         />
       )}
@@ -357,24 +381,41 @@ function RetentionBasisCell({
 
 function RetentionCandidatePanel({
   row,
-  candidates,
+  versions,
+  selectedVersionId,
   loading,
   error,
   selectingEntryId,
   selectionDisabled,
   onClose,
+  onSelectVersion,
   onSelect,
 }: {
   row: ClusterGroupInformationRow
-  candidates: RetentionCandidateSummary[]
+  versions: RetentionCandidateVersion[]
+  selectedVersionId: string
   loading: boolean
   error: string
   selectingEntryId: string
   selectionDisabled: boolean
   onClose: () => void
-  onSelect: (candidate: RetentionCandidateSummary) => void
+  onSelectVersion: (versionId: string) => void
+  onSelect: (
+    candidate: RetentionCandidateSummary,
+    candidateVersionId?: string | null
+  ) => void
 }) {
   const currentEntryId = textValue(row.retention_reference?.entry_id)
+  const selectedVersion =
+    versions.find((version) => version.version_id === selectedVersionId) ??
+    versions[versions.length - 1] ??
+    null
+  const candidates = selectedVersion?.candidates ?? []
+  const selectedVersionForPatch =
+    selectedVersion &&
+    selectedVersion.version_id !== LEGACY_RETENTION_VERSION_ID
+      ? selectedVersion.version_id
+      : null
   return (
     <div className="absolute top-16 right-3 bottom-3 z-40 flex w-[min(640px,calc(100%-24px))] flex-col overflow-hidden rounded-xl border border-[#CBD5E1] bg-white shadow-2xl">
       <div className="flex items-start justify-between gap-3 border-b border-[#E2E8F0] px-4 py-3">
@@ -396,54 +437,114 @@ function RetentionCandidatePanel({
           <X className="size-3.5" />
         </Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto bg-[#F8FAFC] p-3">
+      <div className="flex min-h-0 flex-1 flex-col bg-[#F8FAFC]">
         {loading ? (
-          <div className="flex min-h-40 items-center justify-center rounded-lg border border-dashed border-[#CBD5E1] bg-white text-sm text-[#64748B]">
-            <Loader2 className="mr-2 size-4 animate-spin text-[#0052FF]" />
-            Đang tải gợi ý...
+          <div className="p-3">
+            <div className="flex min-h-40 items-center justify-center rounded-lg border border-dashed border-[#CBD5E1] bg-white text-sm text-[#64748B]">
+              <Loader2 className="mr-2 size-4 animate-spin text-[#0052FF]" />
+              Đang tải gợi ý...
+            </div>
           </div>
         ) : error ? (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </div>
-        ) : candidates.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-[#CBD5E1] bg-white px-3 py-8 text-center text-sm text-[#64748B]">
-            Chưa có gợi ý thời hạn bảo quản.
+          <div className="p-3">
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {error}
+            </div>
           </div>
         ) : (
-          <div className="space-y-2">
-            {candidates.map((candidate) => {
-              const reference = candidateReference(candidate)
-              const selected = candidate.entry_id === currentEntryId
-              const saving = selectingEntryId === candidate.entry_id
-              return (
-                <button
-                  key={candidate.entry_id}
-                  type="button"
-                  disabled={selectionDisabled || Boolean(selectingEntryId)}
-                  className={cn(
-                    "w-full rounded-lg border bg-white p-2.5 text-left text-[11px] leading-5 shadow-sm transition hover:border-[#0052FF] hover:bg-[#F8FBFF] focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60",
-                    selected ? "border-[#0052FF]" : "border-[#D8E1EC]"
-                  )}
-                  onClick={() => onSelect(candidate)}
-                >
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-semibold text-[#0F172A]">
-                      #{candidate.rank ?? "?"} ·{" "}
-                      {reference.retention_period || "Chưa rõ thời hạn"}
-                    </span>
-                    {saving ? (
-                      <Loader2 className="size-4 animate-spin text-[#0052FF]" />
-                    ) : selected ? (
-                      <CheckCircle2 className="size-4 text-emerald-600" />
-                    ) : null}
-                  </div>
-                  <RetentionReferenceDetails reference={reference} />
-                </button>
-              )
-            })}
-          </div>
+          <>
+            <RetentionVersionSelector
+              versions={versions}
+              selectedVersionId={selectedVersion?.version_id ?? ""}
+              onSelectVersion={onSelectVersion}
+            />
+            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+              {candidates.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-[#CBD5E1] bg-white px-3 py-8 text-center text-sm text-[#64748B]">
+                  Chưa có gợi ý thời hạn bảo quản.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {candidates.map((candidate) => {
+                    const reference = candidateReference(candidate)
+                    const selected = candidate.entry_id === currentEntryId
+                    const saving = selectingEntryId === candidate.entry_id
+                    return (
+                      <button
+                        key={`${selectedVersion?.version_id ?? ""}-${candidate.entry_id}`}
+                        type="button"
+                        disabled={
+                          selectionDisabled || Boolean(selectingEntryId)
+                        }
+                        className={cn(
+                          "w-full rounded-lg border bg-white p-2.5 text-left text-[11px] leading-5 shadow-sm transition hover:border-[#0052FF] hover:bg-[#F8FBFF] focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60",
+                          selected ? "border-[#0052FF]" : "border-[#D8E1EC]"
+                        )}
+                        onClick={() =>
+                          onSelect(candidate, selectedVersionForPatch)
+                        }
+                      >
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <span className="text-[11px] font-semibold text-[#0F172A]">
+                            #{candidate.rank ?? "?"} ·{" "}
+                            {reference.retention_period || "Chưa rõ thời hạn"}
+                          </span>
+                          {saving ? (
+                            <Loader2 className="size-4 animate-spin text-[#0052FF]" />
+                          ) : selected ? (
+                            <CheckCircle2 className="size-4 text-emerald-600" />
+                          ) : null}
+                        </div>
+                        <RetentionReferenceDetails reference={reference} />
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </>
         )}
+      </div>
+    </div>
+  )
+}
+
+function RetentionVersionSelector({
+  versions,
+  selectedVersionId,
+  onSelectVersion,
+}: {
+  versions: RetentionCandidateVersion[]
+  selectedVersionId: string
+  onSelectVersion: (versionId: string) => void
+}) {
+  if (versions.length <= 1) return null
+  return (
+    <div className="shrink-0 border-b border-[#E2E8F0] bg-white px-3 py-2">
+      <div className="flex gap-1 overflow-x-auto rounded-lg bg-[#F1F5F9] p-1">
+        {versions.map((version, index) => {
+          const selected = version.version_id === selectedVersionId
+          const label = version.version_number ?? index + 1
+          return (
+            <button
+              key={version.version_id}
+              type="button"
+              aria-pressed={selected}
+              className={cn(
+                "min-w-[124px] rounded-md px-2.5 py-1.5 text-left text-[11px] leading-4 transition focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:outline-none",
+                selected
+                  ? "bg-white text-[#0052FF] shadow-sm"
+                  : "text-[#475569] hover:bg-white/70 hover:text-[#0F172A]"
+              )}
+              onClick={() => onSelectVersion(version.version_id)}
+            >
+              <span className="block font-semibold">Phiên bản {label}</span>
+              <span className="block text-[10px] text-[#64748B]">
+                {retentionVersionSummary(version)}
+              </span>
+            </button>
+          )
+        })}
       </div>
     </div>
   )
@@ -464,6 +565,7 @@ function RetentionReferenceDetails({
     ["Nhóm", mergeNames],
     ["Nội dung", reference?.document_type],
     ["Số thứ tự điều", reference?.source_unit_index],
+    ["Dòng nguồn", reference?.source_row_index],
     ["Thời hạn", reference?.retention_period],
     ["Thông tư", reference?.source_file_name],
     ["Ghi chú", reference?.note],
@@ -516,6 +618,48 @@ function candidateReference(
     document_type: candidate.document_type ?? "",
     retention_period: candidate.retention_period ?? "",
   }
+}
+
+function retentionCandidateVersionsFromResponse(
+  response: SessionDossierRetentionCandidatesResponse
+): RetentionCandidateVersion[] {
+  const versions = Array.isArray(response.versions) ? response.versions : []
+  if (versions.length > 0) {
+    return versions.map((version, index) => ({
+      ...version,
+      version_id:
+        textValue(version.version_id) || `retention-version-${index + 1}`,
+      version_number: version.version_number ?? index + 1,
+      candidates: Array.isArray(version.candidates) ? version.candidates : [],
+    }))
+  }
+  return [
+    {
+      version_id: LEGACY_RETENTION_VERSION_ID,
+      version_number: 1,
+      candidates: response.candidates ?? [],
+      candidate_count: response.candidate_count,
+      candidates_truncated: response.candidates_truncated,
+    },
+  ]
+}
+
+function retentionVersionSummary(version: RetentionCandidateVersion): string {
+  const sourceCount =
+    typeof version.source_count === "number" ? version.source_count : null
+  const appendixCount =
+    typeof version.appendix_count === "number" ? version.appendix_count : null
+  const candidateCount =
+    typeof version.candidate_count === "number"
+      ? version.candidate_count
+      : version.candidates.length
+  const sourceText =
+    sourceCount !== null ? `${sourceCount} thông tư` : "nguồn hiện hành"
+  const appendixText =
+    appendixCount !== null
+      ? `${appendixCount} phụ lục`
+      : `${candidateCount} gợi ý`
+  return `${sourceText} · ${appendixText}`
 }
 
 function hasRetentionReference(reference?: RetentionReference | null): boolean {

@@ -234,6 +234,7 @@ export function UploadPageView(props: Record<string, any>) {
               planInputsReuploaded={planInputsReuploaded}
               sessionMetadata={sessionMetadata}
               syncSessionMetadataDraft={syncSessionMetadataDraft}
+              parsedPlan={parsedPlan}
             />
           )}
 

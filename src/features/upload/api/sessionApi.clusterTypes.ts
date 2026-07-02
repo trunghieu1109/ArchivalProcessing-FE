@@ -104,6 +104,7 @@ export interface SessionDossierPatchPayload {
   folder_name?: string | null
   retention_period?: string | null
   retention_candidate_entry_id?: string | null
+  retention_candidate_version_id?: string | null
   archive_name?: string | null
   fonds_name?: string | null
   inventory_number?: string | null
@@ -125,6 +126,8 @@ export interface SessionDossierRetentionCandidatesResponse {
   cluster_version_id: string
   retention_recommendation: Record<string, unknown>
   candidates: RetentionCandidateSummary[]
+  versions?: RetentionCandidateVersion[]
+  active_candidate_version_id?: string | null
   candidate_count: number
   candidates_truncated: boolean
 }
@@ -141,6 +144,7 @@ export interface RetentionReference {
   merge_path?: RetentionReferenceMergePathItem[]
   breadcrumb?: string | null
   document_type?: string | null
+  source_row_index?: string | number | null
   source_unit_index?: string | number | null
   retention_period?: string | null
   note?: string | null
@@ -153,6 +157,29 @@ export interface RetentionCandidateSummary extends RetentionReference {
   keyword_score?: number | null
   semantic_score?: number | null
   context?: RetentionReference | null
+}
+
+export interface RetentionCandidateVersion {
+  version_id: string
+  version_number?: number | null
+  created_at?: string | null
+  plan_version_id?: string | null
+  cluster_version_id?: string | null
+  source_hash?: string | null
+  source_count?: number | null
+  appendix_count?: number | null
+  sources?: Array<{
+    source_file_name?: string | null
+    source_title?: string | null
+    source_order?: number | null
+    source_session_file_id?: number | string | null
+    appendix_names?: string[]
+    appendix_count?: number | null
+  }>
+  candidates: RetentionCandidateSummary[]
+  candidate_count?: number | null
+  candidates_truncated?: boolean
+  status?: string | null
 }
 
 export interface SessionClusterSummary {

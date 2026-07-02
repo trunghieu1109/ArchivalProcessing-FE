@@ -38,6 +38,11 @@ export interface RetentionAppendixNode {
   source_row_index?: number | null
   source_unit_index?: number | null
   source_file_name?: string
+  source_title?: string
+  source_order?: number | null
+  source_appendix_index?: number | null
+  source_appendix_count?: number | null
+  source_session_file_id?: number | null
   children: RetentionAppendixNode[]
 }
 

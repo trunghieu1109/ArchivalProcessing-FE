@@ -152,6 +152,11 @@ function normalizeRetentionNode(value: unknown): RetentionAppendixNode | null {
     source_row_index: numberValue(record.source_row_index),
     source_unit_index: numberValue(record.source_unit_index),
     source_file_name: stringValue(record.source_file_name || record.file_name),
+    source_title: stringValue(record.source_title || record.title),
+    source_order: numberValue(record.source_order),
+    source_appendix_index: numberValue(record.source_appendix_index),
+    source_appendix_count: numberValue(record.source_appendix_count),
+    source_session_file_id: numberValue(record.source_session_file_id),
     children,
   }
 }

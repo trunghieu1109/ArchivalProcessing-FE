@@ -476,8 +476,9 @@ export function FinalResultView(props: Record<string, any>) {
                   savingDossierMetadataId ===
                   (selectedMetadataGroup.dossierId ?? selectedMetadataGroup.id)
                 }
-                className="h-[min(70svh,560px)] min-h-[420px] min-w-0"
+                className="h-[calc(min(70svh,560px)+65px)] min-h-[425px] min-w-0"
                 onSave={handleSaveDossierMetadata}
+                onSelectRetentionCandidate={handleSelectRetentionCandidate}
                 onClose={() => setSelectedMetadataGroupId(null)}
               />
             ) : selectedGroupInfoNode ? (

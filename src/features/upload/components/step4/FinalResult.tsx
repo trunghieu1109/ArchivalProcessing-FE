@@ -235,6 +235,7 @@ export function FinalResult({
     [selectedGroupInfoNode]
   )
   const selectedGroupInfoDossierKey = selectedGroupInfoDossierIds.join("\u001f")
+  const selectedGroupInfoLabel = selectedGroupInfoNode?.label ?? ""
   const sidePreviewOpen = Boolean(
     previewDocument || selectedMetadataGroup || selectedGroupInfoNode
   )
@@ -430,7 +431,7 @@ export function FinalResult({
 
   useEffect(() => {
     let cancelled = false
-    if (!selectedGroupInfoNode) {
+    if (!selectedGroupInfoNodeId) {
       setGroupInformationLoading(false)
       return () => {
         cancelled = true
@@ -444,7 +445,7 @@ export function FinalResult({
         cancelled = true
       }
     }
-    if (selectedGroupInfoDossierIds.length === 0) {
+    if (!selectedGroupInfoDossierKey) {
       setGroupInformationTable(null)
       setGroupInformationLoading(false)
       setGroupInformationError("")
@@ -453,12 +454,13 @@ export function FinalResult({
       }
     }
 
+    const dossierIds = selectedGroupInfoDossierKey.split("\u001f")
     setGroupInformationLoading(true)
     setGroupInformationError("")
     getClusterGroupInformationTable(sessionId, {
       cluster_version_id: displayedClusterVersionId,
-      dossier_ids: selectedGroupInfoDossierIds,
-      group_label: selectedGroupInfoNode.label,
+      dossier_ids: dossierIds,
+      group_label: selectedGroupInfoLabel,
     })
       .then((table) => {
         if (cancelled) return
@@ -483,8 +485,8 @@ export function FinalResult({
   }, [
     displayedClusterVersionId,
     selectedGroupInfoDossierKey,
-    selectedGroupInfoNode,
-    selectedGroupInfoDossierIds,
+    selectedGroupInfoLabel,
+    selectedGroupInfoNodeId,
     sessionId,
   ])
 
@@ -692,7 +694,11 @@ export function FinalResult({
   )
 
   const handleSelectRetentionCandidate = useCallback(
-    async (dossierId: string, entryId: string) => {
+    async (
+      dossierId: string,
+      entryId: string,
+      candidateVersionId?: string | null
+    ) => {
       if (viewingHistoricalClusterVersion) {
         toast.error(
           "Không thể sửa thời hạn bảo quản khi đang xem phiên bản cũ."
@@ -705,6 +711,7 @@ export function FinalResult({
       }
       const response = await patchSessionDossier(sessionId, dossierId, {
         retention_candidate_entry_id: entryId,
+        retention_candidate_version_id: candidateVersionId ?? undefined,
       })
       setGroups((previous) =>
         updateDossierGroupFromResponse(previous, dossierId, response)
