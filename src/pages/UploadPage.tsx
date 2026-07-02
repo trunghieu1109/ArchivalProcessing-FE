@@ -3,6 +3,7 @@ import { useCallback } from "react"
 import { useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 import { useAuth } from "@/features/auth/lib/AuthContext"
+import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import type { SessionMetadataValues } from "@/features/upload/components/SessionMetadataBar"
 import {
   ensureClusterBuild,
@@ -34,6 +35,7 @@ import { useUploadPageLifecycle } from "./UploadPage.lifecycle"
 import { uploadPageCache as cache } from "./UploadPage.cache"
 import {
   PLAN_PROGRESS_PHASES,
+  PLAN_ANALYSIS_POLL_INTERVAL_MS,
   STEP_LABELS,
   normalizePlanProgressPhase,
   planProgressMessageForPhase,
@@ -197,6 +199,11 @@ export function UploadPage() {
   const [uploadMode, setUploadModeState] = useState<UploadMode>(
     cache.uploadMode
   )
+  const planInputStateRef = useRef({ doc1Has, doc2Has })
+
+  useEffect(() => {
+    planInputStateRef.current = { doc1Has, doc2Has }
+  }, [doc1Has, doc2Has])
 
   const { syncSessionMetadata } = useUploadPageLifecycle({
     currentStep,
@@ -251,12 +258,24 @@ export function UploadPage() {
     let cancelled = false
     let afterId = 0
     let timeoutId: number | undefined
+    const schedule = () => {
+      if (!cancelled) {
+        timeoutId = window.setTimeout(
+          poll,
+          visibleAwareDelay(PLAN_ANALYSIS_POLL_INTERVAL_MS)
+        )
+      }
+    }
 
     const poll = async () => {
+      if (document.visibilityState === "hidden") {
+        schedule()
+        return
+      }
       try {
         const response = await listSessionEvents(sessionId, {
           afterId,
-          limit: 100,
+          limit: 50,
         })
         if (cancelled) return
         for (const event of response.events) {
@@ -312,8 +331,10 @@ export function UploadPage() {
           cache.parsedPlan = plan
           cache.folderTree = planToTree(plan)
           cache.planAnalysisState = "done"
-          cache.doc1State = doc1Has ? "done" : "idle"
-          cache.doc2State = doc2Has ? "done" : "idle"
+          const { doc1Has: currentDoc1Has, doc2Has: currentDoc2Has } =
+            planInputStateRef.current
+          cache.doc1State = currentDoc1Has ? "done" : "idle"
+          cache.doc2State = currentDoc2Has ? "done" : "idle"
           cache.dossierBuildStrategy = buildStrategy
           cache.persistedDossierBuildStrategy = buildStrategy
           cache.documentNumberingMode = numberingMode
@@ -343,17 +364,26 @@ export function UploadPage() {
       } catch {
         // The job may still be queued/running; keep polling quietly.
       }
-      if (!cancelled) {
-        timeoutId = window.setTimeout(poll, 1_500)
-      }
+      schedule()
     }
 
+    const handleVisibilityChange = () => {
+      if (cancelled || document.visibilityState === "hidden") return
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId)
+      timeoutId = undefined
+      void poll()
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange)
     void poll()
     return () => {
       cancelled = true
-      if (timeoutId !== undefined) window.clearTimeout(timeoutId)
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId)
+      }
     }
-  }, [doc1Has, doc2Has, planAnalysisState, sessionId])
+  }, [planAnalysisState, sessionId])
 
   const {
     ensureSession,

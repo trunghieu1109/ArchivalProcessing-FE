@@ -5,15 +5,17 @@ import type {
 } from "./sessionApi.types"
 import {
   apiUrl,
-  delay,
   presignedUploadErrorMessage,
   requestJson,
   responseTextErrorMessage,
   setXhrAuthHeader,
   uploadProgressSnapshot,
 } from "./sessionApi.http"
+import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 
 export const PRESIGNED_UPLOAD_STALL_MS = 12_000
+const UPLOAD_EVENT_POLL_INTERVAL_MS = 3_000
+const UPLOAD_EVENT_HIDDEN_POLL_INTERVAL_MS = 15_000
 
 export async function withSessionUploadEventProgress<T>(
   sessionId: string,
@@ -26,6 +28,23 @@ export async function withSessionUploadEventProgress<T>(
   if (!onProgress) return pending
   let stopped = false
   let afterId = 0
+  let wakeDelay: (() => void) | null = null
+  const waitForNextPoll = () =>
+    new Promise<void>((resolve) => {
+      const finish = () => {
+        if (wakeDelay === finish) wakeDelay = null
+        window.clearTimeout(timeoutId)
+        resolve()
+      }
+      const timeoutId = window.setTimeout(
+        finish,
+        visibleAwareDelay(
+          UPLOAD_EVENT_POLL_INTERVAL_MS,
+          UPLOAD_EVENT_HIDDEN_POLL_INTERVAL_MS
+        )
+      )
+      wakeDelay = finish
+    })
   const poll = async () => {
     while (!stopped) {
       try {
@@ -46,7 +65,7 @@ export async function withSessionUploadEventProgress<T>(
       } catch {
         // Upload itself owns the user-facing error; event polling is best-effort progress only.
       }
-      await delay(1_000)
+      await waitForNextPoll()
     }
   }
   const pollPromise = poll()
@@ -54,6 +73,8 @@ export async function withSessionUploadEventProgress<T>(
     return await pending
   } finally {
     stopped = true
+    const wake = wakeDelay as (() => void) | null
+    wake?.()
     await pollPromise.catch(() => undefined)
   }
 }

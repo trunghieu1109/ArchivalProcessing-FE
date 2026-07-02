@@ -13,6 +13,13 @@ export type DocumentNumberingStylePreset =
   | "stamp_times_bold"
 export type UploadMode = "append" | "overwrite"
 
+export interface ApiRevisionMetadata {
+  revision?: number
+  documents_revision?: number
+  updated_at?: string | null
+  last_event_id?: number | null
+}
+
 export interface CreateSessionResponse {
   session_id: string
   status: string
@@ -200,7 +207,7 @@ export interface ActiveJobSummary {
   updated_at?: string
 }
 
-export interface ClusterBuildStatusResponse {
+export interface ClusterBuildStatusResponse extends ApiRevisionMetadata {
   session_id: string
   job_type: "build_clusters"
   active: boolean

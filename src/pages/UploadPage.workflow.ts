@@ -1,23 +1,12 @@
 import { toast } from "sonner"
 import {
   enqueuePlanAnalysis,
-  getSession,
-  listSessionEvents,
   type SessionInputUploadResponse,
   uploadSessionInput,
-  waitForActivePlan,
 } from "@/features/upload/api/sessionApi"
 import { uploadPageCache as cache } from "./UploadPage.cache"
 import {
-  activePlanBuildStrategy,
-  activePlanDocumentNumberingMode,
-  activePlanToParsedPlan,
-  planToTree,
-} from "./UploadPage.planUtils"
-import {
-  PLAN_ANALYSIS_TIMEOUT_MS,
   PLAN_DONE_VISIBLE_MS,
-  PLAN_PROGRESS_PHASES,
   addSetValue,
   planProgressMessageForPhase,
   wait,
@@ -44,7 +33,6 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     navigate,
     ensureSession,
     handleConfirmPlan,
-    syncSessionMetadata,
     syncPlanAnalysisState,
     syncDoc1State,
     syncDoc2State,
@@ -52,41 +40,13 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     syncZipUploadProgress,
     zipUploadProgressForFile,
     syncZipFolderPath,
-    applyPersistedDossierBuildStrategy,
-    applyPersistedDocumentNumberingMode,
     goTo,
     setPlanCompletedPhases,
     setPlanProgressPhase,
     setPlanProgressMessage,
-    setParsedPlan,
-    setFolderTree,
     setClusterGroups,
     setPlanReuploadState,
   } = context
-
-  const syncLatestPlanProgress = async (currentSessionId: string) => {
-    try {
-      const response = await listSessionEvents(currentSessionId, { limit: 200 })
-      let latestMessage = "Đã phân tích xong phương án chỉnh lý."
-
-      response.events.forEach((event) => {
-        if (event.event_type !== "plan.analysis.progress") return
-        if (event.message) latestMessage = event.message
-      })
-
-      setPlanCompletedPhases(
-        new Set(PLAN_PROGRESS_PHASES.map((phase) => phase.id))
-      )
-      setPlanProgressPhase(null)
-      setPlanProgressMessage(latestMessage)
-    } catch {
-      setPlanProgressPhase(null)
-      setPlanProgressMessage("Đã phân tích xong phương án chỉnh lý.")
-      setPlanCompletedPhases(
-        new Set(PLAN_PROGRESS_PHASES.map((phase) => phase.id))
-      )
-    }
-  }
 
   const resetPlanReuploadState = () => {
     cache.arrangementPlanReuploaded = false
@@ -130,7 +90,6 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
       return
     }
 
-    const previousPlanId = cache.activePlanVersionId || undefined
     try {
       syncPlanAnalysisState("processing")
       if (planReuploadState.arrangement) syncDoc1State("processing")
@@ -144,45 +103,21 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
         ...(retentionFile ? { retention_file: retentionFile } : {}),
         dossier_build_strategy: dossierBuildStrategy,
       })
-      const planResponse = await waitForActivePlan(
-        currentSessionId,
-        PLAN_ANALYSIS_TIMEOUT_MS,
-        2_000,
-        { previousPlanId }
-      )
-      const plan = activePlanToParsedPlan(planResponse)
-      cache.activePlanVersionId = planResponse.id ?? ""
-      applyPersistedDossierBuildStrategy(activePlanBuildStrategy(planResponse))
-      applyPersistedDocumentNumberingMode(
-        activePlanDocumentNumberingMode(planResponse)
-      )
-      cache.parsedPlan = plan
-      cache.folderTree = planToTree(plan)
-      setParsedPlan(plan)
-      setFolderTree(cache.folderTree)
-      const sessionAfterPlan = await getSession(currentSessionId)
-      cache.activeClusterVersionId =
-        sessionAfterPlan.active_cluster_version_id ?? null
-      syncSessionMetadata(sessionAfterPlan)
-      await syncLatestPlanProgress(currentSessionId)
-      syncPlanAnalysisState("done")
-      syncDoc1State(doc1Has ? "done" : "idle")
-      syncDoc2State(doc2Has ? "done" : "idle")
       resetPlanReuploadState()
 
       const retentionOnly =
         planReuploadState.retention && !planReuploadState.arrangement
       setPlanProgressMessage(
         retentionOnly
-          ? "Đã phân tích xong thông tư thời hạn bảo quản."
-          : "Đã phân tích xong phương án mới."
+          ? "Đang chờ backend phân tích thông tư thời hạn bảo quản."
+          : "Đang chờ backend phân tích phương án mới."
       )
       cache.clusterGroups = []
       setClusterGroups([])
       toast.success(
         retentionOnly
-          ? "Đã phân tích thời hạn bảo quản. Vui lòng kiểm tra lại ở Step 2."
-          : "Đã phân tích lại phương án. Vui lòng kiểm tra và xác nhận ở Step 2."
+          ? "Đã gửi task phân tích thời hạn bảo quản."
+          : "Đã gửi task phân tích lại phương án."
       )
       goTo(2, currentSessionId)
     } catch (err) {
@@ -339,38 +274,11 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
             dossier_build_strategy: dossierBuildStrategy,
           })
           await retentionJob
-          const planResponse = await waitForActivePlan(
-            currentSessionId,
-            PLAN_ANALYSIS_TIMEOUT_MS,
-            2_000,
-            {
-              previousPlanId: undefined,
-              afterVersionNumber: undefined,
-            }
-          )
-          const plan = activePlanToParsedPlan(planResponse)
-          cache.activePlanVersionId = planResponse.id ?? ""
-          applyPersistedDossierBuildStrategy(
-            activePlanBuildStrategy(planResponse)
-          )
-          applyPersistedDocumentNumberingMode(
-            activePlanDocumentNumberingMode(planResponse)
-          )
-          cache.parsedPlan = plan
-          cache.folderTree = planToTree(plan)
-          setParsedPlan(plan)
-          setFolderTree(cache.folderTree)
-          const sessionAfterRetention = await getSession(currentSessionId)
-          cache.activeClusterVersionId =
-            sessionAfterRetention.active_cluster_version_id ?? null
-          syncSessionMetadata(sessionAfterRetention)
-          syncPlanAnalysisState("done")
-          setPlanProgressPhase(null)
           setPlanProgressMessage(
-            "Đã phân tích xong thông tư thời hạn bảo quản."
+            "Đang chờ backend phân tích thông tư thời hạn bảo quản."
           )
           toast.success(
-            "Đã tạo session và phân tích thời hạn bảo quản. Vui lòng kiểm tra ở Step 2."
+            "Đã tạo session và gửi task phân tích thời hạn bảo quản."
           )
           navigate(`/sessions/${encodeURIComponent(currentSessionId)}/step/2`)
           return
@@ -406,33 +314,8 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
       setPlanProgressPhase("preparing_plan_file")
       setPlanProgressMessage(planProgressMessageForPhase("preparing_plan_file"))
       await planJob
-      const planResponse = await waitForActivePlan(
-        currentSessionId,
-        PLAN_ANALYSIS_TIMEOUT_MS,
-        2_000,
-        {
-          previousPlanId: undefined,
-          afterVersionNumber: undefined,
-        }
-      )
-      const plan = activePlanToParsedPlan(planResponse)
-      cache.activePlanVersionId = planResponse.id ?? ""
-      applyPersistedDossierBuildStrategy(activePlanBuildStrategy(planResponse))
-      applyPersistedDocumentNumberingMode(
-        activePlanDocumentNumberingMode(planResponse)
-      )
-      cache.parsedPlan = plan
-      cache.folderTree = planToTree(plan)
-      setParsedPlan(plan)
-      setFolderTree(cache.folderTree)
-      const sessionAfterPlan = await getSession(currentSessionId)
-      cache.activeClusterVersionId =
-        sessionAfterPlan.active_cluster_version_id ?? null
-      syncSessionMetadata(sessionAfterPlan)
-      await syncLatestPlanProgress(currentSessionId)
-      syncPlanAnalysisState("done")
-      toast.success("Đã tạo session và phân tích phương án chỉnh lý.")
-      await wait(PLAN_DONE_VISIBLE_MS)
+      setPlanProgressMessage("Đang chờ backend phân tích phương án chỉnh lý.")
+      toast.success("Đã tạo session và gửi task phân tích phương án chỉnh lý.")
       navigate(`/sessions/${encodeURIComponent(currentSessionId)}/step/2`)
     } catch (err) {
       syncPlanAnalysisState("idle")

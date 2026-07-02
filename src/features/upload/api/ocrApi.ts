@@ -1,6 +1,7 @@
 // Shared digitization response types used by the session-backed OCR flow.
 
 import type {
+  ApiRevisionMetadata,
   MetadataBatchSummary,
   PaginationMeta,
   SessionIngestionRun,
@@ -55,7 +56,7 @@ export interface FolderPreviewResponse {
   jobs: JobSummary[]
 }
 
-export interface FolderStatusResponse {
+export interface FolderStatusResponse extends ApiRevisionMetadata {
   batch_id?: number | null
   folder_path: string
   recursive: boolean

@@ -8,6 +8,7 @@ export const STEP_LABELS = [
   "Xuất bản",
 ]
 export const PLAN_ANALYSIS_TIMEOUT_MS = 10 * 60 * 1000
+export const PLAN_ANALYSIS_POLL_INTERVAL_MS = 5_000
 export const LAST_SESSION_KEY = "archival-processing:last-session-id"
 export const PLAN_PROGRESS_PHASES = [
   { id: "upload_inputs", label: "Nạp dữ liệu đầu vào" },

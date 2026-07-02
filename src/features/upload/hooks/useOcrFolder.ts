@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react"
 import type { FolderStatusResponse, JobSummary } from "@/features/upload/api/ocrApi"
 import { hasMetadataWarning } from "@/features/upload/lib/metadata"
+import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import {
   digitizationToFolderStatus,
   getDigitizationStatus,
@@ -30,10 +31,11 @@ export type OcrFolderState =
   | "done"
   | "error"
 
-const OCR_POLL_INTERVAL_MS = 2_000
+const OCR_POLL_INTERVAL_MS = 5_000
 const OCR_POLL_RETRY_INTERVAL_MS = 5_000
 const OCR_DOCUMENT_PAGE_SIZE = 50
-const OCR_EMPTY_STATUS_RETRY_LIMIT = 60
+const OCR_EMPTY_STATUS_RETRY_LIMIT = 12
+const OCR_DOCUMENT_REFRESH_MIN_INTERVAL_MS = 15_000
 const DEFAULT_DOCUMENT_NUMBERING_MODE: DocumentNumberingMode = "page"
 const DEFAULT_METADATA_DOCUMENT_SCOPE: MetadataDocumentScope = { scope: "all" }
 
@@ -94,8 +96,10 @@ export function useOcrFolder(
 ): UseOcrFolderResult {
   const [state, setState] = useState<OcrFolderState>("idle")
   const [status, setStatus] = useState<FolderStatusResponse | null>(null)
+  const statusRef = useRef<FolderStatusResponse | null>(null)
   const [error, setError] = useState("")
   const [documentPageIndex, setDocumentPageIndexState] = useState(0)
+  const documentPageIndexRef = useRef(0)
   const [metadataDocumentScope, setMetadataDocumentScopeState] =
     useState<MetadataDocumentScope>(DEFAULT_METADATA_DOCUMENT_SCOPE)
   const documentPageSize = OCR_DOCUMENT_PAGE_SIZE
@@ -117,6 +121,12 @@ export function useOcrFolder(
   const metadataDocumentScopeRef = useRef<MetadataDocumentScope>(
     DEFAULT_METADATA_DOCUMENT_SCOPE
   )
+  const lastDocumentRefreshSignatureRef = useRef("")
+  const lastDocumentRefreshAtRef = useRef(0)
+
+  useEffect(() => {
+    statusRef.current = status
+  }, [status])
 
   const stop = useCallback(() => {
     if (timeoutRef.current) {
@@ -145,7 +155,9 @@ export function useOcrFolder(
   )
 
   const setDocumentPageIndex = useCallback((pageIndex: number) => {
-    setDocumentPageIndexState(Math.max(0, Math.floor(Number(pageIndex) || 0)))
+    const nextPageIndex = Math.max(0, Math.floor(Number(pageIndex) || 0))
+    documentPageIndexRef.current = nextPageIndex
+    setDocumentPageIndexState(nextPageIndex)
   }, [])
 
   const setMetadataDocumentScope = useCallback(
@@ -157,6 +169,9 @@ export function useOcrFolder(
       metadataDocumentScopeRef.current = nextScope
       documentPageCacheRef.current.clear()
       prefetchingDocumentPagesRef.current.clear()
+      lastDocumentRefreshSignatureRef.current = ""
+      lastDocumentRefreshAtRef.current = 0
+      documentPageIndexRef.current = 0
       setDocumentPageIndexState(0)
       setStatus((current) =>
         current ? { ...current, jobs: [], pagination: undefined } : current
@@ -171,9 +186,12 @@ export function useOcrFolder(
     documentPageCacheSessionRef.current = sessionId
     documentPageCacheRef.current.clear()
     prefetchingDocumentPagesRef.current.clear()
+    lastDocumentRefreshSignatureRef.current = ""
+    lastDocumentRefreshAtRef.current = 0
     metadataDocumentScopeRequestKeyRef.current = "all"
     metadataDocumentScopeStateKeyRef.current = "all"
     metadataDocumentScopeRef.current = DEFAULT_METADATA_DOCUMENT_SCOPE
+    documentPageIndexRef.current = 0
     setDocumentPageIndexState(0)
     setMetadataDocumentScopeState(DEFAULT_METADATA_DOCUMENT_SCOPE)
   }, [sessionId])
@@ -269,6 +287,7 @@ export function useOcrFolder(
         Math.floor(Number(options.pageIndex ?? documentPageIndex) || 0)
       )
       if (options.pageIndex !== undefined) {
+        documentPageIndexRef.current = pageIndex
         setDocumentPageIndexState(pageIndex)
       }
       if (options.force) {
@@ -325,6 +344,40 @@ export function useOcrFolder(
     ]
   )
 
+  const refreshDocumentsPageRef = useRef(refreshDocumentsPage)
+  useEffect(() => {
+    refreshDocumentsPageRef.current = refreshDocumentsPage
+  }, [refreshDocumentsPage])
+
+  const refreshDocumentsForStatus = useCallback(
+    (
+      result: Awaited<ReturnType<typeof getDigitizationStatus>>,
+      options: { force?: boolean } = {}
+    ) => {
+      if (!result) return
+      const totalDocuments = digitizationStatusDocumentTotal(result)
+      if (totalDocuments <= 0) return
+
+      const signature = digitizationStatusRefreshSignature(result)
+      const serverDocumentsRevision = revisionToken(result.documents_revision)
+      const now = Date.now()
+      const hasVisibleDocuments = (statusRef.current?.jobs.length ?? 0) > 0
+      const shouldRefresh =
+        options.force ||
+        !hasVisibleDocuments ||
+        signature !== lastDocumentRefreshSignatureRef.current ||
+        (serverDocumentsRevision === null &&
+          now - lastDocumentRefreshAtRef.current >=
+            OCR_DOCUMENT_REFRESH_MIN_INTERVAL_MS)
+      if (!shouldRefresh) return
+
+      lastDocumentRefreshSignatureRef.current = signature
+      lastDocumentRefreshAtRef.current = now
+      void refreshDocumentsPageRef.current({ force: true })
+    },
+    []
+  )
+
   useEffect(() => {
     const scopeKey = metadataDocumentScopeKey(metadataDocumentScope)
     if (metadataDocumentScopeRequestKeyRef.current === scopeKey) return
@@ -338,27 +391,36 @@ export function useOcrFolder(
         if (tokenRef.current !== token) return
         try {
           if (!sessionId) return
+          if (document.visibilityState === "hidden") {
+            timeoutRef.current = setTimeout(
+              poll,
+              visibleAwareDelay(OCR_POLL_INTERVAL_MS)
+            )
+            return
+          }
           const requestScope = metadataDocumentScopeRef.current
           const requestScopeKey = metadataDocumentScopeKey(requestScope)
           const result = await getDigitizationStatus(sessionId, {
-            includeDocuments: true,
-            summaryOnly: false,
+            includeDocuments: false,
+            summaryOnly: true,
             limit: documentPageSize,
-            offset: documentPageIndex * documentPageSize,
+            offset: documentPageIndexRef.current * documentPageSize,
             metadataDocumentScope: requestScope,
           })
           if (metadataDocumentScopeStateKeyRef.current !== requestScopeKey) {
-            timeoutRef.current = setTimeout(poll, OCR_POLL_INTERVAL_MS)
+            timeoutRef.current = setTimeout(
+              poll,
+              visibleAwareDelay(OCR_POLL_INTERVAL_MS)
+            )
             return
           }
           applyStatusResult(result, fallbackFolderPath, {
-            preserveDocuments: false,
+            preserveDocuments: true,
           })
           setError("")
-          if (shouldRefreshDocumentsFromStatus(result)) {
-            void refreshDocumentsPage({ force: true })
-          }
-          if (isDigitizationComplete(result)) {
+          const complete = isDigitizationComplete(result)
+          refreshDocumentsForStatus(result, { force: complete })
+          if (complete) {
             stop()
             setState("done")
             return
@@ -366,7 +428,10 @@ export function useOcrFolder(
           setState(
             isMetadataExtractionComplete(result) ? "metadata_ready" : "polling"
           )
-          timeoutRef.current = setTimeout(poll, OCR_POLL_INTERVAL_MS)
+          timeoutRef.current = setTimeout(
+            poll,
+            visibleAwareDelay(OCR_POLL_INTERVAL_MS)
+          )
         } catch (err) {
           if (tokenRef.current !== token) return
           schedulePollRetry(
@@ -382,9 +447,8 @@ export function useOcrFolder(
     },
     [
       applyStatusResult,
-      documentPageIndex,
       documentPageSize,
-      refreshDocumentsPage,
+      refreshDocumentsForStatus,
       schedulePollRetry,
       sessionId,
       stop,
@@ -399,9 +463,12 @@ export function useOcrFolder(
     pendingStartRef.current = null
     documentPageCacheRef.current.clear()
     prefetchingDocumentPagesRef.current.clear()
+    lastDocumentRefreshSignatureRef.current = ""
+    lastDocumentRefreshAtRef.current = 0
     setState("idle")
     setStatus(null)
     setError("")
+    documentPageIndexRef.current = 0
     setDocumentPageIndexState(0)
     metadataDocumentScopeRequestKeyRef.current = "all"
     metadataDocumentScopeStateKeyRef.current = "all"
@@ -466,7 +533,9 @@ export function useOcrFolder(
       preserveDocuments: !includeDocuments,
     })
     setError("")
-    if (isDigitizationComplete(result)) {
+    const complete = isDigitizationComplete(result)
+    refreshDocumentsForStatus(result, { force: includeDocuments || complete })
+    if (complete) {
       stop()
       tokenRef.current += 1
       setState("done")
@@ -485,6 +554,7 @@ export function useOcrFolder(
     documentPageIndex,
     documentPageSize,
     pollUntilComplete,
+    refreshDocumentsForStatus,
     sessionId,
     stop,
   ])
@@ -673,21 +743,28 @@ export function useOcrFolder(
 
     const pollExistingStatus = async () => {
       if (tokenRef.current !== token) return
+      if (document.visibilityState === "hidden") {
+        existingStatusTimeoutRef.current = setTimeout(
+          pollExistingStatus,
+          visibleAwareDelay(OCR_POLL_INTERVAL_MS)
+        )
+        return
+      }
       try {
         const requestScope = metadataDocumentScopeRef.current
         const requestScopeKey = metadataDocumentScopeKey(requestScope)
         const result = await getDigitizationStatus(sessionId, {
-          includeDocuments: true,
-          summaryOnly: false,
+          includeDocuments: false,
+          summaryOnly: true,
           limit: documentPageSize,
-          offset: documentPageIndex * documentPageSize,
+          offset: documentPageIndexRef.current * documentPageSize,
           metadataDocumentScope: requestScope,
         })
         if (tokenRef.current !== token) return
         if (metadataDocumentScopeStateKeyRef.current !== requestScopeKey) {
           existingStatusTimeoutRef.current = setTimeout(
             pollExistingStatus,
-            OCR_POLL_INTERVAL_MS
+            visibleAwareDelay(OCR_POLL_INTERVAL_MS)
           )
           return
         }
@@ -704,7 +781,7 @@ export function useOcrFolder(
             setState("polling")
             existingStatusTimeoutRef.current = setTimeout(
               pollExistingStatus,
-              OCR_POLL_INTERVAL_MS
+              visibleAwareDelay(OCR_POLL_INTERVAL_MS)
             )
             return
           }
@@ -714,13 +791,12 @@ export function useOcrFolder(
         emptyStatusRetries = 0
 
         applyStatusResult(result, fallbackFolderPath, {
-          preserveDocuments: false,
+          preserveDocuments: true,
         })
-        if (shouldRefreshDocumentsFromStatus(result)) {
-          void refreshDocumentsPage({ force: true })
-        }
         setError("")
-        if (isDigitizationComplete(result)) {
+        const complete = isDigitizationComplete(result)
+        refreshDocumentsForStatus(result, { force: complete })
+        if (complete) {
           setState("done")
           return
         }
@@ -730,7 +806,7 @@ export function useOcrFolder(
         )
         existingStatusTimeoutRef.current = setTimeout(
           pollExistingStatus,
-          OCR_POLL_INTERVAL_MS
+          visibleAwareDelay(OCR_POLL_INTERVAL_MS)
         )
       } catch (err) {
         if (tokenRef.current !== token) return
@@ -744,7 +820,7 @@ export function useOcrFolder(
         )
         existingStatusTimeoutRef.current = setTimeout(
           pollExistingStatus,
-          OCR_POLL_RETRY_INTERVAL_MS
+          visibleAwareDelay(OCR_POLL_RETRY_INTERVAL_MS)
         )
       }
     }
@@ -759,11 +835,9 @@ export function useOcrFolder(
   }, [
     applyStatusResult,
     clearOnDisable,
-    documentPageIndex,
     documentPageSize,
     enabled,
-    metadataDocumentScope,
-    refreshDocumentsPage,
+    refreshDocumentsForStatus,
     sessionId,
     stop,
   ])
@@ -888,20 +962,30 @@ export function useOcrFolder(
               rejectPolling(new Error("Đã hủy quá trình chờ kết quả OCR."))
               return
             }
+            if (document.visibilityState === "hidden") {
+              timeoutRef.current = setTimeout(
+                poll,
+                visibleAwareDelay(OCR_POLL_INTERVAL_MS)
+              )
+              return
+            }
             try {
               const requestScope = metadataDocumentScopeRef.current
               const requestScopeKey = metadataDocumentScopeKey(requestScope)
               const result = await getDigitizationStatus(sessionId, {
-                includeDocuments: true,
-                summaryOnly: false,
+                includeDocuments: false,
+                summaryOnly: true,
                 limit: documentPageSize,
-                offset: documentPageIndex * documentPageSize,
+                offset: documentPageIndexRef.current * documentPageSize,
                 metadataDocumentScope: requestScope,
               })
               if (
                 metadataDocumentScopeStateKeyRef.current !== requestScopeKey
               ) {
-                timeoutRef.current = setTimeout(poll, OCR_POLL_INTERVAL_MS)
+                timeoutRef.current = setTimeout(
+                  poll,
+                  visibleAwareDelay(OCR_POLL_INTERVAL_MS)
+                )
                 return
               }
               const pendingStart = pendingStartRef.current
@@ -911,7 +995,10 @@ export function useOcrFolder(
               ) {
                 setError("")
                 setState("polling")
-                timeoutRef.current = setTimeout(poll, OCR_POLL_INTERVAL_MS)
+                timeoutRef.current = setTimeout(
+                  poll,
+                  visibleAwareDelay(OCR_POLL_INTERVAL_MS)
+                )
                 return
               }
               pendingStartRef.current = null
@@ -949,9 +1036,7 @@ export function useOcrFolder(
                 }
               })
               setError("")
-              if (shouldRefreshDocumentsFromStatus(result)) {
-                void refreshDocumentsPage({ force: true })
-              }
+              refreshDocumentsForStatus(result, { force: complete })
               if (complete) {
                 stop()
                 setState("done")
@@ -962,7 +1047,10 @@ export function useOcrFolder(
               if (metadataReady) {
                 resolvePolling()
               }
-              timeoutRef.current = setTimeout(poll, OCR_POLL_INTERVAL_MS)
+              timeoutRef.current = setTimeout(
+                poll,
+                visibleAwareDelay(OCR_POLL_INTERVAL_MS)
+              )
             } catch (err) {
               if (tokenRef.current !== token) return
               schedulePollRetry(
@@ -981,9 +1069,8 @@ export function useOcrFolder(
       }
     },
     [
-      documentPageIndex,
       documentPageSize,
-      refreshDocumentsPage,
+      refreshDocumentsForStatus,
       schedulePollRetry,
       sessionId,
       status,
@@ -1021,21 +1108,72 @@ function hasDigitizationWork(
   )
 }
 
-function shouldRefreshDocumentsFromStatus(
+function digitizationStatusDocumentTotal(
   result: Awaited<ReturnType<typeof getDigitizationStatus>>
-): boolean {
-  if (!result) return false
-  if (result.documents.length > 0) return true
-  if ((result.summary?.total_documents ?? 0) > 0) return true
-  return (
-    result.batches.some(
-      (batch) => (batch.total_files ?? 0) > 0 || (batch.total_jobs ?? 0) > 0
-    ) ||
-    statusCountTotal(result.summary?.status_counts) > 0 ||
-    result.batches.some(
-      (batch) => statusCountTotal(batch.status_counts) > 0
+): number {
+  if (!result) return 0
+  return Math.max(
+    result.documents.length,
+    result.summary?.total_documents ?? 0,
+    statusCountTotal(result.summary?.status_counts),
+    ...result.batches.map((batch) =>
+      Math.max(
+        batch.total_files ?? 0,
+        batch.total_jobs ?? 0,
+        statusCountTotal(batch.status_counts)
+      )
     )
   )
+}
+
+function digitizationStatusRefreshSignature(
+  result: Awaited<ReturnType<typeof getDigitizationStatus>>
+): string {
+  if (!result) return ""
+  const documentsRevision = revisionToken(result.documents_revision)
+  if (documentsRevision !== null) return `documents:${documentsRevision}`
+  return JSON.stringify({
+    summary: {
+      total_documents: result.summary?.total_documents ?? 0,
+      status_counts: result.summary?.status_counts ?? {},
+      metadata_ready: result.summary?.metadata_ready ?? null,
+      metadata_final: result.summary?.metadata_final ?? null,
+      metadata_usable_documents:
+        result.summary?.metadata_usable_documents ?? null,
+      complete_documents: result.summary?.complete_documents ?? null,
+      processing_documents: result.summary?.processing_documents ?? null,
+      failed_documents: result.summary?.failed_documents ?? null,
+      verified: result.summary?.verified ?? null,
+      reviewed: result.summary?.reviewed ?? null,
+      warning: result.summary?.warning ?? null,
+    },
+    batches: result.batches.map((batch) => ({
+      id: batch.id,
+      status: batch.status,
+      total_files: batch.total_files ?? 0,
+      total_jobs: batch.total_jobs ?? 0,
+      status_counts: batch.status_counts ?? {},
+    })),
+    ingestion_runs: result.ingestion_runs.map((run) => ({
+      id: run.id,
+      status: run.status,
+      total_pdf_files: run.total_pdf_files ?? 0,
+      extracted_count: run.extracted_count ?? 0,
+      skipped_count: run.skipped_count ?? 0,
+      updated_at: run.updated_at ?? null,
+    })),
+  })
+}
+
+function revisionToken(value: unknown): string | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(Math.trunc(value))
+  }
+  if (typeof value === "string") {
+    const text = value.trim()
+    return text || null
+  }
+  return null
 }
 
 function statusCountTotal(counts: Record<string, number> | undefined): number {
@@ -1065,6 +1203,10 @@ function mergeCachedDocumentPage(
   if (!current) return cached
   return {
     ...cached,
+    revision: current.revision,
+    documents_revision: current.documents_revision,
+    updated_at: current.updated_at,
+    last_event_id: current.last_event_id,
     batch_id: current.batch_id,
     folder_path: current.folder_path,
     recursive: current.recursive,

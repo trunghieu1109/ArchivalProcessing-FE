@@ -31,13 +31,14 @@ import {
   type PublicationDossier,
   type PublicationManifest,
 } from "@/features/upload/api/sessionApi"
+import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import { cn } from "@/shared/lib/utils"
 
 interface PublicationStepProps {
   sessionId: string | null
 }
 
-const PUBLICATION_ARCHIVE_POLL_MS = 1500
+const PUBLICATION_ARCHIVE_POLL_MS = 5_000
 const PUBLICATION_ARCHIVE_TIMEOUT_MS = 30 * 60 * 1000
 const PUBLICATION_ARCHIVE_FAILED_STATUSES = new Set([
   "failed",
@@ -1175,7 +1176,7 @@ async function waitForPublicationArchive(
         status.job?.error || "Job tạo ZIP xuất bản thất bại."
       )
     }
-    await delay(PUBLICATION_ARCHIVE_POLL_MS)
+    await delay(visibleAwareDelay(PUBLICATION_ARCHIVE_POLL_MS))
   }
   throw new Error("Quá thời gian chờ tạo ZIP xuất bản.")
 }

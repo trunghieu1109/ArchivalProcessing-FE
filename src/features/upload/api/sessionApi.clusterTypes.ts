@@ -1,4 +1,7 @@
-import type { DocumentNumberingMode } from "./sessionApi.sessionTypes"
+import type {
+  ApiRevisionMetadata,
+  DocumentNumberingMode,
+} from "./sessionApi.sessionTypes"
 
 export interface DocumentPreviewUrlResponse {
   session_id: string
@@ -271,7 +274,7 @@ export interface ClusterGroupInformationTableResponse {
   rows: ClusterGroupInformationRow[]
 }
 
-export interface ClusterVersionResponse {
+export interface ClusterVersionResponse extends ApiRevisionMetadata {
   id: string
   session_id: string
   version_number: number
@@ -285,7 +288,7 @@ export interface ClusterVersionResponse {
   clusters?: SessionClusterSummary[]
 }
 
-export interface ClusterVersionListResponse {
+export interface ClusterVersionListResponse extends ApiRevisionMetadata {
   session_id: string
   versions: ClusterVersionResponse[]
 }
@@ -306,13 +309,27 @@ export interface ClusterFeedbackResponse {
   created_at: string
 }
 
-export interface ClusterFeedbackListResponse {
+export interface ClusterFeedbackPagination {
+  limit?: number | null
+  after_id?: number | null
+  returned: number
+  total: number
+  has_more: boolean
+}
+
+export interface ClusterFeedbackListResponse extends ApiRevisionMetadata {
   session_id: string
   feedback: ClusterFeedbackResponse[]
   pending_feedback?: ClusterFeedbackResponse[]
   dossier_drafts?: SessionDossierDraft[]
   active_version_id?: string | null
   active_version_created_at?: string | null
+  feedback_count?: number
+  pending_feedback_count?: number
+  dossier_draft_count?: number
+  summary_only?: boolean
+  pending_only?: boolean
+  pagination?: ClusterFeedbackPagination
 }
 
 export interface CancelPendingClusterFeedbackResponse {

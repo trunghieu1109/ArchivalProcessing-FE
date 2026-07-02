@@ -1,13 +1,23 @@
-import { useEffect, useRef } from "react"
+import {
+  useEffect,
+  useRef,
+  type Dispatch,
+  type SetStateAction,
+} from "react"
 import { toast } from "sonner"
+import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import {
   getActiveClusters,
   getClusterBuildStatus,
-  listClusterFeedback,
   listClusterVersions,
   listSessionEvents,
+  type ClusterVersionResponse,
 } from "@/features/upload/api/sessionApi"
-import { versionToGroups } from "@/features/upload/lib/clusterGroups"
+import {
+  versionToGroups,
+  type ClusterGroup,
+} from "@/features/upload/lib/clusterGroups"
+import type { PdfMetadata } from "@/features/upload/types"
 import {
   CLUSTER_ALL_PHASE_IDS,
   CLUSTER_PROGRESS_PHASES,
@@ -22,23 +32,58 @@ import {
   mergeCompletedClusterPhaseSetBefore,
   nextClusterProgressPhase,
   normalizeClusterProgressPhase,
+  type ClusterJobMode,
 } from "./FinalResult.progress"
 import {
   clusteredDocumentIds,
   regularDossierCount,
   temporaryDocumentCount,
 } from "./FinalResult.metadataUtils"
-import {
-  applyPendingDossierDrafts,
-  applyPendingFeedbackOverlay,
-} from "./FinalResult.pendingFeedback"
 
-const CLUSTER_POLL_INTERVAL_MS = 3_000
+const CLUSTER_ACTIVE_POLL_INTERVAL_MS = 5_000
+const CLUSTER_IDLE_POLL_INTERVAL_MS = 30_000
 const CLUSTER_POLL_TIMEOUT_MS = 10 * 60 * 1_000
+const CLUSTER_EVENT_POLL_INTERVAL_MS = 5_000
 const CLUSTER_PROGRESS_TICK_MS = 4_500
 const NO_CLUSTER_VERSION = "__none__"
 
-export function useFinalResultPolling(context: Record<string, any>) {
+interface FinalResultPollingContext {
+  activeClusterVersionId: string | null
+  checkingClusters: boolean
+  clusterJobMode: ClusterJobMode
+  displayedClusterVersionId: string | null
+  groups: ClusterGroup[]
+  hasClusterData: boolean
+  loading: boolean
+  metadataItems: PdfMetadata[]
+  pendingClusterVersion: ClusterVersionResponse | null
+  rebuildBaselineVersionId: string | null
+  rebuildPollKey: number
+  sessionId: string | null
+  verifiedItems: PdfMetadata[]
+  setActiveClusterVersionId: Dispatch<SetStateAction<string | null>>
+  setCheckingClusters: Dispatch<SetStateAction<boolean>>
+  setClusterCompletedPhases: Dispatch<SetStateAction<Set<string>>>
+  setClusterJobMode: Dispatch<SetStateAction<ClusterJobMode>>
+  setClusterProgressMessage: Dispatch<SetStateAction<string>>
+  setClusterProgressPhase: Dispatch<SetStateAction<string | null>>
+  setClusterVersions: Dispatch<SetStateAction<ClusterVersionResponse[]>>
+  setDisplayedClusterVersion: Dispatch<
+    SetStateAction<ClusterVersionResponse | null>
+  >
+  setDisplayedClusterVersionId: Dispatch<SetStateAction<string | null>>
+  setGroups: Dispatch<SetStateAction<ClusterGroup[]>>
+  setLoading: Dispatch<SetStateAction<boolean>>
+  setPendingClusterVersion: Dispatch<
+    SetStateAction<ClusterVersionResponse | null>
+  >
+  setPendingFeedbackCount: Dispatch<SetStateAction<number>>
+  setPendingFeedbackRefreshKey: Dispatch<SetStateAction<number>>
+  setRebuildBaselineVersionId: Dispatch<SetStateAction<string | null>>
+  setStatus: Dispatch<SetStateAction<string>>
+}
+
+export function useFinalResultPolling(context: FinalResultPollingContext) {
   const {
     activeClusterVersionId,
     checkingClusters,
@@ -71,6 +116,36 @@ export function useFinalResultPolling(context: Record<string, any>) {
     setStatus,
   } = context
   const completedBuildJobIdRef = useRef<number | null>(null)
+  const clusterRevisionRef = useRef<string | null>(null)
+  const pollStateRef = useRef({
+    checkingClusters,
+    clusterJobMode,
+    displayedClusterVersionId,
+    groups,
+    hasClusterData,
+    loading,
+    metadataItems,
+    rebuildBaselineVersionId,
+    verifiedItems,
+  })
+  useEffect(() => {
+    pollStateRef.current = {
+      checkingClusters,
+      clusterJobMode,
+      displayedClusterVersionId,
+      groups,
+      hasClusterData,
+      loading,
+      metadataItems,
+      rebuildBaselineVersionId,
+      verifiedItems,
+    }
+  })
+
+  useEffect(() => {
+    clusterRevisionRef.current = null
+    completedBuildJobIdRef.current = null
+  }, [sessionId])
 
   useEffect(() => {
     let cancelled = false
@@ -101,6 +176,7 @@ export function useFinalResultPolling(context: Record<string, any>) {
     displayedClusterVersionId,
     pendingClusterVersion?.id,
     sessionId,
+    setClusterVersions,
   ])
 
   useEffect(() => {
@@ -108,9 +184,9 @@ export function useFinalResultPolling(context: Record<string, any>) {
     let timeoutId: number | undefined
     const startedAt = Date.now()
 
-    const schedule = () => {
+    const schedule = (delayMs: number) => {
       if (!cancelled) {
-        timeoutId = window.setTimeout(poll, CLUSTER_POLL_INTERVAL_MS)
+        timeoutId = window.setTimeout(poll, visibleAwareDelay(delayMs))
       }
     }
 
@@ -122,15 +198,26 @@ export function useFinalResultPolling(context: Record<string, any>) {
         setStatus("Chưa có session để lấy kết quả lập hồ sơ.")
         return
       }
+      const state = pollStateRef.current
+      if (document.visibilityState === "hidden") {
+        schedule(
+          state.loading ||
+            state.checkingClusters ||
+            state.rebuildBaselineVersionId
+            ? CLUSTER_ACTIVE_POLL_INTERVAL_MS
+            : CLUSTER_IDLE_POLL_INTERVAL_MS
+        )
+        return
+      }
       if (
         Date.now() - startedAt > CLUSTER_POLL_TIMEOUT_MS &&
-        (!displayedClusterVersionId || rebuildBaselineVersionId)
+        (!state.displayedClusterVersionId || state.rebuildBaselineVersionId)
       ) {
         setLoading(false)
         setCheckingClusters(false)
         setRebuildBaselineVersionId(null)
         setStatus(
-          rebuildBaselineVersionId
+          state.rebuildBaselineVersionId
             ? "Quá thời gian chờ cập nhật hồ sơ. Feedback vẫn được lưu; hãy kiểm tra worker/dispatcher backend."
             : "Quá thời gian chờ lập hồ sơ. Hãy kiểm tra worker/dispatcher backend."
         )
@@ -148,29 +235,48 @@ export function useFinalResultPolling(context: Record<string, any>) {
         if (!rawActiveBuildJob) completedBuildJobIdRef.current = null
         const hasActiveBuildJob = Boolean(
           rawActiveBuildJob &&
-          buildStatus?.job?.id !== completedBuildJobIdRef.current
+            buildStatus?.job?.id !== completedBuildJobIdRef.current
         )
+        const latestState = pollStateRef.current
         const activeJobMode = hasActiveBuildJob
           ? clusterJobModeFromPayload(buildStatus?.job?.payload)
-          : rebuildBaselineVersionId
-            ? clusterJobMode
+          : latestState.rebuildBaselineVersionId
+            ? latestState.clusterJobMode
             : "new"
         let version = versionSummary
         const nextVersionId = versionSummary?.id ?? null
         const nextVersionMarker = nextVersionId ?? NO_CLUSTER_VERSION
+        const nextClusterRevision = revisionToken(versionSummary?.revision)
+        if (
+          nextClusterRevision !== null &&
+          nextClusterRevision !== clusterRevisionRef.current
+        ) {
+          const hadClusterRevision = clusterRevisionRef.current !== null
+          clusterRevisionRef.current = nextClusterRevision
+          if (
+            hadClusterRevision &&
+            nextVersionId &&
+            latestState.displayedClusterVersionId === nextVersionId
+          ) {
+            setPendingFeedbackRefreshKey((key: number) => key + 1)
+          }
+        }
         setActiveClusterVersionId(nextVersionId)
 
         if (
-          rebuildBaselineVersionId &&
+          latestState.rebuildBaselineVersionId &&
           versionSummary &&
-          nextVersionMarker !== rebuildBaselineVersionId
+          nextVersionMarker !== latestState.rebuildBaselineVersionId
         ) {
           if (rawActiveBuildJob && buildStatus?.job?.id) {
             completedBuildJobIdRef.current = buildStatus.job.id
           }
           version = await getActiveClusters(sessionId)
           if (cancelled || !version) return
-          const nextGroups = versionToGroups(version, metadataItems)
+          const nextGroups = versionToGroups(
+            version,
+            pollStateRef.current.metadataItems
+          )
           const nextDossierCount = regularDossierCount(nextGroups)
           const nextTemporaryCount = temporaryDocumentCount(nextGroups)
           setGroups(nextGroups)
@@ -196,7 +302,7 @@ export function useFinalResultPolling(context: Record<string, any>) {
               : `Đã cập nhật hồ sơ. Có ${nextTemporaryCount} tài liệu trong Thư mục tạm.`
           )
           toast.success("Đã cập nhật hồ sơ từ feedback đã lưu.")
-          schedule()
+          schedule(CLUSTER_IDLE_POLL_INTERVAL_MS)
           return
         }
 
@@ -239,15 +345,15 @@ export function useFinalResultPolling(context: Record<string, any>) {
                 : "Đang chờ backend lập hồ sơ từ tài liệu đã xác nhận."
             )
           }
-          schedule()
+          schedule(CLUSTER_ACTIVE_POLL_INTERVAL_MS)
           return
         }
 
         setLoading(false)
         setCheckingClusters(false)
         if (
-          rebuildBaselineVersionId &&
-          nextVersionMarker === rebuildBaselineVersionId
+          latestState.rebuildBaselineVersionId &&
+          nextVersionMarker === latestState.rebuildBaselineVersionId
         ) {
           setLoading(true)
           setClusterJobMode(activeJobMode)
@@ -257,16 +363,16 @@ export function useFinalResultPolling(context: Record<string, any>) {
               ? "Backend đã xử lý xong, đang chờ phiên bản hồ sơ tập lưu mới."
               : "Backend đã xử lý xong, đang chờ phiên bản hồ sơ mới từ feedback đã lưu."
           )
-          schedule()
+          schedule(CLUSTER_ACTIVE_POLL_INTERVAL_MS)
           return
         }
 
         const shouldDisplayInitialVersion =
           Boolean(version && nextVersionId) &&
-          (!displayedClusterVersionId || !hasClusterData)
+          (!latestState.displayedClusterVersionId || !latestState.hasClusterData)
         const effectiveDisplayedVersionId = shouldDisplayInitialVersion
           ? nextVersionId
-          : displayedClusterVersionId
+          : latestState.displayedClusterVersionId
         const shouldFetchFullVersion =
           Boolean(version && nextVersionId) &&
           (shouldDisplayInitialVersion ||
@@ -278,32 +384,10 @@ export function useFinalResultPolling(context: Record<string, any>) {
           version = await getActiveClusters(sessionId)
           if (cancelled) return
         }
-        let nextGroups = versionToGroups(version, metadataItems)
-        let displayedGroupsForStatus = groups
+        let nextGroups = versionToGroups(version, latestState.metadataItems)
+        let displayedGroupsForStatus = latestState.groups
 
         if (shouldDisplayInitialVersion && nextVersionId && version) {
-          try {
-            const feedbackResponse = await listClusterFeedback(sessionId)
-            if (cancelled) return
-            const hasServerPendingFeedback = Array.isArray(
-              feedbackResponse.pending_feedback
-            )
-            const overlay = applyPendingFeedbackOverlay(
-              nextGroups,
-              hasServerPendingFeedback
-                ? feedbackResponse.pending_feedback!
-                : (feedbackResponse.feedback ?? []),
-              version,
-              hasServerPendingFeedback
-            )
-            nextGroups = applyPendingDossierDrafts(
-              overlay.groups,
-              feedbackResponse.dossier_drafts ?? []
-            )
-            setPendingFeedbackCount(overlay.pendingFeedbackCount)
-          } catch {
-            setPendingFeedbackCount(0)
-          }
           setGroups(nextGroups)
           setDisplayedClusterVersionId(nextVersionId)
           setDisplayedClusterVersion(version)
@@ -317,7 +401,7 @@ export function useFinalResultPolling(context: Record<string, any>) {
           effectiveDisplayedVersionId &&
           nextVersionId !== effectiveDisplayedVersionId
         ) {
-          if (rebuildBaselineVersionId) {
+          if (latestState.rebuildBaselineVersionId) {
             setRebuildBaselineVersionId(null)
           }
           setPendingClusterVersion(version)
@@ -330,22 +414,23 @@ export function useFinalResultPolling(context: Record<string, any>) {
           setStatus(
             `Đã có cập nhật hồ sơ mới: phiên bản ${version.version_number} với ${regularDossierCount(nextGroups)} hồ sơ.`
           )
-          schedule()
+          schedule(CLUSTER_IDLE_POLL_INTERVAL_MS)
           return
         }
 
         setPendingClusterVersion(null)
-        if (rebuildBaselineVersionId) {
+        if (latestState.rebuildBaselineVersionId) {
           setRebuildBaselineVersionId(null)
           toast.success("Đã có phiên bản hồ sơ mới từ feedback đã lưu.")
         }
 
         const clusteredIds = clusteredDocumentIds(version)
-        const hasMetadataItems = metadataItems.length > 0
+        const currentMetadataItems = pollStateRef.current.metadataItems
+        const currentVerifiedItems = pollStateRef.current.verifiedItems
+        const hasMetadataItems = currentMetadataItems.length > 0
         const missingVerified = hasMetadataItems
-          ? verifiedItems.filter(
-              (item: { document_id: string }) =>
-                !clusteredIds.has(item.document_id)
+          ? currentVerifiedItems.filter(
+              (item) => !clusteredIds.has(item.document_id)
             )
           : []
         const allVerifiedClustered =
@@ -353,7 +438,7 @@ export function useFinalResultPolling(context: Record<string, any>) {
             (group: { documents: unknown[] }) => group.documents.length > 0
           ) &&
           (!hasMetadataItems ||
-            verifiedItems.length === 0 ||
+            currentVerifiedItems.length === 0 ||
             missingVerified.length === 0)
         const displayedDossierCount = regularDossierCount(
           displayedGroupsForStatus
@@ -368,10 +453,10 @@ export function useFinalResultPolling(context: Record<string, any>) {
           setClusterProgressMessage("Đã lập hồ sơ xong.")
           setStatus(
             displayedDossierCount > 0
-              ? `Đã lập ${displayedDossierCount} hồ sơ${verifiedItems.length > 0 ? ` từ ${verifiedItems.length} tài liệu đã xác nhận` : ""}.${displayedTemporaryCount > 0 ? ` Có ${displayedTemporaryCount} tài liệu trong Thư mục tạm.` : ""}`
+              ? `Đã lập ${displayedDossierCount} hồ sơ${currentVerifiedItems.length > 0 ? ` từ ${currentVerifiedItems.length} tài liệu đã xác nhận` : ""}.${displayedTemporaryCount > 0 ? ` Có ${displayedTemporaryCount} tài liệu trong Thư mục tạm.` : ""}`
               : `Có ${displayedTemporaryCount} tài liệu trong Thư mục tạm; chưa có hồ sơ để tạo mục lục.`
           )
-          schedule()
+          schedule(CLUSTER_IDLE_POLL_INTERVAL_MS)
           return
         }
 
@@ -386,12 +471,12 @@ export function useFinalResultPolling(context: Record<string, any>) {
           setStatus(
             `Đã có ${displayedDossierCount} hồ sơ. Có ${missingVerified.length} tài liệu đã xác nhận chưa được cập nhật vào hồ sơ.`
           )
-          schedule()
+          schedule(CLUSTER_IDLE_POLL_INTERVAL_MS)
         } else {
           setClusterProgressPhase(null)
           setClusterProgressMessage("")
           setStatus("Chưa có kết quả lập hồ sơ từ backend.")
-          schedule()
+          schedule(CLUSTER_IDLE_POLL_INTERVAL_MS)
         }
       } catch (err) {
         if (cancelled) return
@@ -402,7 +487,13 @@ export function useFinalResultPolling(context: Record<string, any>) {
             ? `Chưa lấy được kết quả lập hồ sơ: ${err.message}`
             : "Chưa lấy được kết quả lập hồ sơ."
         )
-        schedule()
+        schedule(
+          pollStateRef.current.loading ||
+            pollStateRef.current.checkingClusters ||
+            pollStateRef.current.rebuildBaselineVersionId
+            ? CLUSTER_ACTIVE_POLL_INTERVAL_MS
+            : CLUSTER_IDLE_POLL_INTERVAL_MS
+        )
       }
     }
 
@@ -412,15 +503,23 @@ export function useFinalResultPolling(context: Record<string, any>) {
       if (timeoutId !== undefined) window.clearTimeout(timeoutId)
     }
   }, [
-    displayedClusterVersionId,
-    clusterJobMode,
-    groups,
-    hasClusterData,
-    metadataItems,
-    rebuildBaselineVersionId,
     rebuildPollKey,
     sessionId,
-    verifiedItems,
+    setActiveClusterVersionId,
+    setCheckingClusters,
+    setClusterCompletedPhases,
+    setClusterJobMode,
+    setClusterProgressMessage,
+    setClusterProgressPhase,
+    setDisplayedClusterVersion,
+    setDisplayedClusterVersionId,
+    setGroups,
+    setLoading,
+    setPendingClusterVersion,
+    setPendingFeedbackCount,
+    setPendingFeedbackRefreshKey,
+    setRebuildBaselineVersionId,
+    setStatus,
   ])
 
   useEffect(() => {
@@ -474,7 +573,12 @@ export function useFinalResultPolling(context: Record<string, any>) {
       } catch {
         // The cluster polling loop owns user-facing errors.
       }
-      if (!cancelled) timeoutId = window.setTimeout(pollEvents, 1_500)
+      if (!cancelled) {
+        timeoutId = window.setTimeout(
+          pollEvents,
+          visibleAwareDelay(CLUSTER_EVENT_POLL_INTERVAL_MS)
+        )
+      }
     }
 
     void pollEvents()
@@ -482,7 +586,14 @@ export function useFinalResultPolling(context: Record<string, any>) {
       cancelled = true
       if (timeoutId !== undefined) window.clearTimeout(timeoutId)
     }
-  }, [loading, rebuildBaselineVersionId, sessionId])
+  }, [
+    loading,
+    rebuildBaselineVersionId,
+    sessionId,
+    setClusterCompletedPhases,
+    setClusterProgressMessage,
+    setClusterProgressPhase,
+  ])
 
   useEffect(() => {
     if (!loading && !checkingClusters && !rebuildBaselineVersionId) return
@@ -514,5 +625,24 @@ export function useFinalResultPolling(context: Record<string, any>) {
     }, CLUSTER_PROGRESS_TICK_MS)
 
     return () => window.clearInterval(intervalId)
-  }, [checkingClusters, clusterJobMode, loading, rebuildBaselineVersionId])
+  }, [
+    checkingClusters,
+    clusterJobMode,
+    loading,
+    rebuildBaselineVersionId,
+    setClusterCompletedPhases,
+    setClusterProgressMessage,
+    setClusterProgressPhase,
+  ])
+}
+
+function revisionToken(value: unknown): string | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(Math.trunc(value))
+  }
+  if (typeof value === "string") {
+    const text = value.trim()
+    return text || null
+  }
+  return null
 }

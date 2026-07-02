@@ -1,4 +1,5 @@
 import type {
+  ApiRevisionMetadata,
   ActiveJobSummary,
   DocumentNumberingMode,
   DocumentNumberingStylePreset,
@@ -77,7 +78,7 @@ export interface DigitizationBatch {
   digitization_complete?: boolean | null
 }
 
-export interface DigitizationStatusResponse {
+export interface DigitizationStatusResponse extends ApiRevisionMetadata {
   session_id: string
   ingestion_runs: import("./sessionApi.sessionTypes").SessionIngestionRun[]
   batches: DigitizationBatch[]
@@ -212,7 +213,7 @@ export interface NumberingDossierStatus {
   status_counts: Record<string, number>
 }
 
-export interface NumberingStatusResponse {
+export interface NumberingStatusResponse extends ApiRevisionMetadata {
   session_id: string
   cluster_version_id: string
   document_numbering_mode: DocumentNumberingMode
@@ -284,7 +285,7 @@ export interface EnqueueNumberingResponse {
   result?: NumberingStatusResponse
 }
 
-export interface ArtifactListResponse {
+export interface ArtifactListResponse extends ApiRevisionMetadata {
   session_id: string
   artifacts: SessionArtifact[]
 }

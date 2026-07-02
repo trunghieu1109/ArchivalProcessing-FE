@@ -278,10 +278,30 @@ export async function addMetadataEditKeepClusterFeedback(
 }
 
 export async function listClusterFeedback(
-  sessionId: string
+  sessionId: string,
+  options: {
+    summaryOnly?: boolean
+    pendingOnly?: boolean
+    limit?: number
+    afterId?: number
+  } = {}
 ): Promise<ClusterFeedbackListResponse> {
+  const searchParams = new URLSearchParams()
+  if (options.summaryOnly !== undefined) {
+    searchParams.set("summary_only", String(options.summaryOnly))
+  }
+  if (options.pendingOnly !== undefined) {
+    searchParams.set("pending_only", String(options.pendingOnly))
+  }
+  if (options.limit !== undefined) {
+    searchParams.set("limit", String(options.limit))
+  }
+  if (options.afterId !== undefined) {
+    searchParams.set("after_id", String(options.afterId))
+  }
+  const query = searchParams.toString()
   return requestJson<ClusterFeedbackListResponse>(
-    `/sessions/${encodeURIComponent(sessionId)}/clusters/feedback`,
+    `/sessions/${encodeURIComponent(sessionId)}/clusters/feedback${query ? `?${query}` : ""}`,
     { cache: "no-store" }
   )
 }

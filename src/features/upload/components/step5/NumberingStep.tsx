@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AlertTriangle, Loader2, Search, X } from "lucide-react"
 import { toast } from "sonner"
+import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import { PaginationControls } from "@/features/upload/components/PaginationControls"
 import {
@@ -33,7 +34,8 @@ import {
   saveBlob,
 } from "./NumberingStep.utils"
 
-const NUMBERING_POLL_INTERVAL_MS = 3_000
+const NUMBERING_POLL_INTERVAL_MS = 5_000
+const NUMBERING_DOCUMENT_REFRESH_EVERY = 3
 const NUMBERING_PAGE_SIZE = 10
 const NUMBERING_PROGRESS_PHASES = [
   { id: "loading_data", label: "Chuẩn bị hồ sơ" },
@@ -142,6 +144,7 @@ export function NumberingStep({
     new Map()
   )
   const prefetchingNumberingPagesRef = useRef<Set<number>>(new Set())
+  const numberingDocumentsRevisionRef = useRef<string | null>(null)
   const [completedPhases, setCompletedPhases] = useState<Set<string>>(
     () => new Set()
   )
@@ -151,6 +154,7 @@ export function NumberingStep({
     numberingPageCacheSessionRef.current = sessionId
     numberingPageCacheRef.current.clear()
     prefetchingNumberingPagesRef.current.clear()
+    numberingDocumentsRevisionRef.current = null
     setNumberingPageIndex(0)
   }, [sessionId])
 
@@ -271,8 +275,17 @@ export function NumberingStep({
               summaryOnly: true,
             })
         if (!response) return null
+        const nextDocumentsRevision = revisionToken(response.documents_revision)
         if (includeDocuments) {
+          numberingDocumentsRevisionRef.current = nextDocumentsRevision
           numberingPageCacheRef.current.set(pageIndex, response)
+        } else if (
+          nextDocumentsRevision !== null &&
+          numberingDocumentsRevisionRef.current !== null &&
+          nextDocumentsRevision !== numberingDocumentsRevisionRef.current
+        ) {
+          numberingPageCacheRef.current.clear()
+          prefetchingNumberingPagesRef.current.clear()
         }
         setStatus((current) => {
           if (includeDocuments || !current) return response
@@ -339,7 +352,12 @@ export function NumberingStep({
           document_numbering_style_overrides: documentNumberingStyleOverrides || null,
         })
         if (response.status === "not_needed") {
-          if (response.result) setStatus(response.result)
+          if (response.result) {
+            numberingDocumentsRevisionRef.current = revisionToken(
+              response.result.documents_revision
+            )
+            setStatus(response.result)
+          }
           setProgressPhase(null)
           setCompletedPhases(
             new Set(NUMBERING_PROGRESS_PHASES.map((phase) => phase.id))
@@ -454,7 +472,12 @@ export function NumberingStep({
           document_numbering_style_overrides: documentNumberingStyleOverrides || null,
         })
         if (response.status === "not_needed") {
-          if (response.result) setStatus(response.result)
+          if (response.result) {
+            numberingDocumentsRevisionRef.current = revisionToken(
+              response.result.documents_revision
+            )
+            setStatus(response.result)
+          }
           toast.info("Không còn tài liệu cần đánh số lại.")
         } else if (response.created) {
           toast.success("Đã gửi task đánh số lại tài liệu chưa hoàn tất.")
@@ -572,15 +595,36 @@ export function NumberingStep({
     if (!status?.active && !starting) return
     let cancelled = false
     let timeoutId: number | null = null
+    let pollCount = 0
     const poll = async () => {
+      pollCount += 1
+      const previousDocumentsRevision = numberingDocumentsRevisionRef.current
       const response = await refreshStatus({
         silent: true,
         includeDocuments: false,
       })
       if (cancelled) return
-      void refreshStatus({ silent: true, includeDocuments: true, force: true })
+      const nextDocumentsRevision = revisionToken(response?.documents_revision)
+      const documentsChanged =
+        nextDocumentsRevision !== null &&
+        nextDocumentsRevision !== previousDocumentsRevision
+      const shouldRefreshDocuments =
+        !response?.active ||
+        (nextDocumentsRevision !== null
+          ? documentsChanged
+          : pollCount % NUMBERING_DOCUMENT_REFRESH_EVERY === 0)
+      if (shouldRefreshDocuments) {
+        void refreshStatus({
+          silent: true,
+          includeDocuments: true,
+          force: documentsChanged || nextDocumentsRevision === null,
+        })
+      }
       if (response?.active || starting) {
-        timeoutId = window.setTimeout(poll, NUMBERING_POLL_INTERVAL_MS)
+        timeoutId = window.setTimeout(
+          poll,
+          visibleAwareDelay(NUMBERING_POLL_INTERVAL_MS)
+        )
         return
       }
       if (response && isNumberingComplete(response)) {
@@ -592,7 +636,10 @@ export function NumberingStep({
         toast.success("Đã hoàn tất đánh số trang.")
       }
     }
-    timeoutId = window.setTimeout(poll, NUMBERING_POLL_INTERVAL_MS)
+    timeoutId = window.setTimeout(
+      poll,
+      visibleAwareDelay(NUMBERING_POLL_INTERVAL_MS)
+    )
     return () => {
       cancelled = true
       if (timeoutId !== null) window.clearTimeout(timeoutId)
@@ -1089,6 +1136,17 @@ export function NumberingStep({
 
 type NumberingDossierGroup = ReturnType<typeof groupDocumentsByDossier>[number]
 
+function revisionToken(value: unknown): string | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(Math.trunc(value))
+  }
+  if (typeof value === "string") {
+    const text = value.trim()
+    return text || null
+  }
+  return null
+}
+
 function mergeNumberingPaginationTotal(
   current: NumberingStatusResponse["pagination"] | undefined,
   next: NumberingStatusResponse["pagination"] | undefined
@@ -1108,6 +1166,10 @@ function mergeCachedNumberingPage(
   if (!current) return cached
   return {
     ...cached,
+    revision: current.revision,
+    documents_revision: current.documents_revision,
+    updated_at: current.updated_at,
+    last_event_id: current.last_event_id,
     session_id: current.session_id,
     cluster_version_id: current.cluster_version_id,
     document_numbering_mode: current.document_numbering_mode,

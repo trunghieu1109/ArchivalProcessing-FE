@@ -359,6 +359,10 @@ export function digitizationToFolderStatus(
     countRunningJobs(jobs)
   const digitizationComplete = isDigitizationComplete(response)
   return {
+    revision: response?.revision,
+    documents_revision: response?.documents_revision,
+    updated_at: response?.updated_at,
+    last_event_id: response?.last_event_id,
     batch_id: batch?.id ?? null,
     folder_path: batch?.folder_path ?? fallbackFolderPath,
     recursive: batch?.recursive ?? true,

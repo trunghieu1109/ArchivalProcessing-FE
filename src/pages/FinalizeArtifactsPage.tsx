@@ -7,6 +7,7 @@ import {
 } from "react-router-dom"
 import { AlertCircle, ArrowRight } from "lucide-react"
 import { toast } from "sonner"
+import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -38,6 +39,8 @@ import {
   listSessionEvents,
   type SessionArtifact,
 } from "@/features/upload/api/sessionApi"
+
+const FINALIZE_EVENT_POLL_INTERVAL_MS = 5_000
 
 interface FinalizeArtifactsStepProps {
   sessionId?: string | null
@@ -284,10 +287,16 @@ export function FinalizeArtifactsStep({
         )
         return
       }
-      timeoutId = window.setTimeout(poll, FINALIZE_POLL_INTERVAL_MS)
+      timeoutId = window.setTimeout(
+        poll,
+        visibleAwareDelay(FINALIZE_POLL_INTERVAL_MS)
+      )
     }
 
-    timeoutId = window.setTimeout(poll, FINALIZE_POLL_INTERVAL_MS)
+    timeoutId = window.setTimeout(
+      poll,
+      visibleAwareDelay(FINALIZE_POLL_INTERVAL_MS)
+    )
     return () => {
       cancelled = true
       if (timeoutId !== undefined) window.clearTimeout(timeoutId)
@@ -305,7 +314,7 @@ export function FinalizeArtifactsStep({
       try {
         const response = await listSessionEvents(sessionId, {
           afterId,
-          limit: 100,
+          limit: 50,
         })
         if (cancelled) return
         for (const event of response.events) {
@@ -341,7 +350,12 @@ export function FinalizeArtifactsStep({
       } catch {
         // Artifact polling owns user-facing errors.
       }
-      if (!cancelled) timeoutId = window.setTimeout(pollEvents, 1_500)
+      if (!cancelled) {
+        timeoutId = window.setTimeout(
+          pollEvents,
+          visibleAwareDelay(FINALIZE_EVENT_POLL_INTERVAL_MS)
+        )
+      }
     }
 
     void pollEvents()

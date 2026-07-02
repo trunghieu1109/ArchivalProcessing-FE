@@ -129,6 +129,9 @@ export function FinalResult({
   const resultTreeScrollRef = useRef<HTMLDivElement | null>(null)
   const resultTreeDragYRef = useRef<number | null>(null)
   const resultTreeAutoScrollFrameRef = useRef<number | null>(null)
+  const displayedClusterVersionRef = useRef<ClusterVersionResponse | null>(null)
+  const metadataItemsRef = useRef(metadataItems)
+  const lastFeedbackRequestKeyRef = useRef("")
   const [clusterJobMode, setClusterJobMode] = useState<ClusterJobMode>("new")
   const [clusterProgressPhase, setClusterProgressPhase] = useState<
     string | null
@@ -275,10 +278,16 @@ export function FinalResult({
   )
 
   useEffect(() => {
+    displayedClusterVersionRef.current = displayedClusterVersion
+    metadataItemsRef.current = metadataItems
+  }, [displayedClusterVersion, metadataItems])
+
+  useEffect(() => {
     let cancelled = false
+    const currentDisplayedClusterVersion = displayedClusterVersionRef.current
     const displayingActiveVersion = Boolean(
       sessionId &&
-      displayedClusterVersion &&
+      currentDisplayedClusterVersion &&
       displayedClusterVersionId &&
       activeClusterVersionId &&
       displayedClusterVersionId === activeClusterVersionId
@@ -294,8 +303,13 @@ export function FinalResult({
         if (!displayingActiveVersion || pendingClusterVersion || loading) {
           setPendingFeedbackCount(0)
         }
-        if (displayingActiveVersion && displayedClusterVersion) {
-          setGroups(versionToGroups(displayedClusterVersion, metadataItems))
+        if (displayingActiveVersion && currentDisplayedClusterVersion) {
+          setGroups(
+            versionToGroups(
+              currentDisplayedClusterVersion,
+              metadataItemsRef.current
+            )
+          )
         }
       }, 0)
       return () => {
@@ -304,15 +318,28 @@ export function FinalResult({
       }
     }
 
-    listClusterFeedback(sessionId!)
+    const feedbackRequestKey = [
+      sessionId,
+      activeClusterVersionId,
+      displayedClusterVersionId,
+      pendingFeedbackRefreshKey,
+    ].join(":")
+    if (lastFeedbackRequestKeyRef.current === feedbackRequestKey) {
+      return () => {
+        cancelled = true
+      }
+    }
+    lastFeedbackRequestKeyRef.current = feedbackRequestKey
+
+    listClusterFeedback(sessionId!, { pendingOnly: true, limit: 500 })
       .then((response) => {
         if (cancelled) return
         const hasServerPendingFeedback = Array.isArray(
           response.pending_feedback
         )
         const baseGroups = versionToGroups(
-          displayedClusterVersion,
-          metadataItems
+          currentDisplayedClusterVersion,
+          metadataItemsRef.current
         )
         const overlay = applyPendingFeedbackOverlay(
           baseGroups,
@@ -325,7 +352,9 @@ export function FinalResult({
         setGroups(
           applyPendingDossierDrafts(overlay.groups, response.dossier_drafts ?? [])
         )
-        setPendingFeedbackCount(overlay.pendingFeedbackCount)
+        setPendingFeedbackCount(
+          response.pending_feedback_count ?? overlay.pendingFeedbackCount
+        )
       })
       .catch(() => {
         if (!cancelled) setPendingFeedbackCount(0)
@@ -336,11 +365,9 @@ export function FinalResult({
     }
   }, [
     activeClusterVersionId,
-    displayedClusterVersion,
     displayedClusterVersionId,
     loading,
-    metadataItems,
-    pendingClusterVersion,
+    pendingClusterVersion?.id,
     pendingFeedbackRefreshKey,
     rebuildBaselineVersionId,
     sessionId,

@@ -5,16 +5,13 @@ const API_BASE = (import.meta.env.VITE_ARCHIVAL_API_BASE_URL ?? "/api").replace(
   /\/+$/,
   ""
 )
+const inFlightGetJsonRequests = new Map<string, Promise<unknown>>()
 
 export async function requestJson<T>(
   path: string,
   init?: RequestInit
 ): Promise<T> {
-  const response = await fetch(apiUrl(path), withAuth(init))
-  if (!response.ok) {
-    throw new Error(await responseErrorMessage(response))
-  }
-  return response.json() as Promise<T>
+  return requestJsonInternal<T>(path, init, false) as Promise<T>
 }
 
 export async function postJson<T>(
@@ -32,12 +29,66 @@ export async function requestJsonOrNull<T>(
   path: string,
   init?: RequestInit
 ): Promise<T | null> {
-  const response = await fetch(apiUrl(path), withAuth(init))
-  if (response.status === 404) return null
+  return requestJsonInternal<T>(path, init, true)
+}
+
+async function requestJsonInternal<T>(
+  path: string,
+  init: RequestInit | undefined,
+  allowNotFound: boolean
+): Promise<T | null> {
+  const authedInit = withAuth(init)
+  if (!canDedupeJsonRequest(authedInit)) {
+    return fetchJson<T>(path, authedInit, allowNotFound)
+  }
+
+  const key = jsonDedupeKey(path, authedInit, allowNotFound)
+  const existing = inFlightGetJsonRequests.get(key)
+  if (existing) return existing as Promise<T | null>
+
+  const request = fetchJson<T>(path, authedInit, allowNotFound).finally(() => {
+    inFlightGetJsonRequests.delete(key)
+  })
+  inFlightGetJsonRequests.set(key, request)
+  return request
+}
+
+async function fetchJson<T>(
+  path: string,
+  init: RequestInit,
+  allowNotFound: boolean
+): Promise<T | null> {
+  const response = await fetch(apiUrl(path), init)
+  if (allowNotFound && response.status === 404) return null
   if (!response.ok) {
     throw new Error(await responseErrorMessage(response))
   }
   return response.json() as Promise<T>
+}
+
+function canDedupeJsonRequest(init: RequestInit): boolean {
+  const method = String(init.method ?? "GET").toUpperCase()
+  return method === "GET" && !init.body && !init.signal
+}
+
+function jsonDedupeKey(
+  path: string,
+  init: RequestInit,
+  allowNotFound: boolean
+): string {
+  return [
+    allowNotFound ? "json-or-null" : "json",
+    apiUrl(path),
+    headersDedupeKey(init.headers),
+  ].join("\n")
+}
+
+function headersDedupeKey(headersInit: HeadersInit | undefined): string {
+  const headers = new Headers(headersInit)
+  return [...headers.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${key}:${value}`)
+    .join("\n")
 }
 
 export async function responseErrorMessage(

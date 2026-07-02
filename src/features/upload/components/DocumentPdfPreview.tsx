@@ -12,6 +12,7 @@ import {
   getDocumentPreviewUrl,
   type DocumentPreviewUrlResponse,
 } from "@/features/upload/api/sessionApi"
+import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import { cn } from "@/shared/lib/utils"
 import type {
   PreviewState,
@@ -40,7 +41,9 @@ interface DocumentPdfPreviewProps {
   onClose?: () => void
 }
 
-const PREVIEW_RETRY_INTERVAL_MS = 2_000
+const PREVIEW_RETRY_DELAYS_MS = [2_000, 4_000, 8_000, 15_000, 30_000]
+const PREVIEW_MAX_RETRY_ATTEMPTS = 8
+const PREVIEW_HIDDEN_RETRY_INTERVAL_MS = 30_000
 
 function activeVariantKeyFromResponse(
   response: DocumentPreviewUrlResponse,
@@ -64,6 +67,7 @@ export function DocumentPdfPreview({
   const previewResponseCacheRef = useRef<
     Map<string, DocumentPreviewUrlResponse>
   >(new Map())
+  const previewRetryAttemptsRef = useRef<Map<string, number>>(new Map())
   const lastPreviewDocumentKeyRef = useRef("")
   const [state, setState] = useState<PreviewState>({
     status: "idle",
@@ -83,9 +87,16 @@ export function DocumentPdfPreview({
     let retryTimeout: ReturnType<typeof setTimeout> | null = null
 
     const scheduleRetry = () => {
+      const attempts = previewRetryAttemptsRef.current.get(documentKey) ?? 0
+      if (attempts >= PREVIEW_MAX_RETRY_ATTEMPTS) return
+      previewRetryAttemptsRef.current.set(documentKey, attempts + 1)
+      const retryDelay =
+        PREVIEW_RETRY_DELAYS_MS[
+          Math.min(attempts, PREVIEW_RETRY_DELAYS_MS.length - 1)
+        ]
       retryTimeout = setTimeout(() => {
         if (!cancelled) setRefreshKey((key) => key + 1)
-      }, PREVIEW_RETRY_INTERVAL_MS)
+      }, visibleAwareDelay(retryDelay, PREVIEW_HIDDEN_RETRY_INTERVAL_MS))
     }
 
     if (!document) {
@@ -128,6 +139,9 @@ export function DocumentPdfPreview({
     const load = async () => {
       const documentChanged = lastPreviewDocumentKeyRef.current !== documentKey
       lastPreviewDocumentKeyRef.current = documentKey
+      if (documentChanged) {
+        previewRetryAttemptsRef.current.delete(documentKey)
+      }
       const cachedResponse = previewResponseCacheRef.current.get(documentKey)
       if (cachedResponse) {
         const cachedVariants = normalizePreviewVariants(cachedResponse)
@@ -162,6 +176,7 @@ export function DocumentPdfPreview({
         manualRefreshRef.current = false
         if (!needsRefresh && variants.some((variant) => Boolean(variant.url))) {
           previewResponseCacheRef.current.set(documentKey, response)
+          previewRetryAttemptsRef.current.delete(documentKey)
         } else {
           previewResponseCacheRef.current.delete(documentKey)
         }
@@ -241,6 +256,7 @@ export function DocumentPdfPreview({
 
   const refreshPreview = () => {
     if (documentKey) previewResponseCacheRef.current.delete(documentKey)
+    if (documentKey) previewRetryAttemptsRef.current.delete(documentKey)
     manualRefreshRef.current = true
     setRefreshKey((key) => key + 1)
   }
