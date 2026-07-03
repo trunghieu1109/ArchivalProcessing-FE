@@ -15,6 +15,7 @@ import {
   RefreshCw,
   RotateCcw,
   Save,
+  TriangleAlert,
   Upload,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -202,7 +203,7 @@ export function NumberingStepHeader({
                   aria-checked={
                     documentNumberingStylePreset === style.style_preset
                   }
-                  disabled={active || changingStyle || loading}
+                  disabled={active || loading}
                   title={style.description || label}
                   onClick={() => void onStyleChange(style.style_preset)}
                   className={cn(
@@ -627,6 +628,27 @@ export function NumberingDocumentRow({
         className: "bg-rose-50 text-rose-700",
       }
     : statusBadge(document.status)
+  const blankPageWarningPages = Array.from(
+    new Set(document.image_warning_pages ?? [])
+  ).sort((left, right) => left - right)
+  const hasBlankPageWarning =
+    blankPageWarningPages.length > 0 ||
+    (document.blank_page_warnings?.length ?? 0) > 0
+  const blankPageWarningTitle = (document.blank_page_warnings ?? [])
+    .map((warning) => {
+      const pageNumber = Number(warning.page_number)
+      const message = String(warning.message || "").trim()
+      return [
+        Number.isInteger(pageNumber) && pageNumber > 0
+          ? `Trang ${pageNumber}`
+          : "",
+        message,
+      ]
+        .filter(Boolean)
+        .join(": ")
+    })
+    .filter(Boolean)
+    .join("\n")
   const parsedPageNumber = Number.parseInt(pageValue, 10)
   const parsedNewNumber = Number.parseInt(numberValue, 10)
   const selectedEntry = entries.find(
@@ -676,6 +698,22 @@ export function NumberingDocumentRow({
             >
               {badge.label}
             </span>
+            {hasBlankPageWarning ? (
+              <span
+                className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700"
+                title={
+                  blankPageWarningTitle ||
+                  `Cảnh báo trang trắng${
+                    blankPageWarningPages.length > 0
+                      ? `: trang ${compactPageList(blankPageWarningPages)}`
+                      : ""
+                  }`
+                }
+              >
+                <TriangleAlert className="size-3" />
+                Cảnh báo trang trắng
+              </span>
+            ) : null}
           </div>
           <p className="mt-0.5 truncate text-xs text-[#64748B]">
             Số {span} · {document.entry_count} vị trí đánh số

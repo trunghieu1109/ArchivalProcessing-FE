@@ -1,3 +1,5 @@
+import type { BlankPageWarning } from "@/features/upload/api/sessionApi"
+
 export interface PreviewVariantState {
   key: string
   label: string
@@ -10,6 +12,8 @@ export interface PreviewVariantState {
   sameAsOriginal: boolean
   blankPages: number[]
   removedPages: number[]
+  blankPageWarnings: BlankPageWarning[]
+  imageWarningPages: number[]
   sourcePageCount: number | null
   outputPageCount: number | null
 }

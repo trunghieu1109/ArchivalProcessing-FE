@@ -3,6 +3,16 @@ import type {
   DocumentNumberingMode,
 } from "./sessionApi.sessionTypes"
 
+export type BlankPageWarning = Record<string, unknown> & {
+  type?: string
+  severity?: string
+  page_number?: number
+  classification?: string
+  is_blank?: boolean
+  message?: string
+  image_warnings?: Array<Record<string, unknown>>
+}
+
 export interface DocumentPreviewUrlResponse {
   session_id: string
   document_id: number
@@ -28,6 +38,8 @@ export interface DocumentPreviewVariantResponse {
   version_type?: string | null
   blank_pages?: number[]
   removed_pages?: number[]
+  blank_page_warnings?: BlankPageWarning[]
+  image_warning_pages?: number[]
   source_page_count?: number | null
   output_page_count?: number | null
   same_as_original?: boolean

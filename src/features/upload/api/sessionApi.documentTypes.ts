@@ -5,6 +5,7 @@ import type {
   DocumentNumberingStylePreset,
   UploadMode,
 } from "./sessionApi.sessionTypes"
+import type { BlankPageWarning } from "./sessionApi.clusterTypes"
 
 export interface PaginationMeta {
   total: number
@@ -184,6 +185,8 @@ export interface NumberingDocumentStatus {
   source_page_count: number
   output_page_count: number
   blank_pages: number[]
+  blank_page_warnings?: BlankPageWarning[]
+  image_warning_pages?: number[]
   numbering_pages?: number[]
   numbering_entries?: Array<{
     page_number: number
@@ -233,6 +236,7 @@ export interface NumberingStatusResponse extends ApiRevisionMetadata {
     failed: number
     pending: number
     running: number
+    blank_page_warning_documents?: number
   }
   documents: NumberingDocumentStatus[]
   dossiers: NumberingDossierStatus[]

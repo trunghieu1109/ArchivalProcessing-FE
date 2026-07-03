@@ -410,7 +410,15 @@ export function NumberingStep({
             new Set(NUMBERING_PROGRESS_PHASES.map((phase) => phase.id))
           )
           setProgressMessage("Đã lấy kết quả đánh số hiện có.")
-          toast.info("Tài liệu đã được đánh số theo chế độ hiện tại.")
+          const warningCount =
+            response.result?.summary.blank_page_warning_documents ?? 0
+          if (warningCount > 0) {
+            toast.warning(
+              `Đã lấy kết quả. Có ${warningCount} tài liệu có cảnh báo trang trắng.`
+            )
+          } else {
+            toast.info("Tài liệu đã được đánh số theo chế độ hiện tại.")
+          }
         } else if (response.created) {
           toast.success(
             shouldForce
@@ -695,7 +703,15 @@ export function NumberingStep({
           new Set(NUMBERING_PROGRESS_PHASES.map((phase) => phase.id))
         )
         setProgressMessage("Đã hoàn tất đánh số trang.")
-        toast.success("Đã hoàn tất đánh số trang.")
+        const warningCount =
+          response.summary.blank_page_warning_documents ?? 0
+        if (warningCount > 0) {
+          toast.warning(
+            `Đã đánh số xong. Có ${warningCount} tài liệu có cảnh báo trang trắng.`
+          )
+        } else {
+          toast.success("Đã hoàn tất đánh số trang.")
+        }
       }
     }
     timeoutId = window.setTimeout(
@@ -832,6 +848,8 @@ export function NumberingStep({
   const doneCount = status?.summary.done ?? 0
   const failedCount = status?.summary.failed ?? 0
   const pendingCount = status?.summary.pending ?? 0
+  const blankPageWarningDocumentCount =
+    status?.summary.blank_page_warning_documents ?? 0
   const unresolvedCount = Math.max(0, totalDocuments - doneCount)
   const hasNumberingOutput = doneCount > 0 || failedCount > 0
   const complete = Boolean(status && isNumberingComplete(status))
@@ -983,6 +1001,16 @@ export function NumberingStep({
         <div className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
           <span>{error}</span>
+        </div>
+      ) : null}
+      {complete && blankPageWarningDocumentCount > 0 ? (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <span>
+            Đã đánh số xong. Có {blankPageWarningDocumentCount} tài liệu chứa
+            cảnh báo từ bước xóa trang trắng. Các tài liệu này được gắn tag{" "}
+            <strong>Cảnh báo trang trắng</strong> trong danh sách bên dưới.
+          </span>
         </div>
       ) : null}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

@@ -389,7 +389,10 @@ function previewVariantsEqual(
     left.sourcePageCount === right.sourcePageCount &&
     left.outputPageCount === right.outputPageCount &&
     numberArraysEqual(left.blankPages, right.blankPages) &&
-    numberArraysEqual(left.removedPages, right.removedPages)
+    numberArraysEqual(left.removedPages, right.removedPages) &&
+    numberArraysEqual(left.imageWarningPages, right.imageWarningPages) &&
+    JSON.stringify(left.blankPageWarnings) ===
+      JSON.stringify(right.blankPageWarnings)
   )
 }
 
@@ -435,6 +438,10 @@ function PreviewVariantSwitch({
             {previewVariantNeedsRefresh(variant) ? (
               <Loader2 className="size-3 animate-spin text-amber-600" />
             ) : null}
+            {variant.blankPageWarnings.length > 0 ||
+            variant.imageWarningPages.length > 0 ? (
+              <TriangleAlert className="size-3 text-amber-600" />
+            ) : null}
           </button>
         )
       })}
@@ -445,6 +452,9 @@ function PreviewVariantSwitch({
 function PreviewPane({ variant }: { variant: PreviewVariantState }) {
   const iframeUrl = variant.url ? pdfEmbedUrl(variant.url) : ""
   const badge = previewVariantBadge(variant)
+  const warningPages = blankPageWarningPages(variant)
+  const hasBlankPageWarnings =
+    variant.blankPageWarnings.length > 0 || warningPages.length > 0
 
   return (
     <section className="flex h-full min-h-[320px] min-w-0 flex-col overflow-hidden bg-white sm:min-h-[480px]">
@@ -467,6 +477,12 @@ function PreviewPane({ variant }: { variant: PreviewVariantState }) {
                 Trùng bản gốc
               </span>
             ) : null}
+            {hasBlankPageWarnings ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                <TriangleAlert className="size-3" />
+                Cảnh báo trang trắng
+              </span>
+            ) : null}
           </div>
         </div>
         <a
@@ -483,6 +499,31 @@ function PreviewPane({ variant }: { variant: PreviewVariantState }) {
         </a>
       </div>
 
+      {hasBlankPageWarnings ? (
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+          <div className="flex items-start gap-2">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
+            <div className="min-w-0">
+              <p className="font-semibold">
+                Trang được nhận diện là trắng nhưng có dấu hiệu chứa hình ảnh
+                {warningPages.length > 0
+                  ? `: ${warningPages.join(", ")}`
+                  : "."}
+              </p>
+              {variant.blankPageWarnings.length > 0 ? (
+                <ul className="mt-1 space-y-1">
+                  {variant.blankPageWarnings.map((warning, index) => (
+                    <li key={`${String(warning.type || "warning")}-${index}`}>
+                      {blankPageWarningLabel(warning)}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="relative min-h-0 flex-1 bg-[#F8FAFC]">
         {iframeUrl ? (
           <iframe
@@ -496,6 +537,29 @@ function PreviewPane({ variant }: { variant: PreviewVariantState }) {
       </div>
     </section>
   )
+}
+
+function blankPageWarningPages(variant: PreviewVariantState): number[] {
+  const pages = new Set(variant.imageWarningPages)
+  for (const warning of variant.blankPageWarnings) {
+    const pageNumber = Number(warning.page_number)
+    if (Number.isInteger(pageNumber) && pageNumber > 0) pages.add(pageNumber)
+  }
+  return [...pages].sort((left, right) => left - right)
+}
+
+function blankPageWarningLabel(
+  warning: PreviewVariantState["blankPageWarnings"][number]
+): string {
+  const pageNumber = Number(warning.page_number)
+  const pageLabel =
+    Number.isInteger(pageNumber) && pageNumber > 0
+      ? `Trang ${pageNumber}: `
+      : ""
+  const message = String(warning.message || "").trim()
+  return `${pageLabel}${
+    message || "Có image block độ tin cậy cao trên trang được phân loại trắng."
+  }`
 }
 
 function PreviewVariantEmptyState({

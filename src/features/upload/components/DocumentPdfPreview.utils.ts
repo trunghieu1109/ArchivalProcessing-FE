@@ -49,6 +49,16 @@ export function normalizePreviewVariants(
           .map((value) => Number(value))
           .filter((value) => Number.isInteger(value))
       : [],
+    blankPageWarnings: Array.isArray(variant.blank_page_warnings)
+      ? variant.blank_page_warnings
+          .filter(isRecord)
+          .map((warning) => ({ ...warning }))
+      : [],
+    imageWarningPages: Array.isArray(variant.image_warning_pages)
+      ? variant.image_warning_pages
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value))
+      : [],
     sourcePageCount: numberOrNull(variant.source_page_count),
     outputPageCount: numberOrNull(variant.output_page_count),
   }))
@@ -119,6 +129,11 @@ export function previewVariantSummary(variant: PreviewVariantState): string {
   if (variant.removedPages.length > 0) {
     parts.push(`Đã xoá: ${compactPageList(variant.removedPages)}`)
   }
+  if (variant.imageWarningPages.length > 0) {
+    parts.push(
+      `Cảnh báo ảnh: trang ${compactPageList(variant.imageWarningPages)}`
+    )
+  }
   if (variant.sourcePageCount !== null && variant.outputPageCount !== null) {
     parts.push(`${variant.sourcePageCount} -> ${variant.outputPageCount} trang`)
   } else if (variant.outputPageCount !== null) {
@@ -137,6 +152,10 @@ export function compactPageList(pages: number[]): string {
 
 function numberOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
 }
 
 export function pdfEmbedUrl(url: string): string {
