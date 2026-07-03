@@ -798,6 +798,12 @@ export function UploadPage() {
       selectDocumentNumberingStyleOverrides={
         selectDocumentNumberingStyleOverrides
       }
+      applyPersistedDocumentNumberingStylePreset={
+        applyPersistedDocumentNumberingStylePreset
+      }
+      applyPersistedDocumentNumberingStyleOverrides={
+        applyPersistedDocumentNumberingStyleOverrides
+      }
       saveFileRegisterConfig={saveFileRegisterConfig}
       syncFolderTree={syncFolderTree}
       saveFolderTree={saveFolderTree}

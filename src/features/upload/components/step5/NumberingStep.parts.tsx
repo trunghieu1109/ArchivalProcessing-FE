@@ -39,11 +39,11 @@ export function NumberingStepHeader({
   documentNumberingStyleOverrides,
   numberingStyleOptions,
   changingMode,
-  changingStyle,
   loading,
   starting,
   active,
   complete,
+  hasPendingStyleChanges,
   canRestart,
   onRefresh,
   onStart,
@@ -55,14 +55,18 @@ export function NumberingStepHeader({
   modeLabel: string
   documentNumberingMode: DocumentNumberingMode
   documentNumberingStylePreset: DocumentNumberingStylePreset
-  documentNumberingStyleOverrides?: { font_size?: number; color?: string; opacity?: number }
+  documentNumberingStyleOverrides?: {
+    font_size?: number
+    color?: string
+    opacity?: number
+  }
   numberingStyleOptions: NumberingStyleOption[]
   changingMode: boolean
-  changingStyle: boolean
   loading: boolean
   starting: boolean
   active: boolean
   complete: boolean
+  hasPendingStyleChanges: boolean
   canRestart: boolean
   onRefresh: () => void | Promise<unknown>
   onStart: () => void | Promise<unknown>
@@ -71,21 +75,34 @@ export function NumberingStepHeader({
   onStyleChange: (
     stylePreset: DocumentNumberingStylePreset
   ) => void | Promise<unknown>
-  onOverridesChange?: (ov: { font_size?: number; color?: string; opacity?: number }) => void | Promise<unknown>
+  onOverridesChange?: (ov: {
+    font_size?: number
+    color?: string
+    opacity?: number
+  }) => void | Promise<unknown>
 }) {
   const selectedStyle = numberingStyleOptions.find(
     (style) => style.style_preset === documentNumberingStylePreset
   )
-  const hasOverrides = documentNumberingStyleOverrides && Object.keys(documentNumberingStyleOverrides).some(k => documentNumberingStyleOverrides[k as keyof typeof documentNumberingStyleOverrides] != null)
+  const hasOverrides =
+    documentNumberingStyleOverrides &&
+    Object.keys(documentNumberingStyleOverrides).some(
+      (k) =>
+        documentNumberingStyleOverrides[
+          k as keyof typeof documentNumberingStyleOverrides
+        ] != null
+    )
   const styleLabel =
-    (selectedStyle?.display_name || selectedStyle?.name || documentNumberingStylePreset) +
-    (hasOverrides ? " (tùy chỉnh)" : "")
-  const controlsDisabled = active || changingStyle || loading
+    (selectedStyle?.display_name ||
+      selectedStyle?.name ||
+      documentNumberingStylePreset) + (hasOverrides ? " (tùy chỉnh)" : "")
+  const controlsDisabled = active || loading
   const baseFontSize =
     selectedStyle?.font_size ??
     (selectedStyle as { fontSize?: number } | undefined)?.fontSize ??
     14
-  const currentFontSize = documentNumberingStyleOverrides?.font_size ?? baseFontSize
+  const currentFontSize =
+    documentNumberingStyleOverrides?.font_size ?? baseFontSize
   const [fontSizeDraft, setFontSizeDraft] = useState(String(currentFontSize))
   const [fontSizeDirty, setFontSizeDirty] = useState(false)
   useEffect(() => {
@@ -99,7 +116,10 @@ export function NumberingStepHeader({
     const value = trimmed === "" ? undefined : Number(trimmed)
     if (
       trimmed !== "" &&
-      (typeof value !== "number" || !Number.isFinite(value) || value < 1 || value > 200)
+      (typeof value !== "number" ||
+        !Number.isFinite(value) ||
+        value < 1 ||
+        value > 200)
     ) {
       setFontSizeDraft(String(currentFontSize))
       setFontSizeDirty(false)
@@ -166,6 +186,11 @@ export function NumberingStepHeader({
             <span className="flex items-center pr-1 text-sm font-semibold text-[#475569]">
               Kiểu số: {styleLabel}
             </span>
+            {hasPendingStyleChanges ? (
+              <span className="flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
+                Chưa áp dụng
+              </span>
+            ) : null}
             {numberingStyleOptions.map((style) => {
               const label =
                 style.display_name || style.name || style.style_preset
@@ -204,14 +229,14 @@ export function NumberingStepHeader({
 
           {/* Compact customization for overrides in numbering page */}
           {onOverridesChange && (
-            <div className="mt-3 pt-3 border-t border-[#E2E8F0] text-xs">
-              <div className="flex items-center gap-2 text-[#475569] mb-1">
+            <div className="mt-3 border-t border-[#E2E8F0] pt-3 text-xs">
+              <div className="mb-1 flex items-center gap-2 text-[#475569]">
                 <span>Tùy chỉnh:</span>
                 <button
                   type="button"
                   onClick={() => void onOverridesChange({})}
                   disabled={controlsDisabled}
-                  className="text-[#64748B] hover:text-[#0052FF] underline-offset-1 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                  className="text-[#64748B] underline-offset-1 hover:text-[#0052FF] hover:underline disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   reset
                 </button>
@@ -222,7 +247,9 @@ export function NumberingStepHeader({
                   <span className="text-[#64748B]">Size</span>
                   <input
                     type="number"
-                    min={6} max={48} step={0.5}
+                    min={6}
+                    max={48}
+                    step={0.5}
                     disabled={controlsDisabled}
                     value={fontSizeDraft}
                     onChange={(event) => {
@@ -240,27 +267,59 @@ export function NumberingStepHeader({
                 {/* color swatches compact */}
                 <div className="flex items-center gap-1">
                   <span className="text-[#64748B]">Màu</span>
-                  {["#757573","#3D3D3B","#000000","#1E3A5F"].map(c => (
-                    <button key={c} type="button" disabled={controlsDisabled} className="size-4 rounded border border-[#CBD5E1] disabled:cursor-not-allowed disabled:opacity-50" style={{background:c}}
-                      onClick={() => void onOverridesChange({ ...(documentNumberingStyleOverrides||{}), color: c })} />
+                  {["#757573", "#3D3D3B", "#000000", "#1E3A5F"].map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      disabled={controlsDisabled}
+                      className="size-4 rounded border border-[#CBD5E1] disabled:cursor-not-allowed disabled:opacity-50"
+                      style={{ background: c }}
+                      onClick={() =>
+                        void onOverridesChange({
+                          ...(documentNumberingStyleOverrides || {}),
+                          color: c,
+                        })
+                      }
+                    />
                   ))}
-                  <input type="color" className="size-4 p-0 border border-[#CBD5E1] rounded"
+                  <input
+                    type="color"
+                    className="size-4 rounded border border-[#CBD5E1] p-0"
                     disabled={controlsDisabled}
                     value={documentNumberingStyleOverrides?.color || "#757573"}
-                    onChange={e => void onOverridesChange({ ...(documentNumberingStyleOverrides||{}), color: e.target.value })} />
+                    onChange={(e) =>
+                      void onOverridesChange({
+                        ...(documentNumberingStyleOverrides || {}),
+                        color: e.target.value,
+                      })
+                    }
+                  />
                 </div>
                 {/* opacity compact */}
-                <div className="flex items-center gap-1 min-w-[110px]">
+                <div className="flex min-w-[110px] items-center gap-1">
                   <span className="text-[#64748B]">Độ mờ</span>
-                  <input type="range" min={0.2} max={1} step={0.05}
+                  <input
+                    type="range"
+                    min={0.2}
+                    max={1}
+                    step={0.05}
                     disabled={controlsDisabled}
                     value={documentNumberingStyleOverrides?.opacity ?? 0.75}
-                    onChange={e => {
+                    onChange={(e) => {
                       const v = parseFloat(e.target.value)
-                      void onOverridesChange({ ...(documentNumberingStyleOverrides||{}), opacity: isNaN(v)?undefined : v })
+                      void onOverridesChange({
+                        ...(documentNumberingStyleOverrides || {}),
+                        opacity: isNaN(v) ? undefined : v,
+                      })
                     }}
-                    className="accent-[#0052FF] w-16" />
-                  <span className="tabular-nums w-8 text-right">{Math.round((documentNumberingStyleOverrides?.opacity ?? 0.75)*100)}%</span>
+                    className="w-16 accent-[#0052FF]"
+                  />
+                  <span className="w-8 text-right tabular-nums">
+                    {Math.round(
+                      (documentNumberingStyleOverrides?.opacity ?? 0.75) * 100
+                    )}
+                    %
+                  </span>
                 </div>
               </div>
             </div>
@@ -281,7 +340,7 @@ export function NumberingStepHeader({
               type="button"
               variant="outline"
               onClick={() => void onRestart()}
-              disabled={active || changingMode || changingStyle || loading}
+              disabled={active || changingMode || loading}
             >
               {active ? (
                 <Loader2 data-icon="inline-start" className="animate-spin" />
@@ -294,14 +353,18 @@ export function NumberingStepHeader({
           <Button
             type="button"
             onClick={() => void onStart()}
-            disabled={active || changingMode || changingStyle}
+            disabled={active || changingMode}
           >
             {active ? (
               <Loader2 data-icon="inline-start" className="animate-spin" />
             ) : (
               <Play data-icon="inline-start" />
             )}
-            {complete ? "Lấy kết quả" : "Bắt đầu đánh số"}
+            {hasPendingStyleChanges
+              ? "Áp dụng và đánh số lại"
+              : complete
+                ? "Lấy kết quả"
+                : "Bắt đầu đánh số"}
           </Button>
         </div>
       </div>
@@ -628,7 +691,8 @@ export function NumberingDocumentRow({
           ) : null}
           {stalled && !document.error ? (
             <p className="mt-1 text-xs text-amber-700">
-              Tài liệu chưa có PDF đánh số hợp lệ. Có thể đánh số lại từ dòng này.
+              Tài liệu chưa có PDF đánh số hợp lệ. Có thể đánh số lại từ dòng
+              này.
             </p>
           ) : null}
         </div>

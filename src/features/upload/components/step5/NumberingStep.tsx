@@ -37,6 +37,11 @@ import {
 const NUMBERING_POLL_INTERVAL_MS = 5_000
 const NUMBERING_DOCUMENT_REFRESH_EVERY = 3
 const NUMBERING_PAGE_SIZE = 10
+type NumberingStyleOverrides = {
+  font_size?: number
+  color?: string
+  opacity?: number
+}
 const NUMBERING_PROGRESS_PHASES = [
   { id: "loading_data", label: "Chuẩn bị hồ sơ" },
   { id: "rendering_document", label: "Đánh số PDF" },
@@ -85,13 +90,11 @@ interface NumberingStepProps {
     mode: DocumentNumberingMode
   ) => Promise<boolean | void>
   documentNumberingStylePreset: DocumentNumberingStylePreset
-  documentNumberingStyleOverrides?: { font_size?: number; color?: string; opacity?: number }
-  onDocumentNumberingStylePresetChange: (
-    stylePreset: DocumentNumberingStylePreset
-  ) => Promise<boolean | void>
-  onDocumentNumberingStyleOverridesChange?: (
-    overrides: { font_size?: number; color?: string; opacity?: number }
-  ) => Promise<boolean | void>
+  documentNumberingStyleOverrides?: NumberingStyleOverrides
+  onDocumentNumberingStyleApplied?: (
+    stylePreset: DocumentNumberingStylePreset,
+    overrides: NumberingStyleOverrides
+  ) => void
   autoStart?: boolean
   onAutoStartHandled?: () => void
   onContinue: () => void
@@ -103,8 +106,7 @@ export function NumberingStep({
   onDocumentNumberingModeChange,
   documentNumberingStylePreset,
   documentNumberingStyleOverrides,
-  onDocumentNumberingStylePresetChange,
-  onDocumentNumberingStyleOverridesChange,
+  onDocumentNumberingStyleApplied,
   autoStart = false,
   onAutoStartHandled,
   onContinue,
@@ -114,7 +116,14 @@ export function NumberingStep({
   const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState(false)
   const [changingMode, setChangingMode] = useState(false)
-  const [changingStyle, setChangingStyle] = useState(false)
+  const [stylePresetDraft, setStylePresetDraft] =
+    useState<DocumentNumberingStylePreset>(documentNumberingStylePreset)
+  const [styleOverridesDraft, setStyleOverridesDraft] =
+    useState<NumberingStyleOverrides>(() =>
+      cleanNumberingStyleOverrides(documentNumberingStyleOverrides)
+    )
+  const [styleDraftDirty, setStyleDraftDirty] = useState(false)
+  const styleDraftSessionRef = useRef<string | null>(null)
   const [numberingStyleOptions, setNumberingStyleOptions] = useState<
     NumberingStyleOption[]
   >(FALLBACK_NUMBERING_STYLE_OPTIONS)
@@ -148,6 +157,23 @@ export function NumberingStep({
   const [completedPhases, setCompletedPhases] = useState<Set<string>>(
     () => new Set()
   )
+  const statusForCurrentSession =
+    status?.session_id === sessionId ? status : null
+  const appliedStylePreset =
+    statusForCurrentSession?.document_numbering_style_preset ||
+    documentNumberingStylePreset
+  const appliedStyleOverrides = useMemo(
+    () =>
+      cleanNumberingStyleOverrides(
+        statusForCurrentSession
+          ? statusForCurrentSession.document_numbering_style_overrides
+          : documentNumberingStyleOverrides
+      ),
+    [documentNumberingStyleOverrides, statusForCurrentSession]
+  )
+  const hasPendingStyleChanges =
+    stylePresetDraft !== appliedStylePreset ||
+    !numberingStyleOverridesEqual(styleOverridesDraft, appliedStyleOverrides)
 
   useEffect(() => {
     if (numberingPageCacheSessionRef.current === sessionId) return
@@ -157,6 +183,15 @@ export function NumberingStep({
     numberingDocumentsRevisionRef.current = null
     setNumberingPageIndex(0)
   }, [sessionId])
+
+  useEffect(() => {
+    const sessionChanged = styleDraftSessionRef.current !== sessionId
+    if (!sessionChanged && styleDraftDirty) return
+    styleDraftSessionRef.current = sessionId
+    setStylePresetDraft(appliedStylePreset)
+    setStyleOverridesDraft(appliedStyleOverrides)
+    setStyleDraftDirty(false)
+  }, [appliedStyleOverrides, appliedStylePreset, sessionId, styleDraftDirty])
 
   useEffect(() => {
     let cancelled = false
@@ -335,11 +370,12 @@ export function NumberingStep({
         toast.error("Chưa có session để đánh số trang.")
         return
       }
+      const shouldForce = force || hasPendingStyleChanges
       setStarting(true)
       setError("")
       setProgressPhase("loading_data")
       setProgressMessage(
-        force
+        shouldForce
           ? "Đang gửi yêu cầu đánh số lại theo cấu hình hiện tại."
           : "Đang gửi yêu cầu đánh số trang."
       )
@@ -347,10 +383,21 @@ export function NumberingStep({
       try {
         const response = await enqueueDocumentNumbering(sessionId, {
           created_by: "ui",
-          force,
-          document_numbering_style_preset: documentNumberingStylePreset,
-          document_numbering_style_overrides: documentNumberingStyleOverrides || null,
+          force: shouldForce,
+          document_numbering_style_preset: stylePresetDraft,
+          document_numbering_style_overrides: styleOverridesDraft,
         })
+        onDocumentNumberingStyleApplied?.(stylePresetDraft, styleOverridesDraft)
+        setStatus((current) =>
+          current?.session_id === sessionId
+            ? {
+                ...current,
+                document_numbering_style_preset: stylePresetDraft,
+                document_numbering_style_overrides: styleOverridesDraft,
+              }
+            : current
+        )
+        setStyleDraftDirty(false)
         if (response.status === "not_needed") {
           if (response.result) {
             numberingDocumentsRevisionRef.current = revisionToken(
@@ -366,7 +413,7 @@ export function NumberingStep({
           toast.info("Tài liệu đã được đánh số theo chế độ hiện tại.")
         } else if (response.created) {
           toast.success(
-            force
+            shouldForce
               ? "Đã gửi task đánh số lại."
               : "Đã gửi task đánh số trang."
           )
@@ -386,10 +433,12 @@ export function NumberingStep({
       }
     },
     [
-      documentNumberingStyleOverrides,
-      documentNumberingStylePreset,
+      hasPendingStyleChanges,
+      onDocumentNumberingStyleApplied,
       refreshStatus,
       sessionId,
+      styleOverridesDraft,
+      stylePresetDraft,
     ]
   )
 
@@ -467,10 +516,21 @@ export function NumberingStep({
       try {
         const response = await enqueueDocumentNumbering(sessionId, {
           created_by: "ui",
-          force: false,
-          document_numbering_style_preset: documentNumberingStylePreset,
-          document_numbering_style_overrides: documentNumberingStyleOverrides || null,
+          force: hasPendingStyleChanges,
+          document_numbering_style_preset: stylePresetDraft,
+          document_numbering_style_overrides: styleOverridesDraft,
         })
+        onDocumentNumberingStyleApplied?.(stylePresetDraft, styleOverridesDraft)
+        setStatus((current) =>
+          current?.session_id === sessionId
+            ? {
+                ...current,
+                document_numbering_style_preset: stylePresetDraft,
+                document_numbering_style_overrides: styleOverridesDraft,
+              }
+            : current
+        )
+        setStyleDraftDirty(false)
         if (response.status === "not_needed") {
           if (response.result) {
             numberingDocumentsRevisionRef.current = revisionToken(
@@ -497,12 +557,14 @@ export function NumberingStep({
       }
     },
     [
-      documentNumberingStyleOverrides,
-      documentNumberingStylePreset,
+      hasPendingStyleChanges,
+      onDocumentNumberingStyleApplied,
       refreshStatus,
       sessionId,
       starting,
       status?.active,
+      styleOverridesDraft,
+      stylePresetDraft,
     ]
   )
 
@@ -776,10 +838,10 @@ export function NumberingStep({
   const active = starting || Boolean(status?.active)
   const stoppedWithUnresolved = Boolean(
     status &&
-      !active &&
-      totalDocuments > 0 &&
-      unresolvedCount > 0 &&
-      hasNumberingOutput
+    !active &&
+    totalDocuments > 0 &&
+    unresolvedCount > 0 &&
+    hasNumberingOutput
   )
   const queuedForWorker =
     status?.active === true && status.job?.status === "queued"
@@ -807,57 +869,30 @@ export function NumberingStep({
       setChangingMode(false)
     }
   }
-  const changeNumberingStyle = async (
-    stylePreset: DocumentNumberingStylePreset
-  ) => {
-    if (
-      active ||
-      changingStyle ||
-      stylePreset === documentNumberingStylePreset
-    )
-      return
-    const hadCompletedNumbering = complete
-    setChangingStyle(true)
+  const changeNumberingStyle = (stylePreset: DocumentNumberingStylePreset) => {
+    if (active || loading || stylePreset === stylePresetDraft) return
     setError("")
-    try {
-      const saved = await onDocumentNumberingStylePresetChange(stylePreset)
-      if (saved === false) return
-      await refreshStatus({ silent: true, force: true })
-      setProgressPhase(null)
-      setProgressMessage("")
-      setCompletedPhases(new Set())
-      if (hadCompletedNumbering) {
-        toast.info("Đã đổi kiểu hiển thị số. Vui lòng đánh số lại toàn bộ tài liệu.")
-      }
-    } finally {
-      setChangingStyle(false)
-    }
+    const nextOverrides: NumberingStyleOverrides = {}
+    setStylePresetDraft(stylePreset)
+    setStyleOverridesDraft(nextOverrides)
+    setStyleDraftDirty(
+      stylePreset !== appliedStylePreset ||
+        !numberingStyleOverridesEqual(nextOverrides, appliedStyleOverrides)
+    )
   }
-  const changeNumberingStyleOverrides = async (overrides: {
+  const changeNumberingStyleOverrides = (overrides: {
     font_size?: number
     color?: string
     opacity?: number
   }) => {
-    if (!onDocumentNumberingStyleOverridesChange || active || changingStyle)
-      return
-    const hadNumberingOutput = hasNumberingOutput
-    setChangingStyle(true)
+    if (active || loading) return
+    const nextOverrides = cleanNumberingStyleOverrides(overrides)
     setError("")
-    try {
-      const saved = await onDocumentNumberingStyleOverridesChange(overrides)
-      if (saved === false) return
-      await refreshStatus({ silent: true, force: true })
-      setProgressPhase(null)
-      setProgressMessage("")
-      setCompletedPhases(new Set())
-      if (hadNumberingOutput) {
-        toast.info(
-          "Đã lưu tùy chỉnh kiểu số. Bấm Đánh số lại để áp dụng vào toàn bộ tài liệu."
-        )
-      }
-    } finally {
-      setChangingStyle(false)
-    }
+    setStyleOverridesDraft(nextOverrides)
+    setStyleDraftDirty(
+      stylePresetDraft !== appliedStylePreset ||
+        !numberingStyleOverridesEqual(nextOverrides, appliedStyleOverrides)
+    )
   }
   const modeLabel =
     documentNumberingMode === "sheet" ? "Đánh số theo tờ" : "Đánh số theo trang"
@@ -867,26 +902,22 @@ export function NumberingStep({
       <NumberingStepHeader
         modeLabel={modeLabel}
         documentNumberingMode={documentNumberingMode}
-        documentNumberingStylePreset={documentNumberingStylePreset}
-        documentNumberingStyleOverrides={documentNumberingStyleOverrides}
+        documentNumberingStylePreset={stylePresetDraft}
+        documentNumberingStyleOverrides={styleOverridesDraft}
         numberingStyleOptions={numberingStyleOptions}
         changingMode={changingMode}
-        changingStyle={changingStyle}
         loading={loading}
         starting={starting}
         active={active}
         complete={complete}
+        hasPendingStyleChanges={hasPendingStyleChanges}
         canRestart={canRestartNumbering}
         onRefresh={() => refreshStatus({ force: true })}
         onStart={() => startNumbering(false)}
         onRestart={() => startNumbering(true)}
         onModeChange={changeNumberingMode}
         onStyleChange={changeNumberingStyle}
-        onOverridesChange={
-          onDocumentNumberingStyleOverridesChange
-            ? changeNumberingStyleOverrides
-            : undefined
-        }
+        onOverridesChange={changeNumberingStyleOverrides}
       />
       <NumberingMetadataPanel
         metadataImportInputRef={metadataImportInputRef}
@@ -1136,6 +1167,41 @@ export function NumberingStep({
 
 type NumberingDossierGroup = ReturnType<typeof groupDocumentsByDossier>[number]
 
+function cleanNumberingStyleOverrides(
+  overrides: NumberingStyleOverrides | null | undefined
+): NumberingStyleOverrides {
+  const clean: NumberingStyleOverrides = {}
+  if (
+    typeof overrides?.font_size === "number" &&
+    Number.isFinite(overrides.font_size)
+  ) {
+    clean.font_size = overrides.font_size
+  }
+  if (typeof overrides?.color === "string" && overrides.color.trim()) {
+    clean.color = overrides.color.trim()
+  }
+  if (
+    typeof overrides?.opacity === "number" &&
+    Number.isFinite(overrides.opacity)
+  ) {
+    clean.opacity = overrides.opacity
+  }
+  return clean
+}
+
+function numberingStyleOverridesEqual(
+  left: NumberingStyleOverrides | null | undefined,
+  right: NumberingStyleOverrides | null | undefined
+): boolean {
+  const cleanLeft = cleanNumberingStyleOverrides(left)
+  const cleanRight = cleanNumberingStyleOverrides(right)
+  return (
+    cleanLeft.font_size === cleanRight.font_size &&
+    cleanLeft.color === cleanRight.color &&
+    cleanLeft.opacity === cleanRight.opacity
+  )
+}
+
 function revisionToken(value: unknown): string | null {
   if (typeof value === "number" && Number.isFinite(value)) {
     return String(Math.trunc(value))
@@ -1174,6 +1240,8 @@ function mergeCachedNumberingPage(
     cluster_version_id: current.cluster_version_id,
     document_numbering_mode: current.document_numbering_mode,
     document_numbering_style_preset: current.document_numbering_style_preset,
+    document_numbering_style_overrides:
+      current.document_numbering_style_overrides,
     active: current.active,
     job: current.job,
     summary: current.summary,
