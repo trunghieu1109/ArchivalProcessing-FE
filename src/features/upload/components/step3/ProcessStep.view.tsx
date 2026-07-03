@@ -57,7 +57,6 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     autoBatchPlanRequested,
     batchGroups,
     batchMode,
-    batchSizeInput,
     bulkReviewSelectionActive,
     bulkRetryItems,
     bulkSelectedIds,
@@ -91,8 +90,6 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     confirmingAutoBatchIndexes,
     confirmingManualQuickWorkerIds,
     handleApply,
-    handleBatchSizeInputBlur,
-    handleBatchSizeInputChange,
     handleExportMetadataReview,
     handlePreviewResizePointerDown,
     handleRetryMetadata,
@@ -365,8 +362,6 @@ export function ProcessStepView(props: ProcessStepViewProps) {
               displayedBulkSelectableItems={displayedBulkSelectableItems}
               displayedItems={displayedItems}
               finishMetadataBatch={finishMetadataBatch}
-              handleBatchSizeInputBlur={handleBatchSizeInputBlur}
-              handleBatchSizeInputChange={handleBatchSizeInputChange}
               handleRetrySelectedMetadata={handleRetrySelectedMetadata}
               handleReviewModeChange={handleReviewModeChange}
               handleSelectBatch={handleSelectBatch}
@@ -397,7 +392,6 @@ export function ProcessStepView(props: ProcessStepViewProps) {
               toggleManualSelectedOnly={toggleManualSelectedOnly}
               workers={workers}
               workersLoading={workersLoading}
-              batchSizeInput={batchSizeInput}
             />
           </div>
           <div className="flex min-w-0 flex-col gap-3">

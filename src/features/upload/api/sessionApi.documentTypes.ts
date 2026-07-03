@@ -420,6 +420,10 @@ export interface CreateMetadataBatchResponse {
   assigned_to_user_id?: string | number | null
   assigned_to_email?: string | null
   assigned_to_name?: string | null
+  batch_created?: boolean
+  appended_to_existing_batch?: boolean
+  existing_batch_document_count?: number
+  batch_document_count?: number
   requested_count?: number
   updated_count: number
   skipped_count?: number

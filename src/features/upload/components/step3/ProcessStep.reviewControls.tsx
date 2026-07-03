@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import {
   ChevronDown,
   CheckCircle2,
@@ -17,7 +17,6 @@ import { Button } from "@/components/ui/button"
 import { ReviewModeButton } from "./ProcessStep.parts"
 import { cn } from "@/shared/lib/utils"
 import {
-  METADATA_BATCH_SIZE_OPTIONS,
   type MetadataBatchMode,
   type MetadataBatchGroup,
   type MetadataReviewMode,
@@ -64,8 +63,6 @@ interface ProcessStepReviewControlsProps {
   displayedBulkSelectableItems: PdfMetadata[]
   displayedItems: PdfMetadata[]
   finishMetadataBatch: (group: MetadataBatchGroup) => Promise<void>
-  handleBatchSizeInputBlur: () => void
-  handleBatchSizeInputChange: (value: string) => void
   handleReviewModeChange: (mode: MetadataReviewMode) => void
   handleSelectBatch: (group: MetadataBatchGroup) => void
   handleRetrySelectedMetadata: () => Promise<void>
@@ -100,7 +97,6 @@ interface ProcessStepReviewControlsProps {
   toggleManualSelectedOnly: () => void
   workers: ChinhlyUser[]
   workersLoading: boolean
-  batchSizeInput: string
 }
 
 export function ProcessStepReviewControls(
@@ -140,8 +136,6 @@ export function ProcessStepReviewControls(
     displayedBulkSelectableItems,
     displayedItems,
     finishMetadataBatch,
-    handleBatchSizeInputBlur,
-    handleBatchSizeInputChange,
     handleReviewModeChange,
     handleSelectBatch,
     handleRetrySelectedMetadata,
@@ -172,11 +166,9 @@ export function ProcessStepReviewControls(
     toggleManualSelectedOnly,
     workers,
     workersLoading,
-    batchSizeInput,
   } = props
   const [batchSelectorOpen, setBatchSelectorOpen] = useState(false)
   const [autoSplitPanelOpen, setAutoSplitPanelOpen] = useState(false)
-  const [autoBatchSizeEdited, setAutoBatchSizeEdited] = useState(false)
   const manualSelectionLimit = 1000
   const manualSelectedCount = manualSelectedIds.size
   const manualSelectionOverLimit = manualSelectedCount > manualSelectionLimit
@@ -198,6 +190,19 @@ export function ProcessStepReviewControls(
     const workerId = chinhlyUserId(worker)
     return Boolean(workerId && selectedManualWorkerIds.has(workerId))
   })
+  const existingBatchByWorkerId = useMemo(() => {
+    const batchByWorkerId = new Map<string, MetadataBatchGroup>()
+    batchGroups.forEach((group: MetadataBatchGroup) => {
+      if (group.kind !== "manual") return
+      const workerId = String(group.assigneeUserId ?? "").trim()
+      if (!workerId || batchByWorkerId.has(workerId)) return
+      batchByWorkerId.set(workerId, group)
+    })
+    return batchByWorkerId
+  }, [batchGroups])
+  const selectedAssigneeBatch = selectedAssigneeId
+    ? (existingBatchByWorkerId.get(selectedAssigneeId) ?? null)
+    : null
   const manualQuickRows = selectedManualWorkers.map((worker: ChinhlyUser) => {
     const workerId = chinhlyUserId(worker)
     const rawCount = manualQuickCounts.get(workerId) ?? ""
@@ -211,6 +216,7 @@ export function ProcessStepReviewControls(
       rawCount,
       requestedCount,
       confirmation,
+      existingBatch: existingBatchByWorkerId.get(workerId) ?? null,
     }
   })
   const pendingManualQuickCount = manualQuickRows.filter(
@@ -250,9 +256,6 @@ export function ProcessStepReviewControls(
     }
     setSelectedAutoWorkerIds(next)
     setAutoBatchPlanRequested(false)
-    if (!autoBatchSizeEdited && next.size > 0) {
-      handleBatchSizeInputChange(String(next.size))
-    }
   }
   const toggleManualQuickWorker = (workerId: string, checked: boolean) => {
     if (manualQuickConfirmations.has(workerId)) return
@@ -302,14 +305,9 @@ export function ProcessStepReviewControls(
   const handleAutoSplitClick = () => {
     setBatchSelectorOpen(false)
     setAutoSplitPanelOpen(true)
-    setAutoBatchSizeEdited(false)
-    if (selectedAutoWorkerCount > 0) {
-      handleBatchSizeInputChange(String(selectedAutoWorkerCount))
-    }
     setAutoBatchPlanRequested(false)
   }
   const handleAutoPlanRequest = () => {
-    handleBatchSizeInputBlur()
     setAutoBatchPlanRequested(true)
   }
   const handleConfirmAllAutoBatches = async () => {
@@ -561,14 +559,20 @@ export function ProcessStepReviewControls(
                       {workers.map((worker: ChinhlyUser) => {
                         const id = chinhlyUserId(worker)
                         if (!id) return null
+                        const existingBatch = existingBatchByWorkerId.get(id)
                         return (
                           <option key={id} value={id}>
-                            {chinhlyUserLabel(worker)}
+                            {workerOptionLabel(worker, existingBatch)}
                           </option>
                         )
                       })}
                     </select>
                   </label>
+                  {selectedAssigneeId ? (
+                    <span className="min-w-[12rem] text-[11px] font-medium text-[#64748B]">
+                      {workerBatchStatusLabel(selectedAssigneeBatch)}
+                    </span>
+                  ) : null}
                   <Button
                     type="button"
                     size="sm"
@@ -586,7 +590,7 @@ export function ProcessStepReviewControls(
                     ) : (
                       <Plus data-icon="inline-start" className="size-3" />
                     )}
-                    Tạo lô mới
+                    Gán tài liệu
                   </Button>
                   <Button
                     type="button"
@@ -683,10 +687,11 @@ export function ProcessStepReviewControls(
                       if (!workerId) return null
                       const checked = selectedManualWorkerIds.has(workerId)
                       const confirmed = manualQuickConfirmations.has(workerId)
+                      const existingBatch = existingBatchByWorkerId.get(workerId)
                       return (
                         <label
                           key={workerId}
-                          className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-xs text-[#0F172A] hover:bg-white"
+                          className="flex min-w-0 items-start gap-2 rounded-md px-2 py-1.5 text-xs text-[#0F172A] hover:bg-white"
                         >
                           <input
                             type="checkbox"
@@ -698,10 +703,15 @@ export function ProcessStepReviewControls(
                               )
                             }
                             disabled={manualQuickBusy || confirmed}
-                            className="size-3.5 shrink-0"
+                            className="mt-0.5 size-3.5 shrink-0"
                           />
-                          <span className="min-w-0 truncate">
-                            {chinhlyUserLabel(worker)}
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate">
+                              {chinhlyUserLabel(worker)}
+                            </span>
+                            <span className="block truncate text-[10px] text-[#64748B]">
+                              {workerBatchStatusLabel(existingBatch)}
+                            </span>
                           </span>
                         </label>
                       )
@@ -742,7 +752,7 @@ export function ProcessStepReviewControls(
                             {chinhlyUserLabel(row.worker)}
                           </span>
                           <span className="block text-[10px] text-[#64748B]">
-                            Xác nhận trước sẽ lấy tài liệu kế tiếp
+                            {workerBatchStatusLabel(row.existingBatch)}
                           </span>
                         </div>
                         <label className="flex min-w-0 items-center gap-2 rounded-md border border-[#CBD5E1] bg-[#F8FAFC] px-2 py-1.5 text-xs text-[#0F172A]">
@@ -772,7 +782,10 @@ export function ProcessStepReviewControls(
                           )}
                         >
                           {row.confirmation
-                            ? `${row.confirmation.updated_count} đã gán`
+                            ? confirmationBatchStatusLabel(
+                                row.confirmation,
+                                row.confirmation.updated_count
+                              )
                             : rowExceedsAvailable
                               ? `Vượt số còn lại (${manualQuickUnassignedCount})`
                               : row.requestedCount > 0
@@ -968,35 +981,14 @@ export function ProcessStepReviewControls(
               <p className="text-[11px] text-[#64748B]">
                 {autoBatchPlanRequested && autoBatchPlan
                   ? `${autoBatchPlan.groups.length} lô · ${autoBatchPlan.total_count} tài liệu · ${selectedAutoWorkerCount} worker`
-                  : "Chọn số lô và worker tham gia"}
+                  : "Số lô sẽ bằng số worker tham gia"}
               </p>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
-              <label className="flex h-8 items-center gap-2 rounded-lg border border-[#CBD5E1] bg-[#F8FAFC] px-2 text-xs font-medium text-[#475569]">
-                Số lô
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={batchSizeInput}
-                  onChange={(event) => {
-                    setAutoBatchSizeEdited(true)
-                    handleBatchSizeInputChange(event.target.value)
-                  }}
-                  onBlur={handleBatchSizeInputBlur}
-                  disabled={
-                    autoBatchPlanLoading ||
-                    confirmingAllAutoBatches ||
-                    confirmingAutoBatchIndexes.size > 0
-                  }
-                  className="h-6 w-14 rounded-md border border-[#CBD5E1] bg-white px-2 text-xs text-[#0F172A] outline-none focus-visible:border-[#0052FF] focus-visible:ring-2 focus-visible:ring-[#0052FF]/20"
-                  list="metadata-batch-count-options"
-                />
-                <datalist id="metadata-batch-count-options">
-                  {METADATA_BATCH_SIZE_OPTIONS.map((value) => (
-                    <option key={value} value={value} />
-                  ))}
-                </datalist>
-              </label>
+              <div className="flex h-8 items-center gap-2 rounded-lg border border-[#CBD5E1] bg-[#F8FAFC] px-2 text-xs font-medium text-[#475569]">
+                <Scissors className="size-3 text-[#0052FF]" />
+                {selectedAutoWorkerCount} lô
+              </div>
               <Button
                 type="button"
                 variant={autoBatchPlanRequested ? "outline" : "default"}
@@ -1078,10 +1070,11 @@ export function ProcessStepReviewControls(
                   const workerId = chinhlyUserId(worker)
                   if (!workerId) return null
                   const checked = selectedAutoWorkerIds.has(workerId)
+                  const existingBatch = existingBatchByWorkerId.get(workerId)
                   return (
                     <label
                       key={workerId}
-                      className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-xs text-[#0F172A] hover:bg-white"
+                      className="flex min-w-0 items-start gap-2 rounded-md px-2 py-1.5 text-xs text-[#0F172A] hover:bg-white"
                     >
                       <input
                         type="checkbox"
@@ -1093,10 +1086,15 @@ export function ProcessStepReviewControls(
                           confirmingAllAutoBatches ||
                           confirmingAutoBatchIndexes.size > 0
                         }
-                        className="size-3.5 shrink-0"
+                        className="mt-0.5 size-3.5 shrink-0"
                       />
-                      <span className="min-w-0 truncate">
-                        {chinhlyUserLabel(worker)}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate">
+                          {chinhlyUserLabel(worker)}
+                        </span>
+                        <span className="block truncate text-[10px] text-[#64748B]">
+                          {workerBatchStatusLabel(existingBatch)}
+                        </span>
                       </span>
                     </label>
                   )
@@ -1146,6 +1144,9 @@ export function ProcessStepReviewControls(
                     )
                     const assignedToUserId =
                       autoBatchAssigneeIds.get(planGroup.index) ?? ""
+                    const assignedExistingBatch = assignedToUserId
+                      ? (existingBatchByWorkerId.get(assignedToUserId) ?? null)
+                      : null
                     return (
                       <div
                         key={planGroup.index}
@@ -1167,35 +1168,44 @@ export function ProcessStepReviewControls(
                             -{planGroup.end}
                           </span>
                         </button>
-                        <label className="flex min-w-0 items-center gap-2 rounded-md border border-[#CBD5E1] bg-[#F8FAFC] px-2 py-1.5 text-xs text-[#0F172A]">
-                          <UserRound className="size-3 shrink-0 text-[#0052FF]" />
-                          <select
-                            value={assignedToUserId}
-                            onChange={(event) =>
-                              handleAutoBatchAssigneeChange(
-                                planGroup.index,
-                                event.target.value
-                              )
-                            }
-                            disabled={
-                              Boolean(confirmation) ||
-                              confirming ||
-                              confirmingAllAutoBatches
-                            }
-                            className="min-w-0 flex-1 bg-transparent text-xs outline-none"
-                          >
-                            <option value="">Chọn worker</option>
-                            {selectedAutoWorkers.map((worker: ChinhlyUser) => {
-                              const workerId = chinhlyUserId(worker)
-                              if (!workerId) return null
-                              return (
-                                <option key={workerId} value={workerId}>
-                                  {chinhlyUserLabel(worker)}
-                                </option>
-                              )
-                            })}
-                          </select>
-                        </label>
+                        <div className="min-w-0">
+                          <label className="flex min-w-0 items-center gap-2 rounded-md border border-[#CBD5E1] bg-[#F8FAFC] px-2 py-1.5 text-xs text-[#0F172A]">
+                            <UserRound className="size-3 shrink-0 text-[#0052FF]" />
+                            <select
+                              value={assignedToUserId}
+                              onChange={(event) =>
+                                handleAutoBatchAssigneeChange(
+                                  planGroup.index,
+                                  event.target.value
+                                )
+                              }
+                              disabled={
+                                Boolean(confirmation) ||
+                                confirming ||
+                                confirmingAllAutoBatches
+                              }
+                              className="min-w-0 flex-1 bg-transparent text-xs outline-none"
+                            >
+                              <option value="">Chọn worker</option>
+                              {selectedAutoWorkers.map((worker: ChinhlyUser) => {
+                                const workerId = chinhlyUserId(worker)
+                                if (!workerId) return null
+                                const existingBatch =
+                                  existingBatchByWorkerId.get(workerId)
+                                return (
+                                  <option key={workerId} value={workerId}>
+                                    {workerOptionLabel(worker, existingBatch)}
+                                  </option>
+                                )
+                              })}
+                            </select>
+                          </label>
+                          {assignedToUserId ? (
+                            <span className="mt-1 block truncate text-[10px] text-[#64748B]">
+                              {workerBatchStatusLabel(assignedExistingBatch)}
+                            </span>
+                          ) : null}
+                        </div>
                         {confirmation ? (
                           <span
                             className={
@@ -1207,7 +1217,10 @@ export function ProcessStepReviewControls(
                             <CheckCircle2 className="size-3" />
                             {confirmationSkippedCount > 0
                               ? `${confirmation.updated_count}/${planGroup.total_count} đã gán`
-                              : "Đã xác nhận"}
+                              : confirmationBatchStatusLabel(
+                                  confirmation,
+                                  confirmation.updated_count
+                                )}
                           </span>
                         ) : (
                           <Button
@@ -1247,6 +1260,33 @@ export function ProcessStepReviewControls(
       )}
     </>
   )
+}
+
+function workerOptionLabel(
+  worker: ChinhlyUser,
+  existingBatch: MetadataBatchGroup | null | undefined
+): string {
+  const label = chinhlyUserLabel(worker)
+  if (!existingBatch) return label
+  return `${label} - đang có ${existingBatch.totalCount} tài liệu trong ${existingBatch.label}`
+}
+
+function workerBatchStatusLabel(
+  existingBatch: MetadataBatchGroup | null | undefined
+): string {
+  if (!existingBatch) return "Chưa có lô; xác nhận sẽ tạo lô mới"
+  return `Đã có ${existingBatch.label} · ${existingBatch.totalCount} tài liệu; sẽ cộng dồn`
+}
+
+function confirmationBatchStatusLabel(
+  confirmation: CreateMetadataBatchResponse,
+  fallbackUpdatedCount: number
+): string {
+  const batchDocumentCount = Number(confirmation.batch_document_count)
+  if (Number.isFinite(batchDocumentCount) && batchDocumentCount > 0) {
+    return `Đã gán · lô có ${Math.floor(batchDocumentCount)} tài liệu`
+  }
+  return `${fallbackUpdatedCount} đã gán`
 }
 
 function metadataBatchAssigneeLabel(group: MetadataBatchGroup): string {

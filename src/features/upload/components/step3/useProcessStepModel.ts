@@ -577,12 +577,15 @@ export function useProcessStepModel({
     }
   }, [canManageMetadataBatches])
 
+  const selectedAutoWorkerCount = selectedAutoWorkerIds.size
+
   useEffect(() => {
     if (
       !sessionId ||
       !canManageMetadataBatches ||
       reviewMode !== "batch" ||
-      !autoBatchPlanRequested
+      !autoBatchPlanRequested ||
+      selectedAutoWorkerCount < 1
     ) {
       setAutoBatchPlan(null)
       setAutoBatchPlanLoading(false)
@@ -597,7 +600,7 @@ export function useProcessStepModel({
     let cancelled = false
     setAutoBatchPlanLoading(true)
     setAutoBatchPlanError("")
-    getAutoMetadataBatchPlan(sessionId, batchSize)
+    getAutoMetadataBatchPlan(sessionId, selectedAutoWorkerCount)
       .then((plan) => {
         if (cancelled) return
         setAutoBatchPlan(plan)
@@ -622,9 +625,9 @@ export function useProcessStepModel({
     }
   }, [
     autoBatchPlanRequested,
-    batchSize,
     canManageMetadataBatches,
     reviewMode,
+    selectedAutoWorkerCount,
     sessionId,
   ])
 
@@ -686,9 +689,7 @@ export function useProcessStepModel({
           autoBatchConfirmations.has(group.index)
             ? (previous.get(group.index) ?? "")
             : workerIds.length > 0
-            ? workerIds[
-                ((group.display_index ?? index + 1) - 1) % workerIds.length
-              ]
+            ? workerIds[index % workerIds.length]
             : "",
         ])
       )

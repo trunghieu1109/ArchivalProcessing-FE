@@ -1029,7 +1029,12 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
       setSelectedDocumentId(null)
       const skippedCount = response.skipped_count ?? skippedDocuments.length
       if (response.updated_count > 0) {
-        toast.success(`Da tao lo moi voi ${response.updated_count} tai lieu.`)
+        const batchDocumentCount = Number(response.batch_document_count)
+        toast.success(
+          Number.isFinite(batchDocumentCount) && batchDocumentCount > 0
+            ? `Đã gán ${response.updated_count} tài liệu. Lô hiện có ${Math.floor(batchDocumentCount)} tài liệu.`
+            : `Đã gán ${response.updated_count} tài liệu.`
+        )
       }
       if (skippedCount > 0) {
         toast.warning(
