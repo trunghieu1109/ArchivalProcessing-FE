@@ -247,6 +247,8 @@ export function FinalResult({
     () => versionToGroups(pendingClusterVersion, metadataItems),
     [metadataItems, pendingClusterVersion]
   )
+  const pendingClusterVersionId = pendingClusterVersion?.id ?? null
+  const hasPendingClusterVersion = pendingClusterVersionId !== null
   const pendingClusterDocumentCount = pendingClusterGroups.reduce(
     (sum, group) => sum + group.documents.length,
     0
@@ -292,15 +294,15 @@ export function FinalResult({
       activeClusterVersionId &&
       displayedClusterVersionId === activeClusterVersionId
     )
-    if (rebuildBaselineVersionId) {
+    if (rebuildSubmitting || rebuildBaselineVersionId || loading) {
       return () => {
         cancelled = true
       }
     }
-    if (!displayingActiveVersion || pendingClusterVersion || loading) {
+    if (!displayingActiveVersion || hasPendingClusterVersion) {
       const timeoutId = window.setTimeout(() => {
         if (cancelled) return
-        if (!displayingActiveVersion || pendingClusterVersion || loading) {
+        if (!displayingActiveVersion || hasPendingClusterVersion) {
           setPendingFeedbackCount(0)
         }
         if (displayingActiveVersion && currentDisplayedClusterVersion) {
@@ -346,7 +348,7 @@ export function FinalResult({
           hasServerPendingFeedback
             ? response.pending_feedback!
             : (response.feedback ?? []),
-          displayedClusterVersion,
+          currentDisplayedClusterVersion,
           hasServerPendingFeedback
         )
         setGroups(
@@ -366,10 +368,11 @@ export function FinalResult({
   }, [
     activeClusterVersionId,
     displayedClusterVersionId,
+    hasPendingClusterVersion,
     loading,
-    pendingClusterVersion?.id,
     pendingFeedbackRefreshKey,
     rebuildBaselineVersionId,
+    rebuildSubmitting,
     sessionId,
   ])
 

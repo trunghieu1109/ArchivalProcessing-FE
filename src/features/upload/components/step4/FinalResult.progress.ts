@@ -15,7 +15,7 @@ const CLUSTER_PROGRESS_PHASE_ALIASES: Record<string, string> = {
   loading_verified_documents: "updating_dossiers",
   building_dossiers: "updating_dossiers",
   naming_dossiers: "naming_dossiers",
-  classifying_retention: "finding_retention",
+  classifying_retention: "classifying_dossiers",
   persisting_clusters: "reviewing_dossiers",
 }
 
@@ -78,21 +78,6 @@ export function normalizeClusterProgressPhase(
   return CLUSTER_PROGRESS_PHASE_ALIASES[phase] ?? null
 }
 
-export function nextClusterProgressPhase(
-  phase: string | null | undefined
-): string {
-  const currentPhase =
-    normalizeClusterProgressPhase(phase) ?? FIRST_CLUSTER_PROGRESS_PHASE_ID
-  const currentIndex = CLUSTER_PROGRESS_PHASES.findIndex(
-    (item) => item.id === currentPhase
-  )
-  const nextIndex = Math.min(
-    Math.max(currentIndex, 0) + 1,
-    CLUSTER_PROGRESS_PHASES.length - 1
-  )
-  return CLUSTER_PROGRESS_PHASES[nextIndex].id
-}
-
 export function clusterProgressLabel(phaseId: string): string {
   return (
     CLUSTER_PROGRESS_PHASES.find((phase) => phase.id === phaseId)?.label ?? ""
@@ -115,9 +100,9 @@ export function clusterProgressMessageForPhase(
     case "naming_dossiers":
       return "Đang đặt tiêu đề hồ sơ từ nội dung tài liệu."
     case "classifying_dossiers":
-      return "Đang phân loại hồ sơ theo phương án chỉnh lý."
+      return "Đang phân loại hồ sơ vào các nhóm lớn, vừa và nhỏ."
     case "finding_retention":
-      return "Đang tìm thời hạn bảo quản phù hợp."
+      return "Đang tìm thời hạn bảo quản và gợi ý căn cứ phù hợp."
     case "reviewing_dossiers":
       return "Đang rà soát kết quả trước khi hiển thị phiên bản mới."
     default:

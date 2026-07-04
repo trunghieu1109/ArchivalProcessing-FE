@@ -9,18 +9,53 @@ import { PaginationControls } from "@/features/upload/components/PaginationContr
 import {
   assignSessionCoordinator,
   deleteSession,
+  getSession,
   listSessions,
   type SessionSummary,
 } from "@/features/upload/api/sessionApi"
 import {
   SessionCard,
   SummaryPill,
-  chinhlyUserId,
-  normalizedRole,
 } from "./SessionsPage.components"
+import {
+  analysisStatusesFromSessionDetail,
+  chinhlyUserId,
+  fallbackAnalysisStatuses,
+  normalizedRole,
+  type SessionAnalysisStatuses,
+} from "./SessionsPage.utils"
 
 const LAST_SESSION_KEY = "archival-processing:last-session-id"
 const SESSION_PAGE_SIZE = 12
+
+async function loadAnalysisStatuses(
+  sessions: SessionSummary[]
+): Promise<Record<string, SessionAnalysisStatuses>> {
+  const fallbackStatuses = Object.fromEntries(
+    sessions.map((session) => [
+      session.session_id,
+      fallbackAnalysisStatuses(session),
+    ])
+  ) as Record<string, SessionAnalysisStatuses>
+
+  const results = await Promise.allSettled(
+    sessions.map(async (session) => {
+      const detail = await getSession(session.session_id)
+      return [
+        session.session_id,
+        analysisStatusesFromSessionDetail(detail),
+      ] as const
+    })
+  )
+
+  for (const result of results) {
+    if (result.status !== "fulfilled") continue
+    const [sessionId, statuses] = result.value
+    fallbackStatuses[sessionId] = statuses
+  }
+
+  return fallbackStatuses
+}
 
 export function SessionsPage() {
   const navigate = useNavigate()
@@ -31,6 +66,8 @@ export function SessionsPage() {
   const [sessionPageIndex, setSessionPageIndex] = useState(0)
   const sessionPageSize = SESSION_PAGE_SIZE
   const [coordinators, setCoordinators] = useState<ChinhlyUser[]>([])
+  const [analysisStatusesBySessionId, setAnalysisStatusesBySessionId] =
+    useState<Record<string, SessionAnalysisStatuses>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(
@@ -85,12 +122,18 @@ export function SessionsPage() {
       ) {
         setSessionTotal(total)
         setCoordinators(coordinatorUsers)
+        setAnalysisStatusesBySessionId({})
         setSessionPageIndex(pageCount - 1)
         return
       }
+      const nextAnalysisStatuses = await loadAnalysisStatuses(
+        response.sessions
+      )
+      if (loadRequestIdRef.current !== requestId) return
       setSessions(response.sessions)
       setSessionTotal(total)
       setCoordinators(coordinatorUsers)
+      setAnalysisStatusesBySessionId(nextAnalysisStatuses)
     } catch (err) {
       if (loadRequestIdRef.current !== requestId) return
       const message =
@@ -108,6 +151,7 @@ export function SessionsPage() {
   ])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load()
   }, [load])
 
@@ -125,13 +169,8 @@ export function SessionsPage() {
     navigate(`/sessions/${encodeURIComponent(sessionId)}/step/1`)
   }
 
-  const openArtifacts = (sessionId: string) => {
-    window.localStorage.setItem(LAST_SESSION_KEY, sessionId)
-    navigate(`/sessions/${encodeURIComponent(sessionId)}/step/6?start=1`)
-  }
-
   const removeSession = async (session: SessionSummary) => {
-    const displayName = session.fonds_name?.trim() || session.session_id
+    const displayName = session.fonds_name?.trim() || "Chưa đặt tên phông"
     const confirmed = window.confirm(
       `Xóa session "${displayName}"? Toàn bộ dữ liệu và tệp liên quan sẽ bị xóa vĩnh viễn.`
     )
@@ -185,12 +224,14 @@ export function SessionsPage() {
       )
       toast.success(
         coordinatorUserId
-          ? "Đã phân công session cho coordinator."
-          : "Đã bỏ phân công coordinator khỏi session."
+          ? "Đã phân công người chịu trách nhiệm."
+          : "Đã bỏ phân công người chịu trách nhiệm."
       )
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Không thể phân công coordinator."
+        err instanceof Error
+          ? err.message
+          : "Không thể phân công người chịu trách nhiệm."
       )
     } finally {
       setAssigningSessionId(null)
@@ -236,7 +277,7 @@ export function SessionsPage() {
               Danh sách session
             </p>
             <h2 className="mt-1 text-xl font-semibold text-[#0F172A]">
-              Hồ sơ xử lý đang có trong hệ thống
+              Danh sách các phiên chỉnh lý
             </h2>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-end">
@@ -284,7 +325,6 @@ export function SessionsPage() {
                 session={session}
                 index={index}
                 onOpen={() => openSession(session.session_id)}
-                onArtifacts={() => openArtifacts(session.session_id)}
                 onDelete={() => void removeSession(session)}
                 deleting={deletingSessionId === session.session_id}
                 isAdmin={isAdmin}
@@ -292,6 +332,10 @@ export function SessionsPage() {
                 coordinator={coordinatorById.get(
                   session.coordinator_user_id ?? ""
                 )}
+                analysisStatuses={
+                  analysisStatusesBySessionId[session.session_id] ??
+                  fallbackAnalysisStatuses(session)
+                }
                 assigning={assigningSessionId === session.session_id}
                 onAssignCoordinator={(coordinatorUserId) =>
                   void assignCoordinator(session, coordinatorUserId)

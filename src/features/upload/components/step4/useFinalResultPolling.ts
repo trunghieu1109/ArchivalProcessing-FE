@@ -30,7 +30,6 @@ import {
   isTerminalClusterProgressMessage,
   latestClusterProgressPhase,
   mergeCompletedClusterPhaseSetBefore,
-  nextClusterProgressPhase,
   normalizeClusterProgressPhase,
   type ClusterJobMode,
 } from "./FinalResult.progress"
@@ -44,7 +43,6 @@ const CLUSTER_ACTIVE_POLL_INTERVAL_MS = 5_000
 const CLUSTER_IDLE_POLL_INTERVAL_MS = 30_000
 const CLUSTER_POLL_TIMEOUT_MS = 10 * 60 * 1_000
 const CLUSTER_EVENT_POLL_INTERVAL_MS = 5_000
-const CLUSTER_PROGRESS_TICK_MS = 4_500
 const NO_CLUSTER_VERSION = "__none__"
 
 interface FinalResultPollingContext {
@@ -384,7 +382,7 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
           version = await getActiveClusters(sessionId)
           if (cancelled) return
         }
-        let nextGroups = versionToGroups(version, latestState.metadataItems)
+        const nextGroups = versionToGroups(version, latestState.metadataItems)
         let displayedGroupsForStatus = latestState.groups
 
         if (shouldDisplayInitialVersion && nextVersionId && version) {
@@ -608,29 +606,17 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
             FIRST_CLUSTER_PROGRESS_PHASE_ID,
             clusterJobMode
           )
-        : message
+        : message ||
+          clusterProgressMessageForPhase(
+            FIRST_CLUSTER_PROGRESS_PHASE_ID,
+            clusterJobMode
+          )
     )
-
-    const intervalId = window.setInterval(() => {
-      setClusterProgressPhase((phase: string | null) => {
-        const nextPhase = nextClusterProgressPhase(phase)
-        setClusterCompletedPhases((previous: Set<string>) =>
-          mergeCompletedClusterPhaseSetBefore(previous, nextPhase)
-        )
-        setClusterProgressMessage(
-          clusterProgressMessageForPhase(nextPhase, clusterJobMode)
-        )
-        return nextPhase
-      })
-    }, CLUSTER_PROGRESS_TICK_MS)
-
-    return () => window.clearInterval(intervalId)
   }, [
     checkingClusters,
     clusterJobMode,
     loading,
     rebuildBaselineVersionId,
-    setClusterCompletedPhases,
     setClusterProgressMessage,
     setClusterProgressPhase,
   ])

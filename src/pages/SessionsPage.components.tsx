@@ -1,15 +1,14 @@
-import { useEffect, useState } from "react"
+import { useState, type KeyboardEvent } from "react"
 import type { ReactNode } from "react"
 import {
   AlertTriangle,
   Archive,
   ArrowRight,
   CheckCircle2,
-  Clock,
-  FileStack,
   FileText,
   Layers3,
   Loader2,
+  ShieldCheck,
   Trash2,
   UserCog,
 } from "lucide-react"
@@ -17,36 +16,39 @@ import { motion } from "framer-motion"
 import { cn } from "@/shared/lib/utils"
 import type { ChinhlyUser } from "@/features/auth/api/authApi"
 import type { SessionSummary } from "@/features/upload/api/sessionApi"
+import { chinhlyUserId, type SessionAnalysisStatuses } from "./SessionsPage.utils"
 
 export function SessionCard({
   session,
   index,
   onOpen,
-  onArtifacts,
   onDelete,
   deleting,
   isAdmin,
   coordinators,
   coordinator,
+  analysisStatuses,
   assigning,
   onAssignCoordinator,
 }: {
   session: SessionSummary
   index: number
   onOpen: () => void
-  onArtifacts: () => void
   onDelete: () => void
   deleting: boolean
   isAdmin: boolean
   coordinators: ChinhlyUser[]
   coordinator?: ChinhlyUser
+  analysisStatuses: SessionAnalysisStatuses
   assigning: boolean
   onAssignCoordinator: (coordinatorUserId: string | null) => void
 }) {
   const [assignmentOpen, setAssignmentOpen] = useState(false)
-  const [draftCoordinatorId, setDraftCoordinatorId] = useState(
-    session.coordinator_user_id ?? ""
+  const [draftCoordinatorId, setDraftCoordinatorId] = useState<string | null>(
+    null
   )
+  const currentCoordinatorId = session.coordinator_user_id ?? ""
+  const selectedCoordinatorId = draftCoordinatorId ?? currentCoordinatorId
   const hasPlan = Boolean(session.active_plan_version_id)
   const hasClusters = Boolean(session.active_cluster_version_id)
   const documentCount = session.document_count ?? 0
@@ -60,7 +62,7 @@ export function SessionCard({
     : hasPlan
       ? "Có phương án"
       : statusLabel(session.status)
-  const displayName = session.fonds_name?.trim() || session.session_id
+  const displayName = session.fonds_name?.trim() || "Chưa đặt tên phông"
   const archiveName = session.archive_name?.trim()
   const coordinatorLabel = coordinator
     ? displayChinhlyUser(coordinator)
@@ -68,13 +70,22 @@ export function SessionCard({
       ? `User ${session.coordinator_user_id}`
       : "Chưa phân công"
 
-  useEffect(() => {
-    setDraftCoordinatorId(session.coordinator_user_id ?? "")
-  }, [session.coordinator_user_id])
-
   const saveAssignment = () => {
-    onAssignCoordinator(draftCoordinatorId.trim() || null)
+    onAssignCoordinator(selectedCoordinatorId.trim() || null)
+    setDraftCoordinatorId(null)
     setAssignmentOpen(false)
+  }
+
+  const toggleAssignment = () => {
+    const nextOpen = !assignmentOpen
+    setAssignmentOpen(nextOpen)
+    setDraftCoordinatorId(nextOpen ? currentCoordinatorId : null)
+  }
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") return
+    event.preventDefault()
+    onOpen()
   }
 
   return (
@@ -82,7 +93,11 @@ export function SessionCard({
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.28, delay: index * 0.035 }}
-      className="group flex min-h-56 flex-col justify-between rounded-2xl border border-[#D8E1EC] bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-1 hover:border-[#0052FF]/35 hover:shadow-[0_18px_42px_rgba(15,23,42,0.12)]"
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={handleKeyDown}
+      className="group flex min-h-56 cursor-pointer flex-col justify-between rounded-2xl border border-[#D8E1EC] bg-white p-5 text-left shadow-sm outline-none transition-all hover:-translate-y-1 hover:border-[#0052FF]/35 hover:shadow-[0_18px_42px_rgba(15,23,42,0.12)] focus-visible:border-[#0052FF] focus-visible:ring-2 focus-visible:ring-[#0052FF]/20"
     >
       <div>
         <div className="flex items-start justify-between gap-3">
@@ -94,9 +109,7 @@ export function SessionCard({
               {displayName}
             </p>
             <p className="mt-1 text-xs text-[#64748B]">
-              {displayName === session.session_id
-                ? "Mã session"
-                : `Mã session: ${session.session_id}`}
+              Mã session: {session.session_id}
             </p>
             <p className="mt-1 text-xs text-[#64748B]">
               Cập nhật {formatDate(session.updated_at ?? session.created_at)}
@@ -132,7 +145,7 @@ export function SessionCard({
             <div className="flex min-w-0 items-center gap-2">
               <UserCog className="size-4 shrink-0 text-[#0052FF]" />
               <span className="shrink-0 text-[11px] font-semibold tracking-[0.1em] text-[#64748B] uppercase">
-                Coordinator
+                Người chịu trách nhiệm
               </span>
               <span
                 className="truncate font-semibold text-[#0F172A]"
@@ -142,9 +155,12 @@ export function SessionCard({
               </span>
             </div>
             {assignmentOpen && (
-              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <div
+                className="mt-3 flex flex-col gap-2 sm:flex-row"
+                onClick={(event) => event.stopPropagation()}
+              >
                 <select
-                  value={draftCoordinatorId}
+                  value={selectedCoordinatorId}
                   onChange={(event) =>
                     setDraftCoordinatorId(event.target.value)
                   }
@@ -175,20 +191,23 @@ export function SessionCard({
         )}
         <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
           <Metric
-            icon={<Clock className="size-3.5" />}
-            label="Tạo lúc"
-            value={shortDateTime(session.created_at)}
-            valueClassName="text-xs"
+            icon={<FileText className="size-3.5" />}
+            label="Số tài liệu"
+            value={documentCount}
           />
           <Metric
-            icon={<FileStack className="size-3.5" />}
-            label="Tệp đầu vào"
-            value={session.file_count ?? 0}
+            icon={<CheckCircle2 className="size-3.5" />}
+            label="Extract Đúng"
+            value={correctCount}
+            valueClassName="text-emerald-700"
           />
           <Metric
             icon={<FileText className="size-3.5" />}
-            label="Tài liệu"
-            value={documentCount}
+            label="PAPL"
+            value={analysisStatuses.arrangement}
+            valueClassName={analysisStatusClassName(
+              analysisStatuses.arrangement
+            )}
           />
           <Metric
             icon={<Layers3 className="size-3.5" />}
@@ -196,20 +215,23 @@ export function SessionCard({
             value={clusterCount}
           />
           <Metric
-            icon={<CheckCircle2 className="size-3.5" />}
-            label="Extract đúng"
-            value={correctCount}
-            valueClassName="text-emerald-700"
-          />
-          <Metric
             icon={<AlertTriangle className="size-3.5" />}
-            label="Extract sai"
+            label="Extract Sai"
             value={incorrectCount}
             valueClassName={incorrectCount > 0 ? "text-amber-700" : undefined}
           />
+          <Metric
+            icon={<ShieldCheck className="size-3.5" />}
+            label="THBQ"
+            value={analysisStatuses.retention}
+            valueClassName={analysisStatusClassName(analysisStatuses.retention)}
+          />
         </div>
       </div>
-      <div className="mt-5 flex flex-col gap-2 border-t border-[#EEF2F7] pt-4 sm:flex-row sm:items-center sm:justify-between">
+      <div
+        className="mt-5 flex flex-col gap-2 border-t border-[#EEF2F7] pt-4 sm:flex-row sm:items-center sm:justify-between"
+        onClick={(event) => event.stopPropagation()}
+      >
         <button
           type="button"
           onClick={onOpen}
@@ -222,7 +244,7 @@ export function SessionCard({
           {isAdmin && (
             <button
               type="button"
-              onClick={() => setAssignmentOpen((current) => !current)}
+              onClick={toggleAssignment}
               disabled={assigning}
               className="flex items-center justify-center gap-1.5 rounded-lg border border-[#CBD5E1] px-2.5 py-1 text-xs font-semibold text-[#475569] transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF] disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -232,17 +254,6 @@ export function SessionCard({
                 <UserCog className="size-3.5" />
               )}
               Phân công
-            </button>
-          )}
-          {hasClusters && (
-            <button
-              type="button"
-              onClick={onArtifacts}
-              disabled={deleting}
-              className="flex items-center justify-center gap-1.5 rounded-lg border border-[#0052FF] bg-[#0052FF] px-2.5 py-1 text-xs font-semibold text-white transition-colors hover:border-[#0047D6] hover:bg-[#0047D6] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Archive className="size-3.5" />
-              Tạo mục lục
             </button>
           )}
           <button
@@ -319,22 +330,6 @@ function formatDate(value: string): string {
   }).format(date)
 }
 
-function shortDateTime(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return new Intl.DateTimeFormat("vi-VN", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date)
-}
-
-export function chinhlyUserId(user: ChinhlyUser): string {
-  return String(user.id ?? user.user_id ?? "").trim()
-}
-
 function displayChinhlyUser(user: ChinhlyUser): string {
   const id = chinhlyUserId(user)
   const name = String(
@@ -343,16 +338,18 @@ function displayChinhlyUser(user: ChinhlyUser): string {
       user.email ||
       user.username ||
       id ||
-      "Coordinator"
+      "Người chịu trách nhiệm"
   ).trim()
   const email = String(user.email || user.username || "").trim()
   return email && email !== name ? `${name} (${email})` : name
 }
 
-export function normalizedRole(role: unknown): string {
-  return String(role || "")
-    .trim()
-    .toLowerCase()
+function analysisStatusClassName(
+  status: SessionAnalysisStatuses[keyof SessionAnalysisStatuses]
+): string {
+  if (status === "Đã phân tích") return "text-emerald-700"
+  if (status === "Đang phân tích") return "text-[#0052FF]"
+  return "text-slate-600"
 }
 
 function statusLabel(value: string): string {
