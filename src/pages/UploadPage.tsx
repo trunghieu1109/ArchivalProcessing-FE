@@ -68,6 +68,23 @@ export function UploadPage() {
     Math.max(parseInt(step ?? "1", 10), 1),
     7
   ) as AppStep
+  const visitedStepStorageKey = `archival-processing:highest-visited-step:${routeSessionId ?? "new"}`
+  const storedVisitedStep = Number(
+    window.sessionStorage.getItem(visitedStepStorageKey)
+  )
+  const highestVisitedStep = Math.max(
+    currentStep,
+    Number.isInteger(storedVisitedStep)
+      ? Math.min(Math.max(storedVisitedStep, 1), 7)
+      : 1
+  ) as AppStep
+
+  useEffect(() => {
+    window.sessionStorage.setItem(
+      visitedStepStorageKey,
+      String(highestVisitedStep)
+    )
+  }, [highestVisitedStep, visitedStepStorageKey])
   const currentUserRole = String(user?.role ?? "")
     .trim()
     .toLowerCase()
@@ -732,6 +749,7 @@ export function UploadPage() {
   return (
     <UploadPageView
       currentStep={currentStep}
+      highestVisitedStep={highestVisitedStep}
       existingSessionMode={existingSessionMode}
       routeSessionId={routeSessionId}
       sessionId={sessionId}

@@ -687,7 +687,8 @@ export function ProcessStepReviewControls(
                       if (!workerId) return null
                       const checked = selectedManualWorkerIds.has(workerId)
                       const confirmed = manualQuickConfirmations.has(workerId)
-                      const existingBatch = existingBatchByWorkerId.get(workerId)
+                      const existingBatch =
+                        existingBatchByWorkerId.get(workerId)
                       return (
                         <label
                           key={workerId}
@@ -844,68 +845,70 @@ export function ProcessStepReviewControls(
       </div>
       {reviewMode === "batch" && batchGroups.length > 0 && activeBatch && (
         <div className="rounded-xl border border-[#D8E1EC] bg-white p-2.5">
+          <div className="flex items-center gap-2 px-1 pb-2">
+            <FolderOpen className="size-4 text-[#0052FF]" />
+            <h3 className="text-sm font-semibold text-[#0F172A]">
+              Danh sách các lô dữ liệu
+            </h3>
+          </div>
+          <div className="hidden grid-cols-[minmax(8rem,1.1fr)_repeat(5,minmax(6.5rem,0.8fr))_minmax(10rem,1fr)] border-y border-[#E2E8F0] px-3 py-2 text-[10px] font-semibold tracking-[0.12em] text-[#64748B] uppercase lg:grid">
+            <span>Tên lô</span>
+            <span>Tài liệu</span>
+            <span>Đã review</span>
+            <span>Tự động</span>
+            <span>Cần xác minh</span>
+            <span>Lỗi</span>
+            <span>Phụ trách</span>
+          </div>
           <button
             type="button"
             aria-expanded={batchSelectorOpen}
             onClick={() => setBatchSelectorOpen((open) => !open)}
-            className="grid w-full grid-cols-1 gap-3 rounded-lg border border-[#C7D7EA] bg-white px-3 py-2.5 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#8FB5FF] xl:grid-cols-[minmax(10rem,1fr)_minmax(28rem,2fr)_minmax(10rem,1fr)_auto]"
+            className="mt-2 grid w-full grid-cols-2 gap-x-3 gap-y-1 rounded-lg border border-[#C7D7EA] bg-white px-3 py-2.5 text-left text-xs shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#8FB5FF] lg:grid-cols-[minmax(8rem,1.1fr)_repeat(5,minmax(6.5rem,0.8fr))_minmax(10rem,1fr)] lg:items-center"
           >
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-[#0F172A]">
+              <p className="truncate font-semibold text-[#0F172A]">
                 {activeBatch.label}
               </p>
-              <p className="mt-1 text-[11px] text-[#64748B]">
-                {activeBatch.totalCount} tài liệu
-              </p>
             </div>
-            <div className="flex min-w-0 flex-wrap items-center gap-2 text-[11px] text-[#475569]">
-              <BatchCountPill
-                label="Đã review"
-                value={activeBatch.reviewedCount}
-                tone="reviewed"
-              />
-              <BatchCountPill
-                label="Tự động xác thực"
-                value={activeBatch.autoVerifiedCount}
-              />
-              <BatchCountPill
-                label="Cần xác minh"
-                value={activeBatch.warningCount}
-                tone="warning"
-              />
-              <BatchCountPill
-                label="Lỗi"
-                value={activeBatch.failedCount}
-                tone="error"
-              />
-            </div>
-            <div className="min-w-0 text-[11px] text-[#475569]">
-              <p className="font-semibold text-[#0F172A]">
+            <span className="text-[11px] text-[#475569]">
+              <span className="text-[#64748B] lg:hidden">Tài liệu: </span>
+              {activeBatch.totalCount}
+            </span>
+            <span className="text-[11px] font-semibold text-[#0052FF]">
+              <span className="font-normal text-[#64748B] lg:hidden">
+                Đã review:{" "}
+              </span>
+              {activeBatch.reviewedCount}
+            </span>
+            <span className="text-[11px] text-[#475569]">
+              <span className="text-[#64748B] lg:hidden">Tự động: </span>
+              {activeBatch.autoVerifiedCount}
+            </span>
+            <span className="text-[11px] text-[#475569]">
+              <span className="text-[#64748B] lg:hidden">Cần xác minh: </span>
+              {activeBatch.warningCount}
+            </span>
+            <span className="text-[11px] text-[#475569]">
+              <span className="text-[#64748B] lg:hidden">Lỗi: </span>
+              {activeBatch.failedCount}
+            </span>
+            <span className="flex min-w-0 items-center justify-between gap-2 text-[11px] text-[#475569]">
+              <span className="truncate">
+                <span className="text-[#64748B] lg:hidden">Phụ trách: </span>
                 {metadataBatchAssigneeLabel(activeBatch)}
-              </p>
-              <p className="mt-1">Phụ trách</p>
-            </div>
-            <div className="flex min-w-0 items-center justify-end">
+              </span>
               <ChevronDown
                 className={cn(
                   "size-4 shrink-0 text-[#64748B] transition-transform",
                   batchSelectorOpen ? "rotate-180" : ""
                 )}
               />
-            </div>
+            </span>
           </button>
           {batchSelectorOpen ? (
             <div className="mt-2 border-t border-[#E2E8F0] pt-2">
-              <div className="hidden grid-cols-[minmax(8rem,1.1fr)_repeat(5,minmax(6.5rem,0.8fr))_minmax(10rem,1fr)] px-3 py-1.5 text-[10px] font-semibold tracking-[0.12em] text-[#64748B] uppercase lg:grid">
-                <span>Tên lô</span>
-                <span>Tài liệu</span>
-                <span>Đã review</span>
-                <span>Tự động</span>
-                <span>Cần xác minh</span>
-                <span>Lỗi</span>
-                <span>Phụ trách</span>
-              </div>
-              <div className="max-h-[19rem] overflow-y-auto border-t border-[#EEF2F7]">
+              <div className="max-h-[19rem] overflow-y-auto">
                 {batchGroups.map((group: MetadataBatchGroup) => {
                   const active = group.index === activeBatch.index
                   return (
@@ -1187,17 +1190,19 @@ export function ProcessStepReviewControls(
                               className="min-w-0 flex-1 bg-transparent text-xs outline-none"
                             >
                               <option value="">Chọn worker</option>
-                              {selectedAutoWorkers.map((worker: ChinhlyUser) => {
-                                const workerId = chinhlyUserId(worker)
-                                if (!workerId) return null
-                                const existingBatch =
-                                  existingBatchByWorkerId.get(workerId)
-                                return (
-                                  <option key={workerId} value={workerId}>
-                                    {workerOptionLabel(worker, existingBatch)}
-                                  </option>
-                                )
-                              })}
+                              {selectedAutoWorkers.map(
+                                (worker: ChinhlyUser) => {
+                                  const workerId = chinhlyUserId(worker)
+                                  if (!workerId) return null
+                                  const existingBatch =
+                                    existingBatchByWorkerId.get(workerId)
+                                  return (
+                                    <option key={workerId} value={workerId}>
+                                      {workerOptionLabel(worker, existingBatch)}
+                                    </option>
+                                  )
+                                }
+                              )}
                             </select>
                           </label>
                           {assignedToUserId ? (
@@ -1296,33 +1301,6 @@ function metadataBatchAssigneeLabel(group: MetadataBatchGroup): string {
   ).trim()
   if (assignee) return assignee
   return "Chưa gán"
-}
-
-function BatchCountPill({
-  label,
-  value,
-  tone = "default",
-}: {
-  label: string
-  value: number
-  tone?: "default" | "reviewed" | "warning" | "error"
-}) {
-  return (
-    <span
-      className={cn(
-        "rounded-full border px-2 py-1",
-        tone === "reviewed"
-          ? "border-blue-200 bg-blue-50 text-blue-700"
-          : tone === "warning"
-            ? "border-amber-200 bg-amber-50 text-amber-700"
-            : tone === "error"
-              ? "border-red-200 bg-red-50 text-red-700"
-              : "border-[#D8E1EC] bg-white text-[#475569]"
-      )}
-    >
-      {label}: <strong>{value}</strong>
-    </span>
-  )
 }
 
 function EyeIcon({ active }: { active: boolean }) {

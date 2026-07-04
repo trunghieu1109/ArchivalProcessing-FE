@@ -5,7 +5,14 @@ import type { AppStep } from "@/features/upload/types"
 import { easeOut } from "./UploadPage.planUtils"
 
 export function UploadPageHeader(props: Record<string, any>) {
-  const { currentStep, STEP_LABELS, goTo, isWorkerUser, navigate } = props
+  const {
+    currentStep,
+    highestVisitedStep,
+    STEP_LABELS,
+    goTo,
+    isWorkerUser,
+    navigate,
+  } = props
 
   return (
     <div className="relative overflow-hidden bg-gradient-to-br from-[#EEF2FF] via-[#F0F4FF] to-[#E8EEFF] px-3 py-4 shadow-sm sm:px-4 sm:py-5">
@@ -79,14 +86,14 @@ export function UploadPageHeader(props: Record<string, any>) {
               {STEP_LABELS.map((label: string, i: number) => {
                 const s = (i + 1) as AppStep
                 const isActive = currentStep === s
-                const isDone = currentStep > s
+                const isDone = !isActive && s <= highestVisitedStep
                 const canNav = !isWorkerUser && isDone
                 return (
                   <div key={i} className="flex items-center">
                     <div className="flex flex-col items-center gap-1.5">
                       <button
                         onClick={() => canNav && goTo(s)}
-                        disabled={isWorkerUser && s !== 3}
+                        disabled={!canNav}
                         className={cn(
                           "flex size-10 items-center justify-center rounded-full text-sm font-bold transition-all duration-300",
                           isDone

@@ -19,6 +19,7 @@ import { UploadPageStepOne } from "./UploadPage.step1"
 export function UploadPageView(props: Record<string, any>) {
   const {
     currentStep,
+    highestVisitedStep,
     existingSessionMode,
     routeSessionId,
     sessionId,
@@ -129,6 +130,7 @@ export function UploadPageView(props: Record<string, any>) {
     <div className="min-h-svh bg-[#F0F4F8]">
       <UploadPageHeader
         currentStep={currentStep}
+        highestVisitedStep={highestVisitedStep}
         STEP_LABELS={STEP_LABELS}
         goTo={goTo}
         isWorkerUser={isWorkerUser}
