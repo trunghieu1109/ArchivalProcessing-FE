@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Archive,
   Box,
@@ -80,6 +80,7 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
   const [documentPageSize, setDocumentPageSize] = useState(100)
   const [publicationSearch, setPublicationSearch] = useState("")
   const [publicationSearchIndex, setPublicationSearchIndex] = useState(0)
+  const activeDownloadKeyRef = useRef("")
 
   const refresh = useCallback(async () => {
     if (!sessionId) {
@@ -117,6 +118,8 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
       key: string,
       action: () => Promise<{ blob: Blob; fileName: string }>
     ) => {
+      if (activeDownloadKeyRef.current) return
+      activeDownloadKeyRef.current = key
       setDownloadingKey(key)
       setError("")
       try {
@@ -128,6 +131,7 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
         setError(message)
         toast.error(message)
       } finally {
+        activeDownloadKeyRef.current = ""
         setDownloadingKey("")
       }
     },
@@ -137,6 +141,8 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
   const downloadArchive = useCallback(
     async (key: string, scope: PublicationArchiveScope) => {
       if (!sessionId) return
+      if (activeDownloadKeyRef.current) return
+      activeDownloadKeyRef.current = key
       setDownloadingKey(key)
       setError("")
       try {
@@ -165,6 +171,7 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
         setError(message)
         toast.error(message)
       } finally {
+        activeDownloadKeyRef.current = ""
         setDownloadingKey("")
       }
     },
@@ -703,6 +710,7 @@ export function PublicationStep({ sessionId }: PublicationStepProps) {
                                                     }
                                                     disabled={
                                                       !document.download_ready ||
+                                                      !document.numbered_pdf_version_id ||
                                                       downloadingKey !== ""
                                                     }
                                                     label={`Tải ${document.standard_file_name}`}

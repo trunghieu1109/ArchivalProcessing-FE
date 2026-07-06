@@ -6,7 +6,7 @@ const PDF_TO_CSS_UNITS = 96 / 72
 const PDF_PAGE_RENDER_CONCURRENCY = 3
 const BLANK_PAGE_REVIEW_MAX_PIXEL_RATIO = 1.25
 
-export const PDFJS_WORKER_URL = `${pdfJsAssetBase}pdf.worker.mjs`
+export const PDFJS_WORKER_URL = `${pdfJsAssetBase}pdf.worker.js`
 export const PDFJS_WASM_URL = `${pdfJsAssetBase}wasm/`
 export const PDFJS_STANDARD_FONT_DATA_URL = `${pdfJsAssetBase}standard_fonts/`
 export const PDFJS_CMAP_URL = `${pdfJsAssetBase}cmaps/`

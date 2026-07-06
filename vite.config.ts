@@ -21,7 +21,7 @@ export default defineConfig(({ mode }) => {
           {
             src: normalizePath("node_modules/pdfjs-dist/build/pdf.worker.mjs"),
             dest: "pdfjs",
-            rename: { stripBase: true },
+            rename: { stripBase: true, name: "pdf.worker.js" },
           },
           {
             src: normalizePath("node_modules/pdfjs-dist/wasm/*"),
