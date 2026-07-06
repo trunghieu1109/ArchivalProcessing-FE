@@ -11,13 +11,17 @@ import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
-  ArtifactPreviewPanel,
   ArtifactRow,
   FinalizeEmptyState,
   FinalizePageHeader,
   FinalizeStatusCard,
   FinalizeToolbar,
 } from "./FinalizeArtifactsPage.parts"
+import {
+  ArtifactPreviewPanel,
+  loadArtifactPreviewContent,
+  type ArtifactPreviewContent,
+} from "./FinalizeArtifactsPage.preview"
 import {
   FINALIZE_POLL_INTERVAL_MS,
   FINALIZE_POLL_TIMEOUT_MS,
@@ -86,9 +90,12 @@ export function FinalizeArtifactsStep({
   const [downloadingArtifactId, setDownloadingArtifactId] = useState<
     number | null
   >(null)
-  const [previewHtml, setPreviewHtml] = useState("")
+  const [previewContent, setPreviewContent] =
+    useState<ArtifactPreviewContent | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState("")
+  const [previewRefreshKey, setPreviewRefreshKey] = useState(0)
+  const previewBlobUrlRef = useRef<string | null>(null)
   const [progressPhase, setProgressPhase] = useState<string | null>(null)
   const [progressMessage, setProgressMessage] = useState("")
   const [completedPhases, setCompletedPhases] = useState<Set<string>>(
@@ -223,10 +230,18 @@ export function FinalizeArtifactsStep({
     }
   }, [selectedArtifactId, visibleArtifacts])
 
+  const refreshPreview = useCallback(() => {
+    setPreviewRefreshKey((key) => key + 1)
+  }, [])
+
   useEffect(() => {
-    const artifactId = selectedArtifact?.id ?? null
-    if (!sessionId || artifactId === null) {
-      setPreviewHtml("")
+    const artifact = selectedArtifact
+    if (!sessionId || !artifact) {
+      if (previewBlobUrlRef.current) {
+        URL.revokeObjectURL(previewBlobUrlRef.current)
+        previewBlobUrlRef.current = null
+      }
+      setPreviewContent(null)
       setPreviewError("")
       setPreviewLoading(false)
       return
@@ -235,10 +250,22 @@ export function FinalizeArtifactsStep({
     let cancelled = false
     setPreviewLoading(true)
     setPreviewError("")
-    setPreviewHtml("")
-    getArtifactPreviewHtml(sessionId, artifactId)
-      .then((html) => {
-        if (!cancelled) setPreviewHtml(html)
+    setPreviewContent(null)
+
+    loadArtifactPreviewContent(sessionId, artifact, {
+      downloadArtifact,
+      getArtifactPreviewHtml,
+    })
+      .then((content) => {
+        if (cancelled) {
+          URL.revokeObjectURL(content.blobUrl)
+          return
+        }
+        if (previewBlobUrlRef.current) {
+          URL.revokeObjectURL(previewBlobUrlRef.current)
+        }
+        previewBlobUrlRef.current = content.blobUrl
+        setPreviewContent(content)
       })
       .catch((err) => {
         if (cancelled) return
@@ -253,7 +280,16 @@ export function FinalizeArtifactsStep({
     return () => {
       cancelled = true
     }
-  }, [selectedArtifact?.id, sessionId])
+  }, [previewRefreshKey, selectedArtifact, sessionId])
+
+  useEffect(() => {
+    return () => {
+      if (previewBlobUrlRef.current) {
+        URL.revokeObjectURL(previewBlobUrlRef.current)
+        previewBlobUrlRef.current = null
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (!finalizing || !sessionId) return
@@ -512,9 +548,20 @@ export function FinalizeArtifactsStep({
             </div>
             <ArtifactPreviewPanel
               artifact={selectedArtifact}
-              previewHtml={previewHtml}
+              preview={previewContent}
               loading={previewLoading}
               error={previewError}
+              onRefresh={refreshPreview}
+              onDownload={() =>
+                selectedArtifact
+                  ? void handleDownloadArtifact(selectedArtifact)
+                  : undefined
+              }
+              downloading={
+                selectedArtifact
+                  ? downloadingArtifactId === selectedArtifact.id
+                  : false
+              }
             />
           </div>
         ) : (

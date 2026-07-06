@@ -1,5 +1,4 @@
 import {
-  AlertCircle,
   Archive,
   ArrowLeft,
   CheckCircle2,
@@ -326,63 +325,6 @@ export function ArtifactRow({
         </Button>
       </div>
     </motion.div>
-  )
-}
-
-export function ArtifactPreviewPanel({
-  artifact,
-  previewHtml,
-  loading,
-  error,
-}: {
-  artifact: SessionArtifact | null
-  previewHtml: string
-  loading: boolean
-  error: string
-}) {
-  return (
-    <section className="min-h-[420px] min-w-0 overflow-hidden rounded-2xl border border-[#D8E1EC] bg-white shadow-sm">
-      <div className="flex min-h-14 items-center justify-between gap-3 border-b border-[#EEF2F7] px-4 py-3">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-[#0F172A]">Xem trước</p>
-          <p className="mt-0.5 truncate text-xs text-[#64748B]">
-            {artifact ? artifact.file_name : "Chọn một tệp"}
-          </p>
-        </div>
-        {artifact && (
-          <Badge variant="outline">
-            {artifactExtension(artifact.file_name).toUpperCase()}
-          </Badge>
-        )}
-      </div>
-      {artifact && loading ? (
-        <div className="flex h-[min(72svh,760px)] min-h-[420px] flex-col items-center justify-center px-8 text-center text-sm text-[#64748B]">
-          <Loader2 className="mb-3 size-6 animate-spin text-[#0052FF]" />
-          <p className="font-medium text-[#0F172A]">Đang tải preview...</p>
-        </div>
-      ) : artifact && error ? (
-        <div className="flex h-[min(72svh,760px)] min-h-[420px] flex-col items-center justify-center px-8 text-center text-sm text-red-600">
-          <AlertCircle className="mb-3 size-6" />
-          <p className="font-medium">{error}</p>
-        </div>
-      ) : artifact && previewHtml ? (
-        <iframe
-          title={`Xem trước ${artifact.file_name}`}
-          srcDoc={previewHtml}
-          sandbox=""
-          className="h-[min(72svh,760px)] min-h-[420px] w-full bg-white"
-        />
-      ) : (
-        <div className="flex h-[min(72svh,760px)] min-h-[420px] flex-col items-center justify-center px-8 text-center text-sm text-[#64748B]">
-          <div className="mb-3 flex size-12 items-center justify-center rounded-2xl bg-[#EAF1FF] text-[#0052FF]">
-            <Eye className="size-6" />
-          </div>
-          <p className="font-medium text-[#0F172A]">
-            Chọn một tệp để xem trực tiếp.
-          </p>
-        </div>
-      )}
-    </section>
   )
 }
 

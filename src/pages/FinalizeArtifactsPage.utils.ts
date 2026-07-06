@@ -98,7 +98,7 @@ export function buildArtifactSections(
   return sections
 }
 
-function artifactSectionId(artifact: SessionArtifact): ArtifactSectionId {
+export function artifactSectionId(artifact: SessionArtifact): ArtifactSectionId {
   const type = normalizeFilterText(artifact.artifact_type)
   if (type === "phieu_tin") return "phieuTin"
   if (type === "nhan_hop") return "nhanHop"
@@ -110,6 +110,10 @@ function artifactSectionId(artifact: SessionArtifact): ArtifactSectionId {
   }
   if (type.startsWith("muc_luc_van_ban")) return "documentIndex"
   return "other"
+}
+
+export function isMetadataArtifact(artifact: SessionArtifact): boolean {
+  return artifactSectionId(artifact) === "metadata"
 }
 
 function sortArtifactsForSection(
