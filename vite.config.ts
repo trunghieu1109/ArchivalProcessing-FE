@@ -19,6 +19,11 @@ export default defineConfig(({ mode }) => {
       viteStaticCopy({
         targets: [
           {
+            src: normalizePath("node_modules/pdfjs-dist/build/pdf.worker.mjs"),
+            dest: "pdfjs",
+            rename: { stripBase: true },
+          },
+          {
             src: normalizePath("node_modules/pdfjs-dist/wasm/*"),
             dest: "pdfjs/wasm",
             rename: { stripBase: true },
