@@ -406,6 +406,7 @@ export function UploadPage() {
     ensureSession,
     saveSessionMetadata,
     uploadInput,
+    uploadRetentionInputs,
     syncZipFolderPath,
     syncZipMaxFiles,
     syncUploadMode,
@@ -790,6 +791,7 @@ export function UploadPage() {
       syncDoc2Has={syncDoc2Has}
       syncZipHas={syncZipHas}
       uploadInput={uploadInput}
+      uploadRetentionInputs={uploadRetentionInputs}
       syncDoc1State={syncDoc1State}
       syncDoc2State={syncDoc2State}
       syncZipState={syncZipState}

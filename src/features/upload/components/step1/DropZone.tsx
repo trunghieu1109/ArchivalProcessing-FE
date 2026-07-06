@@ -5,19 +5,23 @@ import { cn } from "@/shared/lib/utils"
 interface DropZoneProps {
   accept: string
   onFile: (file: File) => void
+  onFiles?: (files: File[]) => void
   label: string
   hint: string
   maxSize?: string
   buttonColor?: "blue" | "purple" | "green"
+  multiple?: boolean
 }
 
 export function DropZone({
   accept,
   onFile,
+  onFiles,
   label,
   hint,
   maxSize,
   buttonColor = "blue",
+  multiple = false,
 }: DropZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
@@ -53,7 +57,12 @@ export function DropZone({
       onDrop={(event) => {
         event.preventDefault()
         setDragging(false)
-        const file = event.dataTransfer.files[0]
+        const files = Array.from(event.dataTransfer.files)
+        if (multiple) {
+          if (files.length > 0) onFiles?.(files)
+          return
+        }
+        const file = files[0]
         if (file) onFile(file)
       }}
       className={cn(
@@ -67,10 +76,17 @@ export function DropZone({
         ref={inputRef}
         type="file"
         accept={accept}
+        multiple={multiple}
         className="hidden"
         onChange={(event) => {
-          const file = event.target.files?.[0]
-          if (file) onFile(file)
+          const files = Array.from(event.target.files ?? [])
+          if (multiple) {
+            if (files.length > 0) onFiles?.(files)
+          } else {
+            const file = files[0]
+            if (file) onFile(file)
+          }
+          event.target.value = ""
         }}
       />
 

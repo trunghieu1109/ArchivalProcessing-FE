@@ -25,6 +25,7 @@ export function UploadPageStepOne(props: Record<string, any>) {
     zipMaxFiles,
     syncZipMaxFiles,
     uploadInput,
+    uploadRetentionInputs,
     zipUploadProgress,
     planReuploadState,
     ocr,
@@ -281,8 +282,9 @@ export function UploadPageStepOne(props: Record<string, any>) {
           processState={doc2State}
           onProcessStateChange={syncDoc2State}
           onHasFileChange={syncDoc2Has}
-          onUploadFile={(file) =>
-            uploadInput("retention_schedule", file).then(() => undefined)
+          multiple
+          onUploadFiles={(files) =>
+            uploadRetentionInputs(files).then(() => undefined)
           }
         />
       </div>

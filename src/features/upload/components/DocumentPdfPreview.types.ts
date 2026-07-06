@@ -7,6 +7,8 @@ export interface PreviewVariantState {
   url: string
   status: string
   processingStatus: string
+  versionId: string
+  versionType: string
   error: string
   note: string
   sameAsOriginal: boolean

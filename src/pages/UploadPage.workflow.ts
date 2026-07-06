@@ -68,22 +68,22 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     const planFile = planReuploadState.arrangement
       ? cache.arrangementPlanUpload?.local_cached_path
       : undefined
-    const retentionFile = planReuploadState.retention
-      ? cache.retentionUpload?.local_cached_path
-      : undefined
+    const retentionFiles = planReuploadState.retention
+      ? retentionUploadPaths(cache.retentionUploads)
+      : []
     if (planReuploadState.arrangement && !planFile) {
       toast.error(
         "Backend chưa trả về đường dẫn local cho file phương án vừa tải lại."
       )
       return
     }
-    if (planReuploadState.retention && !retentionFile) {
+    if (planReuploadState.retention && retentionFiles.length === 0) {
       toast.error(
         "Backend chưa trả về đường dẫn local cho file thời hạn bảo quản vừa tải lại."
       )
       return
     }
-    if (!planFile && !retentionFile) {
+    if (!planFile && retentionFiles.length === 0) {
       toast.error(
         "Chưa có file phương án hoặc thời hạn bảo quản để phân tích lại."
       )
@@ -100,7 +100,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
 
       await enqueuePlanAnalysis(currentSessionId, {
         ...(planFile ? { plan_file: planFile } : {}),
-        ...(retentionFile ? { retention_file: retentionFile } : {}),
+        ...(retentionFiles.length > 0 ? { retention_files: retentionFiles } : {}),
         dossier_build_strategy: dossierBuildStrategy,
       })
       resetPlanReuploadState()
@@ -169,9 +169,9 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     }
 
     const arrangementFile = doc1Has ? cache.draftArrangementPlanFile : null
-    const retentionFileDraft = doc2Has ? cache.draftRetentionFile : null
+    const retentionFileDrafts = doc2Has ? cache.draftRetentionFiles : []
     const zipFile = zipHas ? cache.draftZipFile : null
-    if (!arrangementFile && !retentionFileDraft && !zipFile) {
+    if (!arrangementFile && retentionFileDrafts.length === 0 && !zipFile) {
       toast.error("Vui lòng chọn ít nhất một file để bắt đầu.")
       return
     }
@@ -193,8 +193,8 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
       ].filter(Boolean) as Promise<void>[]
       let arrangementUploadTask: Promise<SessionInputUploadResponse | null> =
         Promise.resolve(null)
-      let retentionUploadTask: Promise<SessionInputUploadResponse | null> =
-        Promise.resolve(null)
+      let retentionUploadTask: Promise<SessionInputUploadResponse[]> =
+        Promise.resolve([])
       let zipUploadTask: Promise<SessionInputUploadResponse | null> =
         Promise.resolve(null)
 
@@ -210,16 +210,17 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
           return response
         })
       }
-      if (retentionFileDraft) {
+      if (retentionFileDrafts.length > 0) {
         syncDoc2State("processing")
-        retentionUploadTask = uploadSessionInput(
-          currentSessionId,
-          "retention_schedule",
-          retentionFileDraft
-        ).then((response) => {
-          cache.retentionUpload = response
+        retentionUploadTask = Promise.all(
+          retentionFileDrafts.map((file) =>
+            uploadSessionInput(currentSessionId, "retention_schedule", file)
+          )
+        ).then((responses) => {
+          cache.retentionUploads = responses
+          cache.retentionUpload = responses[responses.length - 1] ?? null
           syncDoc2State("done")
-          return response
+          return responses
         })
       }
       if (zipFile) {
@@ -259,18 +260,18 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
       ])
 
       if (!arrangementFile) {
-        const retentionFile = retentionPlan?.local_cached_path
-        if (retentionFileDraft && !retentionFile) {
+        const retentionFiles = retentionUploadPaths(retentionPlan)
+        if (retentionFileDrafts.length > 0 && retentionFiles.length === 0) {
           throw new Error(
             "Backend chưa trả về đường dẫn local cho file thông tư."
           )
         }
-        if (retentionFile) {
+        if (retentionFiles.length > 0) {
           syncPlanAnalysisState("processing")
           setPlanProgressPhase("retention_schedule")
           setPlanProgressMessage("Đang phân tích thông tư thời hạn bảo quản.")
           const retentionJob = enqueuePlanAnalysis(currentSessionId, {
-            retention_file: retentionFile,
+            retention_files: retentionFiles,
             dossier_build_strategy: dossierBuildStrategy,
           })
           await retentionJob
@@ -296,8 +297,8 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
       }
 
       const planFile = arrangementPlan?.local_cached_path
-      const retentionFile = retentionPlan?.local_cached_path
-      if (!planFile || (retentionFileDraft && !retentionFile)) {
+      const retentionFiles = retentionUploadPaths(retentionPlan)
+      if (!planFile || (retentionFileDrafts.length > 0 && retentionFiles.length === 0)) {
         throw new Error(
           "Backend chưa trả về đường dẫn local cho file phương án hoặc thông tư."
         )
@@ -305,7 +306,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
 
       const planJob = enqueuePlanAnalysis(currentSessionId, {
         plan_file: planFile,
-        ...(retentionFile ? { retention_file: retentionFile } : {}),
+        ...(retentionFiles.length > 0 ? { retention_files: retentionFiles } : {}),
         dossier_build_strategy: dossierBuildStrategy,
       })
       setPlanCompletedPhases((previous: Set<string>) =>
@@ -341,4 +342,12 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
   }
 
   return { handleStartAll }
+}
+
+function retentionUploadPaths(
+  uploads: SessionInputUploadResponse[] | null | undefined
+): string[] {
+  return (uploads ?? [])
+    .map((upload) => upload.local_cached_path?.trim() ?? "")
+    .filter((path): path is string => Boolean(path))
 }

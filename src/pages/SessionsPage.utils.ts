@@ -59,7 +59,8 @@ export function analysisStatusesFromSessionDetail(
     retention: sourceAnalysisStatus({
       analyzed: hasActivePlan && hasRetentionSchedule,
       processing: activeJob
-        ? jobPayloadHasFile(activeJob, "retention_file")
+        ? jobPayloadHasFile(activeJob, "retention_file") ||
+          jobPayloadHasFile(activeJob, "retention_files")
         : false,
     }),
   }
@@ -77,6 +78,11 @@ function isActivePlanAnalysisJob(
 
 function jobPayloadHasFile(job: ActiveJobSummary, key: string): boolean {
   const value = job.payload?.[key]
+  if (Array.isArray(value)) {
+    return value.some(
+      (item) => typeof item === "string" && item.trim().length > 0
+    )
+  }
   return typeof value === "string" && value.trim().length > 0
 }
 

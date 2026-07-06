@@ -94,7 +94,11 @@ export function createUploadPageActions(context: Record<string, any>) {
     if (!cache.sessionId) {
       const staged = stageInput(fileType, file)
       if (fileType === "arrangement_plan") cache.draftArrangementPlanFile = file
-      if (fileType === "retention_schedule") cache.draftRetentionFile = file
+      if (fileType === "retention_schedule") {
+        cache.draftRetentionFile = file
+        cache.draftRetentionFiles = [file]
+        cache.retentionUploads = [staged]
+      }
       if (fileType === "raw_zip") cache.draftZipFile = file
       if (
         fileType === "arrangement_plan" ||
@@ -159,6 +163,7 @@ export function createUploadPageActions(context: Record<string, any>) {
       }
       if (fileType === "retention_schedule") {
         cache.retentionUpload = uploaded
+        cache.retentionUploads = [uploaded]
         if (existingSessionMode) {
           cache.retentionReuploaded = true
           setPlanReuploadState(
@@ -177,6 +182,50 @@ export function createUploadPageActions(context: Record<string, any>) {
       setPlanProgressMessage("")
       setPlanCompletedPhases(new Set())
     }
+    return uploaded
+  }
+
+  const uploadRetentionInputs = async (files: File[]) => {
+    const retentionFiles = files.filter(Boolean)
+    if (retentionFiles.length === 0) return []
+    if (!cache.sessionId) {
+      const staged = retentionFiles.map((file) =>
+        stageInput("retention_schedule", file)
+      )
+      cache.draftRetentionFile = retentionFiles[0] ?? null
+      cache.draftRetentionFiles = retentionFiles
+      cache.retentionUpload = staged[staged.length - 1] ?? null
+      cache.retentionUploads = staged
+      cache.planAnalysisState = "idle"
+      setPlanAnalysisState("idle")
+      return staged
+    }
+
+    const uploaded = await Promise.all(
+      retentionFiles.map((file) =>
+        uploadSessionInput(cache.sessionId as string, "retention_schedule", file)
+      )
+    )
+    cache.retentionUpload = uploaded[uploaded.length - 1] ?? null
+    cache.retentionUploads = uploaded
+    cache.draftRetentionFile = retentionFiles[0] ?? null
+    cache.draftRetentionFiles = retentionFiles
+    if (existingSessionMode) {
+      cache.retentionReuploaded = true
+      setPlanReuploadState(
+        (previous: { arrangement: boolean; retention: boolean }) => ({
+          ...previous,
+          retention: true,
+        })
+      )
+      cache.doc2State = "done"
+      setDoc2State("done")
+    }
+    cache.planAnalysisState = "idle"
+    setPlanAnalysisState("idle")
+    setPlanProgressPhase(null)
+    setPlanProgressMessage("")
+    setPlanCompletedPhases(new Set())
     return uploaded
   }
 
@@ -416,6 +465,9 @@ export function createUploadPageActions(context: Record<string, any>) {
     cache.doc2Has = v
     if (!v) {
       cache.draftRetentionFile = null
+      cache.draftRetentionFiles = []
+      cache.retentionUpload = null
+      cache.retentionUploads = []
       cache.retentionReuploaded = false
       setPlanReuploadState(
         (previous: { arrangement: boolean; retention: boolean }) => ({
@@ -531,6 +583,7 @@ export function createUploadPageActions(context: Record<string, any>) {
     ensureSession,
     saveSessionMetadata,
     uploadInput,
+    uploadRetentionInputs,
     syncZipFolderPath,
     syncZipMaxFiles,
     syncUploadMode,

@@ -14,7 +14,9 @@ interface DocxSectionProps {
   processState: ProcessState
   onProcessStateChange: (s: ProcessState) => void
   onHasFileChange: (v: boolean) => void
-  onUploadFile: (file: File) => Promise<void>
+  onUploadFile?: (file: File) => Promise<void>
+  onUploadFiles?: (files: File[]) => Promise<void>
+  multiple?: boolean
 }
 
 export const DocxSection = forwardRef<SectionHandle, DocxSectionProps>(
@@ -27,10 +29,12 @@ export const DocxSection = forwardRef<SectionHandle, DocxSectionProps>(
       onProcessStateChange,
       onHasFileChange,
       onUploadFile,
+      onUploadFiles,
+      multiple = false,
     },
     ref
   ) => {
-    const [fileName, setFileName] = useState("")
+    const [fileNames, setFileNames] = useState<string[]>([])
     const [hasContent, setHasContent] = useState(false)
     const [error, setError] = useState("")
     const [loading, setLoading] = useState(false)
@@ -45,19 +49,41 @@ export const DocxSection = forwardRef<SectionHandle, DocxSectionProps>(
     }))
 
     const handleFile = async (file: File) => {
+      await handleFiles([file])
+    }
+
+    const handleFiles = async (files: File[]) => {
+      const selectedFiles = (multiple ? files : files.slice(0, 1)).filter(
+        Boolean
+      )
+      if (selectedFiles.length === 0) return
       setError("")
       setHasContent(false)
-      setFileName(file.name)
+      setFileNames(selectedFiles.map((file) => file.name))
       onProcessStateChange("idle")
       setLoading(true)
       try {
-        const arrayBuffer = await file.arrayBuffer()
-        await mammoth.convertToHtml({ arrayBuffer })
-        await onUploadFile(file)
+        await Promise.all(
+          selectedFiles.map(async (file) => {
+            const arrayBuffer = await file.arrayBuffer()
+            await mammoth.convertToHtml({ arrayBuffer })
+          })
+        )
+        if (multiple) {
+          if (!onUploadFiles) {
+            throw new Error("Chưa cấu hình upload nhiều file DOCX.")
+          }
+          await onUploadFiles(selectedFiles)
+        } else {
+          if (!onUploadFile) {
+            throw new Error("Chưa cấu hình upload file DOCX.")
+          }
+          await onUploadFile(selectedFiles[0])
+        }
         setHasContent(true)
         onHasFileChange(true)
       } catch (err) {
-        setFileName("")
+        setFileNames([])
         setError(
           err instanceof Error
             ? err.message
@@ -71,7 +97,7 @@ export const DocxSection = forwardRef<SectionHandle, DocxSectionProps>(
 
     const clear = () => {
       setHasContent(false)
-      setFileName("")
+      setFileNames([])
       setError("")
       onProcessStateChange("idle")
       onHasFileChange(false)
@@ -133,19 +159,30 @@ export const DocxSection = forwardRef<SectionHandle, DocxSectionProps>(
           </div>
         </div>
 
-        {fileName ? (
-          <FileChip
-            fileName={fileName}
-            loading={loading}
-            processState={processState}
-            onClear={clear}
-            icon={<FileText className="size-4" />}
-          />
+        {fileNames.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            {fileNames.map((fileName) => (
+              <FileChip
+                key={fileName}
+                fileName={fileName}
+                loading={loading}
+                processState={processState}
+                onClear={clear}
+                icon={<FileText className="size-4" />}
+              />
+            ))}
+          </div>
         ) : (
           <DropZone
             accept=".docx"
             onFile={handleFile}
-            label="Kéo thả file .docx vào đây"
+            onFiles={handleFiles}
+            multiple={multiple}
+            label={
+              multiple
+                ? "Kéo thả các file .docx vào đây"
+                : "Kéo thả file .docx vào đây"
+            }
             hint=".docx"
             maxSize="50MB"
             buttonColor={buttonColor}

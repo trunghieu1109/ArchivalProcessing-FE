@@ -1,7 +1,8 @@
 import path from "path"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
-import { defineConfig, loadEnv } from "vite"
+import { defineConfig, loadEnv, normalizePath } from "vite"
+import { viteStaticCopy } from "vite-plugin-static-copy"
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -12,7 +13,29 @@ export default defineConfig(({ mode }) => {
     "http://127.0.0.1:8000"
 
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(),
+      tailwindcss(),
+      viteStaticCopy({
+        targets: [
+          {
+            src: normalizePath("node_modules/pdfjs-dist/wasm/*"),
+            dest: "pdfjs/wasm",
+            rename: { stripBase: true },
+          },
+          {
+            src: normalizePath("node_modules/pdfjs-dist/cmaps/*"),
+            dest: "pdfjs/cmaps",
+            rename: { stripBase: true },
+          },
+          {
+            src: normalizePath("node_modules/pdfjs-dist/standard_fonts/*"),
+            dest: "pdfjs/standard_fonts",
+            rename: { stripBase: true },
+          },
+        ],
+      }),
+    ],
     server: {
       proxy: {
         "/api": {

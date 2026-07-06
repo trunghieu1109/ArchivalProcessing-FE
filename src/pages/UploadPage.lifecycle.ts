@@ -36,6 +36,11 @@ function isActivePlanAnalysisJob(
 
 function jobPayloadHasFile(job: ActiveJobSummary, key: string) {
   const value = job.payload?.[key]
+  if (Array.isArray(value)) {
+    return value.some(
+      (item) => typeof item === "string" && item.trim().length > 0
+    )
+  }
   return typeof value === "string" && value.trim().length > 0
 }
 
@@ -174,6 +179,7 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     cache.zipUpload = null
     cache.arrangementPlanUpload = null
     cache.retentionUpload = null
+    cache.retentionUploads = []
     cache.zipFolderPath = ""
     cache.zipMaxFiles = ""
     cache.uploadMode = "append"
@@ -181,6 +187,7 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     cache.activeClusterVersionId = undefined
     cache.draftArrangementPlanFile = null
     cache.draftRetentionFile = null
+    cache.draftRetentionFiles = []
     cache.draftZipFile = null
     cache.zipUploadProgress = null
     cache.arrangementPlanReuploaded = false
@@ -227,9 +234,10 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
         const arrangementPlanFile = files.find(
           (file) => file.file_type === "arrangement_plan"
         )
-        const retentionFile = files.find(
+        const retentionFiles = files.filter(
           (file) => file.file_type === "retention_schedule"
         )
+        const retentionFile = retentionFiles[retentionFiles.length - 1]
         const zipFiles = files.filter((file) => file.file_type === "raw_zip")
         const zipFile = zipFiles[zipFiles.length - 1]
         const maybeActivePlanAnalysisJob =
@@ -243,7 +251,8 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
           ? jobPayloadHasFile(activePlanAnalysisJob, "plan_file")
           : false
         const activeJobHasRetentionFile = activePlanAnalysisJob
-          ? jobPayloadHasFile(activePlanAnalysisJob, "retention_file")
+          ? jobPayloadHasFile(activePlanAnalysisJob, "retention_file") ||
+            jobPayloadHasFile(activePlanAnalysisJob, "retention_files")
           : false
         const activeJobHasKnownPlanInput =
           activeJobHasArrangementFile || activeJobHasRetentionFile
@@ -255,11 +264,15 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
         cache.zipState = zipFile ? "done" : "idle"
         cache.arrangementPlanUpload = arrangementPlanFile ?? null
         cache.retentionUpload = retentionFile ?? null
+        cache.retentionUploads = retentionFiles
         cache.arrangementPlanReuploaded = false
         cache.retentionReuploaded = false
         cache.rawZipReuploaded = false
         cache.zipUpload = zipFile ?? null
         cache.zipFolderPath = zipFile?.folder_path ?? zipFile?.data_path ?? ""
+        cache.draftArrangementPlanFile = null
+        cache.draftRetentionFile = null
+        cache.draftRetentionFiles = []
         cache.draftZipFile = null
         cache.zipUploadProgress = null
         setDoc1Has(cache.doc1Has)

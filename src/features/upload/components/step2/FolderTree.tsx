@@ -510,6 +510,7 @@ export function FolderTree({
 
       <RetentionAppendicesPanel
         appendices={parsedPlan.retention_appendices}
+        sources={parsedPlan.retention_sources}
         hasRetentionSchedule={hasRetentionSchedule}
       />
 

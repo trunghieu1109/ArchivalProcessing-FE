@@ -89,6 +89,8 @@ export function MetadataCard({
   const hasMetadataEdits = item.metadata_user_edited === true
   const signatureTag = signatureTagInfo(item)
   const canRetryMetadata = Boolean(!readOnly && onRetry && !metadataPending)
+  const blankPageWarningPages = blankPageWarningOriginalPages(item)
+  const hasBlankPageWarnings = blankPageWarningPages.length > 0
 
   useEffect(() => {
     if (readOnly && editing) {
@@ -235,6 +237,14 @@ export function MetadataCard({
           {hasMetadataEdits && (
             <span className="flex h-6 shrink-0 items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 text-[10px] font-semibold text-amber-700">
               <Edit2 className="size-2.5" /> Đã sửa
+            </span>
+          )}
+          {hasBlankPageWarnings && (
+            <span
+              title={`Trang cảnh báo: ${blankPageWarningPages.join(", ")}`}
+              className="flex h-6 shrink-0 items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 text-[10px] font-semibold text-amber-700"
+            >
+              <AlertTriangle className="size-2.5" /> Cảnh báo trang trắng
             </span>
           )}
           {expertReviewed ? (
@@ -507,4 +517,28 @@ export function MetadataCard({
       </AnimatePresence>
     </div>
   )
+}
+
+function blankPageWarningOriginalPages(item: PdfMetadata): number[] {
+  const preprocessing = item.pdf_preprocessing
+  if (!preprocessing || typeof preprocessing !== "object") return []
+  const pages = new Set<number>()
+  const imageWarningPages = preprocessing.image_warning_pages
+  if (Array.isArray(imageWarningPages)) {
+    imageWarningPages.forEach((value) => {
+      const page = Number(value)
+      if (Number.isInteger(page) && page > 0) pages.add(page)
+    })
+  }
+  const warnings = preprocessing.blank_page_warnings
+  if (Array.isArray(warnings)) {
+    warnings.forEach((warning) => {
+      if (!warning || typeof warning !== "object") return
+      const page = Number(
+        (warning as Record<string, unknown>).page_number
+      )
+      if (Number.isInteger(page) && page > 0) pages.add(page)
+    })
+  }
+  return [...pages].sort((left, right) => left - right)
 }

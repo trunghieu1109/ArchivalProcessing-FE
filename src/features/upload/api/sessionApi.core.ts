@@ -117,6 +117,7 @@ export async function enqueuePlanAnalysis(
   payload: {
     plan_file?: string
     retention_file?: string
+    retention_files?: string[]
     dossier_build_strategy?: DossierBuildStrategy
     document_numbering_mode?: DocumentNumberingMode
   }

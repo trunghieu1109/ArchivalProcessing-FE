@@ -46,6 +46,17 @@ export interface RetentionAppendixNode {
   children: RetentionAppendixNode[]
 }
 
+export interface RetentionSourceStatus {
+  session_file_id?: number | null
+  file_name: string
+  source_title?: string
+  source_order?: number | null
+  status: "success" | "error"
+  appendix_count?: number | null
+  unit_count?: number | null
+  error?: string
+}
+
 export interface PlanGroup {
   id: string
   name: string
@@ -86,6 +97,7 @@ export interface ParsedPlan {
   leaf_group_candidates: PlanLeafGroupCandidates[]
   file_register_config: FileRegisterConfig
   retention_appendices: RetentionAppendixNode[]
+  retention_sources: RetentionSourceStatus[]
 }
 
 export interface FolderNode {

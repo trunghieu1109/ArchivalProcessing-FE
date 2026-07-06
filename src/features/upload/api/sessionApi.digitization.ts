@@ -232,6 +232,32 @@ export async function getDocumentPreviewUrl(
   )
 }
 
+export async function removeDocumentBlankPages(
+  sessionId: string,
+  documentId: number,
+  payload: {
+    blank_pages: number[]
+    created_by?: string
+    review_note?: string
+  }
+): Promise<{
+  session_id: string
+  document_id: number
+  status: string
+  blank_pages: number[]
+  document?: SessionDocumentResponse | null
+  preview?: DocumentPreviewUrlResponse | null
+}> {
+  return requestJson(
+    `/sessions/${encodeURIComponent(sessionId)}/documents/${encodeURIComponent(String(documentId))}/blank-pages/remove`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
+}
+
 export async function downloadSessionDocuments(
   sessionId: string,
   documentIds: number[]

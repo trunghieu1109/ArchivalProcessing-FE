@@ -36,6 +36,8 @@ export function normalizePreviewVariants(
       String(variant.processing_status || "")
         .trim()
         .toLowerCase() || "",
+    versionId: String(variant.version_id || "").trim(),
+    versionType: String(variant.version_type || "").trim(),
     error: String(variant.error || "").trim(),
     note: String(variant.note || "").trim(),
     sameAsOriginal: Boolean(variant.same_as_original),

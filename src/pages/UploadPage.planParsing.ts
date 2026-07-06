@@ -13,6 +13,7 @@ import type {
   PlanLeafCandidate,
   PlanLeafGroupCandidates,
   RetentionAppendixNode,
+  RetentionSourceStatus,
 } from "@/features/upload/types"
 import {
   DEFAULT_DOCUMENT_NUMBERING_MODE,
@@ -49,7 +50,33 @@ export function activePlanToParsedPlan(plan: ActivePlanResponse): ParsedPlan {
     retention_appendices: normalizeRetentionAppendices(
       plan.retention_appendices
     ),
+    retention_sources: normalizeRetentionSources(plan.retention_sources),
   }
+}
+
+function normalizeRetentionSources(value: unknown): RetentionSourceStatus[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item): RetentionSourceStatus | null => {
+      const record = asRecord(item)
+      if (!record) return null
+      const fileName = stringValue(record.file_name || record.source_file_name)
+      if (!fileName) return null
+      const status = stringValue(record.status).toLowerCase()
+      return {
+        session_file_id: numberValue(
+          record.session_file_id || record.source_session_file_id
+        ),
+        file_name: fileName,
+        source_title: stringValue(record.source_title || record.title),
+        source_order: numberValue(record.source_order),
+        status: status === "error" ? "error" : "success",
+        appendix_count: numberValue(record.appendix_count),
+        unit_count: numberValue(record.unit_count),
+        error: stringValue(record.error),
+      }
+    })
+    .filter((item): item is RetentionSourceStatus => Boolean(item))
 }
 
 export function normalizeFileRegisterConfig(

@@ -16,8 +16,10 @@ import { MAX_LOADING_PLACEHOLDERS } from "./ProcessStep.types"
 import {
   isMetadataConfirmable,
   isMetadataFailedItem,
+  replaceDocument,
 } from "./ProcessStep.metadataUtils"
 import { canUserEditMetadataItem } from "./ProcessStep.batchUtils"
+import type { SessionDocumentResponse } from "@/features/upload/api/sessionApi"
 import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
 import type { createProcessStepActions } from "./ProcessStep.actions"
 import type { useProcessStepModel } from "./useProcessStepModel"
@@ -139,6 +141,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     selectedDocumentId,
     selectedManualWorkerIds,
     sessionId,
+    setItems,
     setAutoBatchAssigneeIds,
     setAutoBatchPlanRequested,
     setMetadataFileFilter,
@@ -219,6 +222,9 @@ export function ProcessStepView(props: ProcessStepViewProps) {
       : 0
   const canAttemptContinue = isCoordinator && dossierReadyDocumentCount > 0
   const canContinue = canAttemptContinue && !buildBlockedMessage
+  const handlePreviewDocumentUpdated = (document: SessionDocumentResponse) => {
+    setItems((previous) => replaceDocument(previous, document))
+  }
 
   if (!hasDataInput && !hasMetadataDocuments) {
     return (
@@ -498,7 +504,9 @@ export function ProcessStepView(props: ProcessStepViewProps) {
             key={previewDocument?.id ?? "no-preview-document"}
             sessionId={sessionId}
             document={previewDocument}
-            className="h-[min(72svh,678px)] min-h-[420px] min-w-0 xl:h-full xl:min-h-0"
+            enableBlankPageReview
+            onDocumentUpdated={handlePreviewDocumentUpdated}
+            className="h-[min(72svh,678px)] min-h-[420px] min-w-0"
           />
         </div>
       </div>

@@ -10,10 +10,17 @@ import {
 import { Button } from "@/components/ui/button"
 import {
   getDocumentPreviewUrl,
+  removeDocumentBlankPages,
   type DocumentPreviewUrlResponse,
+  type SessionDocumentResponse,
 } from "@/features/upload/api/sessionApi"
 import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import { cn } from "@/shared/lib/utils"
+import { toast } from "sonner"
+import {
+  BlankPageReviewPanel,
+  type BlankPageReviewMode,
+} from "./DocumentPdfPreview.blankPageReviewPanel"
 import type {
   PreviewState,
   PreviewVariantState,
@@ -39,6 +46,8 @@ interface DocumentPdfPreviewProps {
   document: DocumentPreviewTarget | null
   className?: string
   onClose?: () => void
+  enableBlankPageReview?: boolean
+  onDocumentUpdated?: (document: SessionDocumentResponse) => void
 }
 
 const PREVIEW_RETRY_DELAYS_MS = [2_000, 4_000, 8_000, 15_000, 30_000]
@@ -61,6 +70,8 @@ export function DocumentPdfPreview({
   document,
   className,
   onClose,
+  enableBlankPageReview = false,
+  onDocumentUpdated,
 }: DocumentPdfPreviewProps) {
   const [refreshKey, setRefreshKey] = useState(0)
   const manualRefreshRef = useRef(false)
@@ -76,6 +87,9 @@ export function DocumentPdfPreview({
     error: "",
   })
   const [selectedVariantKey, setSelectedVariantKey] = useState("")
+  const [blankPageReviewSubmitting, setBlankPageReviewSubmitting] =
+    useState(false)
+  const [blankPageReviewError, setBlankPageReviewError] = useState("")
   const documentId = document?.id ?? null
   const documentKey = useMemo(() => {
     if (!sessionId || documentId === null) return ""
@@ -235,6 +249,14 @@ export function DocumentPdfPreview({
     state.activeVariantKey,
     state.variants,
   ])
+  const originalVariant = useMemo(
+    () =>
+      state.variants.find(
+        (variant) =>
+          variant.key === "original" && variant.status === "ready" && variant.url
+      ) ?? null,
+    [state.variants]
+  )
 
   useEffect(() => {
     if (!hasPreviewVariants) {
@@ -259,6 +281,43 @@ export function DocumentPdfPreview({
     if (documentKey) previewRetryAttemptsRef.current.delete(documentKey)
     manualRefreshRef.current = true
     setRefreshKey((key) => key + 1)
+  }
+  const submitBlankPageReview = async (blankPages: number[]) => {
+    if (!sessionId || documentId === null) return
+    setBlankPageReviewSubmitting(true)
+    setBlankPageReviewError("")
+    try {
+      const response = await removeDocumentBlankPages(sessionId, documentId, {
+        blank_pages: blankPages,
+        created_by: "ui",
+        review_note: "manual blank page review",
+      })
+      if (response.document) onDocumentUpdated?.(response.document)
+      if (response.preview) {
+        const variants = normalizePreviewVariants(response.preview)
+        previewResponseCacheRef.current.set(documentKey, response.preview)
+        previewRetryAttemptsRef.current.delete(documentKey)
+        setState({
+          status: "ready",
+          variants,
+          activeVariantKey: activeVariantKeyFromResponse(response.preview, variants),
+          error: "",
+        })
+        setSelectedVariantKey("processed")
+      } else {
+        refreshPreview()
+      }
+      toast.success("Đã ghi nhận và tạo bản xóa trang trắng mới.")
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Không thể ghi nhận xóa trang trắng thủ công."
+      setBlankPageReviewError(message)
+      toast.error(message)
+    } finally {
+      setBlankPageReviewSubmitting(false)
+    }
   }
   const selectedVariantUrl = selectedVariant?.url ?? ""
 
@@ -341,7 +400,22 @@ export function DocumentPdfPreview({
 
       <div className="relative min-h-0 flex-1 bg-[#F8FAFC]">
         {selectedVariant ? (
-          <PreviewPane variant={selectedVariant} />
+          <PreviewPane
+            variant={selectedVariant}
+            reviewSourceVariant={originalVariant}
+            blankPageReview={
+              enableBlankPageReview &&
+              selectedVariant.key === "processed" &&
+              selectedVariant.status === "ready" &&
+              Boolean(selectedVariant.url)
+                ? {
+                    submitting: blankPageReviewSubmitting,
+                    error: blankPageReviewError,
+                    onSubmit: submitBlankPageReview,
+                  }
+                : undefined
+            }
+          />
         ) : (
           <PreviewEmptyState state={state} hasDocument={Boolean(document)} />
         )}
@@ -383,6 +457,8 @@ function previewVariantsEqual(
     left.url === right.url &&
     left.status === right.status &&
     left.processingStatus === right.processingStatus &&
+    left.versionId === right.versionId &&
+    left.versionType === right.versionType &&
     left.error === right.error &&
     left.note === right.note &&
     left.sameAsOriginal === right.sameAsOriginal &&
@@ -449,7 +525,21 @@ function PreviewVariantSwitch({
   )
 }
 
-function PreviewPane({ variant }: { variant: PreviewVariantState }) {
+function PreviewPane({
+  variant,
+  reviewSourceVariant,
+  blankPageReview,
+}: {
+  variant: PreviewVariantState
+  reviewSourceVariant?: PreviewVariantState | null
+  blankPageReview?: {
+    submitting: boolean
+    error: string
+    onSubmit: (blankPages: number[]) => Promise<void> | void
+  }
+}) {
+  const [blankPageReviewMode, setBlankPageReviewMode] =
+    useState<BlankPageReviewMode>("preview")
   const iframeUrl = variant.url ? pdfEmbedUrl(variant.url) : ""
   const badge = previewVariantBadge(variant)
   const warningPages = blankPageWarningPages(variant)
@@ -457,49 +547,51 @@ function PreviewPane({ variant }: { variant: PreviewVariantState }) {
     variant.blankPageWarnings.length > 0 || warningPages.length > 0
 
   return (
-    <section className="flex h-full min-h-[320px] min-w-0 flex-col overflow-hidden bg-white sm:min-h-[480px]">
-      <div className="flex items-center justify-between gap-3 border-b border-[#E2E8F0] px-4 py-2.5">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="truncate text-sm font-semibold text-[#0F172A]">
-              {variant.label}
-            </p>
-            <span
-              className={cn(
-                "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium",
-                badge.className
-              )}
-            >
-              {badge.label}
-            </span>
-            {variant.sameAsOriginal ? (
-              <span className="inline-flex items-center rounded-full bg-[#EEF2FF] px-2 py-0.5 text-[11px] font-medium text-[#3730A3]">
-                Trùng bản gốc
+    <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white">
+      {!blankPageReview ? (
+        <div className="flex items-center justify-between gap-3 border-b border-[#E2E8F0] px-4 py-2.5">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="truncate text-sm font-semibold text-[#0F172A]">
+                {variant.label}
+              </p>
+              <span
+                className={cn(
+                  "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium",
+                  badge.className
+                )}
+              >
+                {badge.label}
               </span>
-            ) : null}
-            {hasBlankPageWarnings ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
-                <TriangleAlert className="size-3" />
-                Cảnh báo trang trắng
-              </span>
-            ) : null}
+              {variant.sameAsOriginal ? (
+                <span className="inline-flex items-center rounded-full bg-[#EEF2FF] px-2 py-0.5 text-[11px] font-medium text-[#3730A3]">
+                  Trùng bản gốc
+                </span>
+              ) : null}
+              {hasBlankPageWarnings ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                  <TriangleAlert className="size-3" />
+                  Cảnh báo trang trắng
+                </span>
+              ) : null}
+            </div>
           </div>
+          <a
+            className={cn(
+              "inline-flex size-7 shrink-0 items-center justify-center rounded-lg border border-[#CBD5E1] bg-white text-[#475569] transition-colors hover:bg-[#F8FAFC] hover:text-[#0052FF]",
+              !variant.url && "pointer-events-none opacity-50"
+            )}
+            href={variant.url || undefined}
+            target="_blank"
+            rel="noreferrer"
+            title={`Mở ${variant.label} trong tab mới`}
+          >
+            <ExternalLink className="size-3.5" />
+          </a>
         </div>
-        <a
-          className={cn(
-            "inline-flex size-7 shrink-0 items-center justify-center rounded-lg border border-[#CBD5E1] bg-white text-[#475569] transition-colors hover:bg-[#F8FAFC] hover:text-[#0052FF]",
-            !variant.url && "pointer-events-none opacity-50"
-          )}
-          href={variant.url || undefined}
-          target="_blank"
-          rel="noreferrer"
-          title={`Mở ${variant.label} trong tab mới`}
-        >
-          <ExternalLink className="size-3.5" />
-        </a>
-      </div>
+      ) : null}
 
-      {hasBlankPageWarnings ? (
+      {hasBlankPageWarnings && !blankPageReview ? (
         <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
           <div className="flex items-start gap-2">
             <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
@@ -524,8 +616,18 @@ function PreviewPane({ variant }: { variant: PreviewVariantState }) {
         </div>
       ) : null}
 
-      <div className="relative min-h-0 flex-1 bg-[#F8FAFC]">
-        {iframeUrl ? (
+      <div className="relative min-h-0 flex-1 overflow-hidden bg-[#F8FAFC]">
+        {blankPageReview ? (
+          <BlankPageReviewPanel
+            variant={variant}
+            sourceVariant={reviewSourceVariant}
+            reviewMode={blankPageReviewMode}
+            submitting={blankPageReview.submitting}
+            submitError={blankPageReview.error}
+            onReviewModeChange={setBlankPageReviewMode}
+            onSubmit={blankPageReview.onSubmit}
+          />
+        ) : iframeUrl ? (
           <iframe
             src={iframeUrl}
             title={`PDF preview ${variant.label}`}

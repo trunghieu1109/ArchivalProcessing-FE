@@ -212,6 +212,13 @@ export interface ClusterBuildStatusResponse extends ApiRevisionMetadata {
   job_type: "build_clusters"
   active: boolean
   job: ActiveJobSummary | null
+  progress: {
+    event_id: number
+    job_id: number
+    phase: string
+    message?: string | null
+    created_at?: string | null
+  } | null
 }
 
 export interface EnsureClusterBuildResponse {
@@ -268,4 +275,16 @@ export interface ActivePlanResponse {
   leaf_group_candidates?: unknown[]
   file_register_config?: FileRegisterConfig
   retention_appendices?: unknown[]
+  retention_sources?: RetentionSourceStatus[]
+}
+
+export interface RetentionSourceStatus {
+  session_file_id?: number | null
+  file_name: string
+  source_title?: string | null
+  source_order?: number | null
+  status: "success" | "error"
+  appendix_count?: number | null
+  unit_count?: number | null
+  error?: string | null
 }

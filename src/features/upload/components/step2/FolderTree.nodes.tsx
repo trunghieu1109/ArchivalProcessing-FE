@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import {
+  AlertCircle,
   Check,
   ChevronDown,
   ChevronRight,
@@ -22,6 +23,7 @@ import type {
   PlanCriterionSet,
   PlanLeafCandidate,
   RetentionAppendixNode,
+  RetentionSourceStatus,
 } from "@/features/upload/types"
 import {
   DEPTH_LABELS,
@@ -178,14 +180,17 @@ export function PlanSummary({
 
 interface RetentionAppendicesPanelProps {
   appendices: RetentionAppendixNode[]
+  sources?: RetentionSourceStatus[]
   hasRetentionSchedule?: boolean
 }
 
 export function RetentionAppendicesPanel({
   appendices,
+  sources = [],
   hasRetentionSchedule = true,
 }: RetentionAppendicesPanelProps) {
-  if (appendices.length === 0) {
+  const hasSources = sources.length > 0
+  if (appendices.length === 0 && !hasSources) {
     if (!hasRetentionSchedule) {
       return (
         <div className="rounded-xl border border-dashed border-[#CBD5E1] bg-white px-4 py-4 text-sm text-[#64748B] shadow-sm">
@@ -196,6 +201,9 @@ export function RetentionAppendicesPanel({
     return null
   }
   const unitCount = countRetentionUnits(appendices)
+  const failedSourceCount = sources.filter(
+    (source) => source.status === "error"
+  ).length
 
   return (
     <details className="group rounded-xl border border-[#CBD5E1] bg-white shadow-sm">
@@ -207,25 +215,107 @@ export function RetentionAppendicesPanel({
               Thông tư thời hạn bảo quản
             </span>
             <span className="mt-0.5 block text-xs text-[#64748B]">
-              {appendices.length} phụ lục nguồn, {unitCount} điều khoản
+              {retentionSourceSummary({
+                appendixCount: appendices.length,
+                failedSourceCount,
+                sourceCount: sources.length,
+                unitCount,
+              })}
             </span>
           </span>
         </span>
         <ChevronRight className="size-4 shrink-0 text-[#64748B] transition-transform group-open:rotate-90" />
       </summary>
       <div className="max-h-[420px] overflow-auto border-t border-[#E2E8F0] px-3 py-3">
-        <div className="flex flex-col gap-2">
-          {appendices.map((appendix, index) => (
-            <RetentionTreeNode
-              key={`${appendix.type}-${appendix.name}-${index}`}
-              node={appendix}
-              depth={0}
-            />
-          ))}
-        </div>
+        {hasSources && <RetentionSourcesList sources={sources} />}
+        {appendices.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            {appendices.map((appendix, index) => (
+              <RetentionTreeNode
+                key={`${appendix.type}-${appendix.name}-${index}`}
+                node={appendix}
+                depth={0}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed border-[#CBD5E1] bg-[#F8FAFC] px-3 py-3 text-sm text-[#64748B]">
+            Chưa có phụ lục nào được đọc thành công.
+          </div>
+        )}
       </div>
     </details>
   )
+}
+
+interface RetentionSourcesListProps {
+  sources: RetentionSourceStatus[]
+}
+
+function RetentionSourcesList({ sources }: RetentionSourcesListProps) {
+  return (
+    <div className="mb-3 grid gap-2">
+      {sources.map((source, index) => {
+        const isError = source.status === "error"
+        return (
+          <div
+            key={`${source.session_file_id ?? source.file_name}-${index}`}
+            className={`rounded-lg border px-3 py-2 ${
+              isError
+                ? "border-red-200 bg-red-50"
+                : "border-emerald-200 bg-emerald-50"
+            }`}
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={`inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold ${
+                  isError ? "text-red-600" : "text-emerald-700"
+                }`}
+              >
+                {isError ? (
+                  <AlertCircle className="size-3" />
+                ) : (
+                  <Check className="size-3" />
+                )}
+                {isError ? "Lỗi" : "Đã đọc"}
+              </span>
+              <span className="min-w-0 text-sm font-semibold text-[#0F172A] [overflow-wrap:anywhere]">
+                {source.file_name || source.source_title || "Thông tư"}
+              </span>
+            </div>
+            <div className="mt-1 flex flex-wrap gap-2 text-xs text-[#64748B]">
+              {!isError && (
+                <>
+                  <span>{source.appendix_count ?? 0} phụ lục</span>
+                  <span>{source.unit_count ?? 0} điều khoản</span>
+                </>
+              )}
+              {isError && source.error && (
+                <span className="text-red-600">{source.error}</span>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function retentionSourceSummary({
+  appendixCount,
+  failedSourceCount,
+  sourceCount,
+  unitCount,
+}: {
+  appendixCount: number
+  failedSourceCount: number
+  sourceCount: number
+  unitCount: number
+}): string {
+  const base = `${appendixCount} phụ lục nguồn, ${unitCount} điều khoản`
+  if (sourceCount === 0) return base
+  if (failedSourceCount === 0) return `${sourceCount} nguồn thông tư, ${base}`
+  return `${sourceCount} nguồn thông tư, ${failedSourceCount} lỗi, ${base}`
 }
 
 interface RetentionTreeNodeProps {

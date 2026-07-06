@@ -38,4 +38,5 @@ export const EMPTY_PARSED_PLAN: ParsedPlan = {
   leaf_group_candidates: [],
   file_register_config: DEFAULT_FILE_REGISTER_CONFIG,
   retention_appendices: [],
+  retention_sources: [],
 }

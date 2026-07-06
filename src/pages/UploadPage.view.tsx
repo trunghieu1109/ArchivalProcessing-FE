@@ -57,6 +57,7 @@ export function UploadPageView(props: Record<string, any>) {
     syncDoc2Has,
     syncZipHas,
     uploadInput,
+    uploadRetentionInputs,
     syncDoc1State,
     syncDoc2State,
     syncZipState,
@@ -114,7 +115,9 @@ export function UploadPageView(props: Record<string, any>) {
   const planProcessingMessage =
     planProgressMessage || `${planProcessingTitle}. Kết quả sẽ tự hiển thị khi backend xử lý xong.`
   const hasAnalyzedRetentionSchedule =
-    doc2Has && parsedPlan.retention_appendices.length > 0
+    doc2Has &&
+    (parsedPlan.retention_appendices.length > 0 ||
+      parsedPlan.retention_sources.length > 0)
   const goToMetadataStep = () => {
     const targetSessionId = sessionId ?? routeSessionId
     if (targetSessionId) {
@@ -209,6 +212,7 @@ export function UploadPageView(props: Record<string, any>) {
               zipMaxFiles={zipMaxFiles}
               syncZipMaxFiles={syncZipMaxFiles}
               uploadInput={uploadInput}
+              uploadRetentionInputs={uploadRetentionInputs}
               zipUploadProgress={zipUploadProgress}
               planReuploadState={planReuploadState}
               ocr={ocr}
@@ -318,10 +322,12 @@ export function UploadPageView(props: Record<string, any>) {
                       ? "Kết quả thời hạn bảo quản đã sẵn sàng. Bạn vẫn có thể upload phương án chỉnh lý ở Step 1 để xem cây phân loại."
                       : "Hãy upload phương án chỉnh lý ở Step 1 để xem cây phân loại và tiêu chí phân tích. Các phần dữ liệu khác vẫn có thể xử lý độc lập."}
                   </p>
-                  {parsedPlan.retention_appendices.length > 0 && (
+                  {(parsedPlan.retention_appendices.length > 0 ||
+                    parsedPlan.retention_sources.length > 0) && (
                     <div className="mx-auto mt-6 max-w-4xl text-left">
                       <RetentionAppendicesPanel
                         appendices={parsedPlan.retention_appendices}
+                        sources={parsedPlan.retention_sources}
                         hasRetentionSchedule={doc2Has}
                       />
                     </div>

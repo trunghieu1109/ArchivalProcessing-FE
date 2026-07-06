@@ -43,6 +43,7 @@ const CLUSTER_ACTIVE_POLL_INTERVAL_MS = 5_000
 const CLUSTER_IDLE_POLL_INTERVAL_MS = 30_000
 const CLUSTER_POLL_TIMEOUT_MS = 10 * 60 * 1_000
 const CLUSTER_EVENT_POLL_INTERVAL_MS = 5_000
+const CLUSTER_EVENT_PAGE_SIZE = 100
 const NO_CLUSTER_VERSION = "__none__"
 
 interface FinalResultPollingContext {
@@ -114,6 +115,9 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
     setStatus,
   } = context
   const completedBuildJobIdRef = useRef<number | null>(null)
+  const activeBuildJobIdRef = useRef<number | null>(null)
+  const activeBuildProgressCompletedRef = useRef(false)
+  const clusterEventCursorRef = useRef(0)
   const clusterRevisionRef = useRef<string | null>(null)
   const pollStateRef = useRef({
     checkingClusters,
@@ -143,6 +147,9 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
   useEffect(() => {
     clusterRevisionRef.current = null
     completedBuildJobIdRef.current = null
+    activeBuildJobIdRef.current = null
+    activeBuildProgressCompletedRef.current = false
+    clusterEventCursorRef.current = 0
   }, [sessionId])
 
   useEffect(() => {
@@ -235,6 +242,22 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
           rawActiveBuildJob &&
             buildStatus?.job?.id !== completedBuildJobIdRef.current
         )
+        const activeBuildJobId = hasActiveBuildJob
+          ? Number(buildStatus?.job?.id)
+          : null
+        const activeBuildJobChanged =
+          activeBuildJobId !== null &&
+          activeBuildJobId !== activeBuildJobIdRef.current
+        if (activeBuildJobChanged) {
+          activeBuildJobIdRef.current = activeBuildJobId
+          activeBuildProgressCompletedRef.current = false
+          clusterEventCursorRef.current = Math.max(
+            Number(buildStatus?.last_event_id ?? 0),
+            Number(buildStatus?.progress?.event_id ?? 0)
+          )
+        } else if (!rawActiveBuildJob) {
+          activeBuildJobIdRef.current = null
+        }
         const latestState = pollStateRef.current
         const activeJobMode = hasActiveBuildJob
           ? clusterJobModeFromPayload(buildStatus?.job?.payload)
@@ -305,30 +328,55 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
         }
 
         if (hasActiveBuildJob) {
+          const snapshotProgress =
+            buildStatus?.progress?.job_id === activeBuildJobId
+              ? buildStatus.progress
+              : null
+          const snapshotPhase = normalizeClusterProgressPhase(
+            snapshotProgress?.phase
+          )
+          const snapshotCompleted = snapshotProgress?.phase === "completed"
+          activeBuildProgressCompletedRef.current = snapshotCompleted
+          const effectiveProgressPhase =
+            snapshotPhase ?? FIRST_CLUSTER_PROGRESS_PHASE_ID
           setCheckingClusters(false)
           setLoading(true)
           setClusterJobMode(activeJobMode)
-          setClusterProgressPhase(
-            (phase: string | null) =>
-              normalizeClusterProgressPhase(phase) ??
-              FIRST_CLUSTER_PROGRESS_PHASE_ID
-          )
-          setClusterCompletedPhases((previous: Set<string>) =>
-            previous.size === CLUSTER_ALL_PHASE_IDS.length
-              ? new Set()
-              : previous
-          )
+          if (snapshotCompleted) {
+            setClusterProgressPhase(null)
+            setClusterCompletedPhases(completedClusterPhaseSet())
+          } else {
+            setClusterProgressPhase((phase: string | null) =>
+              activeBuildJobChanged
+                ? effectiveProgressPhase
+                : latestClusterProgressPhase(phase, effectiveProgressPhase)
+            )
+            setClusterCompletedPhases((previous: Set<string>) => {
+              const base =
+                activeBuildJobChanged ||
+                previous.size === CLUSTER_ALL_PHASE_IDS.length
+                  ? new Set<string>()
+                  : previous
+              return mergeCompletedClusterPhaseSetBefore(
+                base,
+                effectiveProgressPhase
+              )
+            })
+          }
           setClusterProgressMessage((message: string) =>
-            isTerminalClusterProgressMessage(message)
-              ? clusterProgressMessageForPhase(
-                  FIRST_CLUSTER_PROGRESS_PHASE_ID,
-                  activeJobMode
-                )
-              : message ||
-                clusterProgressMessageForPhase(
-                  FIRST_CLUSTER_PROGRESS_PHASE_ID,
-                  activeJobMode
-                )
+            snapshotProgress?.message
+              ? dossierUiMessage(snapshotProgress.message)
+              : activeBuildJobChanged ||
+                  isTerminalClusterProgressMessage(message)
+                ? clusterProgressMessageForPhase(
+                    effectiveProgressPhase,
+                    activeJobMode
+                  )
+                : message ||
+                  clusterProgressMessageForPhase(
+                    effectiveProgressPhase,
+                    activeJobMode
+                  )
           )
           if (activeJobMode === "plan_reanalysis") {
             setStatus(
@@ -524,49 +572,61 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
     if (!sessionId || (!loading && !rebuildBaselineVersionId)) return
 
     let cancelled = false
-    let afterId = 0
     let timeoutId: number | undefined
 
     const pollEvents = async () => {
       try {
-        const response = await listSessionEvents(sessionId, {
-          afterId,
-          limit: 100,
-        })
-        if (cancelled) return
-        for (const event of response.events) {
-          afterId = Math.max(afterId, event.id)
-          if (event.event_type === "clustering.progress") {
-            const phase = String(event.payload?.phase ?? "")
-            if (phase) {
-              const normalizedPhase = normalizeClusterProgressPhase(phase)
-              if (phase === "completed") {
-                setClusterProgressPhase(null)
-                setClusterCompletedPhases(completedClusterPhaseSet())
-              } else if (normalizedPhase) {
-                setClusterProgressPhase((currentPhase: string | null) => {
-                  const nextPhase = latestClusterProgressPhase(
-                    currentPhase,
-                    normalizedPhase
-                  )
-                  setClusterCompletedPhases((previous: Set<string>) =>
-                    mergeCompletedClusterPhaseSetBefore(previous, nextPhase)
-                  )
-                  return nextPhase
-                })
+        let hasMoreEvents = true
+        while (hasMoreEvents && !cancelled) {
+          const response = await listSessionEvents(sessionId, {
+            afterId: clusterEventCursorRef.current,
+            limit: CLUSTER_EVENT_PAGE_SIZE,
+          })
+          if (cancelled) return
+          const activeJobId = activeBuildJobIdRef.current
+          for (const event of response.events) {
+            clusterEventCursorRef.current = Math.max(
+              clusterEventCursorRef.current,
+              event.id
+            )
+            if (Number(event.payload?.job_id) !== activeJobId) continue
+            if (event.event_type === "clustering.progress") {
+              const phase = String(event.payload?.phase ?? "")
+              if (phase) {
+                const normalizedPhase = normalizeClusterProgressPhase(phase)
+                if (phase === "completed") {
+                  activeBuildProgressCompletedRef.current = true
+                  setClusterProgressPhase(null)
+                  setClusterCompletedPhases(completedClusterPhaseSet())
+                } else if (normalizedPhase) {
+                  activeBuildProgressCompletedRef.current = false
+                  setClusterProgressPhase((currentPhase: string | null) => {
+                    const nextPhase = latestClusterProgressPhase(
+                      currentPhase,
+                      normalizedPhase
+                    )
+                    setClusterCompletedPhases((previous: Set<string>) =>
+                      mergeCompletedClusterPhaseSetBefore(previous, nextPhase)
+                    )
+                    return nextPhase
+                  })
+                }
+              }
+              if (event.message) {
+                setClusterProgressMessage(dossierUiMessage(event.message))
               }
             }
-            if (event.message) {
-              setClusterProgressMessage(dossierUiMessage(event.message))
+            if (event.event_type === "clustering.version.created") {
+              activeBuildProgressCompletedRef.current = true
+              setClusterProgressPhase(null)
+              setClusterCompletedPhases(
+                new Set(CLUSTER_PROGRESS_PHASES.map((phase) => phase.id))
+              )
+              setClusterProgressMessage("Đã tạo phiên bản hồ sơ mới.")
             }
           }
-          if (event.event_type === "clustering.version.created") {
-            setClusterProgressPhase(null)
-            setClusterCompletedPhases(
-              new Set(CLUSTER_PROGRESS_PHASES.map((phase) => phase.id))
-            )
-            setClusterProgressMessage("Đã tạo phiên bản hồ sơ mới.")
-          }
+          hasMoreEvents =
+            response.events.length === CLUSTER_EVENT_PAGE_SIZE
         }
       } catch {
         // The cluster polling loop owns user-facing errors.
@@ -595,6 +655,7 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
 
   useEffect(() => {
     if (!loading && !checkingClusters && !rebuildBaselineVersionId) return
+    if (activeBuildProgressCompletedRef.current) return
 
     setClusterProgressPhase(
       (phase: string | null) =>
