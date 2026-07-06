@@ -546,6 +546,10 @@ function PreviewPane({
   const hasBlankPageWarnings =
     variant.blankPageWarnings.length > 0 || warningPages.length > 0
 
+  useEffect(() => {
+    setBlankPageReviewMode("preview")
+  }, [variant.key, variant.url, variant.versionId])
+
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white">
       {!blankPageReview ? (

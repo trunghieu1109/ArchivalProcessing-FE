@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import {
+  AlertTriangle,
   Check,
   Eye,
+  EyeOff,
   Loader2,
   RotateCcw,
   Trash2,
@@ -25,7 +27,7 @@ import {
   sortedPageSet,
 } from "./DocumentPdfPreview.blankPageReview"
 import type { PreviewVariantState } from "./DocumentPdfPreview.types"
-import { pdfEmbedUrl } from "./DocumentPdfPreview.utils"
+import { compactPageList, pdfEmbedUrl } from "./DocumentPdfPreview.utils"
 
 
 
@@ -49,7 +51,7 @@ interface PdfLoadState {
 export type BlankPageReviewMode = "preview" | "select"
 const BLANK_PAGE_SELECTION_MAX_WIDTH = 600
 const PREVIEW_SCROLL_BUFFER_PX = 900
-const INITIAL_NEARBY_PAGES = [1, 2, 3, 4, 5, 6]
+const INITIAL_NEARBY_PAGES = [1, 2]
 
 export function BlankPageReviewPanel({
   variant,
@@ -209,10 +211,18 @@ function BlankPageReviewSelection({
   const selectedPages = sortedPageSet(selectedDeletedPages)
   const iframeUrl = variant.url ? pdfEmbedUrl(variant.url) : ""
   const canSubmit = Boolean(variant.url && !submitting)
+  const reviewWarningPages = mapping.warningOriginalPages
+  const reviewWarningKey = reviewWarningPages.join(",")
+  const hasReviewWarnings = reviewWarningPages.length > 0
+  const [showWarningBanner, setShowWarningBanner] = useState(true)
   const optionalContentConfigPromise = useMemo(
     () => pdfDocument?.getOptionalContentConfig({ intent: "display" }) ?? null,
     [pdfDocument]
   )
+
+  useEffect(() => {
+    if (hasReviewWarnings) setShowWarningBanner(true)
+  }, [hasReviewWarnings, reviewWarningKey])
 
   const toggleOriginalPage = (originalPage: number) => {
     setSelectedDeletedPages((current) => {
@@ -293,6 +303,38 @@ function BlankPageReviewSelection({
             </div>
           ) : null}
         </div>
+
+        {reviewMode === "select" && hasReviewWarnings ? (
+          showWarningBanner ? (
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              <span className="flex min-w-0 items-center gap-2">
+                <AlertTriangle className="size-3.5 shrink-0 text-amber-600" />
+                <span className="min-w-0 truncate">
+                  Cảnh báo trang trắng có dấu hiệu chứa hình ảnh: trang{" "}
+                  {compactPageList(reviewWarningPages)}. Hãy kiểm tra trước khi
+                  ghi nhận xóa.
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowWarningBanner(false)}
+                className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-2 font-medium text-amber-800 transition-colors hover:bg-amber-100"
+              >
+                <EyeOff className="size-3.5" />
+                Ẩn
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowWarningBanner(true)}
+              className="mt-2 inline-flex h-7 items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-100"
+            >
+              <AlertTriangle className="size-3.5" />
+              Hiện cảnh báo ({compactPageList(reviewWarningPages)})
+            </button>
+          )
+        ) : null}
 
         {submitError ? (
           <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
@@ -446,7 +488,7 @@ function ManualSelectionPages({
     prefetchPdfPageNumbers({
       sessionId: renderSessionId,
       pdfDocument,
-      pageNumbers: buildPrefetchWindow(anchorPages, pageCount),
+      pageNumbers: buildPrefetchWindow(anchorPages, pageCount, 1, 4),
       targetWidth,
       optionalContentConfigPromise,
       basePriority: 12,

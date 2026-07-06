@@ -4,7 +4,7 @@ import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.mjs?url"
 
 const pdfJsAssetBase = `${import.meta.env.BASE_URL}pdfjs/`
 const PDF_TO_CSS_UNITS = 96 / 72
-const PDF_PAGE_RENDER_CONCURRENCY = 8
+const PDF_PAGE_RENDER_CONCURRENCY = 3
 const BLANK_PAGE_REVIEW_MAX_PIXEL_RATIO = 1.25
 
 export const PDFJS_WORKER_URL = pdfWorkerUrl
