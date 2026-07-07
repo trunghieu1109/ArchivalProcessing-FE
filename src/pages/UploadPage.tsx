@@ -419,6 +419,7 @@ export function UploadPage() {
     applyPersistedDocumentNumberingStylePreset,
     applyPersistedDocumentNumberingStyleOverrides,
     applyActivePlanResponse,
+    selectDocumentNumberingModeDraft,
     selectDocumentNumberingMode,
     selectDocumentNumberingStylePreset,
     selectDocumentNumberingStyleOverrides,
@@ -810,6 +811,7 @@ export function UploadPage() {
       dossierBuildStrategy={dossierBuildStrategy}
       selectDossierBuildStrategy={selectDossierBuildStrategy}
       documentNumberingMode={documentNumberingMode}
+      selectDocumentNumberingModeDraft={selectDocumentNumberingModeDraft}
       selectDocumentNumberingMode={selectDocumentNumberingMode}
       documentNumberingStylePreset={documentNumberingStylePreset}
       documentNumberingStyleOverrides={documentNumberingStyleOverrides}

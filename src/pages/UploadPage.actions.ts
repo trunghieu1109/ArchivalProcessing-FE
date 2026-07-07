@@ -321,6 +321,11 @@ export function createUploadPageActions(context: Record<string, any>) {
       )
     }
   }
+  const selectDocumentNumberingModeDraft = (mode: DocumentNumberingMode) => {
+    cache.documentNumberingMode = mode
+    setDocumentNumberingMode(mode)
+    return true
+  }
   const selectDocumentNumberingMode = async (mode: DocumentNumberingMode) => {
     cache.documentNumberingMode = mode
     setDocumentNumberingMode(mode)
@@ -352,7 +357,7 @@ export function createUploadPageActions(context: Record<string, any>) {
       }
     }
   }
-  const selectDocumentNumberingStylePreset = async (
+  const selectDocumentNumberingStylePreset = (
     stylePreset: DocumentNumberingStylePreset
   ) => {
     cache.documentNumberingStylePreset = stylePreset
@@ -364,46 +369,10 @@ export function createUploadPageActions(context: Record<string, any>) {
     if (typeof setDocumentNumberingStyleOverrides === "function") {
       setDocumentNumberingStyleOverrides(resetOverrides)
     }
-    if (
-      !cache.sessionId ||
-      (stylePreset === cache.persistedDocumentNumberingStylePreset &&
-        JSON.stringify(resetOverrides) === JSON.stringify(cache.persistedDocumentNumberingStyleOverrides))
-    )
-      return true
-    const savePromise = patchActivePlan(cache.sessionId, {
-      document_numbering_style_preset: stylePreset,
-      document_numbering_style_overrides: resetOverrides,
-    })
-    cache.documentNumberingModeSavePromise = savePromise
-    try {
-      const planResponse = await savePromise
-      if (cache.documentNumberingModeSavePromise !== savePromise) {
-        return true
-      }
-      applyActivePlanResponse(planResponse)
-      toast.success("Đã lưu kiểu hiển thị số trang.")
-      return true
-    } catch (err) {
-      applyPersistedDocumentNumberingStylePreset(
-        cache.persistedDocumentNumberingStylePreset
-      )
-      if (typeof applyPersistedDocumentNumberingStyleOverrides === "function") {
-        applyPersistedDocumentNumberingStyleOverrides(cache.persistedDocumentNumberingStyleOverrides)
-      }
-      toast.error(
-        err instanceof Error
-          ? `Không lưu được kiểu hiển thị số trang: ${err.message}`
-          : "Không lưu được kiểu hiển thị số trang."
-      )
-      return false
-    } finally {
-      if (cache.documentNumberingModeSavePromise === savePromise) {
-        cache.documentNumberingModeSavePromise = null
-      }
-    }
+    return true
   }
 
-  const selectDocumentNumberingStyleOverrides = async (
+  const selectDocumentNumberingStyleOverrides = (
     overrides: NumberingStyleOverrides
   ) => {
     const clean: NumberingStyleOverrides = {}
@@ -416,35 +385,7 @@ export function createUploadPageActions(context: Record<string, any>) {
     if (typeof setDocumentNumberingStyleOverrides === "function") {
       setDocumentNumberingStyleOverrides(clean)
     }
-    if (!cache.sessionId) return true
-    const savePromise = patchActivePlan(cache.sessionId, {
-      document_numbering_style_preset: cache.documentNumberingStylePreset,
-      document_numbering_style_overrides: clean,
-    })
-    cache.documentNumberingModeSavePromise = savePromise
-    try {
-      const planResponse = await savePromise
-      if (cache.documentNumberingModeSavePromise !== savePromise) {
-        return true
-      }
-      applyActivePlanResponse(planResponse)
-      toast.success("Đã lưu tùy chỉnh kiểu số.")
-      return true
-    } catch (err) {
-      if (typeof applyPersistedDocumentNumberingStyleOverrides === "function") {
-        applyPersistedDocumentNumberingStyleOverrides(cache.persistedDocumentNumberingStyleOverrides)
-      }
-      toast.error(
-        err instanceof Error
-          ? `Không lưu được tùy chỉnh số: ${err.message}`
-          : "Không lưu được tùy chỉnh số."
-      )
-      return false
-    } finally {
-      if (cache.documentNumberingModeSavePromise === savePromise) {
-        cache.documentNumberingModeSavePromise = null
-      }
-    }
+    return true
   }
   const syncDoc1Has = (v: boolean) => {
     cache.doc1Has = v
@@ -596,6 +537,7 @@ export function createUploadPageActions(context: Record<string, any>) {
     applyPersistedDocumentNumberingStylePreset,
     applyPersistedDocumentNumberingStyleOverrides,
     applyActivePlanResponse,
+    selectDocumentNumberingModeDraft,
     selectDocumentNumberingMode,
     selectDocumentNumberingStylePreset,
     selectDocumentNumberingStyleOverrides,

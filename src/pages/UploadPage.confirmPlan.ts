@@ -20,6 +20,9 @@ import {
   type NumberingStyleOverrides,
 } from "./UploadPage.planUtils"
 
+const CONFIRM_STATUS_REFRESH_TIMEOUT_MS = 3_000
+const STATUS_REFRESH_TIMED_OUT = Symbol("status-refresh-timeout")
+
 export function createConfirmPlanHandler(context: Record<string, any>) {
   const {
     confirmingPlan,
@@ -65,102 +68,110 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
     let maxFilesToProcess: number | undefined
     let forceDigitization = false
     let existingStatus = ocr.status
+    let statusRefreshTimedOut = false
     try {
       if (hasConfirmedPlan) {
-      if (cache.documentNumberingModeSavePromise) {
-        const planResponse = await cache.documentNumberingModeSavePromise
-        applyActivePlanResponse(planResponse)
-        confirmedPlanVersionId = cache.activePlanVersionId.trim()
-      }
-      const selectedStrategy = dossierBuildStrategy
-      const selectedNumberingMode = documentNumberingMode
-      const selectedNumberingStylePreset = documentNumberingStylePreset
-      const selectedOverrides: NumberingStyleOverrides = documentNumberingStyleOverrides || {}
-      const strategyChangedBeforeSave =
-        selectedStrategy !== cache.persistedDossierBuildStrategy
-      const numberingModeChangedBeforeSave =
-        selectedNumberingMode !== cache.persistedDocumentNumberingMode
-      const numberingStyleChangedBeforeSave =
-        selectedNumberingStylePreset !==
-        cache.persistedDocumentNumberingStylePreset
-      const overridesChanged =
-        JSON.stringify(selectedOverrides) !== JSON.stringify(cache.persistedDocumentNumberingStyleOverrides)
-      if (
-        strategyChangedBeforeSave ||
-        numberingModeChangedBeforeSave ||
-        numberingStyleChangedBeforeSave ||
-        overridesChanged
-      ) {
-        const planResponse = await patchActivePlan(cache.sessionId, {
-          dossier_build_strategy: selectedStrategy,
-          document_numbering_mode: selectedNumberingMode,
-          document_numbering_style_preset: selectedNumberingStylePreset,
-          document_numbering_style_overrides: selectedOverrides,
-        })
-        const plan = activePlanToParsedPlan(planResponse)
-        confirmedPlanVersionId = planResponse.id ?? ""
-        cache.activePlanVersionId = confirmedPlanVersionId
-        applyPersistedDossierBuildStrategy(
-          activePlanBuildStrategy(planResponse)
-        )
-        applyPersistedDocumentNumberingMode(
-          activePlanDocumentNumberingMode(planResponse)
-        )
-        applyPersistedDocumentNumberingStylePreset(
-          activePlanDocumentNumberingStylePreset(planResponse)
-        )
-        if (typeof applyPersistedDocumentNumberingStyleOverrides === "function") {
-          applyPersistedDocumentNumberingStyleOverrides(
-            activePlanDocumentNumberingStyleOverrides(planResponse)
-          )
+        if (cache.documentNumberingModeSavePromise) {
+          const planResponse = await cache.documentNumberingModeSavePromise
+          applyActivePlanResponse(planResponse)
+          confirmedPlanVersionId = cache.activePlanVersionId.trim()
         }
-        cache.parsedPlan = plan
-        cache.folderTree = planToTree(plan)
-        setParsedPlan(plan)
-        setFolderTree(cache.folderTree)
-      }
-
-      let activeClusterVersionId = cache.activeClusterVersionId
-      if (!activeClusterVersionId) {
-        const sessionDetail = await getSession(cache.sessionId)
-        activeClusterVersionId = sessionDetail.active_cluster_version_id ?? null
-        cache.activeClusterVersionId = activeClusterVersionId
-      }
-
-      if (activeClusterVersionId) {
-        const [activeClusters, clusterBuildStatus] = await Promise.all([
-          getActiveClusters(cache.sessionId, { summaryOnly: true }),
-          getClusterBuildStatus(cache.sessionId),
-        ])
-        const activeStrategy = activeClusterBuildStrategy(activeClusters)
-        const queuedStrategy = dossierBuildStrategyValue(
-          clusterBuildStatus.job?.payload.dossier_build_strategy
-        )
-        const matchingBuildActive =
-          clusterBuildStatus.active && queuedStrategy === selectedStrategy
-        const rebuildRequired =
+        const selectedStrategy = dossierBuildStrategy
+        const selectedNumberingMode = documentNumberingMode
+        const selectedNumberingStylePreset = documentNumberingStylePreset
+        const selectedOverrides: NumberingStyleOverrides =
+          documentNumberingStyleOverrides || {}
+        const strategyChangedBeforeSave =
+          selectedStrategy !== cache.persistedDossierBuildStrategy
+        const numberingModeChangedBeforeSave =
+          selectedNumberingMode !== cache.persistedDocumentNumberingMode
+        const numberingStyleChangedBeforeSave =
+          selectedNumberingStylePreset !==
+          cache.persistedDocumentNumberingStylePreset
+        const overridesChanged =
+          JSON.stringify(selectedOverrides) !==
+          JSON.stringify(cache.persistedDocumentNumberingStyleOverrides)
+        if (
           strategyChangedBeforeSave ||
-          activeStrategy === null ||
-          activeStrategy !== selectedStrategy
-
-        if (rebuildRequired) {
-          if (!matchingBuildActive) {
-            await enqueueClusterBuild(cache.sessionId, {
-              source: "plan_reanalysis",
-              dossier_build_strategy: selectedStrategy,
-            })
-          }
-          cache.clusterGroups = []
-          setClusterGroups([])
-          toast.success(
-            matchingBuildActive
-              ? "Task lập lại hồ sơ đang được xử lý."
-              : "Đã lưu cách thức lập hồ sơ và gửi task lập lại hồ sơ."
+          numberingModeChangedBeforeSave ||
+          numberingStyleChangedBeforeSave ||
+          overridesChanged
+        ) {
+          const planResponse = await patchActivePlan(cache.sessionId, {
+            dossier_build_strategy: selectedStrategy,
+            document_numbering_mode: selectedNumberingMode,
+            document_numbering_style_preset: selectedNumberingStylePreset,
+            document_numbering_style_overrides: selectedOverrides,
+          })
+          const plan = activePlanToParsedPlan(planResponse)
+          confirmedPlanVersionId = planResponse.id ?? ""
+          cache.activePlanVersionId = confirmedPlanVersionId
+          applyPersistedDossierBuildStrategy(
+            activePlanBuildStrategy(planResponse)
           )
-          goTo(4, cache.sessionId)
-          return
+          applyPersistedDocumentNumberingMode(
+            activePlanDocumentNumberingMode(planResponse)
+          )
+          applyPersistedDocumentNumberingStylePreset(
+            activePlanDocumentNumberingStylePreset(planResponse)
+          )
+          if (
+            typeof applyPersistedDocumentNumberingStyleOverrides === "function"
+          ) {
+            applyPersistedDocumentNumberingStyleOverrides(
+              activePlanDocumentNumberingStyleOverrides(planResponse)
+            )
+          }
+          cache.parsedPlan = plan
+          cache.folderTree = planToTree(plan)
+          setParsedPlan(plan)
+          setFolderTree(cache.folderTree)
         }
-      }
+
+        if (strategyChangedBeforeSave) {
+          let activeClusterVersionId = cache.activeClusterVersionId
+          if (activeClusterVersionId === undefined) {
+            const sessionDetail = await getSession(cache.sessionId)
+            activeClusterVersionId =
+              sessionDetail.active_cluster_version_id ?? null
+            cache.activeClusterVersionId = activeClusterVersionId
+          }
+
+          if (activeClusterVersionId) {
+            const [activeClusters, clusterBuildStatus] = await Promise.all([
+              getActiveClusters(cache.sessionId, { summaryOnly: true }),
+              getClusterBuildStatus(cache.sessionId),
+            ])
+            const activeStrategy = activeClusterBuildStrategy(activeClusters)
+            const queuedStrategy = dossierBuildStrategyValue(
+              clusterBuildStatus.job?.payload.dossier_build_strategy
+            )
+            const matchingBuildActive =
+              clusterBuildStatus.active && queuedStrategy === selectedStrategy
+            const rebuildRequired =
+              strategyChangedBeforeSave ||
+              activeStrategy === null ||
+              activeStrategy !== selectedStrategy
+
+            if (rebuildRequired) {
+              if (!matchingBuildActive) {
+                await enqueueClusterBuild(cache.sessionId, {
+                  source: "plan_reanalysis",
+                  dossier_build_strategy: selectedStrategy,
+                })
+              }
+              cache.clusterGroups = []
+              setClusterGroups([])
+              toast.success(
+                matchingBuildActive
+                  ? "Task lập lại hồ sơ đang được xử lý."
+                  : "Đã lưu cách thức lập hồ sơ và gửi task lập lại hồ sơ."
+              )
+              goTo(4, cache.sessionId)
+              return
+            }
+          }
+        }
       }
 
       folderPath =
@@ -198,7 +209,35 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
         existingSessionMode &&
         cache.rawZipReuploaded &&
         Boolean(cache.zipUpload)
-      existingStatus = ocr.status ?? (await ocr.refresh())
+      if (!hasSupplementalZipUpload) {
+        try {
+          if (ocr.status) {
+            existingStatus = ocr.status
+          } else {
+            const refreshResult = await withTimeout(
+              ocr.refresh(),
+              CONFIRM_STATUS_REFRESH_TIMEOUT_MS,
+              STATUS_REFRESH_TIMED_OUT
+            )
+            if (refreshResult === STATUS_REFRESH_TIMED_OUT) {
+              statusRefreshTimedOut = true
+              existingStatus = ocr.status ?? null
+            } else {
+              existingStatus = refreshResult
+            }
+          }
+        } catch {
+          existingStatus = ocr.status ?? null
+        }
+      }
+      if (statusRefreshTimedOut && existingSessionMode) {
+        syncZipState("processing")
+        toast.info(
+          "Đang tải trạng thái metadata. Chuyển sang bước xử lý để theo dõi tiếp."
+        )
+        goTo(3)
+        return
+      }
       const existingDocumentCount = Math.max(
         existingStatus?.total_files ?? 0,
         existingStatus?.total_jobs ?? 0,
@@ -257,6 +296,8 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
         maxFiles: maxFilesToProcess,
         confirmedPlanVersionId: confirmedPlanVersionId || undefined,
         documentNumberingMode,
+        documentNumberingStylePreset,
+        documentNumberingStyleOverrides,
         sessionFileId: cache.zipUpload?.id,
         remoteFileId: cache.zipUpload?.remote_file_id ?? null,
         uploadMode:
@@ -281,4 +322,19 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
       })
     goTo(3)
   }
+}
+
+function withTimeout<T, F>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  fallback: F
+): Promise<T | F> {
+  let timeoutId: ReturnType<typeof window.setTimeout> | null = null
+  const timeoutPromise = new Promise<F>((resolve) => {
+    timeoutId = window.setTimeout(() => resolve(fallback), timeoutMs)
+  })
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeoutId) window.clearTimeout(timeoutId)
+  })
 }
