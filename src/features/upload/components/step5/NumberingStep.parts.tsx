@@ -700,7 +700,7 @@ export function NumberingDocumentRow({
             </span>
             {hasBlankPageWarning ? (
               <span
-                className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800"
                 title={
                   blankPageWarningTitle ||
                   `Cảnh báo trang trắng${
@@ -710,7 +710,7 @@ export function NumberingDocumentRow({
                   }`
                 }
               >
-                <TriangleAlert className="size-3" />
+                <TriangleAlert className="size-3.5" />
                 Cảnh báo trang trắng
               </span>
             ) : null}

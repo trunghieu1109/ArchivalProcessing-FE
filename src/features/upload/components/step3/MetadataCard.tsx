@@ -242,9 +242,9 @@ export function MetadataCard({
           {hasBlankPageWarnings && (
             <span
               title={`Trang cảnh báo: ${blankPageWarningPages.join(", ")}`}
-              className="flex h-6 shrink-0 items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 text-[10px] font-semibold text-amber-700"
+              className="flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 text-xs font-semibold text-amber-800"
             >
-              <AlertTriangle className="size-2.5" /> Cảnh báo trang trắng
+              <AlertTriangle className="size-3.5" /> Cảnh báo trang trắng
             </span>
           )}
           {expertReviewed ? (

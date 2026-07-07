@@ -573,8 +573,8 @@ function PreviewPane({
                 </span>
               ) : null}
               {hasBlankPageWarnings ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
-                  <TriangleAlert className="size-3" />
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                  <TriangleAlert className="size-3.5" />
                   Cảnh báo trang trắng
                 </span>
               ) : null}
@@ -596,18 +596,25 @@ function PreviewPane({
       ) : null}
 
       {hasBlankPageWarnings && !blankPageReview ? (
-        <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-          <div className="flex items-start gap-2">
-            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
+        <div className="border-b border-amber-300 bg-amber-50 px-4 py-3.5 text-sm text-amber-900">
+          <div className="flex items-start gap-3">
+            <TriangleAlert className="mt-0.5 size-5 shrink-0 text-amber-600" />
             <div className="min-w-0">
-              <p className="font-semibold">
-                Trang được nhận diện là trắng nhưng có dấu hiệu chứa hình ảnh
-                {warningPages.length > 0
-                  ? `: ${warningPages.join(", ")}`
-                  : "."}
+              <p className="font-semibold text-amber-950">
+                Cảnh báo trang trắng có dấu hiệu chứa hình ảnh
               </p>
+              {warningPages.length > 0 ? (
+                <p className="mt-1 leading-relaxed">
+                  Trang{" "}
+                  <span className="font-semibold">
+                    {warningPages.join(", ")}
+                  </span>{" "}
+                  được nhận diện là trắng nhưng có thể chứa hình ảnh. Hãy kiểm
+                  tra kỹ trước khi xóa.
+                </p>
+              ) : null}
               {variant.blankPageWarnings.length > 0 ? (
-                <ul className="mt-1 space-y-1">
+                <ul className="mt-2 space-y-1 text-amber-800">
                   {variant.blankPageWarnings.map((warning, index) => (
                     <li key={`${String(warning.type || "warning")}-${index}`}>
                       {blankPageWarningLabel(warning)}

@@ -3,7 +3,6 @@ import {
   AlertTriangle,
   Check,
   Eye,
-  EyeOff,
   Loader2,
   RotateCcw,
   Trash2,
@@ -50,6 +49,66 @@ interface PdfLoadState {
 
 export type BlankPageReviewMode = "preview" | "select"
 const BLANK_PAGE_SELECTION_MAX_WIDTH = 600
+
+function BlankPageWarningOverlay({
+  show,
+  reviewWarningPages,
+  reviewMode,
+  onDismiss,
+  onShow,
+}: {
+  show: boolean
+  reviewWarningPages: number[]
+  reviewMode: BlankPageReviewMode
+  onDismiss: () => void
+  onShow: () => void
+}) {
+  if (!show) {
+    return (
+      <button
+        type="button"
+        onClick={onShow}
+        className="absolute top-3 right-3 z-20 inline-flex max-w-[calc(100%-1.5rem)] items-center gap-2 rounded-full border border-amber-300 bg-amber-50/95 px-3 py-2 text-sm font-medium text-amber-800 shadow-md backdrop-blur-sm transition-colors hover:bg-amber-100"
+      >
+        <AlertTriangle className="size-4 shrink-0" />
+        <span className="truncate">
+          Cảnh báo trang {compactPageList(reviewWarningPages)}
+        </span>
+      </button>
+    )
+  }
+
+  return (
+    <div className="pointer-events-none absolute inset-x-3 top-3 z-20">
+      <div className="pointer-events-auto flex max-h-[min(40vh,280px)] items-start gap-3 overflow-y-auto rounded-xl border border-amber-300 bg-amber-50/95 px-4 py-3 text-sm text-amber-900 shadow-lg backdrop-blur-sm">
+        <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600" />
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold text-amber-950">
+            Cảnh báo trang trắng có dấu hiệu chứa hình ảnh
+          </p>
+          <p className="mt-1 leading-relaxed">
+            Trang{" "}
+            <span className="font-semibold">
+              {compactPageList(reviewWarningPages)}
+            </span>{" "}
+            được nhận diện là trắng nhưng có thể chứa hình ảnh.
+            {reviewMode === "select"
+              ? " Hãy kiểm tra kỹ từng trang trước khi ghi nhận xóa."
+              : " Hãy chuyển sang chế độ Xóa trang trắng để kiểm tra và xử lý."}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-amber-800 transition-colors hover:bg-amber-100"
+        >
+          <Check className="size-4" />
+          Đã kiểm tra
+        </button>
+      </div>
+    </div>
+  )
+}
 const PREVIEW_SCROLL_BUFFER_PX = 900
 const INITIAL_NEARBY_PAGES = [1, 2]
 
@@ -304,38 +363,6 @@ function BlankPageReviewSelection({
           ) : null}
         </div>
 
-        {reviewMode === "select" && hasReviewWarnings ? (
-          showWarningBanner ? (
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              <span className="flex min-w-0 items-center gap-2">
-                <AlertTriangle className="size-3.5 shrink-0 text-amber-600" />
-                <span className="min-w-0 truncate">
-                  Cảnh báo trang trắng có dấu hiệu chứa hình ảnh: trang{" "}
-                  {compactPageList(reviewWarningPages)}. Hãy kiểm tra trước khi
-                  ghi nhận xóa.
-                </span>
-              </span>
-              <button
-                type="button"
-                onClick={() => setShowWarningBanner(false)}
-                className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-2 font-medium text-amber-800 transition-colors hover:bg-amber-100"
-              >
-                <EyeOff className="size-3.5" />
-                Ẩn
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowWarningBanner(true)}
-              className="mt-2 inline-flex h-7 items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-100"
-            >
-              <AlertTriangle className="size-3.5" />
-              Hiện cảnh báo ({compactPageList(reviewWarningPages)})
-            </button>
-          )
-        ) : null}
-
         {submitError ? (
           <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
             {submitError}
@@ -343,7 +370,16 @@ function BlankPageReviewSelection({
         ) : null}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        {hasReviewWarnings ? (
+          <BlankPageWarningOverlay
+            show={showWarningBanner}
+            reviewWarningPages={reviewWarningPages}
+            reviewMode={reviewMode}
+            onDismiss={() => setShowWarningBanner(false)}
+            onShow={() => setShowWarningBanner(true)}
+          />
+        ) : null}
         {reviewMode === "preview" ? (
           iframeUrl ? (
             <iframe
@@ -563,15 +599,26 @@ function ManualSelectionPages({
                     : "border-[#D8E1EC] hover:border-[#0052FF]/50"
               )}
             >
-              <div className="mb-2 px-1 text-xs">
+              <div className="mb-2 flex flex-wrap items-center gap-2 px-1">
                 <span
                   className={cn(
-                    "font-semibold",
+                    "text-sm font-semibold",
                     selected ? "text-rose-700" : "text-[#0F172A]"
                   )}
                 >
                   Trang {originalPage}
                 </span>
+                {warning ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+                    <AlertTriangle className="size-3.5" />
+                    Có dấu hiệu ảnh
+                  </span>
+                ) : null}
+                {selected ? (
+                  <span className="inline-flex items-center rounded-full border border-rose-300 bg-rose-100 px-2.5 py-0.5 text-xs font-semibold text-rose-700">
+                    Đã chọn xóa
+                  </span>
+                ) : null}
               </div>
               {nearbyPages.has(displayPage) ? (
                 <PdfPageFullView
