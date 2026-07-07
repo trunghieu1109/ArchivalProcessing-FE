@@ -86,8 +86,8 @@ export function PlanSummary({
         </p>
       </div>
 
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="rounded-xl border border-[#CBD5E1] bg-white px-4 py-3 shadow-sm">
+        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-[11px] font-semibold tracking-wider text-[#64748B] uppercase">
             Tiêu chí phân nhóm
           </p>
@@ -115,64 +115,70 @@ export function PlanSummary({
           )}
         </div>
 
-        {criteriaDrafts.map((criterion, index) => (
-          <div
-            key={criterion.id}
-            className="rounded-2xl border border-[#CBD5E1] bg-white p-4 shadow-sm"
-          >
-            <div className="mb-3 flex items-center gap-2">
-              <span
-                className="flex size-6 shrink-0 items-center justify-center rounded-lg text-xs font-bold text-white"
-                style={{ backgroundColor: index === 0 ? "#2563EB" : "#00B87A" }}
-              >
-                {criterion.groupLevel.trim().charAt(0).toUpperCase() || "N"}
-              </span>
-              <input
-                value={criterion.groupLevel}
+        <div className="flex flex-col gap-4">
+          {criteriaDrafts.map((criterion, index) => (
+            <div
+              key={criterion.id}
+              className={
+                index > 0 ? "border-t border-[#E2E8F0] pt-4" : undefined
+              }
+            >
+              <div className="mb-2 flex items-center gap-2">
+                <span
+                  className="flex size-6 shrink-0 items-center justify-center rounded-lg text-xs font-bold text-white"
+                  style={{
+                    backgroundColor: index === 0 ? "#2563EB" : "#00B87A",
+                  }}
+                >
+                  {criterion.groupLevel.trim().charAt(0).toUpperCase() || "N"}
+                </span>
+                <input
+                  value={criterion.groupLevel}
+                  readOnly={readOnly}
+                  onChange={(event) =>
+                    setCriteriaDrafts((current) =>
+                      current.map((item) =>
+                        item.id === criterion.id
+                          ? { ...item, groupLevel: event.target.value }
+                          : item
+                      )
+                    )
+                  }
+                  className="h-8 min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-1 text-sm font-bold text-[#0F172A] transition-colors outline-none focus:border-[#CBD5E1] focus:bg-[#F8FAFC]"
+                />
+                {!readOnly && criteriaDrafts.length > 1 && (
+                  <button
+                    onClick={() =>
+                      setCriteriaDrafts((current) =>
+                        current.filter((item) => item.id !== criterion.id)
+                      )
+                    }
+                    title="Xóa cấp tiêu chí"
+                    className="rounded-lg p-1.5 text-[#64748B] hover:bg-red-50 hover:text-red-500"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                )}
+              </div>
+              <textarea
+                value={criterion.criteriaText}
                 readOnly={readOnly}
                 onChange={(event) =>
                   setCriteriaDrafts((current) =>
                     current.map((item) =>
                       item.id === criterion.id
-                        ? { ...item, groupLevel: event.target.value }
+                        ? { ...item, criteriaText: event.target.value }
                         : item
                     )
                   )
                 }
-                className="h-8 min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-1 text-sm font-bold text-[#0F172A] transition-colors outline-none focus:border-[#CBD5E1] focus:bg-[#F8FAFC]"
+                rows={3}
+                placeholder="Mô tả tiêu chí phân nhóm..."
+                className="min-h-14 w-full resize-y rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] px-3 py-2 text-sm leading-6 text-[#0F172A] transition-colors outline-none read-only:resize-none focus:border-[#0052FF]/60 focus:bg-white"
               />
-              {!readOnly && criteriaDrafts.length > 1 && (
-                <button
-                  onClick={() =>
-                    setCriteriaDrafts((current) =>
-                      current.filter((item) => item.id !== criterion.id)
-                    )
-                  }
-                  title="Xóa cấp tiêu chí"
-                  className="rounded-lg p-1.5 text-[#64748B] hover:bg-red-50 hover:text-red-500"
-                >
-                  <Trash2 className="size-3.5" />
-                </button>
-              )}
             </div>
-            <textarea
-              value={criterion.criteriaText}
-              readOnly={readOnly}
-              onChange={(event) =>
-                setCriteriaDrafts((current) =>
-                  current.map((item) =>
-                    item.id === criterion.id
-                      ? { ...item, criteriaText: event.target.value }
-                      : item
-                  )
-                )
-              }
-              rows={3}
-              placeholder="Mô tả tiêu chí phân nhóm..."
-              className="min-h-14 w-full resize-y rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] px-3 py-2 text-sm leading-6 text-[#0F172A] transition-colors outline-none read-only:resize-none focus:border-[#0052FF]/60 focus:bg-white"
-            />
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   )

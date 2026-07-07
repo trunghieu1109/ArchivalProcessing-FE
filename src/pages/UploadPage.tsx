@@ -511,7 +511,6 @@ export function UploadPage() {
                 ? "done"
                 : "idle",
         },
-        { label: "Tệp phương án", has: doc1Has, state: doc1State },
         { label: "Thời hạn", has: doc2Has, state: doc2State },
         { label: "Kho lưu trữ", has: zipHas, state: zipState },
       ]

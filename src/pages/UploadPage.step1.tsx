@@ -276,7 +276,7 @@ export function UploadPageStepOne(props: Record<string, any>) {
           label="Thêm thông tư thời hạn bảo quản"
           sublabel={
             existingSessionMode
-              ? "Thêm file Word chứa thông tư thời hạn bảo quản để bổ sung nguồn phân loại hồ sơ."
+              ? "Bổ sung file Word chứa thông tư thời hạn bảo quản."
               : "Thêm file Word chứa thông tư thời hạn bảo quản."
           }
           processState={doc2State}

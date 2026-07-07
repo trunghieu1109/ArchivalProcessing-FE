@@ -331,7 +331,7 @@ export function ProcessStepReviewControls(
   }
 
   return (
-    <>
+    <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-3 rounded-xl border border-[#D8E1EC] bg-white p-3 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-2">
@@ -1263,7 +1263,7 @@ export function ProcessStepReviewControls(
           ) : null}
         </div>
       )}
-    </>
+    </div>
   )
 }
 
