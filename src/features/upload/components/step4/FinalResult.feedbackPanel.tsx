@@ -95,7 +95,9 @@ export function FinalResultFeedbackPanel(props: Record<string, any>) {
           ) : (
             <FolderPlus data-icon="inline-start" />
           )}
-          Tạo hồ sơ từ lựa chọn
+          {promotingSelectedDocuments
+            ? "Đang tạo và gợi ý..."
+            : "Tạo hồ sơ từ lựa chọn"}
         </Button>
         <Button
           variant="outline"

@@ -138,6 +138,7 @@ export interface SessionDossierPatchPayload {
   usage_mode?: string | null
   physical_condition?: string | null
   note?: string | null
+  retention_recommendation?: Record<string, unknown> | null
   created_by?: string
 }
 
@@ -174,6 +175,53 @@ export interface SessionDossierRetentionCandidatesResponse {
   active_candidate_version_id?: string | null
   candidate_count: number
   candidates_truncated: boolean
+}
+
+export interface SessionDossierSuggestionPayload {
+  draft_id?: number | null
+  dossier_id?: string | null
+  cluster_id?: string | null
+  session_document_ids?: number[]
+  metadata?: Record<string, unknown>
+  options?: Record<string, unknown>
+}
+
+export interface SessionDossierTitleSuggestion {
+  title: string
+  confidence?: number | null
+  rationale?: string | null
+  source?: string | null
+}
+
+export interface SessionDossierSuggestionBaseResponse {
+  session_id: string
+  status: string
+  target_type?: string | null
+  target_key?: string | null
+  draft_id?: number | null
+  dossier_id?: string | null
+  cluster_id?: string | null
+  session_document_ids?: number[]
+  input_summary?: Record<string, unknown>
+  error?: string | null
+}
+
+export interface SessionDossierTitleSuggestionResponse
+  extends SessionDossierSuggestionBaseResponse {
+  suggestions: SessionDossierTitleSuggestion[]
+}
+
+export interface SessionDossierRetentionSuggestionResponse
+  extends SessionDossierSuggestionBaseResponse {
+  plan_version_id?: string | null
+  recommendation?: Record<string, unknown> | null
+  retention_recommendation?: Record<string, unknown> | null
+  candidates: RetentionCandidateSummary[]
+  versions?: RetentionCandidateVersion[]
+  active_candidate_version_id?: string | null
+  candidate_count: number
+  candidates_truncated: boolean
+  index?: Record<string, unknown> | null
 }
 
 export interface RetentionReferenceMergePathItem {

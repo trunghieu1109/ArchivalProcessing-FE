@@ -125,6 +125,7 @@ export function applyPendingDossierDrafts(
       pageCount:
         numericValue(metadata.page_count) ?? group.pageCount ?? null,
       retentionPeriod: textValue(metadata.retention_period),
+      retentionRecommendation: recordValue(metadata.retention_recommendation),
       usageMode: textValue(metadata.usage_mode),
       physicalCondition: textValue(metadata.physical_condition),
       note: textValue(metadata.note),
@@ -341,4 +342,9 @@ function numericValue(value: unknown): number | null {
   if (typeof value !== "string" || !value.trim()) return null
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : null
+}
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+  return value as Record<string, unknown>
 }

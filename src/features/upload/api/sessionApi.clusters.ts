@@ -15,7 +15,10 @@ import type {
   SessionDossierDraftListResponse,
   SessionDossierRetentionCandidatesResponse,
   SessionDossierPatchPayload,
+  SessionDossierRetentionSuggestionResponse,
+  SessionDossierSuggestionPayload,
   SessionDossierSummary,
+  SessionDossierTitleSuggestionResponse,
   TemporaryFolderPromoteResponse,
 } from "./sessionApi.types"
 
@@ -176,6 +179,34 @@ export async function listSessionDossierRetentionCandidates(
   )
 }
 
+export async function suggestSessionDossierTitle(
+  sessionId: string,
+  payload: SessionDossierSuggestionPayload
+): Promise<SessionDossierTitleSuggestionResponse> {
+  return requestJson<SessionDossierTitleSuggestionResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/dossier-title-suggestions`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
+}
+
+export async function suggestSessionDossierRetention(
+  sessionId: string,
+  payload: SessionDossierSuggestionPayload
+): Promise<SessionDossierRetentionSuggestionResponse> {
+  return requestJson<SessionDossierRetentionSuggestionResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/retention-suggestions`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
+}
+
 export async function getClusterBuildStatus(
   sessionId: string
 ): Promise<ClusterBuildStatusResponse> {
@@ -327,6 +358,7 @@ export async function promoteTemporaryFolderDocuments(
   sessionId: string,
   payload: {
     session_document_ids: number[]
+    metadata?: Record<string, unknown>
     created_by?: string
   }
 ): Promise<TemporaryFolderPromoteResponse> {
@@ -347,6 +379,7 @@ export async function promoteSelectedDocumentsToDossier(
   sessionId: string,
   payload: {
     session_document_ids: number[]
+    metadata?: Record<string, unknown>
     created_by?: string
   }
 ): Promise<SelectedDocumentsPromoteResponse> {

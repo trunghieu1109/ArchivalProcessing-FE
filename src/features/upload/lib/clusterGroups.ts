@@ -46,6 +46,7 @@ export interface ClusterGroup {
   note?: string | null
   classificationPath?: string[]
   retentionPeriod?: string | null
+  retentionRecommendation?: Record<string, unknown> | null
   confidence?: number | null
   requiresReview?: boolean
   pageCount?: number | null
@@ -374,6 +375,7 @@ function clusterToGroup(
     documents: allDocuments,
     classificationPath: isTemporary ? [] : classificationPath(classification),
     retentionPeriod: dossier?.retention_period ?? null,
+    retentionRecommendation: dossier?.retention_recommendation ?? null,
     confidence: classification?.confidence ?? null,
     requiresReview:
       Boolean(classification?.requires_review) ||

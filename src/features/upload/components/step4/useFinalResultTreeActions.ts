@@ -9,8 +9,11 @@ import {
   patchDocumentMetadata,
   promoteSelectedDocumentsToDossier,
   promoteTemporaryFolderDocuments,
+  suggestSessionDossierRetention,
+  suggestSessionDossierTitle,
   type ClusterFeedbackResponse,
   type DossierPromoteResponse,
+  type SessionDossierSuggestionPayload,
   type SessionDocumentResponse,
 } from "@/features/upload/api/sessionApi"
 import { buildDisplayMetadata } from "@/features/upload/lib/metadata"
@@ -447,6 +450,89 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
     }
   }
 
+  const buildPendingDossierSuggestionMetadata = async (
+    sessionDocumentIds: number[]
+  ): Promise<Record<string, unknown>> => {
+    if (!sessionId || sessionDocumentIds.length === 0) return {}
+    const metadata: Record<string, unknown> = {}
+    const suggestionPayload: SessionDossierSuggestionPayload = {
+      session_document_ids: sessionDocumentIds,
+      metadata,
+    }
+    const failedParts: string[] = []
+
+    setStatus("Đang gợi ý tiêu đề và thời hạn bảo quản cho hồ sơ tạm...")
+
+    try {
+      const titleResponse = await suggestSessionDossierTitle(
+        sessionId,
+        suggestionPayload
+      )
+      const title = titleSuggestionFromResponse(titleResponse)
+      if (title) {
+        metadata.title = title
+      }
+    } catch (err) {
+      failedParts.push("tiêu đề")
+      console.warn("Failed to suggest pending dossier title", err)
+    }
+
+    try {
+      const retentionResponse = await suggestSessionDossierRetention(
+        sessionId,
+        {
+          ...suggestionPayload,
+          metadata: {
+            ...metadata,
+          },
+          options: { limit: 10 },
+        }
+      )
+      const retentionPeriod = retentionPeriodSuggestionFromResponse(
+        retentionResponse
+      )
+      if (retentionPeriod) {
+        metadata.retention_period = retentionPeriod
+      }
+      const retentionRecommendation =
+        retentionRecommendationFromResponse(retentionResponse)
+      if (Object.keys(retentionRecommendation).length > 0) {
+        metadata.retention_recommendation = retentionRecommendation
+      }
+    } catch (err) {
+      failedParts.push("thời hạn bảo quản")
+      console.warn("Failed to suggest pending dossier retention period", err)
+    }
+
+    if (Object.keys(metadata).length === 0) {
+      if (failedParts.length > 0) {
+        toast.warning(
+          `Chưa gợi ý được ${failedParts.join(" và ")} cho hồ sơ tạm.`
+        )
+      }
+      setStatus(
+        "Chưa có gợi ý tiêu đề hoặc thời hạn bảo quản phù hợp. Đang ghi nhận hồ sơ tạm với metadata cơ bản."
+      )
+      return metadata
+    }
+
+    const suggestedParts = [
+      metadata.title ? "tiêu đề" : "",
+      metadata.retention_period
+        ? "thời hạn bảo quản"
+        : metadata.retention_recommendation
+          ? "danh sách gợi ý thời hạn bảo quản"
+          : "",
+    ].filter(Boolean)
+    setStatus(
+      `Đã tự gợi ý ${suggestedParts.join(" và ")} cho hồ sơ tạm. Đang ghi nhận hồ sơ tạm...`
+    )
+    if (failedParts.length > 0) {
+      toast.warning(`Chưa gợi ý được ${failedParts.join(" và ")}.`)
+    }
+    return metadata
+  }
+
   const handleCreateDossierFromSelection = async () => {
     if (viewingHistoricalClusterVersion) {
       toast.error(
@@ -487,8 +573,12 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
 
     setPromotingSelectedDocuments(true)
     try {
+      const metadata = await buildPendingDossierSuggestionMetadata(
+        sessionDocumentIds
+      )
       const response = await promoteSelectedDocumentsToDossier(sessionId, {
         session_document_ids: sessionDocumentIds,
+        metadata,
       })
       setGroups((previous: ClusterGroup[]) =>
         applyPendingDossierPromotionLocally(
@@ -505,7 +595,9 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
       setPendingFeedbackRefreshKey((key: number) => key + 1)
       setSelectedSessionDocumentIds(new Set())
       setStatus(
-        `Đã ghi nhận ${response.promoted_document_ids.length} tài liệu thành hồ sơ mới. Bấm Cập nhật hồ sơ để áp dụng.`
+        Object.keys(metadata).length > 0
+          ? "Đã ghi nhận hồ sơ tạm kèm metadata gợi ý. Bạn có thể sửa trước khi bấm Cập nhật hồ sơ."
+          : "Đã ghi nhận hồ sơ tạm. Bạn có thể sửa metadata trước khi bấm Cập nhật hồ sơ."
       )
       toast.success("Đã ghi nhận hồ sơ mới từ tài liệu đã chọn.")
     } catch (err) {
@@ -655,8 +747,12 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
 
     setPromotingTemporaryFolder(true)
     try {
+      const metadata = await buildPendingDossierSuggestionMetadata(
+        sessionDocumentIds
+      )
       const response = await promoteTemporaryFolderDocuments(sessionId, {
         session_document_ids: sessionDocumentIds,
+        metadata,
       })
       setGroups((previous: ClusterGroup[]) =>
         applyPendingDossierPromotionLocally(
@@ -672,7 +768,9 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
       )
       setPendingFeedbackRefreshKey((key: number) => key + 1)
       setStatus(
-        `Đã ghi nhận ${response.promoted_document_ids.length} tài liệu trong Thư mục tạm thành hồ sơ mới. Bấm Cập nhật hồ sơ để áp dụng.`
+        Object.keys(metadata).length > 0
+          ? "Đã ghi nhận hồ sơ tạm kèm metadata gợi ý. Bạn có thể sửa trước khi bấm Cập nhật hồ sơ."
+          : "Đã ghi nhận hồ sơ tạm. Bạn có thể sửa metadata trước khi bấm Cập nhật hồ sơ."
       )
       toast.success("Đã ghi nhận Thư mục tạm thành hồ sơ mới.")
     } catch (err) {
@@ -699,6 +797,94 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
     stopResultTreeAutoScroll,
     toggleNode,
   }
+}
+
+function plainObject(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {}
+  return { ...(value as Record<string, unknown>) }
+}
+
+function titleSuggestionFromResponse(response: unknown): string {
+  const payload = plainObject(response)
+  const suggestions = Array.isArray(payload.suggestions)
+    ? payload.suggestions
+    : []
+  for (const suggestion of suggestions) {
+    const title = textValue(plainObject(suggestion).title)
+    if (title) return title
+  }
+  return ""
+}
+
+function retentionPeriodSuggestionFromResponse(response: unknown): string {
+  const payload = plainObject(response)
+  const recommendation = plainObject(
+    payload.recommendation ?? payload.retention_recommendation
+  )
+  const recommendedPeriod = textValue(recommendation.retention_period)
+  if (recommendedPeriod) return recommendedPeriod
+
+  const candidates = Array.isArray(payload.candidates) ? payload.candidates : []
+  for (const candidate of candidates) {
+    const retentionPeriod = textValue(
+      plainObject(candidate).retention_period
+    )
+    if (retentionPeriod) return retentionPeriod
+  }
+  return ""
+}
+
+function retentionRecommendationFromResponse(
+  response: unknown
+): Record<string, unknown> {
+  const payload = plainObject(response)
+  const recommendation = {
+    ...plainObject(payload.recommendation ?? payload.retention_recommendation),
+  }
+  const candidates = Array.isArray(payload.candidates)
+    ? payload.candidates
+    : Array.isArray(recommendation.candidates)
+      ? recommendation.candidates
+      : []
+  const versions = Array.isArray(payload.versions)
+    ? payload.versions
+    : Array.isArray(recommendation.versions)
+      ? recommendation.versions
+      : []
+  const retentionPeriod =
+    textValue(recommendation.retention_period) ||
+    retentionPeriodSuggestionFromResponse(payload)
+  const hasVersionCandidates = versions.some((version) => {
+    const record = plainObject(version)
+    return Array.isArray(record.candidates) && record.candidates.length > 0
+  })
+  if (!retentionPeriod && candidates.length === 0 && !hasVersionCandidates) {
+    return {}
+  }
+  if (retentionPeriod) recommendation.retention_period = retentionPeriod
+  if (candidates.length > 0) recommendation.candidates = candidates
+  if (versions.length > 0) recommendation.versions = versions
+  ;[
+    "active_candidate_version_id",
+    "candidate_count",
+    "candidates_truncated",
+    "plan_version_id",
+    "status",
+  ].forEach((key) => {
+    if (payload[key] !== undefined && recommendation[key] === undefined) {
+      recommendation[key] = payload[key]
+    }
+  })
+  return Object.fromEntries(
+    Object.entries(recommendation).filter(([, value]) => value !== undefined)
+  )
+}
+
+function textValue(value: unknown): string {
+  if (value === null || value === undefined) return ""
+  if (typeof value === "string") return value.trim()
+  if (typeof value === "number" && Number.isFinite(value)) return String(value)
+  return ""
 }
 
 function pendingFeedbackMarker({

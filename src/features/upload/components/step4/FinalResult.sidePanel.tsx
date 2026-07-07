@@ -17,7 +17,6 @@ import {
   type RetentionCandidateSummary,
   type RetentionCandidateVersion,
   type RetentionReference,
-  type SessionDossierRetentionCandidatesResponse,
 } from "@/features/upload/api/sessionApi"
 import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
 import {
@@ -152,7 +151,25 @@ export function DossierMetadataSidePanel({
       return
     }
     if (group.isPendingDossier) {
-      toast.info("Hãy bấm Cập nhật hồ sơ trước khi tải gợi ý THBQ.")
+      const versions = retentionCandidateVersionsFromResponse(
+        group.retentionRecommendation ?? {}
+      )
+      setCandidatePanelOpen(true)
+      setCandidatesLoading(false)
+      setSelectingEntryId("")
+      setCandidateVersions(versions)
+      setSelectedCandidateVersionId(
+        textValue(
+          group.retentionRecommendation?.active_candidate_version_id
+        ) ||
+          versions[versions.length - 1]?.version_id ||
+          ""
+      )
+      setCandidatesError(
+        versions.some((version) => version.candidates.length > 0)
+          ? ""
+          : "Hồ sơ tạm này chưa có danh sách gợi ý thời hạn bảo quản."
+      )
       return
     }
     if (!group.dossierId) {
@@ -203,7 +220,7 @@ export function DossierMetadataSidePanel({
     }
     setSelectingEntryId(candidate.entry_id)
     try {
-      if (onSelectRetentionCandidate && group.dossierId) {
+      if (!group.isPendingDossier && onSelectRetentionCandidate && group.dossierId) {
         await onSelectRetentionCandidate(
           group.dossierId,
           candidate.entry_id,
@@ -275,12 +292,7 @@ export function DossierMetadataSidePanel({
                 variant="outline"
                 size="sm"
                 onClick={() => void loadRetentionCandidates()}
-                disabled={saving || candidatesLoading || group.isPendingDossier}
-                title={
-                  group.isPendingDossier
-                    ? "Cập nhật hồ sơ trước khi tải gợi ý THBQ"
-                    : undefined
-                }
+                disabled={saving || candidatesLoading}
               >
                 {candidatesLoading ? (
                   <Loader2 data-icon="inline-start" className="animate-spin" />
@@ -613,9 +625,12 @@ function candidateReference(
 }
 
 function retentionCandidateVersionsFromResponse(
-  response: SessionDossierRetentionCandidatesResponse
+  response: unknown
 ): RetentionCandidateVersion[] {
-  const versions = Array.isArray(response.versions) ? response.versions : []
+  const payload = recordValue(response)
+  const versions = Array.isArray(payload.versions)
+    ? (payload.versions as RetentionCandidateVersion[])
+    : []
   if (versions.length > 0) {
     return versions.map((version, index) => ({
       ...version,
@@ -629,11 +644,21 @@ function retentionCandidateVersionsFromResponse(
     {
       version_id: LEGACY_RETENTION_VERSION_ID,
       version_number: 1,
-      candidates: response.candidates ?? [],
-      candidate_count: response.candidate_count,
-      candidates_truncated: response.candidates_truncated,
+      candidates: Array.isArray(payload.candidates)
+        ? (payload.candidates as RetentionCandidateSummary[])
+        : [],
+      candidate_count:
+        typeof payload.candidate_count === "number"
+          ? payload.candidate_count
+          : undefined,
+      candidates_truncated: Boolean(payload.candidates_truncated),
     },
   ]
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {}
+  return value as Record<string, unknown>
 }
 
 function retentionVersionSummary(version: RetentionCandidateVersion): string {

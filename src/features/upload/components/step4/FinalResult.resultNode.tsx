@@ -389,7 +389,9 @@ export function ResultNode({
                 <FolderPlus data-icon="inline-start" />
               )}
               <span className={cn(compact && "hidden 2xl:inline")}>
-                Tạo hồ sơ mới
+                {promotingTemporaryFolder
+                  ? "Đang tạo và gợi ý..."
+                  : "Tạo hồ sơ mới"}
               </span>
             </Button>
           )}
