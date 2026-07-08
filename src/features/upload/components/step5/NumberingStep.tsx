@@ -31,6 +31,7 @@ import { NumberedPdfPreviewPanel } from "./NumberingStep.preview"
 import {
   groupDocumentsByDossier,
   isNumberingComplete,
+  numberingEntries,
   saveBlob,
 } from "./NumberingStep.utils"
 
@@ -521,24 +522,24 @@ export function NumberingStep({
         `Đang gửi yêu cầu đánh số lại ${document.file_name || document.document_id}.`
       )
       setCompletedPhases(new Set())
+      const entries = numberingEntries(document)
+      const firstEntry = entries[0]
+      const anchorPageNumber = firstEntry?.page_number ?? 1
+      const currentNumber =
+        Number.parseInt(String(firstEntry?.label ?? ""), 10) ||
+        document.document_number_start ||
+        1
       try {
-        const response = await enqueueDocumentNumbering(sessionId, {
-          created_by: "ui",
-          force: hasPendingStyleChanges,
-          document_numbering_style_preset: stylePresetDraft,
-          document_numbering_style_overrides: styleOverridesDraft,
-        })
-        onDocumentNumberingStyleApplied?.(stylePresetDraft, styleOverridesDraft)
-        setStatus((current) =>
-          current?.session_id === sessionId
-            ? {
-                ...current,
-                document_numbering_style_preset: stylePresetDraft,
-                document_numbering_style_overrides: styleOverridesDraft,
-              }
-            : current
+        const response = await updateDocumentNumberingFromPage(
+          sessionId,
+          document.session_document_id,
+          {
+            anchor_page_number: anchorPageNumber,
+            new_number: currentNumber,
+            created_by: "ui",
+            force: true,
+          }
         )
-        setStyleDraftDirty(false)
         if (response.status === "not_needed") {
           if (response.result) {
             numberingDocumentsRevisionRef.current = revisionToken(
@@ -548,7 +549,7 @@ export function NumberingStep({
           }
           toast.info("Không còn tài liệu cần đánh số lại.")
         } else if (response.created) {
-          toast.success("Đã gửi task đánh số lại tài liệu chưa hoàn tất.")
+          toast.success("Đã gửi task đánh số lại tài liệu.")
         } else {
           toast.info("Task đánh số đang được xử lý.")
         }
@@ -565,14 +566,10 @@ export function NumberingStep({
       }
     },
     [
-      hasPendingStyleChanges,
-      onDocumentNumberingStyleApplied,
       refreshStatus,
       sessionId,
       starting,
       status?.active,
-      styleOverridesDraft,
-      stylePresetDraft,
     ]
   )
 
@@ -678,16 +675,17 @@ export function NumberingStep({
       const documentsChanged =
         nextDocumentsRevision !== null &&
         nextDocumentsRevision !== previousDocumentsRevision
+      const periodicDocumentRefresh =
+        pollCount % NUMBERING_DOCUMENT_REFRESH_EVERY === 0
       const shouldRefreshDocuments =
         !response?.active ||
-        (nextDocumentsRevision !== null
-          ? documentsChanged
-          : pollCount % NUMBERING_DOCUMENT_REFRESH_EVERY === 0)
+        documentsChanged ||
+        periodicDocumentRefresh
       if (shouldRefreshDocuments) {
         void refreshStatus({
           silent: true,
           includeDocuments: true,
-          force: documentsChanged || nextDocumentsRevision === null,
+          force: true,
         })
       }
       if (response?.active || starting) {
@@ -1115,9 +1113,7 @@ export function NumberingStep({
                           retryingDocumentId === document.session_document_id
                         }
                         retryable={
-                          stoppedWithUnresolved &&
-                          document.status !== "done" &&
-                          document.status !== "running"
+                          hasNumberingOutput && document.status !== "running"
                         }
                         stalled={
                           stoppedWithUnresolved &&
