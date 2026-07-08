@@ -119,6 +119,7 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
   const activeBuildProgressCompletedRef = useRef(false)
   const clusterEventCursorRef = useRef(0)
   const clusterRevisionRef = useRef<string | null>(null)
+  const clusterSummarySeedAttemptedRef = useRef(false)
   const pollStateRef = useRef({
     checkingClusters,
     clusterJobMode,
@@ -150,6 +151,7 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
     activeBuildJobIdRef.current = null
     activeBuildProgressCompletedRef.current = false
     clusterEventCursorRef.current = 0
+    clusterSummarySeedAttemptedRef.current = false
   }, [sessionId])
 
   useEffect(() => {
@@ -230,10 +232,9 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
       }
 
       try {
-        const [versionSummary, buildStatus] = await Promise.all([
-          getActiveClusters(sessionId, { summaryOnly: true }),
-          getClusterBuildStatus(sessionId).catch(() => null),
-        ])
+        const buildStatus = await getClusterBuildStatus(sessionId).catch(
+          () => null
+        )
         if (cancelled) return
 
         const rawActiveBuildJob = Boolean(buildStatus?.active)
@@ -264,70 +265,31 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
           : latestState.rebuildBaselineVersionId
             ? latestState.clusterJobMode
             : "new"
-        let version = versionSummary
-        const nextVersionId = versionSummary?.id ?? null
-        const nextVersionMarker = nextVersionId ?? NO_CLUSTER_VERSION
-        const nextClusterRevision = revisionToken(versionSummary?.revision)
-        if (
-          nextClusterRevision !== null &&
-          nextClusterRevision !== clusterRevisionRef.current
-        ) {
-          const hadClusterRevision = clusterRevisionRef.current !== null
-          clusterRevisionRef.current = nextClusterRevision
-          if (
-            hadClusterRevision &&
-            nextVersionId &&
-            latestState.displayedClusterVersionId === nextVersionId
-          ) {
-            setPendingFeedbackRefreshKey((key: number) => key + 1)
-          }
-        }
-        setActiveClusterVersionId(nextVersionId)
-
-        if (
-          latestState.rebuildBaselineVersionId &&
-          versionSummary &&
-          nextVersionMarker !== latestState.rebuildBaselineVersionId
-        ) {
-          if (rawActiveBuildJob && buildStatus?.job?.id) {
-            completedBuildJobIdRef.current = buildStatus.job.id
-          }
-          version = await getActiveClusters(sessionId)
-          if (cancelled || !version) return
-          const nextGroups = versionToGroups(
-            version,
-            pollStateRef.current.metadataItems
-          )
-          const nextDossierCount = regularDossierCount(nextGroups)
-          const nextTemporaryCount = temporaryDocumentCount(nextGroups)
-          setGroups(nextGroups)
-          setDisplayedClusterVersionId(version.id)
-          setDisplayedClusterVersion(version)
-          setPendingClusterVersion(null)
-          setPendingFeedbackCount(0)
-          setPendingFeedbackRefreshKey((key: number) => key + 1)
-          setRebuildBaselineVersionId(null)
-          setLoading(false)
-          setCheckingClusters(false)
-          setClusterJobMode(clusterJobModeFromSource(version.source))
-          setClusterProgressPhase(null)
-          setClusterCompletedPhases(completedClusterPhaseSet())
-          setClusterProgressMessage("Đã cập nhật hồ sơ xong.")
-          setStatus(
-            nextDossierCount > 0
-              ? `Đã cập nhật ${nextDossierCount} hồ sơ.${
-                  nextTemporaryCount > 0
-                    ? ` Có ${nextTemporaryCount} tài liệu trong Thư mục tạm.`
-                    : ""
-                }`
-              : `Đã cập nhật hồ sơ. Có ${nextTemporaryCount} tài liệu trong Thư mục tạm.`
-          )
-          toast.success("Đã cập nhật hồ sơ từ feedback đã lưu.")
-          schedule(CLUSTER_IDLE_POLL_INTERVAL_MS)
-          return
-        }
-
         if (hasActiveBuildJob) {
+          if (
+            !clusterSummarySeedAttemptedRef.current &&
+            clusterRevisionRef.current === null &&
+            !latestState.displayedClusterVersionId &&
+            !latestState.hasClusterData
+          ) {
+            clusterSummarySeedAttemptedRef.current = true
+            try {
+              const seedSummary = await getActiveClusters(sessionId, {
+                summaryOnly: true,
+              })
+              if (cancelled) return
+              if (seedSummary) {
+                const seedRevision = revisionToken(seedSummary.revision)
+                if (seedRevision !== null) {
+                  clusterRevisionRef.current = seedRevision
+                }
+                setActiveClusterVersionId(seedSummary.id ?? null)
+              }
+            } catch {
+              // Active job progress is enough; the next non-active tick will fetch clusters again.
+            }
+          }
+
           const snapshotProgress =
             buildStatus?.progress?.job_id === activeBuildJobId
               ? buildStatus.progress
@@ -392,6 +354,73 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
             )
           }
           schedule(CLUSTER_ACTIVE_POLL_INTERVAL_MS)
+          return
+        }
+
+        const versionSummary = await getActiveClusters(sessionId, {
+          summaryOnly: true,
+        })
+        if (cancelled) return
+        let version = versionSummary
+        const nextVersionId = versionSummary?.id ?? null
+        const nextVersionMarker = nextVersionId ?? NO_CLUSTER_VERSION
+        const nextClusterRevision = revisionToken(versionSummary?.revision)
+        if (
+          nextClusterRevision !== null &&
+          nextClusterRevision !== clusterRevisionRef.current
+        ) {
+          const hadClusterRevision = clusterRevisionRef.current !== null
+          clusterRevisionRef.current = nextClusterRevision
+          if (
+            hadClusterRevision &&
+            nextVersionId &&
+            latestState.displayedClusterVersionId === nextVersionId
+          ) {
+            setPendingFeedbackRefreshKey((key: number) => key + 1)
+          }
+        }
+        setActiveClusterVersionId(nextVersionId)
+
+        if (
+          latestState.rebuildBaselineVersionId &&
+          versionSummary &&
+          nextVersionMarker !== latestState.rebuildBaselineVersionId
+        ) {
+          if (rawActiveBuildJob && buildStatus?.job?.id) {
+            completedBuildJobIdRef.current = buildStatus.job.id
+          }
+          version = await getActiveClusters(sessionId)
+          if (cancelled || !version) return
+          const nextGroups = versionToGroups(
+            version,
+            pollStateRef.current.metadataItems
+          )
+          const nextDossierCount = regularDossierCount(nextGroups)
+          const nextTemporaryCount = temporaryDocumentCount(nextGroups)
+          setGroups(nextGroups)
+          setDisplayedClusterVersionId(version.id)
+          setDisplayedClusterVersion(version)
+          setPendingClusterVersion(null)
+          setPendingFeedbackCount(0)
+          setPendingFeedbackRefreshKey((key: number) => key + 1)
+          setRebuildBaselineVersionId(null)
+          setLoading(false)
+          setCheckingClusters(false)
+          setClusterJobMode(clusterJobModeFromSource(version.source))
+          setClusterProgressPhase(null)
+          setClusterCompletedPhases(completedClusterPhaseSet())
+          setClusterProgressMessage("Đã cập nhật hồ sơ xong.")
+          setStatus(
+            nextDossierCount > 0
+              ? `Đã cập nhật ${nextDossierCount} hồ sơ.${
+                  nextTemporaryCount > 0
+                    ? ` Có ${nextTemporaryCount} tài liệu trong Thư mục tạm.`
+                    : ""
+                }`
+              : `Đã cập nhật hồ sơ. Có ${nextTemporaryCount} tài liệu trong Thư mục tạm.`
+          )
+          toast.success("Đã cập nhật hồ sơ từ feedback đã lưu.")
+          schedule(CLUSTER_IDLE_POLL_INTERVAL_MS)
           return
         }
 
@@ -575,6 +604,15 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
     let timeoutId: number | undefined
 
     const pollEvents = async () => {
+      if (activeBuildJobIdRef.current === null && !rebuildBaselineVersionId) {
+        if (!cancelled) {
+          timeoutId = window.setTimeout(
+            pollEvents,
+            visibleAwareDelay(CLUSTER_EVENT_POLL_INTERVAL_MS)
+          )
+        }
+        return
+      }
       try {
         let hasMoreEvents = true
         while (hasMoreEvents && !cancelled) {
