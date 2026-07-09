@@ -80,6 +80,16 @@ export function sortedPageSet(set: Set<number>): number[] {
   return [...set].sort((left, right) => left - right)
 }
 
+export function resolveWarningPageDisplayIndex(
+  originalPage: number,
+  mapping: BlankPageReviewMapping,
+  rendersOriginalPages: boolean
+): number | null {
+  if (!Number.isInteger(originalPage) || originalPage <= 0) return null
+  if (rendersOriginalPages) return originalPage
+  return mapping.originalToProcessed.get(originalPage) ?? null
+}
+
 function normalizedPageList(value: number[]): number[] {
   return [...new Set(value.filter((page) => Number.isInteger(page) && page > 0))]
     .sort((left, right) => left - right)

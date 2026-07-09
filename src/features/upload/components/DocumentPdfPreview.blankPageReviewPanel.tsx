@@ -24,10 +24,11 @@ import { cn } from "@/shared/lib/utils"
 import {
   buildBlankPageReviewMapping,
   type BlankPageReviewMapping,
+  resolveWarningPageDisplayIndex,
   sortedPageSet,
 } from "./DocumentPdfPreview.blankPageReview"
 import type { PreviewVariantState } from "./DocumentPdfPreview.types"
-import { compactPageList, pdfEmbedUrl } from "./DocumentPdfPreview.utils"
+import { pdfEmbedUrl } from "./DocumentPdfPreview.utils"
 
 
 
@@ -80,65 +81,58 @@ function computeGridLayout(containerWidth: number): {
   return { columns, targetWidth }
 }
 
-function BlankPageWarningOverlay({
-  show,
-  reviewWarningPages,
-  reviewMode,
-  onDismiss,
-  onShow,
+interface ScrollToOriginalPageRequest {
+  page: number
+  nonce: number
+}
+
+function WarningPageJumpButtons({
+  warningPages,
+  mapping,
+  rendersOriginalPages,
+  onJump,
 }: {
-  show: boolean
-  reviewWarningPages: number[]
-  reviewMode: BlankPageReviewMode
-  onDismiss: () => void
-  onShow: () => void
+  warningPages: number[]
+  mapping: BlankPageReviewMapping
+  rendersOriginalPages: boolean
+  onJump: (originalPage: number) => void
 }) {
-  if (!show) {
-    return (
-      <button
-        type="button"
-        onClick={onShow}
-        className="absolute top-3 right-3 z-20 inline-flex max-w-[calc(100%-1.5rem)] items-center gap-2 rounded-full border border-amber-300 bg-amber-50/95 px-3 py-2 text-sm font-medium text-amber-800 shadow-md backdrop-blur-sm transition-colors hover:bg-amber-100"
-      >
-        <AlertTriangle className="size-4 shrink-0" />
-        <span className="truncate">
-          Cảnh báo trang {compactPageList(reviewWarningPages)}
-        </span>
-      </button>
-    )
-  }
+  if (warningPages.length === 0) return null
 
   return (
-    <div className="pointer-events-none absolute inset-x-3 top-3 z-20">
-      <div className="pointer-events-auto flex max-h-[min(40vh,280px)] items-start gap-3 overflow-y-auto rounded-xl border border-amber-300 bg-amber-50/95 px-4 py-3 text-sm text-amber-900 shadow-lg backdrop-blur-sm">
-        <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600" />
-        <div className="min-w-0 flex-1">
-          <p className="font-semibold text-amber-950">
-            Cảnh báo trang trắng có dấu hiệu chứa hình ảnh
-          </p>
-          <p className="mt-1 leading-relaxed">
-            Trang{" "}
-            <span className="font-semibold">
-              {compactPageList(reviewWarningPages)}
-            </span>{" "}
-            được nhận diện là trắng nhưng có thể chứa hình ảnh.
-            {reviewMode === "select"
-              ? " Hãy kiểm tra kỹ từng trang trước khi ghi nhận xóa."
-              : " Hãy chuyển sang chế độ Xóa trang trắng để kiểm tra và xử lý."}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-amber-800 transition-colors hover:bg-amber-100"
-        >
-          <Check className="size-4" />
-          Đã kiểm tra
-        </button>
-      </div>
+    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+      <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-medium text-amber-800">
+        <AlertTriangle className="size-3" />
+        Trang cảnh báo:
+      </span>
+      {warningPages.map((page) => {
+        const canJump =
+          resolveWarningPageDisplayIndex(
+            page,
+            mapping,
+            rendersOriginalPages
+          ) !== null
+        return (
+          <button
+            key={page}
+            type="button"
+            title={
+              canJump
+                ? `Đi tới trang ${page}`
+                : `Trang ${page} không còn trong bản preview hiện tại`
+            }
+            disabled={!canJump}
+            onClick={() => onJump(page)}
+            className="inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-md border border-amber-300 bg-amber-50 px-1.5 text-[11px] font-semibold text-amber-800 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {page}
+          </button>
+        )
+      })}
     </div>
   )
 }
+
 const PREVIEW_SCROLL_BUFFER_PX = 900
 const INITIAL_NEARBY_PAGES = [1, 2]
 
@@ -301,19 +295,39 @@ function BlankPageReviewSelection({
   const iframeUrl = variant.url ? pdfEmbedUrl(variant.url) : ""
   const canSubmit = Boolean(variant.url && !submitting)
   const reviewWarningPages = mapping.warningOriginalPages
-  const reviewWarningKey = reviewWarningPages.join(",")
   const hasReviewWarnings = reviewWarningPages.length > 0
-  const [showWarningBanner, setShowWarningBanner] = useState(true)
   const [selectionLayout, setSelectionLayout] =
     useState<BlankPageSelectionLayout>("sequential")
+  const [pendingScrollPage, setPendingScrollPage] = useState<number | null>(
+    null
+  )
+  const [scrollToOriginalPageRequest, setScrollToOriginalPageRequest] =
+    useState<ScrollToOriginalPageRequest | null>(null)
   const optionalContentConfigPromise = useMemo(
     () => pdfDocument?.getOptionalContentConfig({ intent: "display" }) ?? null,
     [pdfDocument]
   )
 
   useEffect(() => {
-    if (hasReviewWarnings) setShowWarningBanner(true)
-  }, [hasReviewWarnings, reviewWarningKey])
+    if (reviewMode !== "select" || pendingScrollPage === null) return
+    setScrollToOriginalPageRequest({
+      page: pendingScrollPage,
+      nonce: Date.now(),
+    })
+    setPendingScrollPage(null)
+  }, [pendingScrollPage, reviewMode])
+
+  const jumpToWarningPage = (originalPage: number) => {
+    if (reviewMode !== "select") {
+      setPendingScrollPage(originalPage)
+      onReviewModeChange("select")
+      return
+    }
+    setScrollToOriginalPageRequest({
+      page: originalPage,
+      nonce: Date.now(),
+    })
+  }
 
   const toggleOriginalPage = (originalPage: number) => {
     setSelectedDeletedPages((current) => {
@@ -416,6 +430,17 @@ function BlankPageReviewSelection({
           ) : null}
         </div>
 
+        {hasReviewWarnings ? (
+          <div className="mt-2 border-t border-[#E2E8F0] pt-2">
+            <WarningPageJumpButtons
+              warningPages={reviewWarningPages}
+              mapping={mapping}
+              rendersOriginalPages={rendersOriginalPages}
+              onJump={jumpToWarningPage}
+            />
+          </div>
+        ) : null}
+
         {submitError ? (
           <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
             {submitError}
@@ -424,15 +449,6 @@ function BlankPageReviewSelection({
       </div>
 
       <div className="relative min-h-0 flex-1 overflow-hidden">
-        {hasReviewWarnings ? (
-          <BlankPageWarningOverlay
-            show={showWarningBanner}
-            reviewWarningPages={reviewWarningPages}
-            reviewMode={reviewMode}
-            onDismiss={() => setShowWarningBanner(false)}
-            onShow={() => setShowWarningBanner(true)}
-          />
-        ) : null}
         {reviewMode === "preview" ? (
           iframeUrl ? (
             <iframe
@@ -458,6 +474,7 @@ function BlankPageReviewSelection({
             selectedDeletedPages={selectedDeletedPages}
             warningSet={selectableWarningSet}
             submitting={submitting}
+            scrollToOriginalPageRequest={scrollToOriginalPageRequest}
             onTogglePage={toggleOriginalPage}
           />
         )}
@@ -478,6 +495,7 @@ function ManualSelectionPages({
   selectedDeletedPages,
   warningSet,
   submitting,
+  scrollToOriginalPageRequest,
   onTogglePage,
 }: {
   layout: BlankPageSelectionLayout
@@ -491,6 +509,7 @@ function ManualSelectionPages({
   selectedDeletedPages: Set<number>
   warningSet: Set<number>
   submitting: boolean
+  scrollToOriginalPageRequest: ScrollToOriginalPageRequest | null
   onTogglePage: (originalPage: number) => void
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
@@ -611,6 +630,54 @@ function ManualSelectionPages({
     renderSessionId,
     targetWidth,
   ])
+
+  useEffect(() => {
+    if (!scrollToOriginalPageRequest) return
+    const originalPage = scrollToOriginalPageRequest.page
+    const displayPage = resolveWarningPageDisplayIndex(
+      originalPage,
+      mapping,
+      rendersOriginalPages
+    )
+    if (!displayPage) return
+
+    let cancelled = false
+    const timeouts: number[] = []
+
+    const scrollToPage = () => {
+      if (cancelled) return
+      const list = listRef.current
+      if (!list) return
+      const card = list.querySelector<HTMLElement>(
+        `[data-original-page="${originalPage}"]`
+      )
+      if (!card) return
+      card.scrollIntoView({ behavior: "smooth", block: "center" })
+      setNearbyPages((current) => {
+        const next = new Set(current)
+        next.add(displayPage)
+        return next
+      })
+    }
+
+    for (const delay of [0, 120, 400]) {
+      timeouts.push(window.setTimeout(scrollToPage, delay))
+    }
+
+    return () => {
+      cancelled = true
+      for (const timeoutId of timeouts) {
+        window.clearTimeout(timeoutId)
+      }
+    }
+  }, [
+    mapping,
+    pageCount,
+    pdfDocument,
+    rendersOriginalPages,
+    scrollToOriginalPageRequest,
+  ])
+
   if (loadError) {
     return (
       <div className="h-full overflow-y-auto p-4">
@@ -716,6 +783,7 @@ function PageSelectionCard({
   return (
     <div
       data-preview-page={displayPage}
+      data-original-page={originalPage}
       role="button"
       tabIndex={submitting ? -1 : 0}
       aria-disabled={submitting}

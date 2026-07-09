@@ -3,7 +3,7 @@ pid: 7376
 cwd: "D:\MBFS_Code\code\ArchivalProcessing-FE"
 command: "cd D:\\MBFS_Code\\code\\ArchivalProcessing-FE; npm run build 2>&1 | Select-Object -Last 35"
 started_at: 2026-07-09T04:54:31.585Z
-running_for_ms: 1115002  
+running_for_ms: 9325004  
 ---
 dist/assets/roboto-cyrillic-ext-500-normal-DqF2hftb.woff           16.47 kB
 dist/assets/roboto-cyrillic-ext-700-normal-CI7FH63F.woff           16.48 kB
