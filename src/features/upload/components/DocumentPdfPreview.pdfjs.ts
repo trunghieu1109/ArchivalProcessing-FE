@@ -225,14 +225,17 @@ export async function renderPdfPage({
 }
 
 export function createCanvasFromRenderedPage(
-  rendered: RenderedPdfPage
+  rendered: RenderedPdfPage,
+  options?: { fitContainer?: boolean }
 ): HTMLCanvasElement {
   const canvas = document.createElement("canvas")
-  canvas.className = "block h-auto max-w-full rounded bg-white shadow"
+  canvas.className = "block h-auto w-full max-w-full rounded bg-white shadow"
   canvas.width = rendered.imageBitmap.width
   canvas.height = rendered.imageBitmap.height
-  canvas.style.width = `${rendered.cssWidth}px`
-  canvas.style.height = `${rendered.cssHeight}px`
+  if (!options?.fitContainer) {
+    canvas.style.width = `${rendered.cssWidth}px`
+    canvas.style.height = `${rendered.cssHeight}px`
+  }
   const context = canvas.getContext("2d", { alpha: false })
   if (!context) {
     throw new Error("Trình duyệt không hỗ trợ canvas 2D.")

@@ -3,7 +3,9 @@ import {
   AlertTriangle,
   Check,
   Eye,
+  LayoutGrid,
   Loader2,
+  Rows3,
   Trash2,
 } from "lucide-react"
 import type { PDFDocumentProxy } from "pdfjs-dist"
@@ -47,7 +49,36 @@ interface PdfLoadState {
 }
 
 export type BlankPageReviewMode = "preview" | "select"
+export type BlankPageSelectionLayout = "sequential" | "grid"
 const BLANK_PAGE_SELECTION_MAX_WIDTH = 600
+const BLANK_PAGE_GRID_GAP_PX = 12
+const BLANK_PAGE_GRID_MIN_CARD_WIDTH = 168
+const BLANK_PAGE_GRID_MAX_COLUMNS = 4
+const BLANK_PAGE_GRID_MIN_COLUMNS = 2
+const BLANK_PAGE_GRID_SCROLL_BUFFER_PX = 500
+const BLANK_PAGE_GRID_CARD_PADDING_PX = 12
+
+function computeGridLayout(containerWidth: number): {
+  columns: number
+  targetWidth: number
+} {
+  const horizontalPadding = 16
+  const available = Math.max(0, containerWidth - horizontalPadding)
+  let columns = Math.floor(
+    (available + BLANK_PAGE_GRID_GAP_PX) /
+      (BLANK_PAGE_GRID_MIN_CARD_WIDTH + BLANK_PAGE_GRID_GAP_PX)
+  )
+  columns = Math.max(
+    BLANK_PAGE_GRID_MIN_COLUMNS,
+    Math.min(BLANK_PAGE_GRID_MAX_COLUMNS, columns)
+  )
+  const cardWidth =
+    (available - BLANK_PAGE_GRID_GAP_PX * (columns - 1)) / columns
+  const targetWidth = Math.floor(
+    Math.max(120, cardWidth - BLANK_PAGE_GRID_CARD_PADDING_PX)
+  )
+  return { columns, targetWidth }
+}
 
 function BlankPageWarningOverlay({
   show,
@@ -273,6 +304,8 @@ function BlankPageReviewSelection({
   const reviewWarningKey = reviewWarningPages.join(",")
   const hasReviewWarnings = reviewWarningPages.length > 0
   const [showWarningBanner, setShowWarningBanner] = useState(true)
+  const [selectionLayout, setSelectionLayout] =
+    useState<BlankPageSelectionLayout>("sequential")
   const optionalContentConfigPromise = useMemo(
     () => pdfDocument?.getOptionalContentConfig({ intent: "display" }) ?? null,
     [pdfDocument]
@@ -327,6 +360,41 @@ function BlankPageReviewSelection({
                 Xóa trang trắng
               </button>
             </div>
+            {reviewMode === "select" ? (
+              <div
+                className="inline-flex h-8 items-center rounded-lg border border-[#CBD5E1] bg-[#F8FAFC] p-0.5"
+                aria-label="Chế độ hiển thị trang"
+              >
+                <button
+                  type="button"
+                  title="Xem tuần tự từng trang"
+                  onClick={() => setSelectionLayout("sequential")}
+                  className={cn(
+                    "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors",
+                    selectionLayout === "sequential"
+                      ? "bg-white text-[#0052FF] shadow-sm"
+                      : "text-[#475569] hover:bg-white/80 hover:text-[#0F172A]"
+                  )}
+                >
+                  <Rows3 className="size-3.5" />
+                  Tuần tự
+                </button>
+                <button
+                  type="button"
+                  title="Xem nhiều trang cùng lúc"
+                  onClick={() => setSelectionLayout("grid")}
+                  className={cn(
+                    "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors",
+                    selectionLayout === "grid"
+                      ? "bg-white text-[#0052FF] shadow-sm"
+                      : "text-[#475569] hover:bg-white/80 hover:text-[#0F172A]"
+                  )}
+                >
+                  <LayoutGrid className="size-3.5" />
+                  Lưới
+                </button>
+              </div>
+            ) : null}
           </div>
 
           {reviewMode === "select" ? (
@@ -379,6 +447,7 @@ function BlankPageReviewSelection({
           )
         ) : (
           <ManualSelectionPages
+            layout={selectionLayout}
             mapping={mapping}
             pdfDocument={pdfDocument}
             renderSessionId={renderSessionId}
@@ -398,6 +467,7 @@ function BlankPageReviewSelection({
 }
 
 function ManualSelectionPages({
+  layout,
   mapping,
   pdfDocument,
   renderSessionId,
@@ -410,6 +480,7 @@ function ManualSelectionPages({
   submitting,
   onTogglePage,
 }: {
+  layout: BlankPageSelectionLayout
   mapping: BlankPageReviewMapping
   pdfDocument: PDFDocumentProxy | null
   renderSessionId: string
@@ -425,15 +496,27 @@ function ManualSelectionPages({
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
   const [targetWidth, setTargetWidth] = useState<number | null>(null)
+  const [gridColumns, setGridColumns] = useState(BLANK_PAGE_GRID_MIN_COLUMNS)
   const [nearbyPages, setNearbyPages] = useState<Set<number>>(
     () => new Set(INITIAL_NEARBY_PAGES)
   )
   const [anchorPages, setAnchorPages] = useState<number[]>(INITIAL_NEARBY_PAGES)
+  const isGridLayout = layout === "grid"
+  const scrollBufferPx = isGridLayout
+    ? BLANK_PAGE_GRID_SCROLL_BUFFER_PX
+    : PREVIEW_SCROLL_BUFFER_PX
 
   useEffect(() => {
     const list = listRef.current
     if (!list) return
     const updateWidth = () => {
+      if (layout === "grid") {
+        const gridLayout = computeGridLayout(list.clientWidth)
+        setGridColumns(gridLayout.columns)
+        setTargetWidth(gridLayout.targetWidth)
+        return
+      }
+      setGridColumns(BLANK_PAGE_GRID_MIN_COLUMNS)
       setTargetWidth(
         computePdfPreviewTargetWidth(
           list.clientWidth,
@@ -446,7 +529,7 @@ function ManualSelectionPages({
     const observer = new ResizeObserver(updateWidth)
     observer.observe(list)
     return () => observer.disconnect()
-  }, [])
+  }, [layout])
 
   useEffect(() => {
     const scrollContainer = scrollRef.current
@@ -463,8 +546,8 @@ function ManualSelectionPages({
         if (!Number.isInteger(pageNumber) || pageNumber <= 0) return
         const rect = card.getBoundingClientRect()
         const containerRect = scrollContainer.getBoundingClientRect()
-        const expandedTop = containerRect.top - PREVIEW_SCROLL_BUFFER_PX
-        const expandedBottom = containerRect.bottom + PREVIEW_SCROLL_BUFFER_PX
+        const expandedTop = containerRect.top - scrollBufferPx
+        const expandedBottom = containerRect.bottom + scrollBufferPx
         if (rect.bottom >= expandedTop && rect.top <= expandedBottom) {
           nextNearby.add(pageNumber)
           if (
@@ -500,7 +583,7 @@ function ManualSelectionPages({
       scrollContainer.removeEventListener("scroll", syncVisiblePages)
       observer.disconnect()
     }
-  }, [pageCount, targetWidth])
+  }, [layout, pageCount, scrollBufferPx, targetWidth])
 
   useEffect(() => {
     if (!pdfDocument || !renderSessionId || !targetWidth || pageCount <= 0) {
@@ -509,13 +592,19 @@ function ManualSelectionPages({
     prefetchPdfPageNumbers({
       sessionId: renderSessionId,
       pdfDocument,
-      pageNumbers: buildPrefetchWindow(anchorPages, pageCount, 1, 4),
+      pageNumbers: buildPrefetchWindow(
+        anchorPages,
+        pageCount,
+        isGridLayout ? 2 : 1,
+        isGridLayout ? 12 : 4
+      ),
       targetWidth,
       optionalContentConfigPromise,
       basePriority: 12,
     })
   }, [
     anchorPages,
+    isGridLayout,
     optionalContentConfigPromise,
     pageCount,
     pdfDocument,
@@ -548,7 +637,20 @@ function ManualSelectionPages({
     >
       <div
         ref={listRef}
-        className="mx-auto flex w-full max-w-[840px] flex-col gap-3"
+        className={cn(
+          "mx-auto w-full gap-3",
+          isGridLayout
+            ? "grid"
+            : "flex max-w-[840px] flex-col"
+        )}
+        style={
+          isGridLayout
+            ? {
+                gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))`,
+                gap: `${BLANK_PAGE_GRID_GAP_PX}px`,
+              }
+            : undefined
+        }
       >
         {Array.from({ length: pageCount }, (_, index) => {
           const displayPage = index + 1
@@ -560,69 +662,141 @@ function ManualSelectionPages({
           const togglePage = () => onTogglePage(originalPage)
 
           return (
-            <div
+            <PageSelectionCard
               key={displayPage}
-              data-preview-page={displayPage}
-              role="button"
-              tabIndex={submitting ? -1 : 0}
-              aria-disabled={submitting}
-              aria-pressed={selected}
-              onClick={submitting ? undefined : togglePage}
-              onKeyDown={(event) => {
-                if (submitting) return
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault()
-                  togglePage()
-                }
-              }}
-              className={cn(
-                "group w-full cursor-pointer rounded-lg border-2 bg-white p-2 text-left shadow-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#0052FF]/30 aria-disabled:cursor-not-allowed aria-disabled:opacity-70",
-                selected
-                  ? "border-rose-500 bg-rose-50/40 ring-2 ring-rose-100"
-                  : warning
-                    ? "border-amber-400 bg-amber-50/40 ring-2 ring-amber-100"
-                    : "border-[#D8E1EC] hover:border-[#0052FF]/50"
-              )}
-            >
-              <div className="mb-2 flex flex-wrap items-center gap-2 px-1">
-                <span
-                  className={cn(
-                    "text-sm font-semibold",
-                    selected ? "text-rose-700" : "text-[#0F172A]"
-                  )}
-                >
-                  Trang {originalPage}
-                </span>
-                {warning ? (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
-                    <AlertTriangle className="size-3.5" />
-                    Có dấu hiệu ảnh
-                  </span>
-                ) : null}
-                {selected ? (
-                  <span className="inline-flex items-center rounded-full border border-rose-300 bg-rose-100 px-2.5 py-0.5 text-xs font-semibold text-rose-700">
-                    Đã chọn xóa
-                  </span>
-                ) : null}
-              </div>
-              {nearbyPages.has(displayPage) ? (
-                <PdfPageFullView
-                  pdfDocument={pdfDocument}
-                  renderSessionId={renderSessionId}
-                  optionalContentConfigPromise={optionalContentConfigPromise}
-                  pageNumber={displayPage}
-                  targetWidth={targetWidth}
-                />
-              ) : (
-                <PdfPagePreviewPlaceholder
-                  renderSessionId={renderSessionId}
-                  pageNumber={displayPage}
-                  targetWidth={targetWidth}
-                />
-              )}
-            </div>
+              displayPage={displayPage}
+              originalPage={originalPage}
+              layout={layout}
+              selected={selected}
+              warning={warning}
+              submitting={submitting}
+              nearbyPages={nearbyPages}
+              pdfDocument={pdfDocument}
+              renderSessionId={renderSessionId}
+              optionalContentConfigPromise={optionalContentConfigPromise}
+              targetWidth={targetWidth}
+              onTogglePage={togglePage}
+            />
           )
         })}
+      </div>
+    </div>
+  )
+}
+
+function PageSelectionCard({
+  displayPage,
+  originalPage,
+  layout,
+  selected,
+  warning,
+  submitting,
+  nearbyPages,
+  pdfDocument,
+  renderSessionId,
+  optionalContentConfigPromise,
+  targetWidth,
+  onTogglePage,
+}: {
+  displayPage: number
+  originalPage: number
+  layout: BlankPageSelectionLayout
+  selected: boolean
+  warning: boolean
+  submitting: boolean
+  nearbyPages: Set<number>
+  pdfDocument: PDFDocumentProxy
+  renderSessionId: string
+  optionalContentConfigPromise: OptionalContentConfigPromise | null
+  targetWidth: number | null
+  onTogglePage: () => void
+}) {
+  const isGridLayout = layout === "grid"
+
+  return (
+    <div
+      data-preview-page={displayPage}
+      role="button"
+      tabIndex={submitting ? -1 : 0}
+      aria-disabled={submitting}
+      aria-pressed={selected}
+      onClick={submitting ? undefined : onTogglePage}
+      onKeyDown={(event) => {
+        if (submitting) return
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault()
+          onTogglePage()
+        }
+      }}
+      className={cn(
+        "group cursor-pointer rounded-lg border-2 bg-white text-left shadow-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#0052FF]/30 aria-disabled:cursor-not-allowed aria-disabled:opacity-70",
+        isGridLayout ? "flex h-full min-w-0 flex-col p-1.5" : "w-full p-2",
+        selected
+          ? "border-rose-500 bg-rose-50/40 ring-2 ring-rose-100"
+          : warning
+            ? "border-amber-400 bg-amber-50/40 ring-2 ring-amber-100"
+            : "border-[#D8E1EC] hover:border-[#0052FF]/50"
+      )}
+    >
+      <div
+        className={cn(
+          "flex flex-wrap items-center gap-1.5",
+          isGridLayout ? "mb-1 px-0.5" : "mb-2 px-1"
+        )}
+      >
+        <span
+          className={cn(
+            "font-semibold",
+            isGridLayout ? "text-xs" : "text-sm",
+            selected ? "text-rose-700" : "text-[#0F172A]"
+          )}
+        >
+          Trang {originalPage}
+        </span>
+        {warning ? (
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 font-semibold text-amber-800",
+              isGridLayout
+                ? "px-1.5 py-0.5 text-[10px]"
+                : "px-2.5 py-0.5 text-xs"
+            )}
+          >
+            <AlertTriangle className={isGridLayout ? "size-3" : "size-3.5"} />
+            {isGridLayout ? "Cảnh báo" : "Có dấu hiệu ảnh"}
+          </span>
+        ) : null}
+        {selected ? (
+          <span
+            className={cn(
+              "inline-flex items-center rounded-full border border-rose-300 bg-rose-100 font-semibold text-rose-700",
+              isGridLayout
+                ? "px-1.5 py-0.5 text-[10px]"
+                : "px-2.5 py-0.5 text-xs"
+            )}
+          >
+            {isGridLayout ? "Xóa" : "Đã chọn xóa"}
+          </span>
+        ) : null}
+      </div>
+      <div className={cn("w-full min-w-0", isGridLayout && "flex-1")}>
+        {nearbyPages.has(displayPage) ? (
+          <PdfPageFullView
+            pdfDocument={pdfDocument}
+            renderSessionId={renderSessionId}
+            optionalContentConfigPromise={optionalContentConfigPromise}
+            pageNumber={displayPage}
+            targetWidth={targetWidth}
+            compact={isGridLayout}
+          />
+        ) : (
+          <PdfPagePreviewPlaceholder
+            renderSessionId={renderSessionId}
+            pageNumber={displayPage}
+            targetWidth={targetWidth}
+            compact={isGridLayout}
+          />
+        )}
       </div>
     </div>
   )
@@ -632,21 +806,23 @@ function PdfPagePreviewPlaceholder({
   renderSessionId,
   pageNumber,
   targetWidth,
+  compact = false,
 }: {
   renderSessionId: string
   pageNumber: number
   targetWidth: number | null
+  compact?: boolean
 }) {
   const isReady =
     Boolean(renderSessionId && targetWidth) &&
     pdfPageRenderCache.has(renderSessionId, pageNumber, targetWidth ?? 0)
-
   return (
     <div
-      className="flex min-h-[180px] items-center justify-center rounded-md bg-[#F1F5F9] p-6 text-xs text-[#94A3B8]"
-      style={{
-        minHeight: targetWidth ? `${Math.round(targetWidth / 1.414)}px` : 180,
-      }}
+      className={cn(
+        "flex w-full items-center justify-center rounded-md bg-[#F1F5F9] text-[#94A3B8]",
+        compact ? "p-2 text-[10px]" : "p-6 text-xs"
+      )}
+      style={{ aspectRatio: "1 / 1.414" }}
     >
       {isReady ? "Cuộn tới để xem preview" : "Đang chuẩn bị preview..."}
     </div>
@@ -659,12 +835,14 @@ function PdfPageFullView({
   optionalContentConfigPromise,
   pageNumber,
   targetWidth,
+  compact = false,
 }: {
   pdfDocument: PDFDocumentProxy
   renderSessionId: string
   optionalContentConfigPromise: OptionalContentConfigPromise | null
   pageNumber: number
   targetWidth: number | null
+  compact?: boolean
 }) {
   const frameRef = useRef<HTMLDivElement | null>(null)
   const viewerRef = useRef<HTMLDivElement | null>(null)
@@ -694,7 +872,9 @@ function PdfPageFullView({
           20
         )
         if (cancelled) return
-        viewer.replaceChildren(createCanvasFromRenderedPage(rendered))
+        viewer.replaceChildren(
+          createCanvasFromRenderedPage(rendered, { fitContainer: true })
+        )
         setPageAspectRatio(rendered.aspectRatio)
         setHasRendered(true)
       } catch (error) {
@@ -721,30 +901,36 @@ function PdfPageFullView({
   return (
     <div
       ref={frameRef}
-      className="relative flex w-full items-start justify-center overflow-auto rounded-md bg-[#F1F5F9] p-2"
-      style={{
-        minHeight: targetWidth
-          ? `${Math.round(targetWidth / pageAspectRatio) + 16}px`
-          : undefined,
-      }}
+      className={cn(
+        "relative w-full overflow-hidden rounded-md bg-[#F1F5F9]",
+        compact ? "p-0" : "p-1"
+      )}
+      style={
+        !hasRendered
+          ? {
+              aspectRatio: pageAspectRatio,
+            }
+          : undefined
+      }
     >
-      <div
-        ref={viewerRef}
-        className="pointer-events-none flex shrink-0 items-start justify-center"
-        style={{
-          width: targetWidth ? `${Math.round(targetWidth)}px` : "100%",
-          minHeight: targetWidth
-            ? `${Math.round(targetWidth / pageAspectRatio)}px`
-            : undefined,
-        }}
-      />
+      <div ref={viewerRef} className="pointer-events-none w-full leading-none" />
       {!hasRendered ? (
-        <div className="absolute inset-2 flex items-center justify-center rounded bg-white text-xs text-[#94A3B8] shadow">
+        <div
+          className={cn(
+            "absolute inset-1 flex items-center justify-center rounded bg-white text-[#94A3B8] shadow",
+            compact ? "text-[10px]" : "text-xs"
+          )}
+        >
           {isRendering ? "Đang render trang..." : "Đang chuẩn bị preview..."}
         </div>
       ) : null}
       {renderError ? (
-        <span className="absolute right-3 bottom-3 left-3 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-800 shadow-sm">
+        <span
+          className={cn(
+            "absolute right-1 bottom-1 left-1 rounded-md border border-amber-200 bg-amber-50 font-medium text-amber-800 shadow-sm",
+            compact ? "px-1 py-0.5 text-[9px]" : "px-2 py-1 text-[11px]"
+          )}
+        >
           Không render được preview trang này. Hãy đối chiếu trong tab Xem PDF.
         </span>
       ) : null}

@@ -1,0 +1,49 @@
+---
+pid: 7376
+cwd: "D:\MBFS_Code\code\ArchivalProcessing-FE"
+command: "cd D:\\MBFS_Code\\code\\ArchivalProcessing-FE; npm run build 2>&1 | Select-Object -Last 35"
+started_at: 2026-07-09T04:54:31.585Z
+running_for_ms: 1115002  
+---
+dist/assets/roboto-cyrillic-ext-500-normal-DqF2hftb.woff           16.47 kB
+dist/assets/roboto-cyrillic-ext-700-normal-CI7FH63F.woff           16.48 kB
+dist/assets/roboto-cyrillic-ext-400-normal-qHufge6k.woff2          17.37 kB
+dist/assets/roboto-cyrillic-ext-300-normal-DIxttMbC.woff2          17.50 kB
+dist/assets/roboto-cyrillic-ext-500-normal-BWC_xYeb.woff2          17.60 kB
+dist/assets/roboto-cyrillic-ext-700-normal-DmFxo5wj.woff2          17.62 kB
+dist/assets/roboto-math-400-normal-C9RxBKAh.woff                   19.23 kB
+dist/assets/roboto-math-500-normal-C-7mKPO3.woff                   19.31 kB
+dist/assets/roboto-math-700-normal-DVoD5t2k.woff                   19.35 kB
+dist/assets/roboto-math-300-normal-Ds0YpBw2.woff                   19.42 kB
+dist/assets/roboto-math-400-normal-BEFej5gc.woff2                  20.09 kB
+dist/assets/roboto-math-300-normal-5dF_7mZP.woff2                  20.09 kB
+dist/assets/roboto-math-500-normal-C4NU9gLX.woff2                  20.30 kB
+dist/assets/roboto-math-700-normal-B8YqGHVc.woff2                  20.39 kB
+dist/assets/jetbrains-mono-latin-400-normal-V6pRDFza.woff2         21.17 kB
+dist/assets/roboto-latin-400-normal-DyYNIH4P.woff                  21.78 kB
+dist/assets/jetbrains-mono-latin-500-normal-BWZEU5yA.woff2         21.83 kB
+dist/assets/roboto-latin-400-normal-BqEyEoaF.woff2                 21.88 kB
+dist/assets/roboto-latin-500-normal-DQZyH_nt.woff                  21.92 kB
+dist/assets/roboto-latin-700-normal-DLgJJpmK.woff                  21.92 kB
+dist/assets/roboto-latin-300-normal-CCzlftfr.woff2                 22.07 kB
+dist/assets/roboto-latin-300-normal-BARJ-h6h.woff                  22.08 kB
+dist/assets/roboto-latin-500-normal-7RbcRiD8.woff2                 22.20 kB
+dist/assets/roboto-latin-700-normal-BZpUvMxY.woff2                 22.24 kB
+dist/assets/jetbrains-mono-latin-400-normal-6-qcROiO.woff          27.50 kB
+dist/assets/jetbrains-mono-latin-500-normal-CJOVTJB7.woff          28.21 kB
+dist/assets/index-B7C3iqkS.css                                    160.98 kB │ gzip:  51.52 kB
+dist/assets/index-kemiCXFL.js                                   3,352.22 kB │ gzip: 970.57 kB
+[vite-plugin-static-copy] Copied 193 items.node.exe : 
+
+✓ built in 43.06s
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: 
+https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.

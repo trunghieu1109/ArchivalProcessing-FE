@@ -1,0 +1,29 @@
+---
+pid: 20304
+cwd: "D:\MBFS_Code\code\ArchivalProcessing-FE"
+command: "cd D:\\MBFS_Code\\code\\ArchivalProcessing-FE; npm run build 2>&1 | Select-Object -Last 15"
+started_at: 2026-07-09T05:01:20.602Z
+running_for_ms: 704998   
+---
+dist/assets/roboto-latin-300-normal-CCzlftfr.woff2                 22.07 kB
+dist/assets/roboto-latin-300-normal-BARJ-h6h.woff                  22.08 kB
+dist/assets/roboto-latin-500-normal-7RbcRiD8.woff2                 22.20 kB
+dist/assets/roboto-latin-700-normal-BZpUvMxY.woff2                 22.24 kB
+dist/assets/jetbrains-mono-latin-400-normal-6-qcROiO.woff          27.50 kB
+dist/assets/jetbrains-mono-latin-500-normal-CJOVTJB7.woff          28.21 kB
+dist/assets/index-D3JCBGnf.css                                    160.91 kB │ gzip:  51.51 kB
+dist/assets/index-B0lMPLyL.js                                   3,351.98 kB │ gzip: 970.46 kB
+[vite-plugin-static-copy] Copied 193 items.node.exe : 
+
+✓ built in 48.89s
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: 
+https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
