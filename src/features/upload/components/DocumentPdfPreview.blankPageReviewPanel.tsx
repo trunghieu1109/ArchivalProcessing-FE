@@ -5,13 +5,14 @@ import {
   Eye,
   LayoutGrid,
   Loader2,
+  Minus,
+  Plus,
   Rows3,
   Trash2,
 } from "lucide-react"
 import type { PDFDocumentProxy } from "pdfjs-dist"
 import {
   buildPrefetchWindow,
-  computePdfPreviewTargetWidth,
   createCanvasFromRenderedPage,
   createPdfDocumentLoadingTask,
   isPdfRenderCancelled,
@@ -29,8 +30,6 @@ import {
 } from "./DocumentPdfPreview.blankPageReview"
 import type { PreviewVariantState } from "./DocumentPdfPreview.types"
 import { pdfEmbedUrl } from "./DocumentPdfPreview.utils"
-
-
 
 interface BlankPageReviewPanelProps {
   variant: PreviewVariantState
@@ -51,7 +50,23 @@ interface PdfLoadState {
 
 export type BlankPageReviewMode = "preview" | "select"
 export type BlankPageSelectionLayout = "sequential" | "grid"
-const BLANK_PAGE_SELECTION_MAX_WIDTH = 600
+const BLANK_PAGE_SEQUENTIAL_MAX_RENDER_WIDTH = 1800
+const BLANK_PAGE_SEQUENTIAL_MAX_LIST_WIDTH = 840
+const BLANK_PAGE_SEQUENTIAL_CARD_HORIZONTAL_PADDING = 16
+const BLANK_PAGE_SEQUENTIAL_ZOOM_MIN = 0.5
+const BLANK_PAGE_SEQUENTIAL_ZOOM_MAX = 2.5
+const BLANK_PAGE_SEQUENTIAL_ZOOM_STEP = 0.1
+
+function clampSequentialZoom(value: number): number {
+  return Math.min(
+    BLANK_PAGE_SEQUENTIAL_ZOOM_MAX,
+    Math.max(
+      BLANK_PAGE_SEQUENTIAL_ZOOM_MIN,
+      Math.round(value / BLANK_PAGE_SEQUENTIAL_ZOOM_STEP) *
+        BLANK_PAGE_SEQUENTIAL_ZOOM_STEP
+    )
+  )
+}
 const BLANK_PAGE_GRID_GAP_PX = 12
 const BLANK_PAGE_GRID_MIN_CARD_WIDTH = 168
 const BLANK_PAGE_GRID_MAX_COLUMNS = 4
@@ -208,8 +223,7 @@ export function BlankPageReviewPanel({
   const rendersOriginalPages = Boolean(
     sourceVariant?.url && sourceVariant.key === "original"
   )
-  const pdfDocument =
-    loadState.url === reviewPdfUrl ? loadState.document : null
+  const pdfDocument = loadState.url === reviewPdfUrl ? loadState.document : null
   const pageCount = loadState.url === reviewPdfUrl ? loadState.pageCount : 0
   const loadError = loadState.url === reviewPdfUrl ? loadState.error : ""
   const fallbackProcessedPageCount = Math.max(
@@ -298,9 +312,7 @@ function BlankPageReviewSelection({
   const hasReviewWarnings = reviewWarningPages.length > 0
   const [selectionLayout, setSelectionLayout] =
     useState<BlankPageSelectionLayout>("sequential")
-  const [pendingScrollPage, setPendingScrollPage] = useState<number | null>(
-    null
-  )
+  const [sequentialZoomScale, setSequentialZoomScale] = useState(1)
   const [scrollToOriginalPageRequest, setScrollToOriginalPageRequest] =
     useState<ScrollToOriginalPageRequest | null>(null)
   const optionalContentConfigPromise = useMemo(
@@ -308,18 +320,16 @@ function BlankPageReviewSelection({
     [pdfDocument]
   )
 
-  useEffect(() => {
-    if (reviewMode !== "select" || pendingScrollPage === null) return
-    setScrollToOriginalPageRequest({
-      page: pendingScrollPage,
-      nonce: Date.now(),
-    })
-    setPendingScrollPage(null)
-  }, [pendingScrollPage, reviewMode])
+  const adjustSequentialZoom = (delta: number) => {
+    setSequentialZoomScale((current) => clampSequentialZoom(current + delta))
+  }
 
   const jumpToWarningPage = (originalPage: number) => {
     if (reviewMode !== "select") {
-      setPendingScrollPage(originalPage)
+      setScrollToOriginalPageRequest({
+        page: originalPage,
+        nonce: Date.now(),
+      })
       onReviewModeChange("select")
       return
     }
@@ -396,7 +406,10 @@ function BlankPageReviewSelection({
                 <button
                   type="button"
                   title="Xem nhiều trang cùng lúc"
-                  onClick={() => setSelectionLayout("grid")}
+                  onClick={() => {
+                    setSelectionLayout("grid")
+                    setSequentialZoomScale(1)
+                  }}
                   className={cn(
                     "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors",
                     selectionLayout === "grid"
@@ -406,6 +419,47 @@ function BlankPageReviewSelection({
                 >
                   <LayoutGrid className="size-3.5" />
                   Lưới
+                </button>
+              </div>
+            ) : null}
+            {reviewMode === "select" && selectionLayout === "sequential" ? (
+              <div
+                className="inline-flex h-8 items-center rounded-lg border border-[#CBD5E1] bg-[#F8FAFC] p-0.5"
+                aria-label="Thu phóng preview trang"
+              >
+                <button
+                  type="button"
+                  title="Thu nhỏ (Ctrl + lăn chuột)"
+                  onClick={() =>
+                    adjustSequentialZoom(-BLANK_PAGE_SEQUENTIAL_ZOOM_STEP)
+                  }
+                  disabled={
+                    sequentialZoomScale <= BLANK_PAGE_SEQUENTIAL_ZOOM_MIN
+                  }
+                  className="inline-flex size-7 items-center justify-center rounded-md text-[#475569] transition-colors hover:bg-white/80 hover:text-[#0F172A] disabled:opacity-40"
+                >
+                  <Minus className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  title="Đặt lại 100%"
+                  onClick={() => setSequentialZoomScale(1)}
+                  className="inline-flex h-7 min-w-[3rem] items-center justify-center rounded-md px-1.5 text-[11px] font-semibold text-[#475569] transition-colors hover:bg-white/80 hover:text-[#0F172A]"
+                >
+                  {Math.round(sequentialZoomScale * 100)}%
+                </button>
+                <button
+                  type="button"
+                  title="Phóng to (Ctrl + lăn chuột)"
+                  onClick={() =>
+                    adjustSequentialZoom(BLANK_PAGE_SEQUENTIAL_ZOOM_STEP)
+                  }
+                  disabled={
+                    sequentialZoomScale >= BLANK_PAGE_SEQUENTIAL_ZOOM_MAX
+                  }
+                  className="inline-flex size-7 items-center justify-center rounded-md text-[#475569] transition-colors hover:bg-white/80 hover:text-[#0F172A] disabled:opacity-40"
+                >
+                  <Plus className="size-3.5" />
                 </button>
               </div>
             ) : null}
@@ -464,6 +518,8 @@ function BlankPageReviewSelection({
         ) : (
           <ManualSelectionPages
             layout={selectionLayout}
+            sequentialZoomScale={sequentialZoomScale}
+            onSequentialZoomChange={setSequentialZoomScale}
             mapping={mapping}
             pdfDocument={pdfDocument}
             renderSessionId={renderSessionId}
@@ -485,6 +541,8 @@ function BlankPageReviewSelection({
 
 function ManualSelectionPages({
   layout,
+  sequentialZoomScale,
+  onSequentialZoomChange,
   mapping,
   pdfDocument,
   renderSessionId,
@@ -499,6 +557,8 @@ function ManualSelectionPages({
   onTogglePage,
 }: {
   layout: BlankPageSelectionLayout
+  sequentialZoomScale: number
+  onSequentialZoomChange: (value: number) => void
   mapping: BlankPageReviewMapping
   pdfDocument: PDFDocumentProxy | null
   renderSessionId: string
@@ -514,41 +574,92 @@ function ManualSelectionPages({
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
-  const [targetWidth, setTargetWidth] = useState<number | null>(null)
+  const [layoutTargetWidth, setLayoutTargetWidth] = useState<number | null>(
+    null
+  )
   const [gridColumns, setGridColumns] = useState(BLANK_PAGE_GRID_MIN_COLUMNS)
   const [nearbyPages, setNearbyPages] = useState<Set<number>>(
     () => new Set(INITIAL_NEARBY_PAGES)
   )
   const [anchorPages, setAnchorPages] = useState<number[]>(INITIAL_NEARBY_PAGES)
+  const initiallyDeletedSet = useMemo(
+    () => new Set(mapping.initialDeletedOriginalPages),
+    [mapping.initialDeletedOriginalPages]
+  )
   const isGridLayout = layout === "grid"
+  const targetWidth = useMemo(() => {
+    if (!layoutTargetWidth) return null
+    if (isGridLayout) return layoutTargetWidth
+    return Math.round(
+      Math.min(
+        BLANK_PAGE_SEQUENTIAL_MAX_RENDER_WIDTH,
+        layoutTargetWidth * sequentialZoomScale
+      )
+    )
+  }, [isGridLayout, layoutTargetWidth, sequentialZoomScale])
+  const sequentialListWidth =
+    !isGridLayout && layoutTargetWidth
+      ? Math.max(layoutTargetWidth, targetWidth ?? layoutTargetWidth) +
+        BLANK_PAGE_SEQUENTIAL_CARD_HORIZONTAL_PADDING
+      : null
   const scrollBufferPx = isGridLayout
     ? BLANK_PAGE_GRID_SCROLL_BUFFER_PX
     : PREVIEW_SCROLL_BUFFER_PX
 
   useEffect(() => {
     const list = listRef.current
-    if (!list) return
+    const scrollContainer = scrollRef.current
+    if (!list || !scrollContainer) return
     const updateWidth = () => {
+      const scrollStyles = window.getComputedStyle(scrollContainer)
+      const horizontalPadding =
+        Number.parseFloat(scrollStyles.paddingLeft) +
+        Number.parseFloat(scrollStyles.paddingRight)
+      const availableWidth = Math.max(
+        0,
+        scrollContainer.clientWidth - horizontalPadding
+      )
       if (layout === "grid") {
-        const gridLayout = computeGridLayout(list.clientWidth)
+        const gridLayout = computeGridLayout(availableWidth)
         setGridColumns(gridLayout.columns)
-        setTargetWidth(gridLayout.targetWidth)
+        setLayoutTargetWidth(gridLayout.targetWidth)
         return
       }
       setGridColumns(BLANK_PAGE_GRID_MIN_COLUMNS)
-      setTargetWidth(
-        computePdfPreviewTargetWidth(
-          list.clientWidth,
-          1,
-          BLANK_PAGE_SELECTION_MAX_WIDTH
+      setLayoutTargetWidth(
+        Math.max(
+          260,
+          Math.floor(
+            Math.min(BLANK_PAGE_SEQUENTIAL_MAX_LIST_WIDTH, availableWidth) -
+              BLANK_PAGE_SEQUENTIAL_CARD_HORIZONTAL_PADDING
+          )
         )
       )
     }
     updateWidth()
     const observer = new ResizeObserver(updateWidth)
-    observer.observe(list)
+    observer.observe(scrollContainer)
     return () => observer.disconnect()
   }, [layout])
+
+  useEffect(() => {
+    if (isGridLayout) return
+    const scrollContainer = scrollRef.current
+    if (!scrollContainer) return
+
+    const handleWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return
+      event.preventDefault()
+      const delta =
+        event.deltaY < 0
+          ? BLANK_PAGE_SEQUENTIAL_ZOOM_STEP
+          : -BLANK_PAGE_SEQUENTIAL_ZOOM_STEP
+      onSequentialZoomChange(clampSequentialZoom(sequentialZoomScale + delta))
+    }
+
+    scrollContainer.addEventListener("wheel", handleWheel, { passive: false })
+    return () => scrollContainer.removeEventListener("wheel", handleWheel)
+  }, [isGridLayout, onSequentialZoomChange, sequentialZoomScale])
 
   useEffect(() => {
     const scrollContainer = scrollRef.current
@@ -584,7 +695,9 @@ function ManualSelectionPages({
         })
       }
       if (nextAnchors.length === 0) {
-        nextAnchors.push(...INITIAL_NEARBY_PAGES.filter((page) => page <= pageCount))
+        nextAnchors.push(
+          ...INITIAL_NEARBY_PAGES.filter((page) => page <= pageCount)
+        )
       }
 
       setNearbyPages(nextNearby)
@@ -700,15 +813,13 @@ function ManualSelectionPages({
   return (
     <div
       ref={scrollRef}
-      className="h-full min-h-0 overflow-y-auto bg-[#F8FAFC] px-2 py-3 sm:px-3"
+      className="h-full min-h-0 overflow-x-auto overflow-y-auto bg-[#F8FAFC] px-2 py-3 sm:px-3"
     >
       <div
         ref={listRef}
         className={cn(
-          "mx-auto w-full gap-3",
-          isGridLayout
-            ? "grid"
-            : "flex max-w-[840px] flex-col"
+          "mx-auto gap-3",
+          isGridLayout ? "grid w-full" : "flex flex-col items-center"
         )}
         style={
           isGridLayout
@@ -716,16 +827,25 @@ function ManualSelectionPages({
                 gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))`,
                 gap: `${BLANK_PAGE_GRID_GAP_PX}px`,
               }
-            : undefined
+            : sequentialListWidth
+              ? {
+                  width: `${sequentialListWidth}px`,
+                  maxWidth: "none",
+                }
+              : {
+                  width: "100%",
+                  maxWidth: `${BLANK_PAGE_SEQUENTIAL_MAX_LIST_WIDTH}px`,
+                }
         }
       >
         {Array.from({ length: pageCount }, (_, index) => {
           const displayPage = index + 1
           const originalPage = rendersOriginalPages
             ? displayPage
-            : mapping.processedToOriginal.get(displayPage) ?? displayPage
+            : (mapping.processedToOriginal.get(displayPage) ?? displayPage)
           const selected = selectedDeletedPages.has(originalPage)
           const warning = warningSet.has(originalPage)
+          const initiallyDeleted = initiallyDeletedSet.has(originalPage)
           const togglePage = () => onTogglePage(originalPage)
 
           return (
@@ -736,6 +856,7 @@ function ManualSelectionPages({
               layout={layout}
               selected={selected}
               warning={warning}
+              initiallyDeleted={initiallyDeleted}
               submitting={submitting}
               nearbyPages={nearbyPages}
               pdfDocument={pdfDocument}
@@ -757,6 +878,7 @@ function PageSelectionCard({
   layout,
   selected,
   warning,
+  initiallyDeleted,
   submitting,
   nearbyPages,
   pdfDocument,
@@ -770,6 +892,7 @@ function PageSelectionCard({
   layout: BlankPageSelectionLayout
   selected: boolean
   warning: boolean
+  initiallyDeleted: boolean
   submitting: boolean
   nearbyPages: Set<number>
   pdfDocument: PDFDocumentProxy
@@ -779,6 +902,7 @@ function PageSelectionCard({
   onTogglePage: () => void
 }) {
   const isGridLayout = layout === "grid"
+  const fitPreviewToContainer = isGridLayout
 
   return (
     <div
@@ -798,7 +922,9 @@ function PageSelectionCard({
       }}
       className={cn(
         "group cursor-pointer rounded-lg border-2 bg-white text-left shadow-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#0052FF]/30 aria-disabled:cursor-not-allowed aria-disabled:opacity-70",
-        isGridLayout ? "flex h-full min-w-0 flex-col p-1.5" : "w-full p-2",
+        isGridLayout
+          ? "flex h-full min-w-0 flex-col p-1.5"
+          : "mx-auto w-fit shrink-0 p-2",
         selected
           ? "border-rose-500 bg-rose-50/40 ring-2 ring-rose-100"
           : warning
@@ -831,23 +957,24 @@ function PageSelectionCard({
             )}
           >
             <AlertTriangle className={isGridLayout ? "size-3" : "size-3.5"} />
-            {isGridLayout ? "Cảnh báo" : "Có dấu hiệu ảnh"}
+            Cảnh báo trang trắng
           </span>
         ) : null}
         {selected ? (
           <span
             className={cn(
-              "inline-flex items-center rounded-full border border-rose-300 bg-rose-100 font-semibold text-rose-700",
+              "inline-flex items-center gap-1 rounded-full border border-rose-300 bg-rose-100 font-semibold text-rose-700",
               isGridLayout
                 ? "px-1.5 py-0.5 text-[10px]"
                 : "px-2.5 py-0.5 text-xs"
             )}
           >
-            {isGridLayout ? "Xóa" : "Đã chọn xóa"}
+            <Trash2 className={isGridLayout ? "size-3" : "size-3.5"} />
+            {initiallyDeleted ? "Đã xóa trang trắng" : "Chọn xóa trang trắng"}
           </span>
         ) : null}
       </div>
-      <div className={cn("w-full min-w-0", isGridLayout && "flex-1")}>
+      <div className={cn("min-w-0", isGridLayout ? "w-full flex-1" : "w-fit")}>
         {nearbyPages.has(displayPage) ? (
           <PdfPageFullView
             pdfDocument={pdfDocument}
@@ -856,6 +983,7 @@ function PageSelectionCard({
             pageNumber={displayPage}
             targetWidth={targetWidth}
             compact={isGridLayout}
+            fitContainer={fitPreviewToContainer}
           />
         ) : (
           <PdfPagePreviewPlaceholder
@@ -863,6 +991,7 @@ function PageSelectionCard({
             pageNumber={displayPage}
             targetWidth={targetWidth}
             compact={isGridLayout}
+            fitContainer={fitPreviewToContainer}
           />
         )}
       </div>
@@ -875,11 +1004,13 @@ function PdfPagePreviewPlaceholder({
   pageNumber,
   targetWidth,
   compact = false,
+  fitContainer = true,
 }: {
   renderSessionId: string
   pageNumber: number
   targetWidth: number | null
   compact?: boolean
+  fitContainer?: boolean
 }) {
   const isReady =
     Boolean(renderSessionId && targetWidth) &&
@@ -887,10 +1018,14 @@ function PdfPagePreviewPlaceholder({
   return (
     <div
       className={cn(
-        "flex w-full items-center justify-center rounded-md bg-[#F1F5F9] text-[#94A3B8]",
+        "flex items-center justify-center rounded-md bg-[#F1F5F9] text-[#94A3B8]",
+        fitContainer ? "w-full" : "mx-auto",
         compact ? "p-2 text-[10px]" : "p-6 text-xs"
       )}
-      style={{ aspectRatio: "1 / 1.414" }}
+      style={{
+        aspectRatio: "1 / 1.414",
+        width: !fitContainer && targetWidth ? `${targetWidth}px` : undefined,
+      }}
     >
       {isReady ? "Cuộn tới để xem preview" : "Đang chuẩn bị preview..."}
     </div>
@@ -904,6 +1039,7 @@ function PdfPageFullView({
   pageNumber,
   targetWidth,
   compact = false,
+  fitContainer = true,
 }: {
   pdfDocument: PDFDocumentProxy
   renderSessionId: string
@@ -911,6 +1047,7 @@ function PdfPageFullView({
   pageNumber: number
   targetWidth: number | null
   compact?: boolean
+  fitContainer?: boolean
 }) {
   const frameRef = useRef<HTMLDivElement | null>(null)
   const viewerRef = useRef<HTMLDivElement | null>(null)
@@ -941,7 +1078,7 @@ function PdfPageFullView({
         )
         if (cancelled) return
         viewer.replaceChildren(
-          createCanvasFromRenderedPage(rendered, { fitContainer: true })
+          createCanvasFromRenderedPage(rendered, { fitContainer })
         )
         setPageAspectRatio(rendered.aspectRatio)
         setHasRendered(true)
@@ -964,24 +1101,36 @@ function PdfPageFullView({
     pdfDocument,
     renderSessionId,
     targetWidth,
+    fitContainer,
   ])
 
   return (
     <div
       ref={frameRef}
       className={cn(
-        "relative w-full overflow-hidden rounded-md bg-[#F1F5F9]",
+        "relative overflow-hidden rounded-md bg-[#F1F5F9]",
+        fitContainer ? "w-full" : "mx-auto",
         compact ? "p-0" : "p-1"
       )}
-      style={
-        !hasRendered
-          ? {
-              aspectRatio: pageAspectRatio,
-            }
-          : undefined
-      }
+      style={{
+        ...(!fitContainer && targetWidth
+          ? { width: `${targetWidth}px` }
+          : null),
+        ...(!hasRendered ? { aspectRatio: pageAspectRatio } : null),
+      }}
     >
-      <div ref={viewerRef} className="pointer-events-none w-full leading-none" />
+      <div
+        ref={viewerRef}
+        className={cn(
+          "pointer-events-none leading-none",
+          fitContainer ? "w-full" : "mx-auto"
+        )}
+        style={
+          !fitContainer && targetWidth
+            ? { width: `${targetWidth}px` }
+            : undefined
+        }
+      />
       {!hasRendered ? (
         <div
           className={cn(

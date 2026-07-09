@@ -1,5 +1,8 @@
 import type { PointerEvent as ReactPointerEvent } from "react"
 
+export const PROCESS_PREVIEW_MIN_LIST_WIDTH_PX = 300
+export const PROCESS_PREVIEW_MIN_PREVIEW_WIDTH_PX = 360
+
 export function resizeProcessPreviewFromPointer(
   event: ReactPointerEvent<HTMLButtonElement>,
   container: HTMLDivElement | null,
@@ -15,8 +18,15 @@ export function resizeProcessPreviewFromPointer(
 
   const updatePreviewWidth = (clientX: number) => {
     const rect = container.getBoundingClientRect()
-    const rawPercent = ((rect.right - clientX) / rect.width) * 100
-    setPreviewWidthPercent(Math.min(68, Math.max(35, rawPercent)))
+    const maxPreviewPx = Math.max(
+      PROCESS_PREVIEW_MIN_PREVIEW_WIDTH_PX,
+      rect.width - PROCESS_PREVIEW_MIN_LIST_WIDTH_PX
+    )
+    const previewWidthPx = Math.min(
+      maxPreviewPx,
+      Math.max(PROCESS_PREVIEW_MIN_PREVIEW_WIDTH_PX, rect.right - clientX)
+    )
+    setPreviewWidthPercent((previewWidthPx / rect.width) * 100)
   }
 
   updatePreviewWidth(event.clientX)

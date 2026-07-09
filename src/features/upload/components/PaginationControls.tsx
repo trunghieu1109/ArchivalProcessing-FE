@@ -35,16 +35,16 @@ export function PaginationControls({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 rounded-lg border border-[#D8E1EC] bg-white px-3 py-2 text-xs text-[#475569] lg:flex-row lg:items-center lg:justify-between",
+        "@container/pagination flex flex-col gap-2 rounded-lg border border-[#D8E1EC] bg-white px-3 py-2 text-xs text-[#475569] @min-[26rem]/pagination:flex-row @min-[26rem]/pagination:items-center @min-[26rem]/pagination:justify-between @min-[26rem]/pagination:gap-3",
         className
       )}
     >
-      <div className="flex flex-wrap items-center gap-2 lg:min-w-48">
-        <span className="font-medium text-[#0F172A]">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <span className="min-w-0 font-medium text-[#0F172A]">
           {startNumber}-{endNumber} / {total} {itemLabel}
         </span>
         {onPageSizeChange && (
-          <label className="flex items-center gap-1.5">
+          <label className="flex shrink-0 items-center gap-1.5">
             <span>Cỡ trang</span>
             <select
               value={pageSize}
@@ -60,7 +60,7 @@ export function PaginationControls({
           </label>
         )}
       </div>
-      <div className="flex min-w-0 flex-wrap items-center gap-1.5 lg:justify-end">
+      <div className="flex shrink-0 flex-nowrap items-center justify-end gap-1.5">
         <Button
           type="button"
           variant="outline"
@@ -71,15 +71,21 @@ export function PaginationControls({
         >
           <ChevronLeft className="size-3.5" />
         </Button>
+        <span
+          className="inline-flex h-7 min-w-[2.75rem] items-center justify-center px-1 text-xs font-semibold text-[#0F172A] tabular-nums @min-[15rem]/pagination:hidden"
+          aria-live="polite"
+        >
+          {pageIndex + 1}/{pageCount}
+        </span>
         <div
-          className="flex min-w-0 flex-wrap items-center gap-1"
+          className="hidden max-w-full min-w-0 items-center gap-1 overflow-x-auto @min-[15rem]/pagination:flex @min-[15rem]/pagination:flex-nowrap"
           aria-label="Chọn trang"
         >
           {pageItems.map((item, index) =>
             item === "ellipsis" ? (
               <span
                 key={`ellipsis-${index}`}
-                className="inline-flex size-7 items-center justify-center text-[#94A3B8]"
+                className="inline-flex size-7 shrink-0 items-center justify-center text-[#94A3B8]"
                 aria-hidden="true"
               >
                 <MoreHorizontal className="size-3.5" />
@@ -90,7 +96,7 @@ export function PaginationControls({
                 type="button"
                 aria-current={item === pageIndex ? "page" : undefined}
                 className={cn(
-                  "inline-flex size-7 items-center justify-center rounded-md border text-xs font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-[#0052FF]/30 focus-visible:outline-none",
+                  "inline-flex size-7 shrink-0 items-center justify-center rounded-md border text-xs font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-[#0052FF]/30 focus-visible:outline-none",
                   item === pageIndex
                     ? "border-[#0052FF] bg-[#0052FF] text-white"
                     : "border-[#CBD5E1] bg-white text-[#0F172A] hover:border-[#0052FF]/40 hover:bg-[#F8FAFC]"

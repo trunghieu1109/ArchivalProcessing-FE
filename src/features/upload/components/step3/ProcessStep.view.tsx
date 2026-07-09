@@ -294,7 +294,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
         className="grid min-w-0 gap-4 xl:[grid-template-columns:var(--process-preview-columns)]"
         style={
           {
-            "--process-preview-columns": `minmax(0, ${
+            "--process-preview-columns": `minmax(300px, ${
               100 - previewWidthPercent
             }fr) minmax(360px, ${previewWidthPercent}fr)`,
           } as CSSProperties

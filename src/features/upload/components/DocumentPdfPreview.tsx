@@ -4,6 +4,7 @@ import {
   FileSearch,
   Loader2,
   RefreshCw,
+  Trash2,
   TriangleAlert,
   X,
 } from "lucide-react"
@@ -496,6 +497,13 @@ function PreviewVariantSwitch({
       {variants.map((variant) => {
         const selected = variant.key === selectedKey
         const disabled = !variant.url && variant.status === "failed"
+        const variantWarningPages = blankPageWarningPages(variant)
+        const hasVariantBlankPageWarnings =
+          variant.blankPageWarnings.length > 0 ||
+          variantWarningPages.length > 0
+        const hasVariantRemovedBlankPages =
+          !hasVariantBlankPageWarnings &&
+          blankPageRemovedPages(variant).length > 0
         return (
           <button
             key={variant.key}
@@ -515,8 +523,10 @@ function PreviewVariantSwitch({
               <Loader2 className="size-3 animate-spin text-amber-600" />
             ) : null}
             {variant.blankPageWarnings.length > 0 ||
-            variant.imageWarningPages.length > 0 ? (
+            variantWarningPages.length > 0 ? (
               <TriangleAlert className="size-3 text-amber-600" />
+            ) : hasVariantRemovedBlankPages ? (
+              <Trash2 className="size-3 text-sky-600" />
             ) : null}
           </button>
         )
@@ -545,6 +555,9 @@ function PreviewPane({
   const warningPages = blankPageWarningPages(variant)
   const hasBlankPageWarnings =
     variant.blankPageWarnings.length > 0 || warningPages.length > 0
+  const removedBlankPages = blankPageRemovedPages(variant)
+  const hasRemovedBlankPages =
+    !hasBlankPageWarnings && removedBlankPages.length > 0
 
   useEffect(() => {
     setBlankPageReviewMode("preview")
@@ -573,9 +586,24 @@ function PreviewPane({
                 </span>
               ) : null}
               {hasBlankPageWarnings ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                <span
+                  className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800"
+                  title={
+                    warningPages.length > 0
+                      ? `Cảnh báo trang trắng: trang ${warningPages.join(", ")}`
+                      : "Cảnh báo trang trắng"
+                  }
+                >
                   <TriangleAlert className="size-3.5" />
                   Cảnh báo trang trắng
+                </span>
+              ) : hasRemovedBlankPages ? (
+                <span
+                  className="inline-flex items-center gap-1.5 rounded-full border border-sky-300 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800"
+                  title={`Đã xóa trang trắng: trang ${removedBlankPages.join(", ")}`}
+                >
+                  <Trash2 className="size-3.5" />
+                  Đã xóa trang trắng
                 </span>
               ) : null}
             </div>
@@ -659,6 +687,17 @@ function blankPageWarningPages(variant: PreviewVariantState): number[] {
     if (Number.isInteger(pageNumber) && pageNumber > 0) pages.add(pageNumber)
   }
   return [...pages].sort((left, right) => left - right)
+}
+
+function blankPageRemovedPages(variant: PreviewVariantState): number[] {
+  const source =
+    variant.removedPages.length > 0
+      ? variant.removedPages
+      : variant.key === "processed"
+        ? variant.blankPages
+        : []
+  return [...new Set(source.filter((page) => Number.isInteger(page) && page > 0))]
+    .sort((left, right) => left - right)
 }
 
 function blankPageWarningLabel(

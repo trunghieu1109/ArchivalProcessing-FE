@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import {
   AlertTriangle,
   Check,
@@ -10,6 +10,7 @@ import {
   Loader2,
   RefreshCw,
   Signature,
+  Trash2,
 } from "lucide-react"
 import { AnimatePresence, motion } from "framer-motion"
 import { toast } from "sonner"
@@ -20,7 +21,10 @@ import {
   getWarningFields,
   hasMetadataWarning,
 } from "@/features/upload/lib/metadata"
-import { signatureTagInfo } from "@/features/upload/lib/signatureStatus"
+import {
+  signatureTagInfo,
+  type SignatureTagInfo,
+} from "@/features/upload/lib/signatureStatus"
 import type { PdfMetadata } from "@/features/upload/types"
 
 export {
@@ -90,7 +94,10 @@ export function MetadataCard({
   const signatureTag = signatureTagInfo(item)
   const canRetryMetadata = Boolean(!readOnly && onRetry && !metadataPending)
   const blankPageWarningPages = blankPageWarningOriginalPages(item)
-  const hasBlankPageWarnings = blankPageWarningPages.length > 0
+  const hasBlankPageWarnings =
+    blankPageWarningPages.length > 0 || hasBlankPageWarningEntries(item)
+  const removedBlankPages = blankPageRemovedPages(item)
+  const hasRemovedBlankPages = removedBlankPages.length > 0
 
   useEffect(() => {
     if (readOnly && editing) {
@@ -150,7 +157,7 @@ export function MetadataCard({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-xl border bg-card transition-all duration-200",
+        "@container/metadata-card overflow-hidden rounded-xl border bg-card transition-all duration-200",
         selected
           ? "border-[#0052FF] shadow-[0_6px_18px_rgba(0,82,255,0.14)]"
           : expertReviewed
@@ -164,7 +171,7 @@ export function MetadataCard({
     >
       <div
         className={cn(
-          "flex items-center gap-3 px-4 py-2.5",
+          "flex min-w-0 items-center gap-2.5 px-3 py-2 sm:gap-3 sm:px-4",
           onSelect && "cursor-pointer"
         )}
         onClick={toggleMetadata}
@@ -202,102 +209,46 @@ export function MetadataCard({
           </button>
         )}
         <div
-          className="flex size-8 shrink-0 items-center justify-center rounded-lg shadow-[0_4px_14px_rgba(0,82,255,0.2)]"
+          className="flex size-7 shrink-0 items-center justify-center rounded-lg shadow-[0_4px_14px_rgba(0,82,255,0.2)]"
           style={{ background: "linear-gradient(135deg, #0052FF, #4D7CFF)" }}
         >
           <FileText className="size-3.5 text-white" />
         </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-semibold text-foreground">
-            {item.data_path.split("/").pop()}
-          </p>
-          <p className="truncate font-roboto text-[10px] text-muted-foreground">
-            {item.data_path}
-          </p>
-          {expertReviewed &&
-            (item.metadata_review_note || expertReviewerName) && (
-              <p className="mt-0.5 truncate text-[10px] font-semibold text-[#0052FF]">
-                {item.metadata_review_note ||
-                  `Đã review bởi: ${expertReviewerName}`}
-              </p>
-            )}
-        </div>
-        <div className="ml-auto flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap">
-          {signatureTag && (
-            <span
-              title={signatureTag.title}
-              className={cn(
-                "flex h-6 shrink-0 items-center gap-1 rounded-full border px-2 text-[10px] font-semibold",
-                signatureTagClass(signatureTag.kind)
-              )}
-            >
-              <Signature className="size-2.5" /> {signatureTag.label}
-            </span>
-          )}
-          {hasMetadataEdits && (
-            <span className="flex h-6 shrink-0 items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 text-[10px] font-semibold text-amber-700">
-              <Edit2 className="size-2.5" /> Đã sửa
-            </span>
-          )}
-          {hasBlankPageWarnings && (
-            <span
-              title={`Trang cảnh báo: ${blankPageWarningPages.join(", ")}`}
-              className="flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 text-xs font-semibold text-amber-800"
-            >
-              <AlertTriangle className="size-3.5" /> Cảnh báo trang trắng
-            </span>
-          )}
-          {expertReviewed ? (
-            <span
-              className="flex h-6 shrink-0 items-center gap-1 rounded-full px-2 text-[10px] font-semibold text-primary-foreground"
-              style={{
-                background: "linear-gradient(to right, #0052FF, #4D7CFF)",
-              }}
-            >
-              <Check className="size-2.5" /> Chuyên gia xác thực
-            </span>
-          ) : autoVerified ? (
-            <span className="flex h-6 shrink-0 items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2 text-[10px] font-semibold text-emerald-700">
-              <CheckCircle2 className="size-2.5" /> Tự động xác thực
-            </span>
-          ) : metadataFailed ? (
-            <span className="flex h-6 shrink-0 items-center gap-1 rounded-full border border-red-300 bg-red-50 px-2 text-[10px] font-semibold text-red-700">
-              <AlertTriangle className="size-2.5" /> Lỗi metadata
-            </span>
-          ) : metadataPending ? (
-            <span className="flex h-6 shrink-0 items-center gap-1 rounded-full border border-slate-300 bg-slate-50 px-2 text-[10px] font-semibold text-slate-600">
-              Đang extract metadata
-            </span>
-          ) : hasWarnings ? (
-            <span className="flex h-6 shrink-0 items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 text-[10px] font-semibold text-amber-700">
-              <AlertTriangle className="size-2.5" /> Cần xác minh
-            </span>
-          ) : item.metadata_ready ? (
-            <span className="flex h-6 shrink-0 items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2 text-[10px] font-semibold text-emerald-700">
-              <CheckCircle2 className="size-2.5" /> Sẵn sàng
-            </span>
-          ) : (
-            <span className="flex h-6 shrink-0 items-center gap-1 rounded-full border border-slate-300 bg-slate-50 px-2 text-[10px] font-semibold text-slate-600">
-              Đang extract metadata
-            </span>
-          )}
+        <p className="min-w-0 flex-1 truncate text-xs font-semibold text-foreground">
+          {item.data_path.split("/").pop()}
+        </p>
+        <div className="flex shrink-0 items-center gap-1">
+          <MetadataCompactTags
+            signatureTag={signatureTag}
+            hasMetadataEdits={hasMetadataEdits}
+            hasBlankPageWarnings={hasBlankPageWarnings}
+            blankPageWarningPages={blankPageWarningPages}
+            hasRemovedBlankPages={hasRemovedBlankPages}
+            removedBlankPages={removedBlankPages}
+            expertReviewed={expertReviewed}
+            autoVerified={autoVerified}
+            metadataFailed={metadataFailed}
+            metadataPending={metadataPending}
+            hasWarnings={hasWarnings}
+            metadataReady={item.metadata_ready}
+          />
           {canRetryMetadata && (
             <Button
               variant="outline"
               size="sm"
+              title="Chạy lại metadata"
               onClick={(event) => {
                 event.stopPropagation()
                 onRetry?.()
               }}
               disabled={retrying || submitting}
-              className="h-6 shrink-0 rounded-full px-2 text-[10px]"
+              className="size-6 shrink-0 rounded-full p-0"
             >
               {retrying ? (
-                <Loader2 data-icon="inline-start" className="animate-spin" />
+                <Loader2 className="size-3 animate-spin" />
               ) : (
-                <RefreshCw data-icon="inline-start" />
+                <RefreshCw className="size-3" />
               )}
-              Chạy lại
             </Button>
           )}
           <Button
@@ -330,6 +281,15 @@ export function MetadataCard({
             <div className="border-t border-border px-4 py-3">
               {editing ? (
                 <div className="flex flex-col gap-2">
+                  <MetadataDocumentInfo
+                    item={item}
+                    expertReviewed={expertReviewed}
+                    expertReviewerName={expertReviewerName}
+                    hasBlankPageWarnings={hasBlankPageWarnings}
+                    blankPageWarningPages={blankPageWarningPages}
+                    hasRemovedBlankPages={hasRemovedBlankPages}
+                    removedBlankPages={removedBlankPages}
+                  />
                   {METADATA_FIELDS.map((field) => (
                     <div
                       key={field.key}
@@ -379,6 +339,15 @@ export function MetadataCard({
                 </div>
               ) : (
                 <div className="flex flex-col gap-1.5">
+                  <MetadataDocumentInfo
+                    item={item}
+                    expertReviewed={expertReviewed}
+                    expertReviewerName={expertReviewerName}
+                    hasBlankPageWarnings={hasBlankPageWarnings}
+                    blankPageWarningPages={blankPageWarningPages}
+                    hasRemovedBlankPages={hasRemovedBlankPages}
+                    removedBlankPages={removedBlankPages}
+                  />
                   {metadataFailed && (
                     <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
                       {item.error ||
@@ -519,6 +488,219 @@ export function MetadataCard({
   )
 }
 
+function MetadataDocumentInfo({
+  item,
+  expertReviewed,
+  expertReviewerName,
+  hasBlankPageWarnings,
+  blankPageWarningPages,
+  hasRemovedBlankPages,
+  removedBlankPages,
+}: {
+  item: PdfMetadata
+  expertReviewed: boolean
+  expertReviewerName: string
+  hasBlankPageWarnings: boolean
+  blankPageWarningPages: number[]
+  hasRemovedBlankPages: boolean
+  removedBlankPages: number[]
+}) {
+  const reviewNote =
+    item.metadata_review_note ||
+    (expertReviewerName ? `Đã review bởi: ${expertReviewerName}` : "")
+
+  return (
+    <div className="space-y-2 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2.5">
+      <div>
+        <p className="text-[10px] font-semibold tracking-wide text-[#64748B] uppercase">
+          Đường dẫn
+        </p>
+        <p className="mt-0.5 break-all font-roboto text-xs leading-5 text-[#0F172A]">
+          {item.data_path}
+        </p>
+      </div>
+      {expertReviewed && reviewNote ? (
+        <div>
+          <p className="text-[10px] font-semibold tracking-wide text-[#64748B] uppercase">
+            Ghi chú review
+          </p>
+          <p className="mt-0.5 text-xs font-medium text-[#0052FF]">{reviewNote}</p>
+        </div>
+      ) : null}
+      {hasBlankPageWarnings ? (
+        <div>
+          <p className="text-[10px] font-semibold tracking-wide text-amber-900 uppercase">
+            Cảnh báo trang trắng
+          </p>
+          <p className="mt-0.5 text-xs font-medium text-amber-950">
+            {blankPageWarningPages.length > 0
+              ? `Trang ${blankPageWarningPages.join(", ")}`
+              : "Có cảnh báo cần kiểm tra"}
+          </p>
+        </div>
+      ) : hasRemovedBlankPages ? (
+        <div>
+          <p className="text-[10px] font-semibold tracking-wide text-sky-800 uppercase">
+            Đã xóa trang trắng
+          </p>
+          <p className="mt-0.5 text-xs text-sky-900">
+            Trang {removedBlankPages.join(", ")}
+          </p>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function MetadataTagBadge({
+  title,
+  className,
+  icon,
+  label,
+}: {
+  title: string
+  className: string
+  icon: ReactNode
+  label: string
+}) {
+  return (
+    <span
+      title={title}
+      className={cn(
+        "inline-flex h-5 max-w-full items-center gap-1 rounded-full border px-1.5 text-[10px] font-semibold @max-[22rem]/metadata-card:gap-0 @max-[22rem]/metadata-card:px-1",
+        className
+      )}
+    >
+      {icon}
+      <span className="@max-[22rem]/metadata-card:hidden">{label}</span>
+    </span>
+  )
+}
+
+function MetadataCompactTags({
+  signatureTag,
+  hasMetadataEdits,
+  hasBlankPageWarnings,
+  blankPageWarningPages,
+  hasRemovedBlankPages,
+  removedBlankPages,
+  expertReviewed,
+  autoVerified,
+  metadataFailed,
+  metadataPending,
+  hasWarnings,
+  metadataReady,
+}: {
+  signatureTag: SignatureTagInfo | null
+  hasMetadataEdits: boolean
+  hasBlankPageWarnings: boolean
+  blankPageWarningPages: number[]
+  hasRemovedBlankPages: boolean
+  removedBlankPages: number[]
+  expertReviewed: boolean
+  autoVerified: boolean
+  metadataFailed: boolean
+  metadataPending: boolean
+  hasWarnings: boolean
+  metadataReady: boolean
+}) {
+  const primaryStatus = expertReviewed
+    ? {
+        label: "Xác thực",
+        title: "Chuyên gia xác thực",
+        className:
+          "border-transparent bg-gradient-to-r from-[#0052FF] to-[#4D7CFF] text-white",
+        icon: <Check className="size-2.5" />,
+      }
+    : autoVerified
+      ? {
+          label: "Tự động",
+          title: "Tự động xác thực",
+          className: "border-emerald-300 bg-emerald-50 text-emerald-700",
+          icon: <CheckCircle2 className="size-2.5" />,
+        }
+      : metadataFailed
+        ? {
+            label: "Lỗi",
+            title: "Lỗi metadata",
+            className: "border-red-300 bg-red-50 text-red-700",
+            icon: <AlertTriangle className="size-2.5" />,
+          }
+        : metadataPending
+          ? {
+              label: "Extract",
+              title: "Đang extract metadata",
+              className: "border-slate-300 bg-slate-50 text-slate-600",
+              icon: <Loader2 className="size-2.5" />,
+            }
+          : hasWarnings
+            ? {
+                label: "Xác minh",
+                title: "Cần xác minh metadata",
+                className: "border-amber-300 bg-amber-50 text-amber-700",
+                icon: <AlertTriangle className="size-2.5" />,
+              }
+            : metadataReady
+              ? {
+                  label: "Sẵn sàng",
+                  title: "Metadata sẵn sàng",
+                  className: "border-emerald-300 bg-emerald-50 text-emerald-700",
+                  icon: <CheckCircle2 className="size-2.5" />,
+                }
+              : {
+                  label: "Extract",
+                  title: "Đang extract metadata",
+                  className: "border-slate-300 bg-slate-50 text-slate-600",
+                  icon: <Loader2 className="size-2.5" />,
+                }
+
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-1">
+      <MetadataTagBadge
+        title={primaryStatus.title}
+        className={primaryStatus.className}
+        icon={primaryStatus.icon}
+        label={primaryStatus.label}
+      />
+      {signatureTag ? (
+        <MetadataTagBadge
+          title={signatureTag.title || signatureTag.label}
+          className={signatureTagClass(signatureTag.kind)}
+          icon={<Signature className="size-2.5" />}
+          label={signatureTag.label}
+        />
+      ) : null}
+      {hasBlankPageWarnings ? (
+        <MetadataTagBadge
+          title={
+            blankPageWarningPages.length > 0
+              ? `Cảnh báo trang trắng: ${blankPageWarningPages.join(", ")}`
+              : "Cảnh báo trang trắng"
+          }
+          className="border-amber-500 bg-amber-200 text-amber-950"
+          icon={<AlertTriangle className="size-2.5" />}
+          label="Cảnh báo trang trắng"
+        />
+      ) : hasRemovedBlankPages ? (
+        <MetadataTagBadge
+          title={`Đã xóa trang trắng: ${removedBlankPages.join(", ")}`}
+          className="border-sky-400 bg-sky-50 text-sky-800"
+          icon={<Trash2 className="size-2.5" />}
+          label="Đã xóa trang trắng"
+        />
+      ) : null}
+      {hasMetadataEdits ? (
+        <span
+          title="Metadata đã được chỉnh sửa"
+          className="inline-flex h-5 items-center rounded-full border border-amber-300 bg-amber-50 px-1.5 text-amber-700 @max-[22rem]/metadata-card:px-1"
+        >
+          <Edit2 className="size-2.5" />
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
 function blankPageWarningOriginalPages(item: PdfMetadata): number[] {
   const preprocessing = item.pdf_preprocessing
   if (!preprocessing || typeof preprocessing !== "object") return []
@@ -541,4 +723,28 @@ function blankPageWarningOriginalPages(item: PdfMetadata): number[] {
     })
   }
   return [...pages].sort((left, right) => left - right)
+}
+
+function hasBlankPageWarningEntries(item: PdfMetadata): boolean {
+  const preprocessing = item.pdf_preprocessing
+  if (!preprocessing || typeof preprocessing !== "object") return false
+  const warnings = preprocessing.blank_page_warnings
+  return Array.isArray(warnings) && warnings.length > 0
+}
+
+function blankPageRemovedPages(item: PdfMetadata): number[] {
+  const preprocessing = item.pdf_preprocessing
+  if (!preprocessing || typeof preprocessing !== "object") return []
+  const removedPages =
+    "removed_pages" in preprocessing
+      ? preprocessing.removed_pages
+      : preprocessing.blank_pages
+  if (!Array.isArray(removedPages)) return []
+  return [
+    ...new Set(
+      removedPages
+        .map(Number)
+        .filter((page) => Number.isInteger(page) && page > 0)
+    ),
+  ].sort((left, right) => left - right)
 }

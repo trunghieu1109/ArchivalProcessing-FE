@@ -15,6 +15,7 @@ import {
   RefreshCw,
   RotateCcw,
   Save,
+  Trash2,
   TriangleAlert,
   Upload,
 } from "lucide-react"
@@ -628,12 +629,13 @@ export function NumberingDocumentRow({
         className: "bg-rose-50 text-rose-700",
       }
     : statusBadge(document.status)
-  const blankPageWarningPages = Array.from(
-    new Set(document.image_warning_pages ?? [])
-  ).sort((left, right) => left - right)
+  const blankPageWarningPages = blankPageWarningOriginalPages(document)
   const hasBlankPageWarning =
     blankPageWarningPages.length > 0 ||
     (document.blank_page_warnings?.length ?? 0) > 0
+  const removedBlankPages = normalizedPositivePages(document.blank_pages)
+  const hasRemovedBlankPages =
+    !hasBlankPageWarning && removedBlankPages.length > 0
   const blankPageWarningTitle = (document.blank_page_warnings ?? [])
     .map((warning) => {
       const pageNumber = Number(warning.page_number)
@@ -713,12 +715,20 @@ export function NumberingDocumentRow({
                 <TriangleAlert className="size-3.5" />
                 Cảnh báo trang trắng
               </span>
+            ) : hasRemovedBlankPages ? (
+              <span
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-sky-300 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800"
+                title={`Đã xóa trang trắng: trang ${compactPageList(removedBlankPages)}`}
+              >
+                <Trash2 className="size-3.5" />
+                Đã xóa trang trắng
+              </span>
             ) : null}
           </div>
           <p className="mt-0.5 truncate text-xs text-[#64748B]">
             Số {span} · {document.entry_count} vị trí đánh số
-            {document.blank_pages.length > 0
-              ? ` · Trang trắng: ${compactPageList(document.blank_pages)}`
+            {hasRemovedBlankPages
+              ? ` · Đã xóa trang trắng: ${compactPageList(removedBlankPages)}`
               : ""}
             {document.status === "running" && document.remote_render_status
               ? ` · Remote: ${document.remote_render_status}`
@@ -823,4 +833,25 @@ export function NumberingDocumentRow({
       </div>
     </div>
   )
+}
+
+function blankPageWarningOriginalPages(
+  document: NumberingDocumentStatus
+): number[] {
+  const pages = new Set<number>()
+  for (const value of document.image_warning_pages ?? []) {
+    const page = Number(value)
+    if (Number.isInteger(page) && page > 0) pages.add(page)
+  }
+  for (const warning of document.blank_page_warnings ?? []) {
+    const page = Number(warning.page_number)
+    if (Number.isInteger(page) && page > 0) pages.add(page)
+  }
+  return [...pages].sort((left, right) => left - right)
+}
+
+function normalizedPositivePages(value: number[] | undefined): number[] {
+  return [...new Set((value ?? []).map(Number))]
+    .filter((page) => Number.isInteger(page) && page > 0)
+    .sort((left, right) => left - right)
 }

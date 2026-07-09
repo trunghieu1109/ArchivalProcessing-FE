@@ -229,7 +229,9 @@ export function createCanvasFromRenderedPage(
   options?: { fitContainer?: boolean }
 ): HTMLCanvasElement {
   const canvas = document.createElement("canvas")
-  canvas.className = "block h-auto w-full max-w-full rounded bg-white shadow"
+  canvas.className = options?.fitContainer
+    ? "block h-auto w-full max-w-full rounded bg-white shadow"
+    : "block h-auto max-w-none rounded bg-white shadow"
   canvas.width = rendered.imageBitmap.width
   canvas.height = rendered.imageBitmap.height
   if (!options?.fitContainer) {
