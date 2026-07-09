@@ -1,5 +1,6 @@
 import type {
   ClusterVersionResponse,
+  DocumentNumberingMode,
   SessionClusterSummary,
 } from "@/features/upload/api/sessionApi"
 import { buildDisplayMetadata } from "@/features/upload/lib/metadata"
@@ -68,6 +69,9 @@ export interface ClusterDocument {
   positionIndex: number
   pageCount: number | null
   sheetCount: number | null
+  sourcePageCount?: number | null
+  outputPageCount?: number | null
+  documentNumberingMode?: DocumentNumberingMode | null
   requiresReview: boolean
   metadata: Record<string, unknown>
   clusterWarning: ClusterDocumentWarning | null
@@ -114,6 +118,116 @@ export interface ClusterWarningRepresentativeDocument {
   documentSummary: string
   documentType: string
   issuedDate: string
+}
+
+export interface ClusterDocumentDossierCounts {
+  pageCount: number | null
+  sheetCount: number | null
+  sourcePageCount: number | null
+  outputPageCount: number | null
+  documentNumberingMode: DocumentNumberingMode
+}
+
+interface ClusterDocumentCountOptions {
+  pageCount?: unknown
+  sheetCount?: unknown
+  sourcePageCount?: unknown
+  outputPageCount?: unknown
+  documentNumberingMode?: unknown
+  pdfPreprocessing?: Record<string, unknown> | null
+}
+
+export function clusterDocumentTotals(documents: ClusterDocument[]): {
+  pageCount: number
+  sheetCount: number
+} {
+  return documents.reduce(
+    (totals, document) => ({
+      pageCount: totals.pageCount + (document.pageCount ?? 0),
+      sheetCount: totals.sheetCount + (document.sheetCount ?? 0),
+    }),
+    { pageCount: 0, sheetCount: 0 }
+  )
+}
+
+export function clusterDocumentCountsFromMetadata(
+  metadata: Record<string, unknown>,
+  options: ClusterDocumentCountOptions = {}
+): ClusterDocumentDossierCounts {
+  const numbering = recordValue(metadata.numbering)
+  const preprocessing = firstRecord(
+    options.pdfPreprocessing,
+    metadata.pdf_preprocessing,
+    metadata._pdf_preprocessing,
+    numbering.pdf_preprocessing
+  )
+  const sourcePageCount = firstNonNegativeInteger(
+    options.sourcePageCount,
+    numbering.source_page_count,
+    preprocessing.source_page_count,
+    metadata.source_page_count,
+    metadata.page_count,
+    metadata.so_trang
+  )
+  let outputPageCount = firstNonNegativeInteger(
+    options.outputPageCount,
+    numbering.output_page_count,
+    preprocessing.output_page_count,
+    metadata.output_page_count,
+    metadata.processed_page_count
+  )
+  if (outputPageCount === null && sourcePageCount !== null) {
+    const removedPages = removedPageNumbers(preprocessing, sourcePageCount)
+    if (removedPages.size > 0) {
+      outputPageCount = Math.max(0, sourcePageCount - removedPages.size)
+    }
+  }
+
+  const explicitPageCount = firstNonNegativeInteger(
+    options.pageCount,
+    metadata.page_count,
+    metadata.so_trang
+  )
+  const explicitSheetCount = firstNonNegativeInteger(
+    options.sheetCount,
+    metadata.sheet_count,
+    metadata.so_to
+  )
+  const documentNumberingMode =
+    normalizeDocumentNumberingMode(
+      options.documentNumberingMode ??
+        numbering.mode ??
+        numbering.document_numbering_mode ??
+        metadata.document_numbering_mode ??
+        metadata.mode
+    ) ??
+    inferDocumentNumberingMode({
+      sourcePageCount,
+      outputPageCount,
+      explicitPageCount,
+      explicitSheetCount,
+    }) ??
+    "page"
+
+  if (documentNumberingMode === "sheet") {
+    return {
+      pageCount: outputPageCount ?? sourcePageCount ?? explicitPageCount,
+      sheetCount:
+        sheetCountFromOriginalPages(sourcePageCount) ?? explicitSheetCount,
+      sourcePageCount,
+      outputPageCount,
+      documentNumberingMode,
+    }
+  }
+
+  const pageCount = sourcePageCount ?? outputPageCount ?? explicitPageCount
+  return {
+    pageCount,
+    sheetCount: pageCount ?? explicitSheetCount,
+    sourcePageCount,
+    outputPageCount,
+    documentNumberingMode,
+  }
 }
 
 export function versionToGroups(
@@ -264,6 +378,14 @@ function clusterToGroup(
       const filePath =
         metadataPath(metadata) ?? item?.data_path ?? placement.document_id
       const clusterWarning = clusterWarningFromMetadata(metadata)
+      const dossierCounts = clusterDocumentCountsFromMetadata(metadata, {
+        pageCount: placement.page_count,
+        sheetCount: placement.sheet_count,
+        sourcePageCount: placement.source_page_count,
+        outputPageCount: placement.output_page_count,
+        documentNumberingMode: placement.document_numbering_mode,
+        pdfPreprocessing: item?.pdf_preprocessing,
+      })
       return {
         documentId: placement.document_id,
         sessionDocumentId: placement.session_document_id,
@@ -277,8 +399,11 @@ function clusterToGroup(
           ocrStatus,
         }),
         positionIndex: placement.position_index,
-        pageCount: placement.page_count ?? numberValue(metadata.page_count),
-        sheetCount: placement.sheet_count ?? numberValue(metadata.sheet_count),
+        pageCount: dossierCounts.pageCount,
+        sheetCount: dossierCounts.sheetCount,
+        sourcePageCount: dossierCounts.sourcePageCount,
+        outputPageCount: dossierCounts.outputPageCount,
+        documentNumberingMode: dossierCounts.documentNumberingMode,
         requiresReview:
           Boolean(placement.requires_review) || Boolean(clusterWarning),
         metadata,
@@ -314,6 +439,9 @@ function clusterToGroup(
       })
       const filePath = metadataPath(metadata) ?? item?.data_path ?? documentId
       const clusterWarning = clusterWarningFromMetadata(metadata)
+      const dossierCounts = clusterDocumentCountsFromMetadata(metadata, {
+        pdfPreprocessing: item?.pdf_preprocessing,
+      })
       return {
         documentId,
         sessionDocumentId: item?.id ?? null,
@@ -327,14 +455,18 @@ function clusterToGroup(
           ocrStatus,
         }),
         positionIndex: documents.length + index,
-        pageCount: numberValue(metadata.page_count),
-        sheetCount: numberValue(metadata.sheet_count),
+        pageCount: dossierCounts.pageCount,
+        sheetCount: dossierCounts.sheetCount,
+        sourcePageCount: dossierCounts.sourcePageCount,
+        outputPageCount: dossierCounts.outputPageCount,
+        documentNumberingMode: dossierCounts.documentNumberingMode,
         requiresReview: Boolean(clusterWarning),
         metadata,
         clusterWarning,
       }
     })
   const allDocuments = [...documents, ...fallbackDocuments]
+  const documentTotals = clusterDocumentTotals(allDocuments)
 
   return {
     id: isTemporary
@@ -380,9 +512,107 @@ function clusterToGroup(
     requiresReview:
       Boolean(classification?.requires_review) ||
       Boolean(allDocuments.some((document) => document.requiresReview)),
-    pageCount: dossier?.page_count ?? cluster.page_count,
-    sheetCount: numberValue(dossier?.sheet_count) ?? cluster.sheet_count,
+    pageCount:
+      dossier?.page_count ?? cluster.page_count ?? documentTotals.pageCount,
+    sheetCount:
+      numberValue(dossier?.sheet_count) ??
+      cluster.sheet_count ??
+      documentTotals.sheetCount,
     startDate: dossier?.start_date ?? cluster.start_date,
     endDate: dossier?.end_date ?? cluster.end_date,
   }
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {}
+}
+
+function firstRecord(...values: unknown[]): Record<string, unknown> {
+  for (const value of values) {
+    const record = recordValue(value)
+    if (Object.keys(record).length > 0) return record
+  }
+  return {}
+}
+
+function firstNonNegativeInteger(...values: unknown[]): number | null {
+  for (const value of values) {
+    const parsed = nonNegativeIntegerValue(value)
+    if (parsed !== null) return parsed
+  }
+  return null
+}
+
+function nonNegativeIntegerValue(value: unknown): number | null {
+  const parsed = numberValue(value)
+  if (parsed === null) return null
+  const integer = Math.trunc(parsed)
+  return integer >= 0 ? integer : null
+}
+
+function removedPageNumbers(
+  preprocessing: Record<string, unknown>,
+  sourcePageCount: number
+): Set<number> {
+  const source =
+    "removed_pages" in preprocessing
+      ? preprocessing.removed_pages
+      : preprocessing.blank_pages
+  return new Set(
+    intList(source).filter((page) => page >= 1 && page <= sourcePageCount)
+  )
+}
+
+function intList(value: unknown): number[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map(nonNegativeIntegerValue)
+    .filter((item): item is number => item !== null)
+}
+
+function normalizeDocumentNumberingMode(
+  value: unknown
+): DocumentNumberingMode | null {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase()
+  if (normalized === "sheet" || normalized === "to") return "sheet"
+  if (normalized === "page" || normalized === "trang") return "page"
+  return null
+}
+
+function inferDocumentNumberingMode({
+  sourcePageCount,
+  outputPageCount,
+  explicitPageCount,
+  explicitSheetCount,
+}: {
+  sourcePageCount: number | null
+  outputPageCount: number | null
+  explicitPageCount: number | null
+  explicitSheetCount: number | null
+}): DocumentNumberingMode | null {
+  if (sourcePageCount === null || explicitSheetCount === null) return null
+  if (explicitSheetCount !== sheetCountFromOriginalPages(sourcePageCount)) {
+    return null
+  }
+  if (explicitPageCount !== null && explicitPageCount !== explicitSheetCount) {
+    return "sheet"
+  }
+  if (
+    explicitPageCount !== null &&
+    outputPageCount !== null &&
+    explicitPageCount === outputPageCount &&
+    outputPageCount !== sourcePageCount
+  ) {
+    return "sheet"
+  }
+  return null
+}
+
+function sheetCountFromOriginalPages(pageCount: number | null): number | null {
+  if (pageCount === null) return null
+  return Math.max(0, Math.ceil(pageCount / 2))
 }

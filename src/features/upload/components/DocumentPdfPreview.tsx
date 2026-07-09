@@ -340,7 +340,7 @@ export function DocumentPdfPreview({
             <p className="truncate text-[11px] text-[#64748B]">
               {document?.dataPath || "Preview PDF"}
             </p>
-            {selectedVariant ? (
+            {selectedVariant && !enableBlankPageReview ? (
               <p className="mt-0.5 truncate text-[11px] text-[#475569]">
                 {previewVariantSummary(selectedVariant) ||
                   selectedVariant.dataPath ||

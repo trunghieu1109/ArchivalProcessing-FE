@@ -8,6 +8,7 @@ import type {
   ClusterDocument,
   ClusterGroup,
 } from "@/features/upload/lib/clusterGroups"
+import { clusterDocumentTotals } from "@/features/upload/lib/clusterGroups"
 import type { SignatureTagKind } from "@/features/upload/lib/signatureStatus"
 
 export const UNKNOWN_YEAR_LABEL = "Không rõ năm"
@@ -210,10 +211,7 @@ export function dossierYearLabel(group: ClusterGroup): string {
 
 export function dossierPageCount(group: ClusterGroup): number {
   if (typeof group.pageCount === "number") return group.pageCount
-  return group.documents.reduce(
-    (sum, document) => sum + (document.pageCount ?? 0),
-    0
-  )
+  return clusterDocumentTotals(group.documents).pageCount
 }
 
 export function formatDateRange(

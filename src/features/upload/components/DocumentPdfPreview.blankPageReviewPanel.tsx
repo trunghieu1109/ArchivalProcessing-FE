@@ -4,7 +4,6 @@ import {
   Check,
   Eye,
   Loader2,
-  RotateCcw,
   Trash2,
 } from "lucide-react"
 import type { PDFDocumentProxy } from "pdfjs-dist"
@@ -292,10 +291,6 @@ function BlankPageReviewSelection({
     })
   }
 
-  const resetSelection = () => {
-    setSelectedDeletedPages(new Set(mapping.initialDeletedOriginalPages))
-  }
-
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#F8FAFC]">
       <div className="shrink-0 border-b border-[#E2E8F0] bg-white px-3 py-2.5 sm:px-4">
@@ -336,16 +331,6 @@ function BlankPageReviewSelection({
 
           {reviewMode === "select" ? (
             <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={resetSelection}
-                disabled={submitting}
-              >
-                <RotateCcw data-icon="inline-start" />
-                Khôi phục chọn
-              </Button>
               <Button
                 type="button"
                 size="sm"

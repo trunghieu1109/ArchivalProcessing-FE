@@ -58,8 +58,14 @@ export const DocxSection = forwardRef<SectionHandle, DocxSectionProps>(
       )
       if (selectedFiles.length === 0) return
       setError("")
-      setHasContent(false)
-      setFileNames(selectedFiles.map((file) => file.name))
+      if (!multiple) {
+        setHasContent(false)
+        setFileNames([])
+      }
+      const nextFileNames = selectedFiles.map((file) => file.name)
+      setFileNames((previous) =>
+        multiple ? [...previous, ...nextFileNames] : nextFileNames
+      )
       onProcessStateChange("idle")
       setLoading(true)
       try {
@@ -83,13 +89,21 @@ export const DocxSection = forwardRef<SectionHandle, DocxSectionProps>(
         setHasContent(true)
         onHasFileChange(true)
       } catch (err) {
-        setFileNames([])
+        if (multiple) {
+          setFileNames((previous) =>
+            previous.slice(0, previous.length - selectedFiles.length)
+          )
+        } else {
+          setFileNames([])
+        }
         setError(
           err instanceof Error
             ? err.message
             : "Không thể đọc hoặc tải lên file DOCX này."
         )
-        onHasFileChange(false)
+        if (!multiple) {
+          onHasFileChange(false)
+        }
       } finally {
         setLoading(false)
       }
@@ -159,11 +173,11 @@ export const DocxSection = forwardRef<SectionHandle, DocxSectionProps>(
           </div>
         </div>
 
-        {fileNames.length > 0 ? (
+        {fileNames.length > 0 && (
           <div className="flex flex-col gap-2">
-            {fileNames.map((fileName) => (
+            {fileNames.map((fileName, fileIndex) => (
               <FileChip
-                key={fileName}
+                key={`${fileName}-${fileIndex}`}
                 fileName={fileName}
                 loading={loading}
                 processState={processState}
@@ -172,22 +186,26 @@ export const DocxSection = forwardRef<SectionHandle, DocxSectionProps>(
               />
             ))}
           </div>
-        ) : (
+        )}
+        {multiple || fileNames.length === 0 ? (
           <DropZone
             accept=".docx"
             onFile={handleFile}
             onFiles={handleFiles}
             multiple={multiple}
+            compact={multiple && fileNames.length > 0}
             label={
               multiple
-                ? "Kéo thả các file .docx vào đây"
+                ? fileNames.length > 0
+                  ? "Thêm thông tư thời hạn bảo quản"
+                  : "Kéo thả các file .docx vào đây"
                 : "Kéo thả file .docx vào đây"
             }
             hint=".docx"
             maxSize="50MB"
             buttonColor={buttonColor}
           />
-        )}
+        ) : null}
 
         {error && (
           <div className="flex items-center gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">

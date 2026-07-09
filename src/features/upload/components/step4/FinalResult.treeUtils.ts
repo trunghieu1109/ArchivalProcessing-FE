@@ -3,6 +3,7 @@ import type {
   ClusterGroup,
   PendingClusterFeedbackMarker,
 } from "@/features/upload/lib/clusterGroups"
+import { clusterDocumentTotals } from "@/features/upload/lib/clusterGroups"
 import {
   UNKNOWN_YEAR_LABEL,
   dossierPageCount,
@@ -559,18 +560,13 @@ function groupWithDocuments(
   const pendingFeedbackCount = documents.filter(
     (document) => document.pendingFeedback
   ).length
+  const totals = clusterDocumentTotals(documents)
   return {
     ...group,
     documents,
     files: documents.map((document) => document.filePath),
-    pageCount: documents.reduce(
-      (sum, document) => sum + (document.pageCount ?? 0),
-      0
-    ),
-    sheetCount: documents.reduce(
-      (sum, document) => sum + (document.sheetCount ?? 0),
-      0
-    ),
+    pageCount: totals.pageCount,
+    sheetCount: totals.sheetCount,
     pendingFeedbackCount,
     hasPendingFeedback: pendingFeedbackCount > 0,
   }

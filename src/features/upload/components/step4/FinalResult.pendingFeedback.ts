@@ -4,6 +4,7 @@ import type {
   SessionDossierDraft,
 } from "@/features/upload/api/sessionApi"
 import {
+  clusterDocumentTotals,
   TEMPORARY_CLUSTER_ID,
   type ClusterDocument,
   type ClusterGroup,
@@ -315,14 +316,7 @@ function createPendingDossierGroup(
 }
 
 function finalizeGroup(group: ClusterGroup): ClusterGroup {
-  const pageCount = group.documents.reduce(
-    (sum, document) => sum + (document.pageCount ?? 0),
-    0
-  )
-  const sheetCount = group.documents.reduce(
-    (sum, document) => sum + (document.sheetCount ?? 0),
-    0
-  )
+  const { pageCount, sheetCount } = clusterDocumentTotals(group.documents)
   return {
     ...group,
     files: group.documents.map((document) => document.filePath),

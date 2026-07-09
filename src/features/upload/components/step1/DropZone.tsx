@@ -11,6 +11,7 @@ interface DropZoneProps {
   maxSize?: string
   buttonColor?: "blue" | "purple" | "green"
   multiple?: boolean
+  compact?: boolean
 }
 
 export function DropZone({
@@ -22,6 +23,7 @@ export function DropZone({
   maxSize,
   buttonColor = "blue",
   multiple = false,
+  compact = false,
 }: DropZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
@@ -66,7 +68,10 @@ export function DropZone({
         if (file) onFile(file)
       }}
       className={cn(
-        "flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed py-8 transition-all duration-300",
+        "flex rounded-xl border-2 border-dashed transition-all duration-300",
+        compact
+          ? "flex-row flex-wrap items-center justify-center gap-3 px-4 py-3"
+          : "flex-col items-center justify-center gap-3 py-8",
         dragging
           ? "scale-[1.01] border-primary bg-primary/5"
           : "border-[#CBD5E1] bg-[#F8FAFC]"
@@ -92,30 +97,46 @@ export function DropZone({
 
       <div
         className={cn(
-          "flex size-12 items-center justify-center rounded-full",
+          "flex items-center justify-center rounded-full",
+          compact ? "size-9" : "size-12",
           iconBg
         )}
       >
-        <CloudUpload className="size-6" style={{ color: iconColor }} />
+        <CloudUpload
+          className={compact ? "size-5" : "size-6"}
+          style={{ color: iconColor }}
+        />
       </div>
 
-      <p className="text-sm font-semibold text-[#0F172A]">{label}</p>
-      <p className="text-xs text-[#94A3B8]">hoặc</p>
+      <p
+        className={cn(
+          "font-semibold text-[#0F172A]",
+          compact ? "text-sm" : "text-sm"
+        )}
+      >
+        {label}
+      </p>
+      {!compact && <p className="text-xs text-[#94A3B8]">hoặc</p>}
 
       <button
         type="button"
         onClick={() => inputRef.current?.click()}
-        className="flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold transition-all hover:opacity-80"
+        className={cn(
+          "flex items-center gap-2 rounded-lg bg-white font-semibold transition-all hover:opacity-80",
+          compact ? "px-3 py-1.5 text-xs" : "px-4 py-2 text-sm"
+        )}
         style={buttonStyle}
       >
-        <FolderOpen className="size-4" />
-        Chọn file
+        <FolderOpen className={compact ? "size-3.5" : "size-4"} />
+        {compact ? "Thêm file" : "Chọn file"}
       </button>
 
-      <p className="text-xs text-[#94A3B8]">
-        Định dạng hỗ trợ: {hint}
-        {maxSize && <span> &bull; Dung lượng tối đa: {maxSize}</span>}
-      </p>
+      {!compact && (
+        <p className="text-xs text-[#94A3B8]">
+          Định dạng hỗ trợ: {hint}
+          {maxSize && <span> &bull; Dung lượng tối đa: {maxSize}</span>}
+        </p>
+      )}
     </div>
   )
 }

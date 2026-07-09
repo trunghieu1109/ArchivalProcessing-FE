@@ -192,10 +192,14 @@ export function createUploadPageActions(context: Record<string, any>) {
       const staged = retentionFiles.map((file) =>
         stageInput("retention_schedule", file)
       )
-      cache.draftRetentionFile = retentionFiles[0] ?? null
-      cache.draftRetentionFiles = retentionFiles
-      cache.retentionUpload = staged[staged.length - 1] ?? null
-      cache.retentionUploads = staged
+      cache.draftRetentionFiles = [
+        ...cache.draftRetentionFiles,
+        ...retentionFiles,
+      ]
+      cache.draftRetentionFile = cache.draftRetentionFiles[0] ?? null
+      cache.retentionUploads = [...cache.retentionUploads, ...staged]
+      cache.retentionUpload =
+        cache.retentionUploads[cache.retentionUploads.length - 1] ?? null
       cache.planAnalysisState = "idle"
       setPlanAnalysisState("idle")
       return staged
@@ -206,10 +210,14 @@ export function createUploadPageActions(context: Record<string, any>) {
         uploadSessionInput(cache.sessionId as string, "retention_schedule", file)
       )
     )
-    cache.retentionUpload = uploaded[uploaded.length - 1] ?? null
-    cache.retentionUploads = uploaded
-    cache.draftRetentionFile = retentionFiles[0] ?? null
-    cache.draftRetentionFiles = retentionFiles
+    cache.retentionUploads = [...cache.retentionUploads, ...uploaded]
+    cache.retentionUpload =
+      cache.retentionUploads[cache.retentionUploads.length - 1] ?? null
+    cache.draftRetentionFiles = [
+      ...cache.draftRetentionFiles,
+      ...retentionFiles,
+    ]
+    cache.draftRetentionFile = cache.draftRetentionFiles[0] ?? null
     if (existingSessionMode) {
       cache.retentionReuploaded = true
       setPlanReuploadState(

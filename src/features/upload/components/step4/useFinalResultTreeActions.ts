@@ -18,11 +18,12 @@ import {
 } from "@/features/upload/api/sessionApi"
 import { buildDisplayMetadata } from "@/features/upload/lib/metadata"
 import { documentSignatureStatus } from "@/features/upload/lib/signatureStatus"
-import { numberValue } from "@/features/upload/lib/clusterGroupUtils"
-import type {
-  ClusterDocument,
-  ClusterGroup,
-  PendingClusterFeedbackMarker,
+import {
+  clusterDocumentCountsFromMetadata,
+  clusterDocumentTotals,
+  type ClusterDocument,
+  type ClusterGroup,
+  type PendingClusterFeedbackMarker,
 } from "@/features/upload/lib/clusterGroups"
 import type { DossierMetadataDraft } from "./FinalResult.metadataUtils"
 import {
@@ -1010,18 +1011,13 @@ function groupWithDocumentSnapshot(
   const pendingFeedbackCount = documents.filter(
     (document) => document.pendingFeedback
   ).length
+  const totals = clusterDocumentTotals(documents)
   return {
     ...group,
     documents,
     files: documents.map((document) => document.filePath),
-    pageCount: documents.reduce(
-      (sum, document) => sum + (document.pageCount ?? 0),
-      0
-    ),
-    sheetCount: documents.reduce(
-      (sum, document) => sum + (document.sheetCount ?? 0),
-      0
-    ),
+    pageCount: totals.pageCount,
+    sheetCount: totals.sheetCount,
     pendingFeedbackCount,
     hasPendingFeedback: pendingFeedbackCount > 0,
   }
@@ -1105,18 +1101,13 @@ function updateDocumentMetadataLocally(
       return updatedClusterDocument(document, updatedDocument, pendingFeedback)
     })
     if (!changed) return group
+    const totals = clusterDocumentTotals(documents)
     return {
       ...group,
       documents,
       files: documents.map((document) => document.filePath),
-      pageCount: documents.reduce(
-        (sum, document) => sum + (document.pageCount ?? 0),
-        0
-      ),
-      sheetCount: documents.reduce(
-        (sum, document) => sum + (document.sheetCount ?? 0),
-        0
-      ),
+      pageCount: totals.pageCount,
+      sheetCount: totals.sheetCount,
       pendingFeedbackCount: (group.pendingFeedbackCount ?? 0) + pendingDelta,
       hasPendingFeedback: true,
     }
@@ -1140,18 +1131,13 @@ function updateDocumentMetadataOnlyLocally(
       )
     })
     if (!changed) return group
+    const totals = clusterDocumentTotals(documents)
     return {
       ...group,
       documents,
       files: documents.map((document) => document.filePath),
-      pageCount: documents.reduce(
-        (sum, document) => sum + (document.pageCount ?? 0),
-        0
-      ),
-      sheetCount: documents.reduce(
-        (sum, document) => sum + (document.sheetCount ?? 0),
-        0
-      ),
+      pageCount: totals.pageCount,
+      sheetCount: totals.sheetCount,
     }
   })
 }
@@ -1168,6 +1154,14 @@ function updatedClusterDocument(
   const signatureStatus =
     updatedDocument.signature_status ??
     String(metadata.signature_status ?? metadata.signatureStatus ?? "")
+  const dossierCounts = clusterDocumentCountsFromMetadata(metadata, {
+    pageCount: document.pageCount,
+    sheetCount: document.sheetCount,
+    sourcePageCount: document.sourcePageCount,
+    outputPageCount: document.outputPageCount,
+    documentNumberingMode: document.documentNumberingMode,
+    pdfPreprocessing: updatedDocument.pdf_preprocessing,
+  })
   return {
     ...document,
     metadata,
@@ -1178,8 +1172,11 @@ function updatedClusterDocument(
       remoteMetadataStatus,
       ocrStatus,
     }),
-    pageCount: numberValue(metadata.page_count) ?? document.pageCount,
-    sheetCount: numberValue(metadata.sheet_count) ?? document.sheetCount,
+    pageCount: dossierCounts.pageCount,
+    sheetCount: dossierCounts.sheetCount,
+    sourcePageCount: dossierCounts.sourcePageCount,
+    outputPageCount: dossierCounts.outputPageCount,
+    documentNumberingMode: dossierCounts.documentNumberingMode,
     pendingFeedback,
   }
 }

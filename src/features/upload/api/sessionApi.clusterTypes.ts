@@ -62,6 +62,9 @@ export interface ClusterPlacement {
   requires_review: boolean
   page_count: number | null
   sheet_count: number | null
+  source_page_count?: number | null
+  output_page_count?: number | null
+  document_numbering_mode?: DocumentNumberingMode | null
   metadata: Record<string, unknown>
 }
 
