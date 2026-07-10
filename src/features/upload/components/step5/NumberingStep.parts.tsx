@@ -926,8 +926,7 @@ export function NumberingDocumentRow({
             <input
               id={`numbering-value-${document.session_document_id}`}
               type="text"
-              inputMode={updateMode === "auto" ? "numeric" : "text"}
-              pattern={updateMode === "auto" ? "[0-9]*" : undefined}
+              inputMode="text"
               value={numberValue}
               onChange={(event) => updateNumberValue(event.target.value)}
               disabled={disabled || updating}
