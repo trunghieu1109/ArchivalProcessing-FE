@@ -9,6 +9,7 @@ import {
   enqueueDocumentNumbering,
   exportMetadataSnapshot,
   getDocumentNumberingStatus,
+  getDocumentPreviewUrl,
   getNumberedDocumentPreviewUrl,
   getNumberingStyles,
   importMetadataBoxNumbers as importMetadataBoxNumbersApi,
@@ -20,19 +21,24 @@ import {
   type NumberingStyleOption,
 } from "@/features/upload/api/sessionApi"
 import {
+  DossierNumberingModeToggle,
   DossierMetaChip,
   NumberingDocumentRow,
   NumberingMetadataPanel,
   NumberingStat,
   NumberingStepFooter,
   NumberingStepHeader,
+  type DossierUpdateMode,
+  type NumberingUpdateMode,
 } from "./NumberingStep.parts"
 import { NumberedPdfPreviewPanel } from "./NumberingStep.preview"
 import {
+  canPreviewNumberingDocument,
   groupDocumentsByDossier,
   isNumberingComplete,
   numberingEntries,
   saveBlob,
+  textOrNull,
 } from "./NumberingStep.utils"
 
 const NUMBERING_POLL_INTERVAL_MS = 5_000
@@ -146,6 +152,9 @@ export function NumberingStep({
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0)
   const [numberingFilter, setNumberingFilter] = useState("")
   const [numberingPageIndex, setNumberingPageIndex] = useState(0)
+  const [dossierUpdateModes, setDossierUpdateModes] = useState<
+    Record<string, DossierUpdateMode>
+  >({})
   const [metadataExporting, setMetadataExporting] = useState(false)
   const [metadataImporting, setMetadataImporting] = useState(false)
   const metadataImportInputRef = useRef<HTMLInputElement | null>(null)
@@ -455,7 +464,9 @@ export function NumberingStep({
     async (
       document: NumberingDocumentStatus,
       anchorPageNumber: number,
-      newNumber: number
+      newLabel: string,
+      updateMode: NumberingUpdateMode,
+      manualEntries?: Array<{ page_number: number; label: string }>
     ) => {
       if (!sessionId) {
         toast.error("Chưa có session để cập nhật số.")
@@ -465,29 +476,68 @@ export function NumberingStep({
         toast.error("Trang cần sửa phải lớn hơn hoặc bằng 1.")
         return
       }
-      if (!Number.isFinite(newNumber) || newNumber < 1) {
-        toast.error("Số mới phải lớn hơn hoặc bằng 1.")
+      const trimmedLabel = newLabel.trim()
+      const manualEntriesPayload =
+        updateMode === "manual" && manualEntries?.length
+          ? manualEntries
+          : undefined
+      if (updateMode !== "manual" && !trimmedLabel) {
+        toast.error("Số mới không được để trống.")
         return
       }
+      if (
+        updateMode === "manual" &&
+        !manualEntriesPayload?.length &&
+        !trimmedLabel
+      ) {
+        toast.error("Danh sách đánh số thủ công không được để trống.")
+        return
+      }
+      if (updateMode === "auto" && !/^[0-9]+$/.test(trimmedLabel)) {
+        toast.error("Đánh số tự động chỉ nhận số.")
+        return
+      }
+      if (updateMode === "cascade" && !/^[0-9]+/.test(trimmedLabel)) {
+        toast.error("Mốc đánh số phải bắt đầu bằng số.")
+        return
+      }
+      const modeText =
+        updateMode === "manual"
+          ? "thủ công"
+          : updateMode === "cascade"
+            ? "theo mốc"
+            : "tự động"
       setUpdatingDocumentId(document.session_document_id)
       setPreviewDocumentId(document.session_document_id)
       setError("")
       setProgressPhase("loading_data")
-      setProgressMessage("Đang gửi yêu cầu cập nhật số.")
+      setProgressMessage(`Đang gửi yêu cầu cập nhật số ${modeText}.`)
       setCompletedPhases(new Set())
       try {
+        const requestPayload: Parameters<
+          typeof updateDocumentNumberingFromPage
+        >[2] = {
+          anchor_page_number: anchorPageNumber,
+          numbering_update_mode: updateMode,
+          created_by: "ui",
+          force: true,
+        }
+        if (updateMode === "auto") {
+          requestPayload.new_number = trimmedLabel
+        } else if (updateMode === "cascade") {
+          requestPayload.new_label = trimmedLabel
+        } else if (manualEntriesPayload?.length) {
+          requestPayload.numbering_entries = manualEntriesPayload
+        } else {
+          requestPayload.new_label = trimmedLabel
+        }
         const response = await updateDocumentNumberingFromPage(
           sessionId,
           document.session_document_id,
-          {
-            anchor_page_number: anchorPageNumber,
-            new_number: newNumber,
-            created_by: "ui",
-            force: true,
-          }
+          requestPayload
         )
         if (response.created) {
-          toast.success("Đã gửi task cập nhật số.")
+          toast.success(`Đã gửi task cập nhật số ${modeText}.`)
         } else {
           toast.info("Task đánh số đang được xử lý.")
         }
@@ -535,7 +585,8 @@ export function NumberingStep({
           document.session_document_id,
           {
             anchor_page_number: anchorPageNumber,
-            new_number: currentNumber,
+            numbering_update_mode: "auto",
+            new_number: String(currentNumber),
             created_by: "ui",
             force: true,
           }
@@ -799,13 +850,14 @@ export function NumberingStep({
   )
   const previewSessionDocumentId = previewDocument?.session_document_id ?? null
   const previewPdfVersionId = previewDocument?.numbered_pdf_version_id ?? null
+  const previewSourceUrl = textOrNull(previewDocument?.download_url)
 
   useEffect(() => {
     if (
       !sessionId ||
       previewSessionDocumentId === null ||
-      previewPdfVersionId === null ||
-      previewPdfVersionId === ""
+      !previewDocument ||
+      !canPreviewNumberingDocument(previewDocument)
     ) {
       setPreviewUrl("")
       setPreviewError("")
@@ -817,29 +869,60 @@ export function NumberingStep({
     setPreviewUrl("")
     setPreviewError("")
     setPreviewLoading(true)
-    getNumberedDocumentPreviewUrl(sessionId, previewSessionDocumentId)
-      .then((response) => {
-        if (!cancelled) setPreviewUrl(response.download_url)
-      })
-      .catch((err) => {
+
+    const loadPreviewUrl = async () => {
+      try {
+        if (previewPdfVersionId) {
+          const response = await getNumberedDocumentPreviewUrl(
+            sessionId,
+            previewSessionDocumentId
+          )
+          if (!cancelled) setPreviewUrl(response.download_url)
+          return
+        }
+        if (previewSourceUrl) {
+          if (!cancelled) setPreviewUrl(previewSourceUrl)
+          return
+        }
+        const response = await getDocumentPreviewUrl(
+          sessionId,
+          previewSessionDocumentId
+        )
+        const fallbackUrl =
+          textOrNull(response.download_url) ||
+          response.preview_variants?.find((variant) =>
+            textOrNull(variant.download_url)
+          )?.download_url ||
+          null
+        if (!cancelled) {
+          if (fallbackUrl) setPreviewUrl(fallbackUrl)
+          else setPreviewError("Không có URL preview cho tài liệu này.")
+        }
+      } catch (err) {
         if (cancelled) return
         setPreviewError(
           err instanceof Error
             ? err.message
-            : "Không thể cấp URL preview PDF đã đánh số."
+            : previewPdfVersionId
+              ? "Không thể cấp URL preview PDF đã đánh số."
+              : "Không thể cấp URL preview tài liệu."
         )
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setPreviewLoading(false)
-      })
+      }
+    }
+
+    void loadPreviewUrl()
 
     return () => {
       cancelled = true
     }
   }, [
+    previewDocument,
     previewPdfVersionId,
     previewRefreshKey,
     previewSessionDocumentId,
+    previewSourceUrl,
     sessionId,
   ])
   const totalDocuments = status?.summary.total_documents ?? 0
@@ -868,7 +951,7 @@ export function NumberingStep({
   const canRestartNumbering = hasNumberingOutput
   const changeNumberingMode = async (mode: DocumentNumberingMode) => {
     if (active || changingMode || mode === documentNumberingMode) return
-    const hadCompletedNumbering = complete
+    const shouldRenumber = hasNumberingOutput
     setChangingMode(true)
     setError("")
     try {
@@ -878,8 +961,9 @@ export function NumberingStep({
       setProgressPhase(null)
       setProgressMessage("")
       setCompletedPhases(new Set())
-      if (hadCompletedNumbering) {
-        toast.info("Đã đổi cách đánh số. Vui lòng đánh số lại tài liệu.")
+      if (shouldRenumber) {
+        toast.info("Đã đổi cách đánh số. Đang đánh số lại tài liệu.")
+        await startNumbering(true)
       }
     } finally {
       setChangingMode(false)
@@ -1074,7 +1158,19 @@ export function NumberingStep({
             </div>
           ) : (
             <div className="min-h-0 flex-1 divide-y divide-[#E2E8F0] overflow-x-hidden overflow-y-auto">
-              {pagedDocumentsByDossier.map((group) => (
+              {pagedDocumentsByDossier.map((group) => {
+                const dossierUpdateMode =
+                  dossierUpdateModes[group.dossierId] ?? "auto"
+                const hasNewNumberingDocuments = group.documents.some(
+                  (document) =>
+                    isAddedNumberingDocument(document, hasNumberingOutput)
+                )
+                const modeToggleDisabled =
+                  starting ||
+                  Boolean(status?.active) ||
+                  updatingDocumentId !== null ||
+                  retryingDocumentId !== null
+                return (
                 <section key={group.dossierId} className="px-4 py-3">
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                     <div className="min-w-0">
@@ -1093,46 +1189,82 @@ export function NumberingStep({
                         />
                       </div>
                     </div>
-                  </div>
-                  <div className="grid gap-1.5">
-                    {group.documents.map((document) => (
-                      <NumberingDocumentRow
-                        key={document.session_document_id}
-                        document={document}
-                        previewing={
-                          previewDocumentId === document.session_document_id
-                        }
-                        onPreview={() =>
-                          setPreviewDocumentId(document.session_document_id)
-                        }
-                        onUpdateFromPage={updateDocumentNumberFromPage}
-                        updating={
-                          updatingDocumentId === document.session_document_id
-                        }
-                        retrying={
-                          retryingDocumentId === document.session_document_id
-                        }
-                        retryable={
-                          hasNumberingOutput && document.status !== "running"
-                        }
-                        stalled={
-                          stoppedWithUnresolved &&
-                          document.status !== "done" &&
-                          document.status !== "failed" &&
-                          document.status !== "running"
-                        }
-                        onRetry={retryIncompleteDocument}
-                        disabled={
-                          starting ||
-                          Boolean(status?.active) ||
-                          updatingDocumentId !== null ||
-                          retryingDocumentId !== null
+                    {hasNewNumberingDocuments ? (
+                      <DossierNumberingModeToggle
+                        updateMode={dossierUpdateMode}
+                        disabled={modeToggleDisabled}
+                        onChange={(mode) =>
+                          setDossierUpdateModes((current) => ({
+                            ...current,
+                            [group.dossierId]: mode,
+                          }))
                         }
                       />
-                    ))}
+                    ) : null}
+                  </div>
+                  <div className="grid gap-1.5">
+                    {group.documents.map((document) => {
+                      const isAddedDocument = isAddedNumberingDocument(
+                        document,
+                        hasNumberingOutput
+                      )
+                      const updateMode: NumberingUpdateMode =
+                        isAddedDocument
+                          ? dossierUpdateMode
+                          : "cascade"
+                      const numberingEntryKey =
+                        document.numbering_entries
+                          ?.map(
+                            (entry) => `${entry.page_number}:${entry.label}`
+                          )
+                          .join("|") ?? ""
+                      return (
+                        <NumberingDocumentRow
+                          key={[
+                            document.session_document_id,
+                            document.document_number_start,
+                            document.document_number_end,
+                            updateMode,
+                            numberingEntryKey,
+                          ].join(":")}
+                          document={document}
+                          updateMode={updateMode}
+                          previewing={
+                            previewDocumentId === document.session_document_id
+                          }
+                          onPreview={() =>
+                            setPreviewDocumentId(document.session_document_id)
+                          }
+                          onUpdateFromPage={updateDocumentNumberFromPage}
+                          updating={
+                            updatingDocumentId === document.session_document_id
+                          }
+                          retrying={
+                            retryingDocumentId === document.session_document_id
+                          }
+                          retryable={
+                            hasNumberingOutput && document.status !== "running"
+                          }
+                          stalled={
+                            stoppedWithUnresolved &&
+                            document.status !== "done" &&
+                            document.status !== "failed" &&
+                            document.status !== "running"
+                          }
+                          onRetry={retryIncompleteDocument}
+                          disabled={
+                            starting ||
+                            Boolean(status?.active) ||
+                            updatingDocumentId !== null ||
+                            retryingDocumentId !== null
+                          }
+                        />
+                      )
+                    })}
                   </div>
                 </section>
-              ))}
+                )
+              })}
             </div>
           )}
           {filteredDocumentsByDossier.length > 0 && (
@@ -1302,6 +1434,18 @@ function nextNumberingPrefetchPageIndex(
   )
   const nextPageIndex = pageIndex + 1
   return nextPageIndex * pageSize < total ? nextPageIndex : null
+}
+
+function isAddedNumberingDocument(
+  document: NumberingDocumentStatus,
+  hasNumberingOutput: boolean
+): boolean {
+  if (!hasNumberingOutput) return false
+  const changeStatus = String(document.document_change_status || "").toLowerCase()
+  if (!["added", "moved_cluster", "moved_dossier"].includes(changeStatus)) {
+    return false
+  }
+  return document.status !== "done" && document.status !== "running"
 }
 
 function filterNumberingDossierGroups(

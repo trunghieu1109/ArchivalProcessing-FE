@@ -169,6 +169,8 @@ export function ProcessStepReviewControls(
   } = props
   const [batchSelectorOpen, setBatchSelectorOpen] = useState(false)
   const [autoSplitPanelOpen, setAutoSplitPanelOpen] = useState(false)
+  const [manualWorkerSearch, setManualWorkerSearch] = useState("")
+  const [autoWorkerSearch, setAutoWorkerSearch] = useState("")
   const manualSelectionLimit = 1000
   const manualSelectedCount = manualSelectedIds.size
   const manualSelectionOverLimit = manualSelectedCount > manualSelectionLimit
@@ -190,6 +192,14 @@ export function ProcessStepReviewControls(
     const workerId = chinhlyUserId(worker)
     return Boolean(workerId && selectedManualWorkerIds.has(workerId))
   })
+  const filteredManualWorkers = useMemo(
+    () => filterWorkersBySearch(workers, manualWorkerSearch),
+    [manualWorkerSearch, workers]
+  )
+  const filteredAutoWorkers = useMemo(
+    () => filterWorkersBySearch(workers, autoWorkerSearch),
+    [autoWorkerSearch, workers]
+  )
   const existingBatchByWorkerId = useMemo(() => {
     const batchByWorkerId = new Map<string, MetadataBatchGroup>()
     batchGroups.forEach((group: MetadataBatchGroup) => {
@@ -671,9 +681,18 @@ export function ProcessStepReviewControls(
                   <p className="text-xs font-semibold text-[#0F172A]">
                     Worker tham gia xác thực
                   </p>
-                  <span className="text-[11px] font-medium text-[#64748B]">
-                    {selectedManualWorkerIds.size}/{workers.length} đã chọn
-                  </span>
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+                    <WorkerSearchInput
+                      value={manualWorkerSearch}
+                      onChange={setManualWorkerSearch}
+                    />
+                    <span className="text-[11px] font-medium text-[#64748B]">
+                      {selectedManualWorkerIds.size}/{workers.length} đã chọn
+                      {manualWorkerSearch.trim()
+                        ? ` · ${filteredManualWorkers.length} hiển thị`
+                        : ""}
+                    </span>
+                  </div>
                 </div>
                 {workersLoading ? (
                   <div className="flex items-center gap-2 py-1 text-xs text-[#64748B]">
@@ -682,41 +701,47 @@ export function ProcessStepReviewControls(
                   </div>
                 ) : workers.length > 0 ? (
                   <div className="max-h-40 overflow-y-auto rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] p-1 pr-1">
-                    {workers.map((worker: ChinhlyUser) => {
-                      const workerId = chinhlyUserId(worker)
-                      if (!workerId) return null
-                      const checked = selectedManualWorkerIds.has(workerId)
-                      const confirmed = manualQuickConfirmations.has(workerId)
-                      const existingBatch =
-                        existingBatchByWorkerId.get(workerId)
-                      return (
-                        <label
-                          key={workerId}
-                          className="flex min-w-0 items-start gap-2 rounded-md px-2 py-1.5 text-xs text-[#0F172A] hover:bg-white"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={(event) =>
-                              toggleManualQuickWorker(
-                                workerId,
-                                event.target.checked
-                              )
-                            }
-                            disabled={manualQuickBusy || confirmed}
-                            className="mt-0.5 size-3.5 shrink-0"
-                          />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate">
-                              {chinhlyUserLabel(worker)}
+                    {filteredManualWorkers.length > 0 ? (
+                      filteredManualWorkers.map((worker: ChinhlyUser) => {
+                        const workerId = chinhlyUserId(worker)
+                        if (!workerId) return null
+                        const checked = selectedManualWorkerIds.has(workerId)
+                        const confirmed = manualQuickConfirmations.has(workerId)
+                        const existingBatch =
+                          existingBatchByWorkerId.get(workerId)
+                        return (
+                          <label
+                            key={workerId}
+                            className="flex min-w-0 items-start gap-2 rounded-md px-2 py-1.5 text-xs text-[#0F172A] hover:bg-white"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(event) =>
+                                toggleManualQuickWorker(
+                                  workerId,
+                                  event.target.checked
+                                )
+                              }
+                              disabled={manualQuickBusy || confirmed}
+                              className="mt-0.5 size-3.5 shrink-0"
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate">
+                                {chinhlyUserLabel(worker)}
+                              </span>
+                              <span className="block truncate text-[10px] text-[#64748B]">
+                                {workerBatchStatusLabel(existingBatch)}
+                              </span>
                             </span>
-                            <span className="block truncate text-[10px] text-[#64748B]">
-                              {workerBatchStatusLabel(existingBatch)}
-                            </span>
-                          </span>
-                        </label>
-                      )
-                    })}
+                          </label>
+                        )
+                      })
+                    ) : (
+                      <p className="px-2 py-2 text-xs text-[#64748B]">
+                        Không tìm thấy worker phù hợp.
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <p className="py-1 text-xs text-[#64748B]">
@@ -1058,9 +1083,18 @@ export function ProcessStepReviewControls(
               <p className="text-xs font-semibold text-[#0F172A]">
                 Worker nhận lô
               </p>
-              <span className="text-[11px] font-medium text-[#64748B]">
-                {selectedAutoWorkerCount}/{workers.length} đã chọn
-              </span>
+              <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+                <WorkerSearchInput
+                  value={autoWorkerSearch}
+                  onChange={setAutoWorkerSearch}
+                />
+                <span className="text-[11px] font-medium text-[#64748B]">
+                  {selectedAutoWorkerCount}/{workers.length} đã chọn
+                  {autoWorkerSearch.trim()
+                    ? ` · ${filteredAutoWorkers.length} hiển thị`
+                    : ""}
+                </span>
+              </div>
             </div>
             {workersLoading ? (
               <div className="flex items-center gap-2 py-1 text-xs text-[#64748B]">
@@ -1069,39 +1103,45 @@ export function ProcessStepReviewControls(
               </div>
             ) : workers.length > 0 ? (
               <div className="max-h-40 overflow-y-auto rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] p-1 pr-1">
-                {workers.map((worker: ChinhlyUser) => {
-                  const workerId = chinhlyUserId(worker)
-                  if (!workerId) return null
-                  const checked = selectedAutoWorkerIds.has(workerId)
-                  const existingBatch = existingBatchByWorkerId.get(workerId)
-                  return (
-                    <label
-                      key={workerId}
-                      className="flex min-w-0 items-start gap-2 rounded-md px-2 py-1.5 text-xs text-[#0F172A] hover:bg-white"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(event) =>
-                          toggleAutoWorker(workerId, event.target.checked)
-                        }
-                        disabled={
-                          confirmingAllAutoBatches ||
-                          confirmingAutoBatchIndexes.size > 0
-                        }
-                        className="mt-0.5 size-3.5 shrink-0"
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate">
-                          {chinhlyUserLabel(worker)}
+                {filteredAutoWorkers.length > 0 ? (
+                  filteredAutoWorkers.map((worker: ChinhlyUser) => {
+                    const workerId = chinhlyUserId(worker)
+                    if (!workerId) return null
+                    const checked = selectedAutoWorkerIds.has(workerId)
+                    const existingBatch = existingBatchByWorkerId.get(workerId)
+                    return (
+                      <label
+                        key={workerId}
+                        className="flex min-w-0 items-start gap-2 rounded-md px-2 py-1.5 text-xs text-[#0F172A] hover:bg-white"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(event) =>
+                            toggleAutoWorker(workerId, event.target.checked)
+                          }
+                          disabled={
+                            confirmingAllAutoBatches ||
+                            confirmingAutoBatchIndexes.size > 0
+                          }
+                          className="mt-0.5 size-3.5 shrink-0"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate">
+                            {chinhlyUserLabel(worker)}
+                          </span>
+                          <span className="block truncate text-[10px] text-[#64748B]">
+                            {workerBatchStatusLabel(existingBatch)}
+                          </span>
                         </span>
-                        <span className="block truncate text-[10px] text-[#64748B]">
-                          {workerBatchStatusLabel(existingBatch)}
-                        </span>
-                      </span>
-                    </label>
-                  )
-                })}
+                      </label>
+                    )
+                  })
+                ) : (
+                  <p className="px-2 py-2 text-xs text-[#64748B]">
+                    Không tìm thấy worker phù hợp.
+                  </p>
+                )}
               </div>
             ) : (
               <p className="py-1 text-xs text-[#64748B]">
@@ -1265,6 +1305,67 @@ export function ProcessStepReviewControls(
       )}
     </div>
   )
+}
+
+function WorkerSearchInput({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <label className="flex h-8 min-w-[13rem] flex-1 items-center gap-1.5 rounded-lg border border-[#CBD5E1] bg-white px-2 text-xs text-[#475569] transition-colors focus-within:border-[#0052FF] focus-within:ring-2 focus-within:ring-[#0052FF]/15 sm:max-w-[18rem]">
+      <Search className="size-3.5 shrink-0 text-[#94A3B8]" />
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="Tìm worker"
+        className="min-w-0 flex-1 bg-transparent text-xs text-[#0F172A] outline-none placeholder:text-[#94A3B8]"
+      />
+      {value ? (
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          title="Xóa tìm worker"
+          aria-label="Xóa tìm worker"
+          className="flex size-5 shrink-0 items-center justify-center rounded-md text-[#64748B] hover:bg-[#F1F5F9]"
+        >
+          <X className="size-3" />
+        </button>
+      ) : null}
+    </label>
+  )
+}
+
+function filterWorkersBySearch(
+  workers: ChinhlyUser[],
+  searchValue: string
+): ChinhlyUser[] {
+  const search = normalizeWorkerSearchText(searchValue.trim())
+  if (!search) return workers
+  return workers.filter((worker) =>
+    normalizeWorkerSearchText(
+      [
+        chinhlyUserLabel(worker),
+        worker.display_name,
+        worker.name,
+        worker.email,
+        worker.username,
+        chinhlyUserId(worker),
+      ]
+        .map((value) => String(value ?? "").trim())
+        .filter(Boolean)
+        .join(" ")
+    ).includes(search)
+  )
+}
+
+function normalizeWorkerSearchText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
 }
 
 function workerOptionLabel(

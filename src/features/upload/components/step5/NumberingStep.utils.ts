@@ -3,19 +3,44 @@ import type {
   NumberingStatusResponse,
 } from "@/features/upload/api/sessionApi"
 
-export function numberingEntries(document: NumberingDocumentStatus): Array<{
+export interface NumberingEntry {
   page_number: number
   label: string
-}> {
+  numbering_number?: number | null
+  numbering_suffix?: string | null
+  numbering_width?: number | null
+}
+
+export function numberingEntries(
+  document: NumberingDocumentStatus
+): NumberingEntry[] {
   if (
     Array.isArray(document.numbering_entries) &&
     document.numbering_entries.length > 0
   ) {
     return document.numbering_entries
-      .map((entry) => ({
-        page_number: Number(entry.page_number),
-        label: String(entry.label || ""),
-      }))
+      .map((entry) => {
+        const hasNumberingNumber = entry.numbering_number != null
+        const hasNumberingWidth = entry.numbering_width != null
+        const numberingNumber = Number(entry.numbering_number)
+        const numberingWidth = Number(entry.numbering_width)
+        return {
+          page_number: Number(entry.page_number),
+          label: String(entry.label || ""),
+          numbering_number:
+            hasNumberingNumber && Number.isFinite(numberingNumber)
+              ? numberingNumber
+              : null,
+          numbering_suffix:
+            entry.numbering_suffix == null
+              ? null
+              : String(entry.numbering_suffix),
+          numbering_width:
+            hasNumberingWidth && Number.isFinite(numberingWidth)
+              ? numberingWidth
+              : null,
+        }
+      })
       .filter(
         (entry) => Number.isFinite(entry.page_number) && entry.page_number > 0
       )
@@ -127,6 +152,15 @@ export function pdfEmbedUrl(url: string): string {
 export function textOrNull(value: unknown): string | null {
   const text = String(value ?? "").trim()
   return text || null
+}
+
+export function canPreviewNumberingDocument(
+  document: NumberingDocumentStatus
+): boolean {
+  if (textOrNull(document.numbered_pdf_version_id)) return true
+  if (textOrNull(document.download_url)) return true
+  if (textOrNull(document.source_version_id)) return true
+  return (Number(document.source_page_count) || 0) > 0
 }
 
 export function saveBlob(blob: Blob, fileName: string) {

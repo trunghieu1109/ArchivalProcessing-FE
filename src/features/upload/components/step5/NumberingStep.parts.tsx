@@ -11,12 +11,12 @@ import {
   FileSpreadsheet,
   FileText,
   Loader2,
+  Minus,
   Play,
+  Plus,
   RefreshCw,
   RotateCcw,
   Save,
-  Trash2,
-  TriangleAlert,
   Upload,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -28,11 +28,15 @@ import type {
   NumberingStyleOption,
 } from "@/features/upload/api/sessionApi"
 import {
+  canPreviewNumberingDocument,
+  type NumberingEntry,
   numberingEntries,
-  compactPageList,
   statusBadge,
   textOrNull,
 } from "./NumberingStep.utils"
+
+export type DossierUpdateMode = "auto" | "manual"
+export type NumberingUpdateMode = DossierUpdateMode | "cascade"
 
 export function NumberingStepHeader({
   modeLabel,
@@ -583,8 +587,51 @@ export function DossierMetaChip({
   )
 }
 
+export function DossierNumberingModeToggle({
+  updateMode,
+  disabled,
+  onChange,
+}: {
+  updateMode: DossierUpdateMode
+  disabled: boolean
+  onChange: (mode: DossierUpdateMode) => void
+}) {
+  return (
+    <div
+      className="inline-flex h-7 shrink-0 items-center overflow-hidden rounded-lg border border-[#CBD5E1] bg-white p-px"
+      role="radiogroup"
+      aria-label="Chế độ xử lý tài liệu mới"
+    >
+      {(
+        [
+          ["auto", "Tự động"],
+          ["manual", "Thủ công"],
+        ] as const
+      ).map(([mode, label]) => (
+        <button
+          key={mode}
+          type="button"
+          role="radio"
+          aria-checked={updateMode === mode}
+          disabled={disabled}
+          onClick={() => onChange(mode)}
+          className={cn(
+            "inline-flex h-6 items-center rounded-md px-2.5 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+            updateMode === mode
+              ? "bg-[#0052FF] text-white"
+              : "text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0052FF]"
+          )}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export function NumberingDocumentRow({
   document,
+  updateMode,
   previewing,
   onPreview,
   onUpdateFromPage,
@@ -596,12 +643,15 @@ export function NumberingDocumentRow({
   disabled,
 }: {
   document: NumberingDocumentStatus
+  updateMode: NumberingUpdateMode
   previewing: boolean
   onPreview: () => void
   onUpdateFromPage: (
     document: NumberingDocumentStatus,
     anchorPageNumber: number,
-    newNumber: number
+    newLabel: string,
+    updateMode: NumberingUpdateMode,
+    manualEntries?: Array<{ page_number: number; label: string }>
   ) => void
   onRetry: (document: NumberingDocumentStatus) => void
   updating: boolean
@@ -615,13 +665,34 @@ export function NumberingDocumentRow({
     String(entries[0]?.page_number ?? 1)
   )
   const [numberValue, setNumberValue] = useState(
-    String(entries[0]?.label ?? document.document_number_start)
+    numberingEntryValueForMode(
+      entries[0],
+      updateMode,
+      document.document_number_start
+    )
+  )
+  const [manualEntryRows, setManualEntryRows] = useState(() =>
+    manualEntryRowsFromEntries(entries, document.document_number_start)
   )
   useEffect(() => {
     const firstEntry = entries[0]
     setPageValue(String(firstEntry?.page_number ?? 1))
-    setNumberValue(String(firstEntry?.label ?? document.document_number_start))
-  }, [document.document_number_start, document.session_document_id, entries])
+    setNumberValue(
+      numberingEntryValueForMode(
+        firstEntry,
+        updateMode,
+        document.document_number_start
+      )
+    )
+    setManualEntryRows(
+      manualEntryRowsFromEntries(entries, document.document_number_start)
+    )
+  }, [
+    document.document_number_start,
+    document.session_document_id,
+    entries,
+    updateMode,
+  ])
 
   const badge = stalled
     ? {
@@ -629,41 +700,31 @@ export function NumberingDocumentRow({
         className: "bg-rose-50 text-rose-700",
       }
     : statusBadge(document.status)
-  const blankPageWarningPages = blankPageWarningOriginalPages(document)
-  const hasBlankPageWarning =
-    blankPageWarningPages.length > 0 ||
-    (document.blank_page_warnings?.length ?? 0) > 0
-  const removedBlankPages = normalizedPositivePages(document.blank_pages)
-  const hasRemovedBlankPages =
-    !hasBlankPageWarning && removedBlankPages.length > 0
-  const blankPageWarningTitle = (document.blank_page_warnings ?? [])
-    .map((warning) => {
-      const pageNumber = Number(warning.page_number)
-      const message = String(warning.message || "").trim()
-      return [
-        Number.isInteger(pageNumber) && pageNumber > 0
-          ? `Trang ${pageNumber}`
-          : "",
-        message,
-      ]
-        .filter(Boolean)
-        .join(": ")
-    })
-    .filter(Boolean)
-    .join("\n")
-  const parsedPageNumber = Number.parseInt(pageValue, 10)
-  const parsedNewNumber = Number.parseInt(numberValue, 10)
-  const selectedEntry = entries.find(
-    (entry) => entry.page_number === parsedPageNumber
-  )
-  const selectedCurrentNumber = selectedEntry
-    ? Number.parseInt(selectedEntry.label, 10)
+  const trimmedPageValue = pageValue.trim()
+  const pageNumberIsValid = positiveIntegerText(trimmedPageValue)
+  const parsedPageNumber = pageNumberIsValid
+    ? Number.parseInt(trimmedPageValue, 10)
     : Number.NaN
+  const trimmedNumberValue = numberValue.trim()
+  const cascadeLabelIsValid = numberingLabelText(trimmedNumberValue)
+  const firstEntry = entries[0]
+  const pageLimit = Math.max(
+    0,
+    Number(document.output_page_count) || 0,
+    Number(document.source_page_count) || 0,
+    Number(document.entry_count) || 0,
+    ...entries.map((entry) => entry.page_number)
+  )
+  const parsedManualEntries = validateManualEntryRows(manualEntryRows, pageLimit)
+  const manualPageIsValid =
+    pageNumberIsValid && (pageLimit <= 0 || parsedPageNumber <= pageLimit)
   const canUpdate =
-    Boolean(selectedEntry) &&
-    Number.isFinite(parsedNewNumber) &&
-    parsedNewNumber > 0 &&
-    parsedNewNumber !== selectedCurrentNumber &&
+    (updateMode === "auto"
+      ? Boolean(firstEntry)
+      : updateMode === "cascade"
+        ? manualPageIsValid && cascadeLabelIsValid
+        : parsedManualEntries.entries.length > 0 &&
+          parsedManualEntries.error === "") &&
     !disabled &&
     !updating
   const span =
@@ -673,185 +734,463 @@ export function NumberingDocumentRow({
   const handleUpdate = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!canUpdate) return
-    onUpdateFromPage(document, parsedPageNumber, parsedNewNumber)
+    onUpdateFromPage(
+      document,
+      updateMode === "auto"
+        ? firstEntry?.page_number ?? 1
+        : updateMode === "manual"
+        ? parsedManualEntries.entries[0]?.page_number ?? 1
+        : parsedPageNumber,
+      updateMode === "auto"
+        ? String(document.document_number_start || 1)
+        : updateMode === "manual"
+        ? parsedManualEntries.entries[0]?.label ?? ""
+        : trimmedNumberValue,
+      updateMode,
+      updateMode === "manual" ? parsedManualEntries.entries : undefined
+    )
   }
   const updatePageValue = (value: string) => {
     setPageValue(value)
     const pageNumber = Number.parseInt(value, 10)
     const entry = entries.find((item) => item.page_number === pageNumber)
-    if (entry) setNumberValue(entry.label)
+    if (entry) {
+      setNumberValue(
+        numberingEntryValueForMode(
+          entry,
+          updateMode,
+          document.document_number_start
+        )
+      )
+    }
   }
+  const updateNumberValue = (value: string) => {
+    setNumberValue(updateMode === "auto" ? value.replace(/\D/g, "") : value)
+  }
+  const valueLabel =
+    updateMode === "auto" ? "Tự động" : updateMode === "cascade" ? "Mốc" : "Số"
+  const saveTitle =
+    updateMode === "manual"
+      ? "Cập nhật danh sách thủ công"
+      : updateMode === "cascade"
+        ? "Cập nhật theo mốc và dồn phần sau"
+        : "Cập nhật tự động từ trang này"
+
+  const actionButtons = (
+    <>
+      <button
+        type="submit"
+        disabled={!canUpdate}
+        className="inline-flex size-7 shrink-0 items-center justify-center rounded-md border border-[#CBD5E1] bg-white text-[#475569] transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF] disabled:pointer-events-none disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]"
+        title={saveTitle}
+        aria-label={saveTitle}
+      >
+        {updating ? (
+          <Loader2 className="size-3.5 animate-spin" />
+        ) : (
+          <Save className="size-3.5" />
+        )}
+      </button>
+      {retryable ? (
+        <button
+          type="button"
+          onClick={() => onRetry(document)}
+          disabled={disabled || retrying}
+          title="Đánh số lại tài liệu này"
+          aria-label="Đánh số lại tài liệu này"
+          className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 text-amber-700 transition-colors hover:border-amber-400 hover:bg-amber-100 disabled:pointer-events-none disabled:opacity-50"
+        >
+          {retrying ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <RotateCcw className="size-3.5" />
+          )}
+        </button>
+      ) : null}
+      {canPreviewNumberingDocument(document) ? (
+        <button
+          type="button"
+          onClick={onPreview}
+          title={
+            document.numbered_pdf_version_id
+              ? "Preview PDF đã đánh số"
+              : "Preview tài liệu gốc"
+          }
+          aria-label={
+            document.numbered_pdf_version_id
+              ? "Preview PDF đã đánh số"
+              : "Preview tài liệu gốc"
+          }
+          className={cn(
+            "inline-flex size-8 shrink-0 items-center justify-center rounded-lg border text-[#475569] transition-colors",
+            previewing
+              ? "border-[#0052FF] bg-[#EAF1FF] text-[#0052FF]"
+              : "border-[#CBD5E1] bg-white text-[#475569] hover:border-[#0052FF]/40 hover:text-[#0052FF]"
+          )}
+        >
+          <Eye className="size-3.5" />
+        </button>
+      ) : document.status === "running" ? (
+        <Loader2 className="size-4 shrink-0 animate-spin text-[#0052FF]" />
+      ) : null}
+    </>
+  )
+
   return (
-    <div className="grid min-w-0 gap-2 overflow-hidden rounded-xl border border-[#D8E1EC] bg-[#F8FAFC] px-3 py-2.5 lg:grid-cols-[minmax(10rem,1fr)_auto_auto] lg:items-center">
-      <div className="flex min-w-0 items-center gap-2.5">
+    <form
+      onSubmit={handleUpdate}
+      className={cn(
+        "flex min-w-0 gap-3 rounded-xl border border-[#D8E1EC] bg-[#F8FAFC] px-3 py-2.5",
+        updateMode === "manual"
+          ? "flex-col lg:flex-row lg:items-start"
+          : "flex-wrap items-center"
+      )}
+    >
+      <div className="flex min-w-0 flex-1 items-center gap-2.5 lg:min-w-[10rem]">
         <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#EAF1FF] text-[#0052FF]">
           <FileText className="size-3.5" />
         </div>
-        <div className="min-w-0">
-          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-            <p className="truncate text-sm font-semibold text-[#0F172A]">
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <p className="min-w-0 truncate text-sm font-semibold text-[#0F172A]">
               {document.file_name || document.document_id}
             </p>
             <span
               className={cn(
-                "inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium",
+                "inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold",
                 badge.className
               )}
             >
               {badge.label}
             </span>
-            {hasBlankPageWarning ? (
-              <span
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800"
-                title={
-                  blankPageWarningTitle ||
-                  `Cảnh báo trang trắng${
-                    blankPageWarningPages.length > 0
-                      ? `: trang ${compactPageList(blankPageWarningPages)}`
-                      : ""
-                  }`
-                }
-              >
-                <TriangleAlert className="size-3.5" />
-                Cảnh báo trang trắng
-              </span>
-            ) : hasRemovedBlankPages ? (
-              <span
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-sky-300 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800"
-                title={`Đã xóa trang trắng: trang ${compactPageList(removedBlankPages)}`}
-              >
-                <Trash2 className="size-3.5" />
-                Đã xóa trang trắng
-              </span>
-            ) : null}
           </div>
-          <p className="mt-0.5 truncate text-xs text-[#64748B]">
-            Số {span} · {document.entry_count} vị trí đánh số
-            {hasRemovedBlankPages
-              ? ` · Đã xóa trang trắng: ${compactPageList(removedBlankPages)}`
-              : ""}
-            {document.status === "running" && document.remote_render_status
-              ? ` · Remote: ${document.remote_render_status}`
-              : ""}
-          </p>
+          <p className="mt-0.5 truncate text-xs text-[#64748B]">Số {span}</p>
           {document.error ? (
             <p className="mt-1 text-xs text-rose-700">{document.error}</p>
           ) : null}
           {stalled && !document.error ? (
             <p className="mt-1 text-xs text-amber-700">
-              Tài liệu chưa có PDF đánh số hợp lệ. Có thể đánh số lại từ dòng
-              này.
+              {updateMode !== "cascade"
+                ? "Tài liệu mới trong hồ sơ. Chọn tự động hoặc thủ công để cập nhật số."
+                : "Tài liệu chưa có PDF đánh số hợp lệ. Có thể đánh số lại từ dòng này."}
             </p>
           ) : null}
         </div>
       </div>
-      <form
-        onSubmit={handleUpdate}
-        className="flex min-w-0 flex-nowrap items-center gap-1 overflow-x-auto lg:justify-end"
+
+      <div
+        className={cn(
+          "flex min-w-0 shrink-0 gap-2 lg:border-l lg:border-[#E2E8F0] lg:pl-3",
+          updateMode === "manual"
+            ? "w-full flex-col sm:flex-row sm:items-start lg:w-auto"
+            : "flex-wrap items-center"
+        )}
       >
-        <label
-          htmlFor={`numbering-page-${document.session_document_id}`}
-          className="shrink-0 text-[11px] font-medium text-[#64748B]"
-        >
-          Trang
-        </label>
-        <input
-          id={`numbering-page-${document.session_document_id}`}
-          type="text"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          value={pageValue}
-          onChange={(event) => updatePageValue(event.target.value)}
-          disabled={disabled || updating}
-          className="h-7 w-14 shrink-0 rounded-md border border-[#CBD5E1] bg-white px-1.5 text-center text-xs font-medium text-[#0F172A] tabular-nums transition-colors outline-none focus:border-[#0052FF] focus:ring-2 focus:ring-[#0052FF]/10 disabled:bg-[#F1F5F9] disabled:text-[#94A3B8]"
-        />
-        <label
-          htmlFor={`numbering-value-${document.session_document_id}`}
-          className="shrink-0 text-[11px] font-medium text-[#64748B]"
-        >
-          Số mới
-        </label>
-        <input
-          id={`numbering-value-${document.session_document_id}`}
-          type="text"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          value={numberValue}
-          onChange={(event) => setNumberValue(event.target.value)}
-          disabled={disabled || updating}
-          className="h-7 w-16 shrink-0 rounded-md border border-[#CBD5E1] bg-white px-1.5 text-center text-xs font-medium text-[#0F172A] tabular-nums transition-colors outline-none focus:border-[#0052FF] focus:ring-2 focus:ring-[#0052FF]/10 disabled:bg-[#F1F5F9] disabled:text-[#94A3B8]"
-        />
-        <button
-          type="submit"
-          disabled={!canUpdate}
-          className="inline-flex size-7 shrink-0 items-center justify-center rounded-md border border-[#CBD5E1] bg-white text-[#475569] transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF] disabled:pointer-events-none disabled:opacity-50"
-          title="Cập nhật từ trang này"
-          aria-label="Cập nhật từ trang này"
-        >
-          {updating ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <Save className="size-3.5" />
+        {updateMode === "manual" ? (
+          <ManualNumberingEntriesEditor
+            documentId={document.session_document_id}
+            rows={manualEntryRows}
+            pageLimit={pageLimit}
+            disabled={disabled || updating}
+            error={parsedManualEntries.error}
+            onChange={setManualEntryRows}
+          />
+        ) : updateMode === "auto" ? (
+          <div className="flex h-7 min-w-[7rem] items-center rounded-md border border-[#CBD5E1] bg-white px-2 text-xs font-semibold text-[#0F172A]">
+            {valueLabel}
+          </div>
+        ) : (
+          <>
+            <label
+              htmlFor={`numbering-page-${document.session_document_id}`}
+              className="shrink-0 text-[11px] font-medium text-[#64748B]"
+            >
+              Trang
+            </label>
+            <input
+              id={`numbering-page-${document.session_document_id}`}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={pageValue}
+              onChange={(event) => updatePageValue(event.target.value)}
+              disabled={disabled || updating}
+              className="h-7 w-14 shrink-0 rounded-md border border-[#CBD5E1] bg-white px-1.5 text-center text-xs font-medium text-[#0F172A] tabular-nums transition-colors outline-none focus:border-[#0052FF] focus:ring-2 focus:ring-[#0052FF]/10 disabled:bg-[#F1F5F9] disabled:text-[#94A3B8]"
+            />
+            <label
+              htmlFor={`numbering-value-${document.session_document_id}`}
+              className="shrink-0 text-[11px] font-medium text-[#64748B]"
+            >
+              {valueLabel}
+            </label>
+            <input
+              id={`numbering-value-${document.session_document_id}`}
+              type="text"
+              inputMode={updateMode === "auto" ? "numeric" : "text"}
+              pattern={updateMode === "auto" ? "[0-9]*" : undefined}
+              value={numberValue}
+              onChange={(event) => updateNumberValue(event.target.value)}
+              disabled={disabled || updating}
+              className="h-7 w-16 shrink-0 rounded-md border border-[#CBD5E1] bg-white px-1.5 text-center text-xs font-medium text-[#0F172A] tabular-nums transition-colors outline-none focus:border-[#0052FF] focus:ring-2 focus:ring-[#0052FF]/10 disabled:bg-[#F1F5F9] disabled:text-[#94A3B8]"
+            />
+          </>
+        )}
+        <div
+          className={cn(
+            "flex shrink-0 items-center gap-1.5",
+            updateMode === "manual"
+              ? "justify-end sm:ml-1 sm:self-start"
+              : ""
           )}
-        </button>
-      </form>
-      <div className="flex shrink-0 flex-wrap items-center gap-1.5 lg:justify-end">
-        {retryable ? (
-          <button
-            type="button"
-            onClick={() => onRetry(document)}
-            disabled={disabled || retrying}
-            title="Đánh số lại tài liệu này"
-            aria-label="Đánh số lại tài liệu này"
-            className="inline-flex size-8 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 text-amber-700 transition-colors hover:border-amber-400 hover:bg-amber-100 disabled:pointer-events-none disabled:opacity-50"
-          >
-            {retrying ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : (
-              <RotateCcw className="size-3.5" />
-            )}
-          </button>
-        ) : null}
-        {document.numbered_pdf_version_id ? (
-          <button
-            type="button"
-            onClick={onPreview}
-            title="Preview"
-            aria-label="Preview"
-            className={cn(
-              "inline-flex size-8 items-center justify-center rounded-lg border text-[#475569] transition-colors",
-              previewing
-                ? "border-[#0052FF] bg-[#EAF1FF] text-[#0052FF]"
-                : "border-[#CBD5E1] bg-white text-[#475569] hover:border-[#0052FF]/40 hover:text-[#0052FF]"
-            )}
-          >
-            <Eye className="size-3.5" />
-          </button>
-        ) : document.status === "running" ? (
-          <Loader2 className="size-4 animate-spin text-[#0052FF]" />
-        ) : null}
+        >
+          {actionButtons}
+        </div>
       </div>
+    </form>
+  )
+}
+
+type ManualEntryRow = {
+  id: string
+  page: string
+  label: string
+}
+
+function ManualNumberingEntriesEditor({
+  documentId,
+  rows,
+  pageLimit,
+  disabled,
+  error,
+  onChange,
+}: {
+  documentId: number
+  rows: ManualEntryRow[]
+  pageLimit: number
+  disabled: boolean
+  error: string
+  onChange: (rows: ManualEntryRow[]) => void
+}) {
+  const updateRow = (
+    index: number,
+    field: "page" | "label",
+    value: string
+  ) => {
+    onChange(
+      rows.map((row, rowIndex) =>
+        rowIndex === index ? { ...row, [field]: value } : row
+      )
+    )
+  }
+  const addRow = () => {
+    onChange([...rows, nextManualEntryRow(rows)])
+  }
+  const removeRow = (index: number) => {
+    if (rows.length <= 1) return
+    onChange(rows.filter((_, rowIndex) => rowIndex !== index))
+  }
+
+  return (
+    <div className="min-w-[12.5rem] rounded-lg border border-[#E2E8F0] bg-white px-2.5 py-2 shadow-sm">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <p className="text-[10px] font-semibold tracking-wide text-[#64748B] uppercase">
+          Đánh số thủ công
+        </p>
+        <span className="text-[10px] font-medium text-[#94A3B8]">
+          {rows.length} trang
+        </span>
+      </div>
+      <div className="flex flex-col gap-1">
+        {rows.map((row, index) => (
+          <div key={row.id} className="flex items-center gap-1">
+            <label
+              htmlFor={`numbering-manual-page-${documentId}-${index}`}
+              className="w-9 shrink-0 text-[10px] font-medium text-[#94A3B8]"
+            >
+              Trang
+            </label>
+            <input
+              id={`numbering-manual-page-${documentId}-${index}`}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={row.page}
+              onChange={(event) => updateRow(index, "page", event.target.value)}
+              disabled={disabled}
+              className="h-7 w-11 shrink-0 rounded-md border border-[#CBD5E1] bg-[#F8FAFC] px-1 text-center text-xs font-medium text-[#0F172A] tabular-nums transition-colors outline-none focus:border-[#0052FF] focus:bg-white focus:ring-2 focus:ring-[#0052FF]/10 disabled:bg-[#F1F5F9] disabled:text-[#94A3B8]"
+            />
+            <label
+              htmlFor={`numbering-manual-label-${documentId}-${index}`}
+              className="w-5 shrink-0 text-[10px] font-medium text-[#94A3B8]"
+            >
+              Số
+            </label>
+            <input
+              id={`numbering-manual-label-${documentId}-${index}`}
+              type="text"
+              value={row.label}
+              onChange={(event) => updateRow(index, "label", event.target.value)}
+              disabled={disabled}
+              placeholder="VD: 12"
+              className="h-7 min-w-0 flex-1 rounded-md border border-[#CBD5E1] bg-[#F8FAFC] px-2 text-xs font-medium text-[#0F172A] transition-colors outline-none placeholder:text-[#CBD5E1] focus:border-[#0052FF] focus:bg-white focus:ring-2 focus:ring-[#0052FF]/10 disabled:bg-[#F1F5F9] disabled:text-[#94A3B8]"
+            />
+            {rows.length > 1 ? (
+              <button
+                type="button"
+                onClick={() => removeRow(index)}
+                disabled={disabled}
+                title="Xóa dòng"
+                aria-label="Xóa dòng"
+                className="inline-flex size-6 shrink-0 items-center justify-center rounded-md border border-[#E2E8F0] bg-[#F8FAFC] text-[#94A3B8] transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:pointer-events-none disabled:opacity-50"
+              >
+                <Minus className="size-3" />
+              </button>
+            ) : (
+              <span className="size-6 shrink-0" aria-hidden="true" />
+            )}
+            {index === rows.length - 1 ? (
+              <button
+                type="button"
+                onClick={addRow}
+                disabled={
+                  disabled || (pageLimit > 0 && rows.length >= pageLimit)
+                }
+                title="Thêm trang"
+                aria-label="Thêm trang"
+                className="inline-flex size-6 shrink-0 items-center justify-center rounded-md border border-[#CBD5E1] bg-white text-[#475569] transition-colors hover:border-[#0052FF]/40 hover:bg-[#EEF4FF] hover:text-[#0052FF] disabled:pointer-events-none disabled:opacity-50"
+              >
+                <Plus className="size-3" />
+              </button>
+            ) : (
+              <span className="size-6 shrink-0" aria-hidden="true" />
+            )}
+          </div>
+        ))}
+      </div>
+      {error ? (
+        <p className="mt-1.5 text-[11px] leading-snug text-rose-700">{error}</p>
+      ) : (
+        <p className="mt-1.5 text-[10px] leading-snug text-[#94A3B8]">
+          Lưu một lần để cập nhật toàn bộ danh sách.
+        </p>
+      )}
     </div>
   )
 }
 
-function blankPageWarningOriginalPages(
-  document: NumberingDocumentStatus
-): number[] {
-  const pages = new Set<number>()
-  for (const value of document.image_warning_pages ?? []) {
-    const page = Number(value)
-    if (Number.isInteger(page) && page > 0) pages.add(page)
+function numberingEntryNumber(entry: NumberingEntry | undefined): number {
+  if (!entry) return Number.NaN
+  const structuredNumber = Number(entry.numbering_number)
+  if (Number.isFinite(structuredNumber) && structuredNumber > 0) {
+    return structuredNumber
   }
-  for (const warning of document.blank_page_warnings ?? []) {
-    const page = Number(warning.page_number)
-    if (Number.isInteger(page) && page > 0) pages.add(page)
-  }
-  return [...pages].sort((left, right) => left - right)
+  const parsedLabel = Number.parseInt(entry.label, 10)
+  return Number.isFinite(parsedLabel) && parsedLabel > 0
+    ? parsedLabel
+    : Number.NaN
 }
 
-function normalizedPositivePages(value: number[] | undefined): number[] {
-  return [...new Set((value ?? []).map(Number))]
-    .filter((page) => Number.isInteger(page) && page > 0)
-    .sort((left, right) => left - right)
+function numberingEntryValueForMode(
+  entry: NumberingEntry | undefined,
+  updateMode: NumberingUpdateMode,
+  fallback: string | number
+): string {
+  if (!entry) return String(fallback)
+  if (updateMode !== "auto") return entry.label
+  const number = numberingEntryNumber(entry)
+  return Number.isFinite(number) ? String(number) : String(fallback)
+}
+
+function manualEntryRowsFromEntries(
+  entries: NumberingEntry[],
+  fallbackLabel: string | number
+): ManualEntryRow[] {
+  const firstEntry = entries[0]
+  const pageNumber = firstEntry?.page_number ?? 1
+  return [
+    {
+      id: `entry-${pageNumber}-0`,
+      page: String(pageNumber),
+      label: firstEntry?.label ?? String(fallbackLabel || 1),
+    },
+  ]
+}
+
+function nextManualEntryRow(rows: ManualEntryRow[]): ManualEntryRow {
+  const lastRow = rows[rows.length - 1]
+  const lastPage = Number.parseInt(lastRow?.page ?? "", 10)
+  const nextPage =
+    Number.isFinite(lastPage) && lastPage > 0 ? lastPage + 1 : rows.length + 1
+  const lastLabel = lastRow?.label?.trim() ?? ""
+  const labelMatch = lastLabel.match(/^(\d+)(.*)$/)
+  const nextLabel =
+    labelMatch && Number.parseInt(labelMatch[1], 10) > 0
+      ? `${Number.parseInt(labelMatch[1], 10) + 1}${labelMatch[2]}`
+      : ""
+  return {
+    id: `entry-${nextPage}-${Date.now()}`,
+    page: String(nextPage),
+    label: nextLabel,
+  }
+}
+
+function validateManualEntryRows(
+  rows: ManualEntryRow[],
+  pageLimit: number
+): {
+  entries: Array<{ page_number: number; label: string }>
+  error: string
+} {
+  const entries: Array<{ page_number: number; label: string }> = []
+  const seenPages = new Set<number>()
+
+  for (const [index, row] of rows.entries()) {
+    const pageText = row.page.trim()
+    const label = row.label.trim()
+    if (!positiveIntegerText(pageText)) {
+      return {
+        entries: [],
+        error: `Dòng ${index + 1}: trang phải là số nguyên dương.`,
+      }
+    }
+    const pageNumber = Number.parseInt(pageText, 10)
+    if (pageLimit > 0 && pageNumber > pageLimit) {
+      return {
+        entries: [],
+        error: `Dòng ${index + 1}: trang vượt quá ${pageLimit}.`,
+      }
+    }
+    if (seenPages.has(pageNumber)) {
+      return {
+        entries: [],
+        error: `Dòng ${index + 1}: trùng trang ${pageNumber}.`,
+      }
+    }
+    if (!numberingLabelText(label)) {
+      return {
+        entries: [],
+        error: `Dòng ${index + 1}: số phải bắt đầu bằng chữ số.`,
+      }
+    }
+    seenPages.add(pageNumber)
+    entries.push({ page_number: pageNumber, label })
+  }
+
+  if (entries.length === 0) {
+    return {
+      entries: [],
+      error: "Cần ít nhất một dòng đánh số.",
+    }
+  }
+
+  return { entries, error: "" }
+}
+
+function numberingLabelText(value: string): boolean {
+  const match = value.trim().match(/^(\d+)/)
+  return Boolean(match && Number.parseInt(match[1], 10) > 0)
+}
+
+function positiveIntegerText(value: string): boolean {
+  return /^[0-9]+$/.test(value) && Number.parseInt(value, 10) > 0
 }

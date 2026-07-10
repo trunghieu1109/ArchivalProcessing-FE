@@ -162,6 +162,8 @@ export interface NumberingDocumentStatus {
   file_name: string
   data_path: string
   cluster_id: string
+  cluster_status?: string | null
+  document_change_status?: string | null
   dossier_id: string
   dossier_title: string
   session_dossier_id?: number | null
@@ -191,6 +193,9 @@ export interface NumberingDocumentStatus {
   numbering_entries?: Array<{
     page_number: number
     label: string
+    numbering_number?: number | null
+    numbering_suffix?: string | null
+    numbering_width?: number | null
   }>
   source_version_id?: string | null
   numbering_manifest_version_id?: string | number | null

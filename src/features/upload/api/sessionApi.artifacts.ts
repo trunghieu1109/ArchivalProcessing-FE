@@ -66,7 +66,10 @@ export async function updateDocumentNumberingFromPage(
   sessionDocumentId: number,
   payload: {
     anchor_page_number: number
-    new_number: number
+    numbering_update_mode?: "auto" | "manual" | "cascade"
+    new_number?: string | number
+    new_label?: string
+    numbering_entries?: Array<{ page_number: number; label: string }>
     created_by?: string
     force?: boolean
   }
