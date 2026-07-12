@@ -14,8 +14,6 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/shared/lib/utils"
-import { PaginationControls } from "@/features/upload/components/PaginationControls"
-import { usePagedItems } from "@/features/upload/hooks/usePagedItems"
 import type {
   ClusterDocument,
   ClusterGroup,
@@ -123,35 +121,8 @@ export function ResultNode({
     (node.type === "classification" || node.type === "year") &&
     node.documentCount > 0
   const selectedGroupInformation = selectedGroupInfoNodeId === node.id
-  const documentPagination = usePagedItems(group?.documents ?? [], {
-    defaultPageSize: 50,
-    resetKey: group?.id ?? node.id,
-  })
-  const childPagination = usePagedItems(node.children, {
-    defaultPageSize: 50,
-    resetKey: node.id,
-  })
   const activeFindHit = activeFindNodeId === node.id
   const nodeRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    if (!activeFindNodeId || !open || node.children.length === 0) return
-    const childIndex = node.children.findIndex((child) =>
-      resultTreeNodeContainsId(child, activeFindNodeId)
-    )
-    if (childIndex < 0) return
-    const targetPageIndex = Math.floor(childIndex / childPagination.pageSize)
-    if (targetPageIndex !== childPagination.pageIndex) {
-      childPagination.setPageIndex(targetPageIndex)
-    }
-  }, [
-    activeFindNodeId,
-    childPagination.pageIndex,
-    childPagination.pageSize,
-    childPagination.setPageIndex,
-    node.children,
-    open,
-  ])
 
   useEffect(() => {
     if (!activeFindHit) return
@@ -430,7 +401,7 @@ export function ResultNode({
       {open && (
         <div className="mt-1">
           {group &&
-            documentPagination.items.map((document) => (
+            group.documents.map((document) => (
               <DocumentRow
                 key={`${group.id}-${document.documentId}`}
                 document={document}
@@ -454,26 +425,7 @@ export function ResultNode({
                 onSaveMetadata={onSaveDocumentMetadata}
               />
             ))}
-          {group && documentPagination.total > documentPagination.pageSize && (
-            <div
-              className="py-1"
-              style={{ marginLeft: `${28 + (depth + 1) * indentStep}px` }}
-            >
-              <PaginationControls
-                total={documentPagination.total}
-                pageIndex={documentPagination.pageIndex}
-                pageSize={documentPagination.pageSize}
-                pageCount={documentPagination.pageCount}
-                startNumber={documentPagination.startNumber}
-                endNumber={documentPagination.endNumber}
-                pageSizeOptions={documentPagination.pageSizeOptions}
-                itemLabel="tài liệu"
-                onPageChange={documentPagination.setPageIndex}
-                onPageSizeChange={documentPagination.setPageSize}
-              />
-            </div>
-          )}
-          {childPagination.items.map((child) => (
+          {node.children.map((child) => (
             <ResultNode
               key={child.id}
               node={child}
@@ -507,37 +459,8 @@ export function ResultNode({
               onPromoteTemporaryFolder={onPromoteTemporaryFolder}
             />
           ))}
-          {childPagination.total > childPagination.pageSize && (
-            <div
-              className="py-1"
-              style={{ marginLeft: `${28 + (depth + 1) * indentStep}px` }}
-            >
-              <PaginationControls
-                total={childPagination.total}
-                pageIndex={childPagination.pageIndex}
-                pageSize={childPagination.pageSize}
-                pageCount={childPagination.pageCount}
-                startNumber={childPagination.startNumber}
-                endNumber={childPagination.endNumber}
-                pageSizeOptions={childPagination.pageSizeOptions}
-                itemLabel="nhóm"
-                onPageChange={childPagination.setPageIndex}
-                onPageSizeChange={childPagination.setPageSize}
-              />
-            </div>
-          )}
         </div>
       )}
     </div>
-  )
-}
-
-function resultTreeNodeContainsId(
-  node: ResultTreeNode,
-  nodeId: string
-): boolean {
-  return (
-    node.id === nodeId ||
-    node.children.some((child) => resultTreeNodeContainsId(child, nodeId))
   )
 }

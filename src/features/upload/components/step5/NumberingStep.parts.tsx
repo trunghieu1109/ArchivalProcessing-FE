@@ -633,6 +633,7 @@ export function NumberingDocumentRow({
   document,
   updateMode,
   previewing,
+  highlighted = false,
   onPreview,
   onUpdateFromPage,
   onRetry,
@@ -645,6 +646,7 @@ export function NumberingDocumentRow({
   document: NumberingDocumentStatus
   updateMode: NumberingUpdateMode
   previewing: boolean
+  highlighted?: boolean
   onPreview: () => void
   onUpdateFromPage: (
     document: NumberingDocumentStatus,
@@ -781,7 +783,7 @@ export function NumberingDocumentRow({
       <button
         type="submit"
         disabled={!canUpdate}
-        className="inline-flex size-7 shrink-0 items-center justify-center rounded-md border border-[#CBD5E1] bg-white text-[#475569] transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF] disabled:pointer-events-none disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]"
+        className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg border border-[#CBD5E1] bg-white text-[#475569] transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF] disabled:pointer-events-none disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]"
         title={saveTitle}
         aria-label={saveTitle}
       >
@@ -838,20 +840,24 @@ export function NumberingDocumentRow({
 
   return (
     <form
+      data-numbering-document-id={document.session_document_id}
       onSubmit={handleUpdate}
       className={cn(
-        "flex min-w-0 gap-3 rounded-xl border border-[#D8E1EC] bg-[#F8FAFC] px-3 py-2.5",
+        "grid min-w-0 gap-3 rounded-xl border bg-[#F8FAFC] px-3 py-2.5 transition-colors",
+        highlighted
+          ? "border-[#0052FF] bg-[#EEF4FF] shadow-[0_0_0_2px_rgba(0,82,255,0.12)]"
+          : "border-[#D8E1EC]",
         updateMode === "manual"
-          ? "flex-col lg:flex-row lg:items-start"
-          : "flex-wrap items-center"
+          ? "lg:grid-cols-[minmax(12rem,0.9fr)_minmax(21rem,1.5fr)] lg:items-start"
+          : "sm:grid-cols-[minmax(12rem,1fr)_auto] sm:items-center"
       )}
     >
-      <div className="flex min-w-0 flex-1 items-center gap-2.5 lg:min-w-[10rem]">
+      <div className="flex min-w-0 items-start gap-2.5">
         <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#EAF1FF] text-[#0052FF]">
           <FileText className="size-3.5" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
             <p className="min-w-0 truncate text-sm font-semibold text-[#0F172A]">
               {document.file_name || document.document_id}
             </p>
@@ -880,10 +886,10 @@ export function NumberingDocumentRow({
 
       <div
         className={cn(
-          "flex min-w-0 shrink-0 gap-2 lg:border-l lg:border-[#E2E8F0] lg:pl-3",
+          "flex min-w-0 gap-2 border-[#E2E8F0]",
           updateMode === "manual"
-            ? "w-full flex-col sm:flex-row sm:items-start lg:w-auto"
-            : "flex-wrap items-center"
+            ? "w-full flex-col sm:flex-row sm:items-start lg:border-l lg:pl-3"
+            : "flex-wrap items-center sm:border-l sm:pl-3"
         )}
       >
         {updateMode === "manual" ? (
@@ -938,7 +944,7 @@ export function NumberingDocumentRow({
           className={cn(
             "flex shrink-0 items-center gap-1.5",
             updateMode === "manual"
-              ? "justify-end sm:ml-1 sm:self-start"
+              ? "justify-end sm:ml-auto sm:self-start"
               : ""
           )}
         >
@@ -990,8 +996,8 @@ function ManualNumberingEntriesEditor({
   }
 
   return (
-    <div className="min-w-[12.5rem] rounded-lg border border-[#E2E8F0] bg-white px-2.5 py-2 shadow-sm">
-      <div className="mb-1.5 flex items-center justify-between gap-2">
+    <div className="w-full min-w-0 rounded-lg border border-[#E2E8F0] bg-white px-2.5 py-2 shadow-sm sm:min-w-[18rem]">
+      <div className="mb-2 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
         <p className="text-[10px] font-semibold tracking-wide text-[#64748B] uppercase">
           Đánh số thủ công
         </p>
@@ -999,12 +1005,15 @@ function ManualNumberingEntriesEditor({
           {rows.length} trang
         </span>
       </div>
-      <div className="flex flex-col gap-1">
+      <div className="flex min-w-0 flex-col gap-1.5">
         {rows.map((row, index) => (
-          <div key={row.id} className="flex items-center gap-1">
+          <div
+            key={row.id}
+            className="grid min-w-0 grid-cols-[2.75rem_3rem_1.75rem_minmax(4.5rem,1fr)_1.75rem_1.75rem] items-center gap-1"
+          >
             <label
               htmlFor={`numbering-manual-page-${documentId}-${index}`}
-              className="w-9 shrink-0 text-[10px] font-medium text-[#94A3B8]"
+              className="truncate text-[10px] font-medium text-[#94A3B8]"
             >
               Trang
             </label>
@@ -1016,11 +1025,11 @@ function ManualNumberingEntriesEditor({
               value={row.page}
               onChange={(event) => updateRow(index, "page", event.target.value)}
               disabled={disabled}
-              className="h-7 w-11 shrink-0 rounded-md border border-[#CBD5E1] bg-[#F8FAFC] px-1 text-center text-xs font-medium text-[#0F172A] tabular-nums transition-colors outline-none focus:border-[#0052FF] focus:bg-white focus:ring-2 focus:ring-[#0052FF]/10 disabled:bg-[#F1F5F9] disabled:text-[#94A3B8]"
+              className="h-7 w-full rounded-md border border-[#CBD5E1] bg-[#F8FAFC] px-1 text-center text-xs font-medium text-[#0F172A] tabular-nums transition-colors outline-none focus:border-[#0052FF] focus:bg-white focus:ring-2 focus:ring-[#0052FF]/10 disabled:bg-[#F1F5F9] disabled:text-[#94A3B8]"
             />
             <label
               htmlFor={`numbering-manual-label-${documentId}-${index}`}
-              className="w-5 shrink-0 text-[10px] font-medium text-[#94A3B8]"
+              className="truncate text-[10px] font-medium text-[#94A3B8]"
             >
               Số
             </label>
@@ -1031,7 +1040,7 @@ function ManualNumberingEntriesEditor({
               onChange={(event) => updateRow(index, "label", event.target.value)}
               disabled={disabled}
               placeholder="VD: 12"
-              className="h-7 min-w-0 flex-1 rounded-md border border-[#CBD5E1] bg-[#F8FAFC] px-2 text-xs font-medium text-[#0F172A] transition-colors outline-none placeholder:text-[#CBD5E1] focus:border-[#0052FF] focus:bg-white focus:ring-2 focus:ring-[#0052FF]/10 disabled:bg-[#F1F5F9] disabled:text-[#94A3B8]"
+              className="h-7 min-w-0 rounded-md border border-[#CBD5E1] bg-[#F8FAFC] px-2 text-xs font-medium text-[#0F172A] transition-colors outline-none placeholder:text-[#CBD5E1] focus:border-[#0052FF] focus:bg-white focus:ring-2 focus:ring-[#0052FF]/10 disabled:bg-[#F1F5F9] disabled:text-[#94A3B8]"
             />
             {rows.length > 1 ? (
               <button
@@ -1040,12 +1049,12 @@ function ManualNumberingEntriesEditor({
                 disabled={disabled}
                 title="Xóa dòng"
                 aria-label="Xóa dòng"
-                className="inline-flex size-6 shrink-0 items-center justify-center rounded-md border border-[#E2E8F0] bg-[#F8FAFC] text-[#94A3B8] transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:pointer-events-none disabled:opacity-50"
+                className="inline-flex size-7 shrink-0 items-center justify-center rounded-md border border-[#E2E8F0] bg-[#F8FAFC] text-[#94A3B8] transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:pointer-events-none disabled:opacity-50"
               >
                 <Minus className="size-3" />
               </button>
             ) : (
-              <span className="size-6 shrink-0" aria-hidden="true" />
+              <span className="size-7 shrink-0" aria-hidden="true" />
             )}
             {index === rows.length - 1 ? (
               <button
@@ -1056,12 +1065,12 @@ function ManualNumberingEntriesEditor({
                 }
                 title="Thêm trang"
                 aria-label="Thêm trang"
-                className="inline-flex size-6 shrink-0 items-center justify-center rounded-md border border-[#CBD5E1] bg-white text-[#475569] transition-colors hover:border-[#0052FF]/40 hover:bg-[#EEF4FF] hover:text-[#0052FF] disabled:pointer-events-none disabled:opacity-50"
+                className="inline-flex size-7 shrink-0 items-center justify-center rounded-md border border-[#CBD5E1] bg-white text-[#475569] transition-colors hover:border-[#0052FF]/40 hover:bg-[#EEF4FF] hover:text-[#0052FF] disabled:pointer-events-none disabled:opacity-50"
               >
                 <Plus className="size-3" />
               </button>
             ) : (
-              <span className="size-6 shrink-0" aria-hidden="true" />
+              <span className="size-7 shrink-0" aria-hidden="true" />
             )}
           </div>
         ))}

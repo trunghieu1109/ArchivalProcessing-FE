@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { AlertTriangle, Loader2, Search, X } from "lucide-react"
+import {
+  AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
+  ListChecks,
+  Loader2,
+  Search,
+  Target,
+  X,
+} from "lucide-react"
 import { toast } from "sonner"
 import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
@@ -38,12 +47,15 @@ import {
   isNumberingComplete,
   numberingEntries,
   saveBlob,
+  statusBadge,
   textOrNull,
 } from "./NumberingStep.utils"
 
 const NUMBERING_POLL_INTERVAL_MS = 5_000
 const NUMBERING_DOCUMENT_REFRESH_EVERY = 3
 const NUMBERING_PAGE_SIZE = 10
+const NUMBERING_NAVIGATOR_PAGE_SIZE = 1000
+const EMPTY_NUMBERING_DOCUMENTS: NumberingDocumentStatus[] = []
 type NumberingStyleOverrides = {
   font_size?: number
   color?: string
@@ -152,6 +164,18 @@ export function NumberingStep({
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0)
   const [numberingFilter, setNumberingFilter] = useState("")
   const [numberingPageIndex, setNumberingPageIndex] = useState(0)
+  const [missingNavigatorOpen, setMissingNavigatorOpen] = useState(false)
+  const [missingNavigatorLoading, setMissingNavigatorLoading] = useState(false)
+  const [missingNavigatorError, setMissingNavigatorError] = useState("")
+  const [missingNavigatorDocuments, setMissingNavigatorDocuments] = useState<
+    NumberingDocumentStatus[]
+  >([])
+  const [missingNavigatorCacheKey, setMissingNavigatorCacheKey] = useState("")
+  const [missingNavigatorIndex, setMissingNavigatorIndex] = useState(0)
+  const [highlightedDocumentId, setHighlightedDocumentId] = useState<
+    number | null
+  >(null)
+  const [highlightScrollRequest, setHighlightScrollRequest] = useState(0)
   const [dossierUpdateModes, setDossierUpdateModes] = useState<
     Record<string, DossierUpdateMode>
   >({})
@@ -184,6 +208,13 @@ export function NumberingStep({
   const hasPendingStyleChanges =
     stylePresetDraft !== appliedStylePreset ||
     !numberingStyleOverridesEqual(styleOverridesDraft, appliedStyleOverrides)
+  const currentMissingNavigatorCacheKey = `${sessionId ?? ""}:${
+    revisionToken(status?.documents_revision) ?? ""
+  }`
+  const visibleMissingNavigatorDocuments =
+    missingNavigatorCacheKey === currentMissingNavigatorCacheKey
+      ? missingNavigatorDocuments
+      : EMPTY_NUMBERING_DOCUMENTS
 
   useEffect(() => {
     if (numberingPageCacheSessionRef.current === sessionId) return
@@ -374,6 +405,57 @@ export function NumberingStep({
     ]
   )
 
+  const loadMissingNavigatorDocuments = useCallback(async () => {
+    if (!sessionId) {
+      setMissingNavigatorDocuments([])
+      setMissingNavigatorIndex(0)
+      setMissingNavigatorError("Chưa có session để xem tài liệu thiếu số.")
+      return []
+    }
+
+    setMissingNavigatorLoading(true)
+    setMissingNavigatorError("")
+    try {
+      const documents: NumberingDocumentStatus[] = []
+      let offset = 0
+      let guard = 0
+      let fetchedCacheKey = currentMissingNavigatorCacheKey
+      while (guard < 100) {
+        const response = await getDocumentNumberingStatus(sessionId, {
+          includeDocuments: true,
+          summaryOnly: false,
+          limit: NUMBERING_NAVIGATOR_PAGE_SIZE,
+          offset,
+        })
+        fetchedCacheKey = `${sessionId}:${
+          revisionToken(response.documents_revision) ?? ""
+        }`
+        documents.push(...response.documents)
+        const pagination = response.pagination
+        if (!pagination?.has_more || pagination.next_offset == null) break
+        offset = pagination.next_offset
+        guard += 1
+      }
+      setMissingNavigatorDocuments(documents)
+      setMissingNavigatorCacheKey(fetchedCacheKey)
+      setMissingNavigatorIndex((current) => {
+        const missingCount = documents.filter(isMissingNumberingDocument).length
+        if (missingCount <= 0) return 0
+        return Math.min(Math.max(0, current), missingCount - 1)
+      })
+      return documents
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Không tải được danh sách tài liệu thiếu số."
+      setMissingNavigatorError(message)
+      return []
+    } finally {
+      setMissingNavigatorLoading(false)
+    }
+  }, [currentMissingNavigatorCacheKey, sessionId])
+
   const startNumbering = useCallback(
     async (force = false) => {
       if (!sessionId) {
@@ -508,7 +590,6 @@ export function NumberingStep({
             ? "theo mốc"
             : "tự động"
       setUpdatingDocumentId(document.session_document_id)
-      setPreviewDocumentId(document.session_document_id)
       setError("")
       setProgressPhase("loading_data")
       setProgressMessage(`Đang gửi yêu cầu cập nhật số ${modeText}.`)
@@ -564,29 +645,39 @@ export function NumberingStep({
       }
       if (starting || status?.active) return
 
+      const entries = numberingEntries(document)
+      const retryEntries = entries
+        .map((entry) => ({
+          page_number: entry.page_number,
+          label: entry.label,
+        }))
+        .filter(
+          (entry) =>
+            Number.isFinite(entry.page_number) &&
+            entry.page_number > 0 &&
+            entry.label.trim().length > 0
+        )
+      const firstEntry = retryEntries[0]
+      if (!firstEntry) {
+        toast.error("Tài liệu chưa có trang hợp lệ để đánh số lại.")
+        return
+      }
+      const anchorPageNumber = firstEntry.page_number
       setRetryingDocumentId(document.session_document_id)
-      setPreviewDocumentId(document.session_document_id)
       setError("")
       setProgressPhase("loading_data")
       setProgressMessage(
         `Đang gửi yêu cầu đánh số lại ${document.file_name || document.document_id}.`
       )
       setCompletedPhases(new Set())
-      const entries = numberingEntries(document)
-      const firstEntry = entries[0]
-      const anchorPageNumber = firstEntry?.page_number ?? 1
-      const currentNumber =
-        Number.parseInt(String(firstEntry?.label ?? ""), 10) ||
-        document.document_number_start ||
-        1
       try {
         const response = await updateDocumentNumberingFromPage(
           sessionId,
           document.session_document_id,
           {
             anchor_page_number: anchorPageNumber,
-            numbering_update_mode: "auto",
-            new_number: String(currentNumber),
+            numbering_update_mode: "manual",
+            numbering_entries: retryEntries,
             created_by: "ui",
             force: true,
           }
@@ -733,11 +824,14 @@ export function NumberingStep({
         documentsChanged ||
         periodicDocumentRefresh
       if (shouldRefreshDocuments) {
-        void refreshStatus({
+        await refreshStatus({
           silent: true,
           includeDocuments: true,
           force: true,
         })
+      }
+      if (!response?.active && missingNavigatorOpen) {
+        await loadMissingNavigatorDocuments()
       }
       if (response?.active || starting) {
         timeoutId = window.setTimeout(
@@ -771,7 +865,14 @@ export function NumberingStep({
       cancelled = true
       if (timeoutId !== null) window.clearTimeout(timeoutId)
     }
-  }, [refreshStatus, sessionId, starting, status?.active])
+  }, [
+    loadMissingNavigatorDocuments,
+    missingNavigatorOpen,
+    refreshStatus,
+    sessionId,
+    starting,
+    status?.active,
+  ])
 
   useEffect(() => {
     if (!status) return
@@ -841,23 +942,105 @@ export function NumberingStep({
     normalizedNumberingPageIndex * NUMBERING_PAGE_SIZE
   const numberingPageReturned =
     status?.pagination?.returned ?? filteredDocumentsByDossier.length
+  const missingNumberingDocuments = useMemo(
+    () => visibleMissingNavigatorDocuments.filter(isMissingNumberingDocument),
+    [visibleMissingNavigatorDocuments]
+  )
+  const normalizedMissingNavigatorIndex = Math.min(
+    Math.max(0, missingNavigatorIndex),
+    Math.max(0, missingNumberingDocuments.length - 1)
+  )
+  const currentMissingDocument =
+    missingNumberingDocuments[normalizedMissingNavigatorIndex] ?? null
+  const focusMissingNumberingDocument = useCallback(
+    async (
+      document: NumberingDocumentStatus,
+      allDocuments: NumberingDocumentStatus[] = visibleMissingNavigatorDocuments
+    ) => {
+      if (!sessionId) return
+      const groups = groupDocumentsByDossier(allDocuments)
+      const dossierIndex = groups.findIndex((group) =>
+        group.documents.some(
+          (item) => item.session_document_id === document.session_document_id
+        )
+      )
+      const pageIndex =
+        dossierIndex >= 0
+          ? Math.floor(dossierIndex / NUMBERING_PAGE_SIZE)
+          : normalizedNumberingPageIndex
+      setNumberingFilter("")
+      setNumberingPageIndex(pageIndex)
+      await refreshStatus({
+        silent: true,
+        includeDocuments: true,
+        pageIndex,
+      })
+      setPreviewDocumentId(document.session_document_id)
+      setHighlightedDocumentId(document.session_document_id)
+      setHighlightScrollRequest((current) => current + 1)
+    },
+    [
+      visibleMissingNavigatorDocuments,
+      normalizedNumberingPageIndex,
+      refreshStatus,
+      sessionId,
+    ]
+  )
+  const openMissingNavigator = useCallback(async () => {
+    setMissingNavigatorOpen(true)
+    const documents =
+      visibleMissingNavigatorDocuments.length > 0
+        ? visibleMissingNavigatorDocuments
+        : await loadMissingNavigatorDocuments()
+    const missingDocuments = documents.filter(isMissingNumberingDocument)
+    if (missingDocuments.length <= 0) return
+    const nextIndex = Math.min(
+      normalizedMissingNavigatorIndex,
+      missingDocuments.length - 1
+    )
+    setMissingNavigatorIndex(nextIndex)
+    await focusMissingNumberingDocument(missingDocuments[nextIndex], documents)
+  }, [
+    focusMissingNumberingDocument,
+    loadMissingNavigatorDocuments,
+    normalizedMissingNavigatorIndex,
+    visibleMissingNavigatorDocuments,
+  ])
+  const changeMissingNavigatorIndex = useCallback(
+    (nextIndex: number) => {
+      const normalizedIndex = Math.min(
+        Math.max(0, nextIndex),
+        Math.max(0, missingNumberingDocuments.length - 1)
+      )
+      setMissingNavigatorIndex(normalizedIndex)
+      const nextDocument = missingNumberingDocuments[normalizedIndex]
+      if (nextDocument) void focusMissingNumberingDocument(nextDocument)
+    },
+    [focusMissingNumberingDocument, missingNumberingDocuments]
+  )
   const previewDocument = useMemo(
     () =>
       (status?.documents ?? []).find(
         (document) => document.session_document_id === previewDocumentId
-      ) ?? null,
-    [previewDocumentId, status?.documents]
+      ) ??
+      visibleMissingNavigatorDocuments.find(
+        (document) => document.session_document_id === previewDocumentId
+      ) ??
+      null,
+    [previewDocumentId, status?.documents, visibleMissingNavigatorDocuments]
   )
   const previewSessionDocumentId = previewDocument?.session_document_id ?? null
   const previewPdfVersionId = previewDocument?.numbered_pdf_version_id ?? null
   const previewSourceUrl = textOrNull(previewDocument?.download_url)
+  const previewCanPreview = previewDocument
+    ? canPreviewNumberingDocument(previewDocument)
+    : false
 
   useEffect(() => {
     if (
       !sessionId ||
       previewSessionDocumentId === null ||
-      !previewDocument ||
-      !canPreviewNumberingDocument(previewDocument)
+      !previewCanPreview
     ) {
       setPreviewUrl("")
       setPreviewError("")
@@ -918,13 +1101,26 @@ export function NumberingStep({
       cancelled = true
     }
   }, [
-    previewDocument,
+    previewCanPreview,
     previewPdfVersionId,
     previewRefreshKey,
     previewSessionDocumentId,
     previewSourceUrl,
     sessionId,
   ])
+
+  useEffect(() => {
+    if (highlightedDocumentId === null) return
+    if (highlightScrollRequest <= 0) return
+    const timeoutId = window.setTimeout(() => {
+      const row = document.querySelector(
+        `[data-numbering-document-id="${highlightedDocumentId}"]`
+      )
+      row?.scrollIntoView({ block: "center", behavior: "smooth" })
+    }, 80)
+    return () => window.clearTimeout(timeoutId)
+  }, [highlightScrollRequest, highlightedDocumentId])
+
   const totalDocuments = status?.summary.total_documents ?? 0
   const doneCount = status?.summary.done ?? 0
   const failedCount = status?.summary.failed ?? 0
@@ -1054,30 +1250,31 @@ export function NumberingStep({
         </div>
       ) : null}
       {stoppedWithUnresolved ? (
-        <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 md:flex-row md:items-center md:justify-between">
-          <div className="flex min-w-0 items-start gap-3">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-            <span>
-              Còn {unresolvedCount} tài liệu chưa hoàn tất nhưng không có job
-              đánh số đang chạy.
-              {failedCount > 0
-                ? ` Có ${failedCount} tài liệu lỗi.`
-                : pendingCount > 0
-                  ? " Một số lỗi render có thể đang được backend trả về trạng thái chờ xử lý."
-                  : ""}{" "}
-              Hãy bấm <strong>Đánh số lại</strong> ở dòng tài liệu cần xử lý,
-              hoặc chạy lại phần còn thiếu.
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() => void startNumbering(false)}
-            disabled={active || starting}
-            className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg bg-amber-600 px-3 text-sm font-semibold text-white transition-colors hover:bg-amber-700 disabled:pointer-events-none disabled:opacity-60"
-          >
-            Đánh số lại phần còn thiếu
-          </button>
-        </div>
+        <MissingNumberingNavigator
+          unresolvedCount={unresolvedCount}
+          failedCount={failedCount}
+          pendingCount={pendingCount}
+          open={missingNavigatorOpen}
+          loading={missingNavigatorLoading}
+          error={missingNavigatorError}
+          documents={missingNumberingDocuments}
+          currentIndex={normalizedMissingNavigatorIndex}
+          currentDocument={currentMissingDocument}
+          onOpen={() => void openMissingNavigator()}
+          onClose={() => setMissingNavigatorOpen(false)}
+          onReload={() => void loadMissingNavigatorDocuments()}
+          onPrevious={() =>
+            changeMissingNavigatorIndex(normalizedMissingNavigatorIndex - 1)
+          }
+          onNext={() =>
+            changeMissingNavigatorIndex(normalizedMissingNavigatorIndex + 1)
+          }
+          onFocus={() => {
+            if (currentMissingDocument) {
+              void focusMissingNumberingDocument(currentMissingDocument)
+            }
+          }}
+        />
       ) : null}
       {error ? (
         <div className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -1232,6 +1429,10 @@ export function NumberingStep({
                           previewing={
                             previewDocumentId === document.session_document_id
                           }
+                          highlighted={
+                            highlightedDocumentId ===
+                            document.session_document_id
+                          }
                           onPreview={() =>
                             setPreviewDocumentId(document.session_document_id)
                           }
@@ -1322,6 +1523,177 @@ export function NumberingStep({
 }
 
 type NumberingDossierGroup = ReturnType<typeof groupDocumentsByDossier>[number]
+
+function MissingNumberingNavigator({
+  unresolvedCount,
+  failedCount,
+  pendingCount,
+  open,
+  loading,
+  error,
+  documents,
+  currentIndex,
+  currentDocument,
+  onOpen,
+  onClose,
+  onReload,
+  onPrevious,
+  onNext,
+  onFocus,
+}: {
+  unresolvedCount: number
+  failedCount: number
+  pendingCount: number
+  open: boolean
+  loading: boolean
+  error: string
+  documents: NumberingDocumentStatus[]
+  currentIndex: number
+  currentDocument: NumberingDocumentStatus | null
+  onOpen: () => void
+  onClose: () => void
+  onReload: () => void
+  onPrevious: () => void
+  onNext: () => void
+  onFocus: () => void
+}) {
+  const badge = currentDocument ? statusBadge(currentDocument.status) : null
+  const atStart = currentIndex <= 0
+  const atEnd = currentIndex >= documents.length - 1
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <span>
+            Còn {unresolvedCount} tài liệu chưa hoàn tất nhưng không có job đánh
+            số đang chạy.
+            {failedCount > 0
+              ? ` Có ${failedCount} tài liệu lỗi.`
+              : pendingCount > 0
+                ? " Một số lỗi render có thể đang được backend trả về trạng thái chờ xử lý."
+                : ""}{" "}
+            Có thể mở từng tài liệu còn thiếu số để kiểm tra và xử lý tại dòng
+            tương ứng.
+          </span>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {open ? (
+            <button
+              type="button"
+              onClick={onReload}
+              disabled={loading}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-amber-300 bg-white px-3 text-sm font-semibold text-amber-800 transition-colors hover:bg-amber-100 disabled:pointer-events-none disabled:opacity-60"
+            >
+              {loading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <ListChecks className="size-4" />
+              )}
+              Cập nhật
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={open ? onClose : onOpen}
+            disabled={loading && !open}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-amber-600 px-3 text-sm font-semibold text-white transition-colors hover:bg-amber-700 disabled:pointer-events-none disabled:opacity-60"
+          >
+            {loading && !open ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : open ? (
+              <X className="size-4" />
+            ) : (
+              <ListChecks className="size-4" />
+            )}
+            {open ? "Ẩn danh sách" : "Xem tài liệu thiếu số"}
+          </button>
+        </div>
+      </div>
+
+      {open ? (
+        <div className="grid gap-3 rounded-lg border border-amber-200 bg-white px-3 py-3 text-[#0F172A] md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center">
+          <button
+            type="button"
+            onClick={onPrevious}
+            disabled={loading || atStart || documents.length <= 0}
+            title="Tài liệu trước"
+            aria-label="Tài liệu trước"
+            className="inline-flex size-9 items-center justify-center rounded-lg border border-[#CBD5E1] bg-white text-[#475569] transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF] disabled:pointer-events-none disabled:opacity-40"
+          >
+            <ChevronLeft className="size-4" />
+          </button>
+
+          <div className="min-w-0">
+            {loading ? (
+              <div className="flex items-center gap-2 text-sm text-[#64748B]">
+                <Loader2 className="size-4 animate-spin text-[#0052FF]" />
+                Đang tải tài liệu thiếu số...
+              </div>
+            ) : error ? (
+              <p className="text-sm font-medium text-rose-700">{error}</p>
+            ) : currentDocument ? (
+              <div className="flex min-w-0 flex-col gap-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <span className="rounded-md bg-[#F1F5F9] px-2 py-1 text-xs font-semibold text-[#475569] tabular-nums">
+                    {currentIndex + 1}/{documents.length}
+                  </span>
+                  {badge ? (
+                    <span
+                      className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${badge.className}`}
+                    >
+                      {badge.label}
+                    </span>
+                  ) : null}
+                  <p className="min-w-0 flex-1 truncate text-sm font-semibold text-[#0F172A]">
+                    {currentDocument.file_name || currentDocument.document_id}
+                  </p>
+                </div>
+                <p className="truncate text-xs text-[#64748B]">
+                  {currentDocument.dossier_title ||
+                    currentDocument.dossier_id ||
+                    "Chưa có hồ sơ"}
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm font-medium text-emerald-700">
+                Không còn tài liệu thiếu số.
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={onFocus}
+              disabled={loading || !currentDocument}
+              title="Tới tài liệu đang chọn"
+              aria-label="Tới tài liệu đang chọn"
+              className="inline-flex size-9 items-center justify-center rounded-lg border border-[#CBD5E1] bg-white text-[#475569] transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF] disabled:pointer-events-none disabled:opacity-40"
+            >
+              <Target className="size-4" />
+            </button>
+            <button
+              type="button"
+              onClick={onNext}
+              disabled={loading || atEnd || documents.length <= 0}
+              title="Tài liệu sau"
+              aria-label="Tài liệu sau"
+              className="inline-flex size-9 items-center justify-center rounded-lg border border-[#CBD5E1] bg-white text-[#475569] transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF] disabled:pointer-events-none disabled:opacity-40"
+            >
+              <ChevronRight className="size-4" />
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function isMissingNumberingDocument(document: NumberingDocumentStatus): boolean {
+  return String(document.status || "").toLowerCase() !== "done"
+}
 
 function cleanNumberingStyleOverrides(
   overrides: NumberingStyleOverrides | null | undefined
