@@ -848,8 +848,8 @@ export function NumberingDocumentRow({
           ? "border-[#0052FF] bg-[#EEF4FF] shadow-[0_0_0_2px_rgba(0,82,255,0.12)]"
           : "border-[#D8E1EC]",
         updateMode === "manual"
-          ? "lg:grid-cols-[minmax(12rem,0.9fr)_minmax(21rem,1.5fr)] lg:items-start"
-          : "sm:grid-cols-[minmax(12rem,1fr)_auto] sm:items-center"
+          ? "lg:grid-cols-[minmax(11rem,0.9fr)_minmax(18rem,1.35fr)_auto] lg:items-start"
+          : "sm:grid-cols-[minmax(12rem,1fr)_minmax(0,auto)_auto] sm:items-center"
       )}
     >
       <div className="flex min-w-0 items-start gap-2.5">
@@ -888,7 +888,7 @@ export function NumberingDocumentRow({
         className={cn(
           "flex min-w-0 gap-2 border-[#E2E8F0]",
           updateMode === "manual"
-            ? "w-full flex-col sm:flex-row sm:items-start lg:border-l lg:pl-3"
+            ? "w-full flex-col lg:border-l lg:pl-3"
             : "flex-wrap items-center sm:border-l sm:pl-3"
         )}
       >
@@ -940,16 +940,14 @@ export function NumberingDocumentRow({
             />
           </>
         )}
-        <div
-          className={cn(
-            "flex shrink-0 items-center gap-1.5",
-            updateMode === "manual"
-              ? "justify-end sm:ml-auto sm:self-start"
-              : ""
-          )}
-        >
-          {actionButtons}
-        </div>
+      </div>
+      <div
+        className={cn(
+          "flex shrink-0 items-center justify-end gap-1.5 justify-self-end",
+          updateMode === "manual" ? "self-start" : "self-center"
+        )}
+      >
+        {actionButtons}
       </div>
     </form>
   )
@@ -996,7 +994,7 @@ function ManualNumberingEntriesEditor({
   }
 
   return (
-    <div className="w-full min-w-0 rounded-lg border border-[#E2E8F0] bg-white px-2.5 py-2 shadow-sm sm:min-w-[18rem]">
+    <div className="w-full min-w-0 rounded-lg border border-[#E2E8F0] bg-white px-2.5 py-2 shadow-sm">
       <div className="mb-2 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
         <p className="text-[10px] font-semibold tracking-wide text-[#64748B] uppercase">
           Đánh số thủ công
