@@ -33,7 +33,11 @@ export type OcrFolderState =
 
 const OCR_POLL_INTERVAL_MS = 5_000
 const OCR_POLL_RETRY_INTERVAL_MS = 5_000
-const OCR_DOCUMENT_PAGE_SIZE = 50
+const OCR_DOCUMENT_DEFAULT_PAGE_SIZE = 50
+const OCR_DOCUMENT_MIN_PAGE_SIZE = 1
+const OCR_DOCUMENT_MAX_PAGE_SIZE = 1000
+const OCR_DOCUMENT_PAGE_SIZE_STORAGE_KEY =
+  "archival-processing.metadata-display-page-size"
 const OCR_EMPTY_STATUS_RETRY_LIMIT = 12
 const OCR_DOCUMENT_REFRESH_MIN_INTERVAL_MS = 15_000
 const DEFAULT_DOCUMENT_NUMBERING_MODE: DocumentNumberingMode = "page"
@@ -78,6 +82,7 @@ export interface UseOcrFolderResult {
   documentPageIndex: number
   documentPageSize: number
   setDocumentPageIndex: (pageIndex: number) => void
+  setDocumentPageSize: (pageSize: number) => void
   metadataDocumentScope: MetadataDocumentScope
   setMetadataDocumentScope: (scope: MetadataDocumentScope) => void
   restartMetadata: (documentId: number) => Promise<SessionDocumentResponse>
@@ -88,6 +93,18 @@ export interface UseOcrFolderResult {
 interface UseOcrFolderOptions {
   enabled?: boolean
   clearOnDisable?: boolean
+}
+
+interface CachedDocumentRange {
+  offset: number
+  limit: number
+}
+
+interface DocumentRangeCache {
+  jobsByOffset: Map<number, JobSummary>
+  status: FolderStatusResponse | null
+  total: number | null
+  documentsRevision: string | null
 }
 
 export function useOcrFolder(
@@ -102,7 +119,10 @@ export function useOcrFolder(
   const documentPageIndexRef = useRef(0)
   const [metadataDocumentScope, setMetadataDocumentScopeState] =
     useState<MetadataDocumentScope>(DEFAULT_METADATA_DOCUMENT_SCOPE)
-  const documentPageSize = OCR_DOCUMENT_PAGE_SIZE
+  const [documentPageSize, setDocumentPageSizeState] = useState(() =>
+    readStoredDocumentPageSize()
+  )
+  const documentPageSizeRef = useRef(documentPageSize)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const existingStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
@@ -112,10 +132,10 @@ export function useOcrFolder(
   const pendingStartRef = useRef<PendingStartContext | null>(null)
   const manualOperationRef = useRef(false)
   const documentPageCacheSessionRef = useRef<string | null>(null)
-  const documentPageCacheRef = useRef<Map<number, FolderStatusResponse>>(
-    new Map()
+  const documentPageCacheRef = useRef<DocumentRangeCache>(
+    createDocumentRangeCache()
   )
-  const prefetchingDocumentPagesRef = useRef<Set<number>>(new Set())
+  const prefetchingDocumentRangesRef = useRef<Set<string>>(new Set())
   const metadataDocumentScopeRequestKeyRef = useRef("all")
   const metadataDocumentScopeStateKeyRef = useRef("all")
   const metadataDocumentScopeRef = useRef<MetadataDocumentScope>(
@@ -127,6 +147,10 @@ export function useOcrFolder(
   useEffect(() => {
     statusRef.current = status
   }, [status])
+
+  useEffect(() => {
+    documentPageSizeRef.current = documentPageSize
+  }, [documentPageSize])
 
   const stop = useCallback(() => {
     if (timeoutRef.current) {
@@ -160,6 +184,28 @@ export function useOcrFolder(
     setDocumentPageIndexState(nextPageIndex)
   }, [])
 
+  const setDocumentPageSize = useCallback((pageSize: number) => {
+    const nextPageSize = normalizeDocumentPageSize(pageSize)
+    documentPageSizeRef.current = nextPageSize
+    writeStoredDocumentPageSize(nextPageSize)
+    setDocumentPageSizeState((current) =>
+      current === nextPageSize ? current : nextPageSize
+    )
+    documentPageIndexRef.current = 0
+    setDocumentPageIndexState(0)
+    prefetchingDocumentRangesRef.current.clear()
+    setStatus((current) => {
+      if (!current) return current
+      const cachedStatus = getCachedDocumentRangeStatus(
+        documentPageCacheRef.current,
+        { offset: 0, limit: nextPageSize }
+      )
+      return cachedStatus
+        ? mergeCachedDocumentPage(current, cachedStatus)
+        : current
+    })
+  }, [])
+
   const setMetadataDocumentScope = useCallback(
     (scope: MetadataDocumentScope) => {
       const nextScope = normalizeMetadataDocumentScope(scope)
@@ -167,8 +213,8 @@ export function useOcrFolder(
       if (metadataDocumentScopeStateKeyRef.current === nextScopeKey) return
       metadataDocumentScopeStateKeyRef.current = nextScopeKey
       metadataDocumentScopeRef.current = nextScope
-      documentPageCacheRef.current.clear()
-      prefetchingDocumentPagesRef.current.clear()
+      clearDocumentRangeCache(documentPageCacheRef.current)
+      prefetchingDocumentRangesRef.current.clear()
       lastDocumentRefreshSignatureRef.current = ""
       lastDocumentRefreshAtRef.current = 0
       documentPageIndexRef.current = 0
@@ -184,8 +230,8 @@ export function useOcrFolder(
   useEffect(() => {
     if (documentPageCacheSessionRef.current === sessionId) return
     documentPageCacheSessionRef.current = sessionId
-    documentPageCacheRef.current.clear()
-    prefetchingDocumentPagesRef.current.clear()
+    clearDocumentRangeCache(documentPageCacheRef.current)
+    prefetchingDocumentRangesRef.current.clear()
     lastDocumentRefreshSignatureRef.current = ""
     lastDocumentRefreshAtRef.current = 0
     metadataDocumentScopeRequestKeyRef.current = "all"
@@ -225,16 +271,16 @@ export function useOcrFolder(
     []
   )
 
-  const fetchDocumentPageStatus = useCallback(
-    async (pageIndex: number) => {
+  const fetchDocumentRangeStatus = useCallback(
+    async ({ offset, limit }: CachedDocumentRange) => {
       if (!sessionId) return null
       const requestScope = metadataDocumentScopeRef.current
       const requestScopeKey = metadataDocumentScopeKey(requestScope)
       const result = await getDigitizationStatus(sessionId, {
         includeDocuments: true,
         summaryOnly: false,
-        limit: documentPageSize,
-        offset: pageIndex * documentPageSize,
+        limit,
+        offset,
         metadataDocumentScope: requestScope,
       })
       if (metadataDocumentScopeStateKeyRef.current !== requestScopeKey) {
@@ -247,28 +293,39 @@ export function useOcrFolder(
         status: digitizationToFolderStatus(result, fallbackFolderPath),
       }
     },
-    [documentPageSize, sessionId, status?.folder_path]
+    [sessionId, status?.folder_path]
   )
 
   const prefetchDocumentPage = useCallback(
     async (pageIndex: number) => {
       if (!sessionId) return
-      if (documentPageCacheRef.current.has(pageIndex)) return
-      if (prefetchingDocumentPagesRef.current.has(pageIndex)) return
+      const pageSize = documentPageSizeRef.current
+      const targetRange = { offset: pageIndex * pageSize, limit: pageSize }
+      const missingRanges = missingDocumentRanges(
+        documentPageCacheRef.current,
+        targetRange
+      )
+      if (missingRanges.length === 0) return
 
-      prefetchingDocumentPagesRef.current.add(pageIndex)
       try {
-        const fetched = await fetchDocumentPageStatus(pageIndex)
-        if (fetched) {
-          documentPageCacheRef.current.set(pageIndex, fetched.status)
+        for (const missingRange of missingRanges) {
+          const rangeKey = documentRangeKey(missingRange)
+          if (prefetchingDocumentRangesRef.current.has(rangeKey)) continue
+          prefetchingDocumentRangesRef.current.add(rangeKey)
+          try {
+            const fetched = await fetchDocumentRangeStatus(missingRange)
+            if (fetched) {
+              cacheDocumentRange(documentPageCacheRef.current, fetched.status)
+            }
+          } finally {
+            prefetchingDocumentRangesRef.current.delete(rangeKey)
+          }
         }
       } catch {
         // Prefetch is opportunistic; visible page loading handles real errors.
-      } finally {
-        prefetchingDocumentPagesRef.current.delete(pageIndex)
       }
     },
-    [fetchDocumentPageStatus, sessionId]
+    [fetchDocumentRangeStatus, sessionId]
   )
 
   const refreshDocumentsPage = useCallback(
@@ -281,7 +338,7 @@ export function useOcrFolder(
       if (!sessionId) {
         return null
       }
-      const pageSize = documentPageSize
+      const pageSize = documentPageSizeRef.current
       const pageIndex = Math.max(
         0,
         Math.floor(Number(options.pageIndex ?? documentPageIndex) || 0)
@@ -291,13 +348,17 @@ export function useOcrFolder(
         setDocumentPageIndexState(pageIndex)
       }
       if (options.force) {
-        documentPageCacheRef.current.clear()
-        prefetchingDocumentPagesRef.current.clear()
+        clearDocumentRangeCache(documentPageCacheRef.current)
+        prefetchingDocumentRangesRef.current.clear()
       }
+      const targetRange = { offset: pageIndex * pageSize, limit: pageSize }
       const cachedStatus =
         !options.force && !status?.reextracting
-          ? documentPageCacheRef.current.get(pageIndex)
-          : undefined
+          ? getCachedDocumentRangeStatus(
+              documentPageCacheRef.current,
+              targetRange
+            )
+          : null
 
       if (cachedStatus) {
         setStatus((current) => mergeCachedDocumentPage(current, cachedStatus))
@@ -313,10 +374,39 @@ export function useOcrFolder(
         return cachedStatus
       }
 
-      const fetched = await fetchDocumentPageStatus(pageIndex)
-      if (!fetched) return null
-      const { result, status: nextStatus } = fetched
-      documentPageCacheRef.current.set(pageIndex, nextStatus)
+      let latestResult: Awaited<ReturnType<typeof getDigitizationStatus>> = null
+      const missingRanges =
+        options.force || status?.reextracting
+          ? [targetRange]
+          : missingDocumentRanges(documentPageCacheRef.current, targetRange)
+      for (const missingRange of missingRanges) {
+        const fetched = await fetchDocumentRangeStatus(missingRange)
+        if (!fetched) return null
+        latestResult = fetched.result
+        cacheDocumentRange(documentPageCacheRef.current, fetched.status)
+      }
+      let nextStatus = getCachedDocumentRangeStatus(
+        documentPageCacheRef.current,
+        targetRange
+      )
+      if (
+        !nextStatus &&
+        !(
+          missingRanges.length === 1 &&
+          sameDocumentRange(missingRanges[0], targetRange)
+        )
+      ) {
+        const fetched = await fetchDocumentRangeStatus(targetRange)
+        if (!fetched) return null
+        latestResult = fetched.result
+        cacheDocumentRange(documentPageCacheRef.current, fetched.status)
+        nextStatus =
+          getCachedDocumentRangeStatus(
+            documentPageCacheRef.current,
+            targetRange
+          ) ?? fetched.status
+      }
+      if (!nextStatus) return null
       setStatus((current) => {
         if (!current?.reextracting) return nextStatus
         return {
@@ -324,7 +414,7 @@ export function useOcrFolder(
           total_files: Math.max(current.total_files, nextStatus.total_files),
           total_jobs: Math.max(current.total_jobs, nextStatus.total_jobs),
           pagination: nextStatus.pagination,
-          reextracting: !isMetadataExtractionComplete(result),
+          reextracting: !isMetadataExtractionComplete(latestResult),
         }
       })
       setError("")
@@ -336,8 +426,7 @@ export function useOcrFolder(
     },
     [
       documentPageIndex,
-      documentPageSize,
-      fetchDocumentPageStatus,
+      fetchDocumentRangeStatus,
       prefetchDocumentPage,
       sessionId,
       status?.reextracting,
@@ -400,11 +489,12 @@ export function useOcrFolder(
           }
           const requestScope = metadataDocumentScopeRef.current
           const requestScopeKey = metadataDocumentScopeKey(requestScope)
+          const pageSize = documentPageSizeRef.current
           const result = await getDigitizationStatus(sessionId, {
             includeDocuments: false,
             summaryOnly: true,
-            limit: documentPageSize,
-            offset: documentPageIndexRef.current * documentPageSize,
+            limit: pageSize,
+            offset: documentPageIndexRef.current * pageSize,
             metadataDocumentScope: requestScope,
           })
           if (metadataDocumentScopeStateKeyRef.current !== requestScopeKey) {
@@ -447,7 +537,6 @@ export function useOcrFolder(
     },
     [
       applyStatusResult,
-      documentPageSize,
       refreshDocumentsForStatus,
       schedulePollRetry,
       sessionId,
@@ -461,8 +550,8 @@ export function useOcrFolder(
     rejectRef.current?.(new Error("Đã hủy quá trình chờ kết quả OCR."))
     rejectRef.current = null
     pendingStartRef.current = null
-    documentPageCacheRef.current.clear()
-    prefetchingDocumentPagesRef.current.clear()
+    clearDocumentRangeCache(documentPageCacheRef.current)
+    prefetchingDocumentRangesRef.current.clear()
     lastDocumentRefreshSignatureRef.current = ""
     lastDocumentRefreshAtRef.current = 0
     setState("idle")
@@ -479,8 +568,8 @@ export function useOcrFolder(
   const refresh = useCallback(async (options: OcrRefreshOptions = {}) => {
     if (!sessionId) {
       pendingStartRef.current = null
-      documentPageCacheRef.current.clear()
-      prefetchingDocumentPagesRef.current.clear()
+      clearDocumentRangeCache(documentPageCacheRef.current)
+      prefetchingDocumentRangesRef.current.clear()
       setState("idle")
       setStatus(null)
       setError("")
@@ -492,13 +581,14 @@ export function useOcrFolder(
     }
 
     const includeDocuments = options.includeDocuments ?? false
+    const pageSize = documentPageSizeRef.current
     const pageLimit =
       includeDocuments && options.limit === undefined
-        ? documentPageSize
+        ? pageSize
         : options.limit
     const pageOffset =
       includeDocuments && options.offset === undefined
-        ? documentPageIndex * documentPageSize
+        ? documentPageIndexRef.current * pageSize
         : options.offset
     const requestScope = metadataDocumentScopeRef.current
     const requestScopeKey = metadataDocumentScopeKey(requestScope)
@@ -517,8 +607,8 @@ export function useOcrFolder(
       stop()
       tokenRef.current += 1
       pendingStartRef.current = null
-      documentPageCacheRef.current.clear()
-      prefetchingDocumentPagesRef.current.clear()
+      clearDocumentRangeCache(documentPageCacheRef.current)
+      prefetchingDocumentRangesRef.current.clear()
       setState("idle")
       setStatus(null)
       setError("")
@@ -532,6 +622,9 @@ export function useOcrFolder(
     const nextStatus = applyStatusResult(result, fallbackFolderPath, {
       preserveDocuments: !includeDocuments,
     })
+    if (includeDocuments) {
+      cacheDocumentRange(documentPageCacheRef.current, nextStatus)
+    }
     setError("")
     const complete = isDigitizationComplete(result)
     refreshDocumentsForStatus(result, { force: includeDocuments || complete })
@@ -551,8 +644,6 @@ export function useOcrFolder(
     return nextStatus
   }, [
     applyStatusResult,
-    documentPageIndex,
-    documentPageSize,
     pollUntilComplete,
     refreshDocumentsForStatus,
     sessionId,
@@ -569,15 +660,7 @@ export function useOcrFolder(
           sessionDocumentToJobSummary(document),
         ])
       )
-      documentPageCacheRef.current.forEach((cachedStatus, pageIndex) => {
-        const nextCachedStatus = replaceCachedDocumentJobs(
-          cachedStatus,
-          documentsById
-        )
-        if (nextCachedStatus !== cachedStatus) {
-          documentPageCacheRef.current.set(pageIndex, nextCachedStatus)
-        }
-      })
+      updateCachedDocumentJobs(documentPageCacheRef.current, documentsById)
 
       setStatus((current) => {
         if (!current) return current
@@ -710,8 +793,8 @@ export function useOcrFolder(
       rejectRef.current = null
       if (clearOnDisable) {
         const disableToken = tokenRef.current
-        documentPageCacheRef.current.clear()
-        prefetchingDocumentPagesRef.current.clear()
+        clearDocumentRangeCache(documentPageCacheRef.current)
+        prefetchingDocumentRangesRef.current.clear()
         queueMicrotask(() => {
           if (tokenRef.current !== disableToken) return
           setState("idle")
@@ -753,11 +836,12 @@ export function useOcrFolder(
       try {
         const requestScope = metadataDocumentScopeRef.current
         const requestScopeKey = metadataDocumentScopeKey(requestScope)
+        const pageSize = documentPageSizeRef.current
         const result = await getDigitizationStatus(sessionId, {
           includeDocuments: false,
           summaryOnly: true,
-          limit: documentPageSize,
-          offset: documentPageIndexRef.current * documentPageSize,
+          limit: pageSize,
+          offset: documentPageIndexRef.current * pageSize,
           metadataDocumentScope: requestScope,
         })
         if (tokenRef.current !== token) return
@@ -772,8 +856,8 @@ export function useOcrFolder(
         const fallbackFolderPath = result?.batches[0]?.folder_path ?? ""
         if (!hasDigitizationWork(result)) {
           pendingStartRef.current = null
-          documentPageCacheRef.current.clear()
-          prefetchingDocumentPagesRef.current.clear()
+          clearDocumentRangeCache(documentPageCacheRef.current)
+          prefetchingDocumentRangesRef.current.clear()
           setStatus(null)
           setError("")
           if (emptyStatusRetries < OCR_EMPTY_STATUS_RETRY_LIMIT) {
@@ -835,7 +919,6 @@ export function useOcrFolder(
   }, [
     applyStatusResult,
     clearOnDisable,
-    documentPageSize,
     enabled,
     refreshDocumentsForStatus,
     sessionId,
@@ -894,8 +977,8 @@ export function useOcrFolder(
               expectedMode,
             }
           : null
-      documentPageCacheRef.current.clear()
-      prefetchingDocumentPagesRef.current.clear()
+      clearDocumentRangeCache(documentPageCacheRef.current)
+      prefetchingDocumentRangesRef.current.clear()
       manualOperationRef.current = true
       setState("starting")
       setStatus(
@@ -972,11 +1055,12 @@ export function useOcrFolder(
             try {
               const requestScope = metadataDocumentScopeRef.current
               const requestScopeKey = metadataDocumentScopeKey(requestScope)
+              const pageSize = documentPageSizeRef.current
               const result = await getDigitizationStatus(sessionId, {
                 includeDocuments: false,
                 summaryOnly: true,
-                limit: documentPageSize,
-                offset: documentPageIndexRef.current * documentPageSize,
+                limit: pageSize,
+                offset: documentPageIndexRef.current * pageSize,
                 metadataDocumentScope: requestScope,
               })
               if (
@@ -1069,7 +1153,6 @@ export function useOcrFolder(
       }
     },
     [
-      documentPageSize,
       refreshDocumentsForStatus,
       schedulePollRetry,
       sessionId,
@@ -1088,6 +1171,7 @@ export function useOcrFolder(
     documentPageIndex,
     documentPageSize,
     setDocumentPageIndex,
+    setDocumentPageSize,
     metadataDocumentScope,
     setMetadataDocumentScope,
     restartMetadata,
@@ -1193,6 +1277,170 @@ function mergeOcrPaginationTotal(
   return {
     ...current,
     total: next.total,
+  }
+}
+
+function createDocumentRangeCache(): DocumentRangeCache {
+  return {
+    jobsByOffset: new Map(),
+    status: null,
+    total: null,
+    documentsRevision: null,
+  }
+}
+
+function clearDocumentRangeCache(cache: DocumentRangeCache) {
+  cache.jobsByOffset.clear()
+  cache.status = null
+  cache.total = null
+  cache.documentsRevision = null
+}
+
+function cacheDocumentRange(
+  cache: DocumentRangeCache,
+  status: FolderStatusResponse
+) {
+  const nextRevision = revisionToken(status.documents_revision)
+  if (
+    cache.documentsRevision &&
+    nextRevision &&
+    cache.documentsRevision !== nextRevision
+  ) {
+    clearDocumentRangeCache(cache)
+  }
+
+  const offset = normalizedDocumentRangeOffset(status)
+  status.jobs.forEach((job, index) => {
+    cache.jobsByOffset.set(offset + index, job)
+  })
+  cache.status = status
+  cache.total = documentRangeTotal(status)
+  cache.documentsRevision = nextRevision ?? cache.documentsRevision
+}
+
+function getCachedDocumentRangeStatus(
+  cache: DocumentRangeCache,
+  range: CachedDocumentRange
+): FolderStatusResponse | null {
+  if (!cache.status) return null
+  const total = cache.total ?? documentRangeTotal(cache.status)
+  const offset = Math.max(0, Math.floor(Number(range.offset) || 0))
+  const limit = Math.max(1, Math.floor(Number(range.limit) || 1))
+  const end = total === null ? offset + limit : Math.min(offset + limit, total)
+  const jobs: JobSummary[] = []
+
+  for (let index = offset; index < end; index += 1) {
+    const job = cache.jobsByOffset.get(index)
+    if (!job) return null
+    jobs.push(job)
+  }
+
+  return {
+    ...cache.status,
+    jobs,
+    pagination: documentRangePagination(cache.status, {
+      offset,
+      limit,
+      returned: jobs.length,
+      total,
+    }),
+  }
+}
+
+function missingDocumentRanges(
+  cache: DocumentRangeCache,
+  range: CachedDocumentRange
+): CachedDocumentRange[] {
+  const offset = Math.max(0, Math.floor(Number(range.offset) || 0))
+  const limit = Math.max(1, Math.floor(Number(range.limit) || 1))
+  const total = cache.total ?? (cache.status ? documentRangeTotal(cache.status) : null)
+  const end = total === null ? offset + limit : Math.min(offset + limit, total)
+  const ranges: CachedDocumentRange[] = []
+  let missingStart: number | null = null
+
+  for (let index = offset; index < end; index += 1) {
+    if (!cache.jobsByOffset.has(index)) {
+      missingStart ??= index
+      continue
+    }
+    if (missingStart !== null) {
+      ranges.push({ offset: missingStart, limit: index - missingStart })
+      missingStart = null
+    }
+  }
+
+  if (missingStart !== null) {
+    ranges.push({ offset: missingStart, limit: end - missingStart })
+  }
+  return ranges
+}
+
+function updateCachedDocumentJobs(
+  cache: DocumentRangeCache,
+  documentsById: Map<number, JobSummary>
+) {
+  for (const [offset, job] of cache.jobsByOffset) {
+    const nextJob = documentsById.get(job.id)
+    if (nextJob) {
+      cache.jobsByOffset.set(offset, nextJob)
+    }
+  }
+  if (cache.status) {
+    cache.status = replaceCachedDocumentJobs(cache.status, documentsById)
+  }
+}
+
+function documentRangeKey({ offset, limit }: CachedDocumentRange): string {
+  return `${Math.max(0, Math.floor(Number(offset) || 0))}:${Math.max(
+    1,
+    Math.floor(Number(limit) || 1)
+  )}`
+}
+
+function sameDocumentRange(
+  left: CachedDocumentRange,
+  right: CachedDocumentRange
+): boolean {
+  return documentRangeKey(left) === documentRangeKey(right)
+}
+
+function normalizedDocumentRangeOffset(status: FolderStatusResponse): number {
+  return Math.max(0, Math.floor(Number(status.pagination?.offset ?? 0) || 0))
+}
+
+function documentRangeTotal(status: FolderStatusResponse): number | null {
+  const total = Number(
+    status.pagination?.total ??
+      Math.max(status.total_files, status.total_jobs, status.jobs.length)
+  )
+  return Number.isFinite(total) ? Math.max(0, Math.floor(total)) : null
+}
+
+function documentRangePagination(
+  status: FolderStatusResponse,
+  {
+    offset,
+    limit,
+    returned,
+    total,
+  }: {
+    offset: number
+    limit: number
+    returned: number
+    total: number | null
+  }
+): FolderStatusResponse["pagination"] {
+  const paginationTotal = total ?? Math.max(offset + returned, status.jobs.length)
+  const nextOffset = offset + returned
+  const hasMore = nextOffset < paginationTotal
+  return {
+    ...status.pagination,
+    total: paginationTotal,
+    limit,
+    offset,
+    returned,
+    has_more: hasMore,
+    next_offset: hasMore ? nextOffset : null,
   }
 }
 
@@ -1418,4 +1666,39 @@ function statusCountKey(status: string | null | undefined): string {
 function addOptionalCountDelta(count: number | undefined, delta: number) {
   if (count === undefined) return count
   return Math.max(0, count + delta)
+}
+
+function readStoredDocumentPageSize(): number {
+  if (typeof window === "undefined") return OCR_DOCUMENT_DEFAULT_PAGE_SIZE
+  try {
+    const storedValue = window.localStorage.getItem(
+      OCR_DOCUMENT_PAGE_SIZE_STORAGE_KEY
+    )
+    return storedValue === null
+      ? OCR_DOCUMENT_DEFAULT_PAGE_SIZE
+      : normalizeDocumentPageSize(Number(storedValue))
+  } catch {
+    return OCR_DOCUMENT_DEFAULT_PAGE_SIZE
+  }
+}
+
+function writeStoredDocumentPageSize(pageSize: number) {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.setItem(
+      OCR_DOCUMENT_PAGE_SIZE_STORAGE_KEY,
+      String(normalizeDocumentPageSize(pageSize))
+    )
+  } catch {
+    // Some browsers block localStorage in restricted contexts.
+  }
+}
+
+function normalizeDocumentPageSize(pageSize: number): number {
+  const numericValue = Math.floor(Number(pageSize))
+  if (!Number.isFinite(numericValue)) return OCR_DOCUMENT_DEFAULT_PAGE_SIZE
+  return Math.min(
+    OCR_DOCUMENT_MAX_PAGE_SIZE,
+    Math.max(OCR_DOCUMENT_MIN_PAGE_SIZE, numericValue)
+  )
 }

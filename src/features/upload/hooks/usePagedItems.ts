@@ -5,6 +5,9 @@ export const DEFAULT_PAGE_SIZE_OPTIONS = [5, 10, 25, 50, 100, 200, 500, 1000]
 interface UsePagedItemsOptions {
   defaultPageSize?: number
   pageSizeOptions?: number[]
+  allowCustomPageSize?: boolean
+  minPageSize?: number
+  maxPageSize?: number
   resetKey?: string | number | null
   storageKey?: string
 }
@@ -20,6 +23,9 @@ export function usePagedItems<T>(
   {
     defaultPageSize = 50,
     pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
+    allowCustomPageSize = false,
+    minPageSize = 1,
+    maxPageSize,
     resetKey = null,
     storageKey,
   }: UsePagedItemsOptions = {}
@@ -28,17 +34,25 @@ export function usePagedItems<T>(
     () => normalizePageSizeOptions(pageSizeOptions),
     [pageSizeOptions]
   )
+  const pageSizeBounds = useMemo(
+    () => normalizePageSizeBounds(minPageSize, maxPageSize),
+    [maxPageSize, minPageSize]
+  )
   const [pageState, setPageState] = useState<PageState>(() => ({
     pageIndex: 0,
     pageSize: normalizePageSize(
       readStoredPageSize(storageKey) ?? defaultPageSize,
-      normalizedOptions
+      normalizedOptions,
+      { allowCustomPageSize, pageSizeBounds }
     ),
     resetKey,
   }))
 
   const total = items.length
-  const pageSize = normalizePageSize(pageState.pageSize, normalizedOptions)
+  const pageSize = normalizePageSize(pageState.pageSize, normalizedOptions, {
+    allowCustomPageSize,
+    pageSizeBounds,
+  })
   const rawPageIndex = pageState.resetKey === resetKey ? pageState.pageIndex : 0
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
   const pageIndex = Math.min(Math.max(0, rawPageIndex), pageCount - 1)
@@ -70,7 +84,10 @@ export function usePagedItems<T>(
 
   const setPageSize = useCallback(
     (value: number) => {
-      const nextPageSize = normalizePageSize(value, normalizedOptions)
+      const nextPageSize = normalizePageSize(value, normalizedOptions, {
+        allowCustomPageSize,
+        pageSizeBounds,
+      })
       writeStoredPageSize(storageKey, nextPageSize)
       setPageState((current) => {
         if (
@@ -87,7 +104,13 @@ export function usePagedItems<T>(
         }
       })
     },
-    [normalizedOptions, resetKey, storageKey]
+    [
+      allowCustomPageSize,
+      normalizedOptions,
+      pageSizeBounds,
+      resetKey,
+      storageKey,
+    ]
   )
 
   return {
@@ -115,12 +138,50 @@ function normalizePageSizeOptions(options: number[]): number[] {
   return unique.length > 0 ? unique : DEFAULT_PAGE_SIZE_OPTIONS
 }
 
-function normalizePageSize(value: number, options: number[]): number {
+function normalizePageSize(
+  value: number,
+  options: number[],
+  {
+    allowCustomPageSize,
+    pageSizeBounds,
+  }: {
+    allowCustomPageSize: boolean
+    pageSizeBounds: PageSizeBounds
+  }
+): number {
   const numericValue = Math.floor(Number(value))
-  if (!Number.isFinite(numericValue) || numericValue <= 0) {
+  if (!Number.isFinite(numericValue)) {
     return options[0] ?? 50
   }
+  if (allowCustomPageSize) {
+    return clampPageSize(numericValue, pageSizeBounds)
+  }
+  if (numericValue <= 0) return options[0] ?? 50
   return options.includes(numericValue) ? numericValue : options[0]
+}
+
+interface PageSizeBounds {
+  min: number
+  max?: number
+}
+
+function normalizePageSizeBounds(
+  minPageSize: number,
+  maxPageSize: number | undefined
+): PageSizeBounds {
+  const min = Math.max(1, Math.floor(Number(minPageSize) || 1))
+  const rawMax = Math.floor(Number(maxPageSize))
+  return {
+    min,
+    max: Number.isFinite(rawMax) && rawMax >= min ? rawMax : undefined,
+  }
+}
+
+function clampPageSize(value: number, { min, max }: PageSizeBounds): number {
+  const floorValue = Math.floor(Number(value))
+  if (!Number.isFinite(floorValue)) return min
+  const minClamped = Math.max(min, floorValue)
+  return max === undefined ? minClamped : Math.min(max, minClamped)
 }
 
 function readStoredPageSize(storageKey: string | undefined): number | null {

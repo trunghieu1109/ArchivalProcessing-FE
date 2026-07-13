@@ -484,8 +484,13 @@ export function ProcessStepView(props: ProcessStepViewProps) {
                 pageCount={displayedPagination.pageCount}
                 startNumber={displayedPagination.startNumber}
                 endNumber={displayedPagination.endNumber}
+                pageSizeOptions={displayedPagination.pageSizeOptions}
+                allowCustomPageSize
+                minPageSize={displayedPagination.minPageSize}
+                maxPageSize={displayedPagination.maxPageSize}
                 itemLabel="tài liệu"
                 onPageChange={displayedPagination.setPageIndex}
+                onPageSizeChange={displayedPagination.setPageSize}
               />
             )}
           </div>

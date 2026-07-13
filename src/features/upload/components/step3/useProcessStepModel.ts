@@ -47,8 +47,10 @@ import {
   writeStoredReviewMode,
 } from "./ProcessStep.batchUtils"
 
-const METADATA_PAGE_SIZE_OPTIONS = [50]
+const METADATA_PAGE_SIZE_OPTIONS = [10, 20, 50, 100, 200, 500, 1000]
 const DEFAULT_METADATA_PAGE_SIZE = 50
+const MIN_METADATA_PAGE_SIZE = 1
+const MAX_METADATA_PAGE_SIZE = 1000
 
 interface UseProcessStepModelParams {
   sessionId: string | null
@@ -412,12 +414,25 @@ export function useProcessStepModel({
   const clientDisplayedPagination = usePagedItems(unpagedDisplayedItems, {
     defaultPageSize: DEFAULT_METADATA_PAGE_SIZE,
     pageSizeOptions: METADATA_PAGE_SIZE_OPTIONS,
+    allowCustomPageSize: true,
+    minPageSize: MIN_METADATA_PAGE_SIZE,
+    maxPageSize: MAX_METADATA_PAGE_SIZE,
     resetKey: `${sessionId ?? ""}:${reviewMode}:${batchMode}:${manualSplitActive ? "split" : "normal"}:${manualSelectedOnly ? "selected" : "all"}:${activeBatch?.index ?? "list"}:${normalizedMetadataFileFilter}`,
     storageKey: "archival-processing.metadata-display-page-size",
   })
   const serverPagination = metadataPagination?.pagination ?? null
   const useServerPaginationForDisplay =
     Boolean(metadataPagination) && !(manualSplitActive && manualSelectedOnly)
+  const setDisplayedPageSize = (pageSize: number) => {
+    clientDisplayedPagination.setPageSize(pageSize)
+    metadataPagination?.onPageSizeChange(pageSize)
+  }
+  const clientDisplayedPaginationForControls = {
+    ...clientDisplayedPagination,
+    minPageSize: MIN_METADATA_PAGE_SIZE,
+    maxPageSize: MAX_METADATA_PAGE_SIZE,
+    setPageSize: setDisplayedPageSize,
+  }
   const displayedItems = useServerPaginationForDisplay
     ? unpagedDisplayedItems
     : clientDisplayedPagination.items
@@ -426,9 +441,10 @@ export function useProcessStepModel({
       ? serverPaginationForControls(
           metadataPagination,
           serverPagination,
-          displayedItems.length
+          displayedItems.length,
+          setDisplayedPageSize
         )
-      : clientDisplayedPagination
+      : clientDisplayedPaginationForControls
   const displayedItemIdsKey = useMemo(
     () => displayedItems.map((item) => item.id).join("|"),
     [displayedItems]
@@ -1021,7 +1037,8 @@ export function useProcessStepModel({
 function serverPaginationForControls(
   controls: MetadataServerPaginationControls,
   pagination: MetadataServerPaginationControls["pagination"],
-  visibleItemCount: number
+  visibleItemCount: number,
+  onPageSizeChange: (pageSize: number) => void
 ) {
   const pageSize = Math.max(1, Math.floor(Number(controls.pageSize) || 1))
   const total = Math.max(
@@ -1048,7 +1065,11 @@ function serverPaginationForControls(
     pageCount,
     startNumber: total === 0 ? 0 : offset + 1,
     endNumber: total === 0 ? 0 : Math.min(total, offset + returned),
+    pageSizeOptions: METADATA_PAGE_SIZE_OPTIONS,
+    minPageSize: MIN_METADATA_PAGE_SIZE,
+    maxPageSize: MAX_METADATA_PAGE_SIZE,
     setPageIndex: controls.onPageChange,
+    setPageSize: onPageSizeChange,
   }
 }
 

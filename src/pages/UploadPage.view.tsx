@@ -392,6 +392,10 @@ export function UploadPageView(props: Record<string, any>) {
                     ocr.setDocumentPageIndex(pageIndex)
                     void ocr.refreshDocumentsPage({ pageIndex })
                   },
+                  onPageSizeChange: (pageSize: number) => {
+                    ocr.setDocumentPageSize(pageSize)
+                    void ocr.refreshDocumentsPage({ pageIndex: 0 })
+                  },
                 }}
                 metadataDocumentScope={ocr.metadataDocumentScope}
                 onMetadataDocumentScopeChange={(scope) => {

@@ -49,6 +49,7 @@ export interface MetadataServerPaginationControls {
   pageIndex: number
   pageSize: number
   onPageChange: (pageIndex: number) => void
+  onPageSizeChange: (pageSize: number) => void
 }
 
 export type { MetadataBatchSummary, MetadataDocumentScope }
