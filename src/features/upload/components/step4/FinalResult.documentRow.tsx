@@ -92,6 +92,23 @@ export function DocumentRow({
     "issued_date",
     "ngay_ban_hanh",
   ])
+  const issuedDay = metadataText(document.metadata, [
+    "issued_day",
+    "ngay_ban_hanh_ngay",
+    "ngay_tai_lieu",
+  ])
+  const issuedMonth = metadataText(document.metadata, [
+    "issued_month",
+    "ngay_ban_hanh_thang",
+    "thang_ban_hanh",
+    "thang_tai_lieu",
+  ])
+  const issuedYear = metadataText(document.metadata, [
+    "issued_year",
+    "ngay_ban_hanh_nam",
+    "nam_ban_hanh",
+    "nam_tai_lieu",
+  ])
   const docType = metadataText(document.metadata, [
     "document_type",
     "loai_van_ban",
@@ -99,6 +116,24 @@ export function DocumentRow({
   const documentNumber = metadataText(document.metadata, [
     "document_number",
     "so_ky_hieu",
+  ])
+  const documentNumberPart = metadataText(document.metadata, [
+    "document_number_part",
+    "document_number_value",
+    "so_hieu_tai_lieu_so",
+    "so_cua_tai_lieu",
+    "so_van_ban",
+  ])
+  const documentNotationPart = metadataText(document.metadata, [
+    "document_notation_part",
+    "document_notation",
+    "document_symbol",
+    "so_hieu_tai_lieu_hieu",
+    "ky_hieu_tai_lieu",
+    "ky_hieu_van_ban",
+    "hieu_tai_lieu",
+    "hieu_van_ban",
+    "hieu_cua_tai_lieu",
   ])
   const signer = metadataText(document.metadata, [
     "signer",
@@ -455,6 +490,48 @@ export function DocumentRow({
                 }
               />
               <EditablePreviewField
+                label="Ngày"
+                value={issuedDay}
+                fieldKey="issued_day"
+                draftValue={metadataDraft.issued_day ?? ""}
+                editing={editingMetadata}
+                saving={savingMetadata}
+                onChange={(value) =>
+                  setMetadataDraft((current) => ({
+                    ...current,
+                    issued_day: value,
+                  }))
+                }
+              />
+              <EditablePreviewField
+                label="Tháng"
+                value={issuedMonth}
+                fieldKey="issued_month"
+                draftValue={metadataDraft.issued_month ?? ""}
+                editing={editingMetadata}
+                saving={savingMetadata}
+                onChange={(value) =>
+                  setMetadataDraft((current) => ({
+                    ...current,
+                    issued_month: value,
+                  }))
+                }
+              />
+              <EditablePreviewField
+                label="Năm"
+                value={issuedYear}
+                fieldKey="issued_year"
+                draftValue={metadataDraft.issued_year ?? ""}
+                editing={editingMetadata}
+                saving={savingMetadata}
+                onChange={(value) =>
+                  setMetadataDraft((current) => ({
+                    ...current,
+                    issued_year: value,
+                  }))
+                }
+              />
+              <EditablePreviewField
                 label="Loại văn bản"
                 value={docType}
                 fieldKey="document_type"
@@ -479,6 +556,34 @@ export function DocumentRow({
                   setMetadataDraft((current) => ({
                     ...current,
                     document_number: value,
+                  }))
+                }
+              />
+              <EditablePreviewField
+                label="Số của tài liệu"
+                value={documentNumberPart}
+                fieldKey="document_number_part"
+                draftValue={metadataDraft.document_number_part ?? ""}
+                editing={editingMetadata}
+                saving={savingMetadata}
+                onChange={(value) =>
+                  setMetadataDraft((current) => ({
+                    ...current,
+                    document_number_part: value,
+                  }))
+                }
+              />
+              <EditablePreviewField
+                label="Hiệu của tài liệu"
+                value={documentNotationPart}
+                fieldKey="document_notation_part"
+                draftValue={metadataDraft.document_notation_part ?? ""}
+                editing={editingMetadata}
+                saving={savingMetadata}
+                onChange={(value) =>
+                  setMetadataDraft((current) => ({
+                    ...current,
+                    document_notation_part: value,
                   }))
                 }
               />
