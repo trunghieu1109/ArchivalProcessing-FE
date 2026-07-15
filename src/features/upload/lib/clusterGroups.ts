@@ -1,6 +1,7 @@
 import type {
   ClusterVersionResponse,
   DocumentNumberingMode,
+  SessionDossierSuggestion,
   SessionClusterSummary,
 } from "@/features/upload/api/sessionApi"
 import { buildDisplayMetadata } from "@/features/upload/lib/metadata"
@@ -33,6 +34,7 @@ export interface ClusterGroup {
   classificationStatus?: string | null
   createdFromTemporaryFolder?: boolean
   dossierId?: string | null
+  dossierStorageId?: string | null
   dossierNumber?: string | null
   boxNumber?: string | null
   folderName?: string | null
@@ -44,6 +46,7 @@ export interface ClusterGroup {
   language?: string | null
   usageMode?: string | null
   physicalCondition?: string | null
+  paperDossierId?: string | null
   note?: string | null
   classificationPath?: string[]
   retentionPeriod?: string | null
@@ -74,6 +77,7 @@ export interface ClusterDocument {
   documentNumberingMode?: DocumentNumberingMode | null
   requiresReview: boolean
   metadata: Record<string, unknown>
+  dossierSuggestions?: SessionDossierSuggestion[] | null
   clusterWarning: ClusterDocumentWarning | null
   pendingFeedback?: PendingClusterFeedbackMarker | null
 }
@@ -404,6 +408,7 @@ function clusterToGroup(
         sourcePageCount: dossierCounts.sourcePageCount,
         outputPageCount: dossierCounts.outputPageCount,
         documentNumberingMode: dossierCounts.documentNumberingMode,
+        dossierSuggestions: placement.dossier_suggestions ?? null,
         requiresReview:
           Boolean(placement.requires_review) || Boolean(clusterWarning),
         metadata,
@@ -474,6 +479,7 @@ function clusterToGroup(
       : (dossier?.dossier_id ?? cluster.dossier_id),
     clusterId: cluster.cluster_id,
     dossierId: isTemporary ? null : (dossier?.dossier_id ?? cluster.dossier_id),
+    dossierStorageId: dossier?.dossier_storage_id ?? null,
     isTemporary,
     createdFromTemporaryFolder:
       !isTemporary &&
@@ -495,6 +501,7 @@ function clusterToGroup(
     language: dossier?.language ?? null,
     usageMode: dossier?.usage_mode ?? null,
     physicalCondition: dossier?.physical_condition ?? null,
+    paperDossierId: dossier?.paper_dossier_id ?? null,
     note: dossier?.note ?? null,
     label: isTemporary
       ? TEMPORARY_FOLDER_NAME

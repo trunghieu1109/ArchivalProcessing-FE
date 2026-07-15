@@ -225,10 +225,16 @@ export async function restartDocumentMetadata(
 
 export async function getDocumentPreviewUrl(
   sessionId: string,
-  documentId: number
+  documentId: number,
+  options: { presentation?: string } = {}
 ): Promise<DocumentPreviewUrlResponse> {
+  const searchParams = new URLSearchParams()
+  if (options.presentation) {
+    searchParams.set("presentation", options.presentation)
+  }
+  const query = searchParams.toString()
   return requestJson<DocumentPreviewUrlResponse>(
-    `/sessions/${encodeURIComponent(sessionId)}/documents/${encodeURIComponent(String(documentId))}/preview-url`
+    `/sessions/${encodeURIComponent(sessionId)}/documents/${encodeURIComponent(String(documentId))}/preview-url${query ? `?${query}` : ""}`
   )
 }
 

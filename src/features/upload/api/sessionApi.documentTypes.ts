@@ -320,6 +320,7 @@ export interface MetadataSnapshotGroup {
   clusterId?: string
   label: string
   dossierId?: string | null
+  dossierStorageId?: string | null
   dossierNumber?: string | null
   boxNumber?: string | null
   folderName?: string | null
@@ -333,6 +334,7 @@ export interface MetadataSnapshotGroup {
   language?: string | null
   usageMode?: string | null
   physicalCondition?: string | null
+  paperDossierId?: string | null
   note?: string | null
   confidence?: number | null
   requiresReview?: boolean

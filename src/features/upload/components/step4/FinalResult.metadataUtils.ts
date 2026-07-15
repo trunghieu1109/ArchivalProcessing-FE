@@ -13,22 +13,14 @@ import type { SignatureTagKind } from "@/features/upload/lib/signatureStatus"
 
 export const UNKNOWN_YEAR_LABEL = "Không rõ năm"
 export interface DossierMetadataDraft {
-  archiveName: string
-  fondsName: string
-  inventoryNumber: string
-  boxNumber: string
-  dossierNumber: string
+  dossierStorageId: string
   informationSign: string
   title: string
-  annotation: string
   startDate: string
   endDate: string
   language: string
-  sheetCount: string
-  pageCount: string
   retentionPeriod: string
-  usageMode: string
-  physicalCondition: string
+  paperDossierId: string
   note: string
 }
 
@@ -39,22 +31,14 @@ export const DOSSIER_METADATA_EDIT_FIELDS: Array<{
   label: string
   rows: number
 }> = [
-  { key: "archiveName", label: "Tên kho lưu trữ", rows: 1 },
-  { key: "fondsName", label: "Tên phông", rows: 1 },
-  { key: "inventoryNumber", label: "Mục lục số", rows: 1 },
-  { key: "boxNumber", label: "Hộp số", rows: 1 },
-  { key: "dossierNumber", label: "Hồ sơ số", rows: 1 },
-  { key: "informationSign", label: "Ký hiệu thông tin", rows: 1 },
+  { key: "dossierStorageId", label: "Mã hồ sơ lưu trữ", rows: 1 },
   { key: "title", label: "Tiêu đề hồ sơ", rows: 4 },
-  { key: "annotation", label: "Chú giải", rows: 2 },
+  { key: "retentionPeriod", label: "Thời hạn lưu trữ", rows: 2 },
+  { key: "language", label: "Ngôn ngữ", rows: 1 },
   { key: "startDate", label: "Thời gian bắt đầu", rows: 1 },
   { key: "endDate", label: "Thời gian kết thúc", rows: 1 },
-  { key: "language", label: "Ngôn ngữ", rows: 1 },
-  { key: "sheetCount", label: "Số lượng tờ", rows: 1 },
-  { key: "pageCount", label: "Số lượng trang", rows: 1 },
-  { key: "retentionPeriod", label: "Thời hạn bảo quản", rows: 2 },
-  { key: "usageMode", label: "Chế độ sử dụng", rows: 1 },
-  { key: "physicalCondition", label: "Tình trạng vật lý", rows: 2 },
+  { key: "informationSign", label: "Ký hiệu thông tin", rows: 1 },
+  { key: "paperDossierId", label: "Mã hồ sơ gốc giấy", rows: 1 },
   { key: "note", label: "Ghi chú", rows: 2 },
 ]
 
@@ -62,24 +46,14 @@ export function createDossierMetadataDraft(
   group: ClusterGroup | null | undefined
 ): DossierMetadataDraft {
   return {
-    archiveName: group?.archiveName ?? "",
-    fondsName: group?.fondsName ?? "",
-    inventoryNumber: group?.inventoryNumber ?? "",
-    boxNumber: group?.boxNumber ?? "",
-    dossierNumber: group?.dossierNumber ?? "",
-    informationSign: group?.informationSign ?? "",
+    dossierStorageId: group?.dossierStorageId ?? "",
     title: group?.label ?? "",
-    annotation: group?.annotation ?? "",
+    retentionPeriod: group?.retentionPeriod ?? "",
+    language: group?.language ?? "",
     startDate: group?.startDate ?? "",
     endDate: group?.endDate ?? "",
-    language: group?.language ?? "",
-    sheetCount:
-      typeof group?.sheetCount === "number" ? String(group.sheetCount) : "",
-    pageCount:
-      typeof group?.pageCount === "number" ? String(group.pageCount) : "",
-    retentionPeriod: group?.retentionPeriod ?? "",
-    usageMode: group?.usageMode ?? "",
-    physicalCondition: group?.physicalCondition ?? "",
+    informationSign: group?.informationSign ?? "",
+    paperDossierId: group?.paperDossierId ?? "",
     note: group?.note ?? "",
   }
 }
@@ -92,28 +66,20 @@ export function dossierPatchPayloadFromDraft(
     keyof DossierMetadataDraft,
     [keyof SessionDossierPatchPayload, string | number | null]
   > = {
-    archiveName: ["archive_name", trimmedOrNull(draft.archiveName)],
-    fondsName: ["fonds_name", trimmedOrNull(draft.fondsName)],
-    inventoryNumber: ["inventory_number", trimmedOrNull(draft.inventoryNumber)],
-    boxNumber: ["box_number", trimmedOrNull(draft.boxNumber)],
-    dossierNumber: ["dossier_number", trimmedOrNull(draft.dossierNumber)],
-    informationSign: ["information_sign", trimmedOrNull(draft.informationSign)],
+    dossierStorageId: [
+      "dossier_storage_id",
+      trimmedOrNull(draft.dossierStorageId),
+    ],
     title: ["title", trimmedOrNull(draft.title)],
-    annotation: ["annotation", trimmedOrNull(draft.annotation)],
-    startDate: ["start_date", trimmedOrNull(draft.startDate)],
-    endDate: ["end_date", trimmedOrNull(draft.endDate)],
-    language: ["language", trimmedOrNull(draft.language)],
-    sheetCount: ["sheet_count", normalizedCountOrNull(draft.sheetCount)],
-    pageCount: ["page_count", normalizedCountOrNull(draft.pageCount)],
     retentionPeriod: [
       "retention_period",
       trimmedOrNull(draft.retentionPeriod),
     ],
-    usageMode: ["usage_mode", trimmedOrNull(draft.usageMode)],
-    physicalCondition: [
-      "physical_condition",
-      trimmedOrNull(draft.physicalCondition),
-    ],
+    language: ["language", trimmedOrNull(draft.language)],
+    startDate: ["start_date", trimmedOrNull(draft.startDate)],
+    endDate: ["end_date", trimmedOrNull(draft.endDate)],
+    informationSign: ["information_sign", trimmedOrNull(draft.informationSign)],
+    paperDossierId: ["paper_dossier_id", trimmedOrNull(draft.paperDossierId)],
     note: ["note", trimmedOrNull(draft.note)],
   }
   const payload: Record<string, string | number | null> = {}
@@ -137,6 +103,7 @@ export function updateDossierGroupFromResponse(
     return {
       ...group,
       dossierId: dossier.dossier_id ?? group.dossierId,
+      dossierStorageId: dossier.dossier_storage_id ?? group.dossierStorageId ?? null,
       dossierNumber: dossier.dossier_number ?? null,
       boxNumber: dossier.box_number ?? null,
       folderName: dossier.folder_name ?? null,
@@ -154,6 +121,7 @@ export function updateDossierGroupFromResponse(
         numericValue(dossier.page_count) ?? group.pageCount,
       usageMode: dossier.usage_mode ?? null,
       physicalCondition: dossier.physical_condition ?? null,
+      paperDossierId: dossier.paper_dossier_id ?? group.paperDossierId ?? null,
       note: dossier.note ?? null,
       manualMetadataFields:
         dossier.manual_metadata_fields ?? group.manualMetadataFields,
@@ -168,13 +136,6 @@ export function updateDossierGroupFromResponse(
       label: dossier.title || dossier.generated_title || group.label,
     }
   })
-}
-
-function normalizedCountOrNull(value: string): number | null {
-  const text = value.trim()
-  if (!text) return null
-  const parsed = Number(text)
-  return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : null
 }
 
 function numericValue(value: unknown): number | null {

@@ -31,6 +31,7 @@ export function ResultNode({
   dropTargetId,
   compact,
   selectedPreviewDocumentId,
+  selectedDossierSuggestionsDocumentId,
   selectedGroupInfoNodeId,
   selectedMetadataGroupId,
   selectedSessionDocumentIds,
@@ -50,6 +51,7 @@ export function ResultNode({
   onDropOnDossier,
   onSelectGroupInformation,
   onSelectPreview,
+  onSelectDossierSuggestions,
   onSelectDossierMetadata,
   onSaveDocumentMetadata,
   onPromoteTemporaryFolder,
@@ -61,6 +63,7 @@ export function ResultNode({
   dropTargetId: string | null
   compact: boolean
   selectedPreviewDocumentId: number | null
+  selectedDossierSuggestionsDocumentId: number | null
   selectedGroupInfoNodeId: string | null
   selectedMetadataGroupId: string | null
   selectedSessionDocumentIds: Set<number>
@@ -83,6 +86,7 @@ export function ResultNode({
   onDropOnDossier: (targetClusterId: string) => void
   onSelectGroupInformation: (node: ResultTreeNode) => void
   onSelectPreview: (document: ClusterDocument) => void
+  onSelectDossierSuggestions: (document: ClusterDocument) => void
   onSelectDossierMetadata: (group: ClusterGroup) => void
   onSaveDocumentMetadata: (
     document: ClusterDocument,
@@ -418,10 +422,15 @@ export function ResultNode({
                   selectedSessionDocumentIds.has(document.sessionDocumentId)
                 }
                 selectionDisabled={document.sessionDocumentId === null}
+                selectedDossierSuggestions={
+                  document.sessionDocumentId !== null &&
+                  document.sessionDocumentId === selectedDossierSuggestionsDocumentId
+                }
                 onToggleSelection={onToggleDocumentSelection}
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
                 onSelectPreview={onSelectPreview}
+                onSelectDossierSuggestions={onSelectDossierSuggestions}
                 onSaveMetadata={onSaveDocumentMetadata}
               />
             ))}
@@ -435,6 +444,9 @@ export function ResultNode({
               dropTargetId={dropTargetId}
               compact={compact}
               selectedPreviewDocumentId={selectedPreviewDocumentId}
+              selectedDossierSuggestionsDocumentId={
+                selectedDossierSuggestionsDocumentId
+              }
               selectedGroupInfoNodeId={selectedGroupInfoNodeId}
               selectedMetadataGroupId={selectedMetadataGroupId}
               selectedSessionDocumentIds={selectedSessionDocumentIds}
@@ -454,6 +466,7 @@ export function ResultNode({
               onDropOnDossier={onDropOnDossier}
               onSelectGroupInformation={onSelectGroupInformation}
               onSelectPreview={onSelectPreview}
+              onSelectDossierSuggestions={onSelectDossierSuggestions}
               onSelectDossierMetadata={onSelectDossierMetadata}
               onSaveDocumentMetadata={onSaveDocumentMetadata}
               onPromoteTemporaryFolder={onPromoteTemporaryFolder}

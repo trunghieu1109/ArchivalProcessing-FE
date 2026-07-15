@@ -18,6 +18,7 @@ import type {
   SessionDossierRetentionSuggestionResponse,
   SessionDossierSuggestionPayload,
   SessionDossierSummary,
+  SelectedDocumentDossierSuggestionsResponse,
   SessionDossierTitleSuggestionResponse,
   TemporaryFolderPromoteResponse,
 } from "./sessionApi.types"
@@ -199,6 +200,24 @@ export async function suggestSessionDossierRetention(
 ): Promise<SessionDossierRetentionSuggestionResponse> {
   return requestJson<SessionDossierRetentionSuggestionResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/retention-suggestions`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
+}
+
+export async function suggestSelectedDocumentDossiers(
+  sessionId: string,
+  payload: {
+    session_document_ids: number[]
+    cluster_version_id?: string | null
+    force_refresh?: boolean
+  }
+): Promise<SelectedDocumentDossierSuggestionsResponse> {
+  return requestJson<SelectedDocumentDossierSuggestionsResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/clusters/selected-documents/dossier-suggestions`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },

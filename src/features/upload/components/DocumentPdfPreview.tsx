@@ -47,6 +47,7 @@ interface DocumentPdfPreviewProps {
   document: DocumentPreviewTarget | null
   className?: string
   onClose?: () => void
+  presentation?: string
   enableBlankPageReview?: boolean
   onDocumentUpdated?: (document: SessionDocumentResponse) => void
 }
@@ -71,9 +72,11 @@ export function DocumentPdfPreview({
   document,
   className,
   onClose,
+  presentation,
   enableBlankPageReview = false,
   onDocumentUpdated,
 }: DocumentPdfPreviewProps) {
+  const isDossierReviewPresentation = presentation === "dossier_review"
   const [refreshKey, setRefreshKey] = useState(0)
   const manualRefreshRef = useRef(false)
   const previewResponseCacheRef = useRef<
@@ -180,7 +183,9 @@ export function DocumentPdfPreview({
       }))
 
       try {
-        const response = await getDocumentPreviewUrl(sessionId, documentId)
+        const response = await getDocumentPreviewUrl(sessionId, documentId, {
+          presentation,
+        })
         const variants = normalizePreviewVariants(response)
         const activeVariantKey = activeVariantKeyFromResponse(
           response,
@@ -227,7 +232,7 @@ export function DocumentPdfPreview({
       cancelled = true
       if (retryTimeout) clearTimeout(retryTimeout)
     }
-  }, [document, documentId, documentKey, refreshKey, sessionId])
+  }, [document, documentId, documentKey, presentation, refreshKey, sessionId])
 
   useEffect(() => {
     setSelectedVariantKey("")
@@ -341,7 +346,9 @@ export function DocumentPdfPreview({
             <p className="truncate text-[11px] text-[#64748B]">
               {document?.dataPath || "Preview PDF"}
             </p>
-            {selectedVariant && !enableBlankPageReview ? (
+            {selectedVariant &&
+            !enableBlankPageReview &&
+            !isDossierReviewPresentation ? (
               <p className="mt-0.5 truncate text-[11px] text-[#475569]">
                 {previewVariantSummary(selectedVariant) ||
                   selectedVariant.dataPath ||
@@ -351,7 +358,7 @@ export function DocumentPdfPreview({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {state.variants.length > 1 ? (
+          {state.variants.length > 1 && !isDossierReviewPresentation ? (
             <PreviewVariantSwitch
               variants={state.variants}
               selectedKey={selectedVariant?.key ?? ""}
@@ -404,6 +411,7 @@ export function DocumentPdfPreview({
           <PreviewPane
             variant={selectedVariant}
             reviewSourceVariant={originalVariant}
+            hideStatus={isDossierReviewPresentation}
             blankPageReview={
               enableBlankPageReview &&
               selectedVariant.key === "processed" &&
@@ -538,10 +546,12 @@ function PreviewVariantSwitch({
 function PreviewPane({
   variant,
   reviewSourceVariant,
+  hideStatus = false,
   blankPageReview,
 }: {
   variant: PreviewVariantState
   reviewSourceVariant?: PreviewVariantState | null
+  hideStatus?: boolean
   blankPageReview?: {
     submitting: boolean
     error: string
@@ -565,7 +575,7 @@ function PreviewPane({
 
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white">
-      {!blankPageReview ? (
+      {!blankPageReview && !hideStatus ? (
         <div className="flex items-center justify-between gap-3 border-b border-[#E2E8F0] px-4 py-2.5">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -623,7 +633,7 @@ function PreviewPane({
         </div>
       ) : null}
 
-      {hasBlankPageWarnings && !blankPageReview ? (
+      {hasBlankPageWarnings && !blankPageReview && !hideStatus ? (
         <div className="border-b border-amber-300 bg-amber-50 px-4 py-3.5 text-sm text-amber-900">
           <div className="flex items-start gap-3">
             <TriangleAlert className="mt-0.5 size-5 shrink-0 text-amber-600" />

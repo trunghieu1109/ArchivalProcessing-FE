@@ -81,6 +81,14 @@ const TEXT_VALUE_FIELD_KEYS = [
   "cn",
 ]
 const FIELD_ALIAS_GROUPS = [
+  ["document_identifier", "ma_dinh_danh_tai_lieu"],
+  [
+    "document_storage_id",
+    "document_archive_code",
+    "archive_document_code",
+    "document_code",
+    "ma_luu_tru_tai_lieu",
+  ],
   ["document_summary", "trich_yeu_tai_lieu", "trich_yeu"],
   ["long_summary", "summary"],
   ["document_type", "loai_van_ban", "loai_tai_lieu"],
@@ -108,6 +116,12 @@ const FIELD_ALIAS_GROUPS = [
   ["issued_day", "ngay_ban_hanh_ngay", "ngay_tai_lieu"],
   ["issued_month", "ngay_ban_hanh_thang", "thang_ban_hanh", "thang_tai_lieu"],
   ["issued_year", "ngay_ban_hanh_nam", "nam_ban_hanh", "nam_tai_lieu"],
+  ["language", "ngon_ngu", "document_language"],
+  ["information_sign", "information_symbol", "ky_hieu_thong_tin"],
+  ["keywords", "tu_khoa"],
+  ["autograph", "but_tich"],
+  ["physical_condition", "tinh_trang_vat_ly"],
+  ["note", "ghi_chu"],
   ["signer", "nguoi_ky", "nguoi ky", "nguoi_ki", "nguoi_ky_ten"],
   ["direct_target_subject", "doi_tuong_huong_toi"],
   ["mentioned_subjects", "doi_tuong_duoc_nhac_den", "chu_the_duoc_nhac_den"],

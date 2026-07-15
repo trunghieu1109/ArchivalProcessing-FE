@@ -77,34 +77,14 @@ export function DossierMetadataSidePanel({
     value: string
     wide?: boolean
   }> = [
-    { label: "Tên kho lưu trữ", value: group.archiveName ?? "" },
-    { label: "Tên phông", value: group.fondsName ?? "" },
-    { label: "Mục lục số", value: group.inventoryNumber ?? "" },
-    { label: "Hộp số", value: group.boxNumber ?? "" },
-    { label: "Hồ sơ số", value: group.dossierNumber ?? "" },
-    { label: "Ký hiệu thông tin", value: group.informationSign ?? "" },
+    { label: "Mã hồ sơ lưu trữ", value: group.dossierStorageId ?? "" },
     { label: "Tiêu đề hồ sơ", value: group.label, wide: true },
-    { label: "Chú giải", value: group.annotation ?? "", wide: true },
+    { label: "Thời hạn lưu trữ", value: group.retentionPeriod ?? "" },
+    { label: "Ngôn ngữ", value: group.language ?? "" },
     { label: "Thời gian bắt đầu", value: group.startDate ?? "" },
     { label: "Thời gian kết thúc", value: group.endDate ?? "" },
-    { label: "Ngôn ngữ", value: group.language ?? "" },
-    {
-      label: "Số lượng tờ",
-      value:
-        typeof group.sheetCount === "number" ? String(group.sheetCount) : "",
-    },
-    {
-      label: "Số lượng trang",
-      value:
-        typeof group.pageCount === "number" ? String(group.pageCount) : "",
-    },
-    { label: "Thời hạn bảo quản", value: group.retentionPeriod ?? "" },
-    { label: "Chế độ sử dụng", value: group.usageMode ?? "" },
-    {
-      label: "Tình trạng vật lý",
-      value: group.physicalCondition ?? "",
-      wide: true,
-    },
+    { label: "Ký hiệu thông tin", value: group.informationSign ?? "" },
+    { label: "Mã hồ sơ gốc giấy", value: group.paperDossierId ?? "" },
     { label: "Ghi chú", value: group.note ?? "", wide: true },
   ]
 

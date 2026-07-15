@@ -5,6 +5,7 @@ import {
   getClusterGroupInformationTable,
   listClusterFeedback,
   patchSessionDossier,
+  suggestSelectedDocumentDossiers,
   type ClusterGroupInformationTableResponse,
   type ClusterVersionResponse,
 } from "@/features/upload/api/sessionApi"
@@ -114,6 +115,13 @@ export function FinalResult({
   const [selectedPreviewDocumentId, setSelectedPreviewDocumentId] = useState<
     number | null
   >(null)
+  const [selectedDossierSuggestionsDocumentId, setSelectedDossierSuggestionsDocumentId] =
+    useState<number | null>(null)
+  const [dossierSuggestionsLoading, setDossierSuggestionsLoading] =
+    useState(false)
+  const [dossierSuggestionsRefreshing, setDossierSuggestionsRefreshing] =
+    useState(false)
+  const [dossierSuggestionsError, setDossierSuggestionsError] = useState("")
   const [selectedMetadataGroupId, setSelectedMetadataGroupId] = useState<
     string | null
   >(null)
@@ -132,6 +140,7 @@ export function FinalResult({
   const displayedClusterVersionRef = useRef<ClusterVersionResponse | null>(null)
   const metadataItemsRef = useRef(metadataItems)
   const lastFeedbackRequestKeyRef = useRef("")
+  const dossierSuggestionsRequestRef = useRef(0)
   const [clusterJobMode, setClusterJobMode] = useState<ClusterJobMode>("new")
   const [clusterProgressPhase, setClusterProgressPhase] = useState<
     string | null
@@ -221,6 +230,23 @@ export function FinalResult({
           ) ?? null)
         : null,
     [groups, selectedMetadataGroupId]
+  )
+  const selectedDossierSuggestionsDocument = useMemo(
+    () =>
+      selectedDossierSuggestionsDocumentId === null
+        ? null
+        : (groups
+            .flatMap((group) => group.documents)
+            .find(
+              (document) =>
+                document.sessionDocumentId ===
+                selectedDossierSuggestionsDocumentId
+            ) ?? null),
+    [groups, selectedDossierSuggestionsDocumentId]
+  )
+  const dossierSuggestionRepresentativeDocuments = useMemo(
+    () => previewDocuments.map((entry) => entry.document),
+    [previewDocuments]
   )
   const selectedGroupInfoNode = useMemo<ResultTreeNode | null>(
     () =>
@@ -527,6 +553,11 @@ export function FinalResult({
     setSelectedGroupInfoNodeId(null)
     setGroupInformationTable(null)
     setGroupInformationError("")
+    dossierSuggestionsRequestRef.current += 1
+    setSelectedDossierSuggestionsDocumentId(null)
+    setDossierSuggestionsLoading(false)
+    setDossierSuggestionsRefreshing(false)
+    setDossierSuggestionsError("")
   }, [displayedClusterVersionId])
 
   useFinalResultPolling({
@@ -685,6 +716,124 @@ export function FinalResult({
     },
     [handleSelectPreviewDocument]
   )
+
+  const handleCloseDossierSuggestions = useCallback(() => {
+    dossierSuggestionsRequestRef.current += 1
+    setSelectedDossierSuggestionsDocumentId(null)
+    setDossierSuggestionsLoading(false)
+    setDossierSuggestionsRefreshing(false)
+    setDossierSuggestionsError("")
+  }, [])
+
+  const handleSelectDossierSuggestionsFromTree = useCallback(
+    (document: ClusterDocument, forceRefresh = false) => {
+      setSelectedGroupInfoNodeId(null)
+      setGroupInformationTable(null)
+      setGroupInformationError("")
+      setSelectedPreviewDocumentId(null)
+      setSelectedMetadataGroupId(null)
+      setSelectedDossierSuggestionsDocumentId(document.sessionDocumentId)
+      setDossierSuggestionsError("")
+
+      if (document.sessionDocumentId === null) {
+        setDossierSuggestionsLoading(false)
+        setDossierSuggestionsRefreshing(false)
+        setDossierSuggestionsError(
+          "Tài liệu này chưa có mã trong session để lấy gợi ý hồ sơ."
+        )
+        return
+      }
+      if (
+        !forceRefresh &&
+        document.dossierSuggestions !== null &&
+        document.dossierSuggestions !== undefined
+      ) {
+        setDossierSuggestionsLoading(false)
+        setDossierSuggestionsRefreshing(false)
+        return
+      }
+      if (!sessionId) {
+        setDossierSuggestionsLoading(false)
+        setDossierSuggestionsRefreshing(false)
+        setDossierSuggestionsError("Chưa có phiên hồ sơ để lấy gợi ý.")
+        return
+      }
+
+      const requestId = dossierSuggestionsRequestRef.current + 1
+      dossierSuggestionsRequestRef.current = requestId
+      setDossierSuggestionsLoading(!forceRefresh)
+      setDossierSuggestionsRefreshing(forceRefresh)
+      void suggestSelectedDocumentDossiers(sessionId, {
+        session_document_ids: [document.sessionDocumentId],
+        cluster_version_id: displayedClusterVersionId ?? undefined,
+        force_refresh: forceRefresh,
+      })
+        .then((response) => {
+          if (dossierSuggestionsRequestRef.current !== requestId) {
+            return
+          }
+          const result = response.documents.find(
+            (item) => item.session_document_id === document.sessionDocumentId
+          )
+          if (!result) {
+            throw new Error("Backend không trả về gợi ý cho tài liệu này.")
+          }
+          setGroups((previous) =>
+            previous.map((group) => ({
+              ...group,
+              documents: group.documents.map((item) =>
+                item.sessionDocumentId === document.sessionDocumentId
+                  ? {
+                      ...item,
+                      dossierSuggestions: result.dossier_suggestions,
+                    }
+                  : item
+              ),
+            }))
+          )
+          const suggestionCount = result.dossier_suggestions.length
+          if (forceRefresh) {
+            toast.success(
+              suggestionCount > 0
+                ? `Đã tải lại ${suggestionCount} gợi ý hồ sơ.`
+                : "Đã tính xong nhưng chưa tìm thấy hồ sơ phù hợp."
+            )
+          }
+        })
+        .catch((err) => {
+          if (dossierSuggestionsRequestRef.current !== requestId) {
+            return
+          }
+          setDossierSuggestionsError(
+            err instanceof Error
+              ? err.message
+              : "Không thể tải danh sách hồ sơ được gợi ý."
+          )
+          if (forceRefresh) {
+            toast.error("Không thể tải lại gợi ý hồ sơ.")
+          }
+        })
+        .finally(() => {
+          if (dossierSuggestionsRequestRef.current === requestId) {
+            setDossierSuggestionsLoading(false)
+            setDossierSuggestionsRefreshing(false)
+          }
+        })
+    },
+    [displayedClusterVersionId, sessionId]
+  )
+
+  const handleRefreshDossierSuggestions = useCallback(() => {
+    if (!selectedDossierSuggestionsDocument) return
+    toast.info("Đang tải lại gợi ý hồ sơ...")
+    handleSelectDossierSuggestionsFromTree(
+      selectedDossierSuggestionsDocument,
+      true
+    )
+  }, [
+    handleSelectDossierSuggestionsFromTree,
+    selectedDossierSuggestionsDocument,
+  ])
 
   const handleSelectDossierMetadataFromTree = useCallback(
     (group: ClusterGroup) => {
@@ -926,6 +1075,8 @@ export function FinalResult({
       handleSaveDossierMetadata={handleSaveDossierMetadata}
       handleSaveDocumentMetadata={handleSaveDocumentMetadata}
       handleSelectDossierMetadata={handleSelectDossierMetadataFromTree}
+      handleSelectDossierSuggestions={handleSelectDossierSuggestionsFromTree}
+      handleRefreshDossierSuggestions={handleRefreshDossierSuggestions}
       handleSelectGroupInformation={handleSelectGroupInformation}
       handleSelectRetentionCandidate={handleSelectRetentionCandidate}
       handleSelectPreviewDocument={handleSelectPreviewDocumentFromTree}
@@ -938,6 +1089,7 @@ export function FinalResult({
       handleCloseGroupInformation={handleCloseGroupInformation}
       handleSelectGroupInfoDossier={handleSelectGroupInfoDossier}
       handleSelectGroupInfoDocument={handleSelectGroupInfoDocument}
+      handleCloseDossierSuggestions={handleCloseDossierSuggestions}
       loading={loading}
       loadingClusterVersionId={loadingClusterVersionId}
       movingSelectedDocumentsTargetId={movingSelectedDocumentsTargetId}
@@ -948,6 +1100,16 @@ export function FinalResult({
       pendingDossierCount={pendingDossierCount}
       pendingFeedbackCount={pendingFeedbackCount}
       previewDocument={previewDocument}
+      selectedDossierSuggestionsDocument={selectedDossierSuggestionsDocument}
+      dossierSuggestionRepresentativeDocuments={
+        dossierSuggestionRepresentativeDocuments
+      }
+      selectedDossierSuggestionsDocumentId={
+        selectedDossierSuggestionsDocumentId
+      }
+      dossierSuggestionsLoading={dossierSuggestionsLoading}
+      dossierSuggestionsRefreshing={dossierSuggestionsRefreshing}
+      dossierSuggestionsError={dossierSuggestionsError}
       previewLayoutRef={previewLayoutRef}
       previewWidthPercent={previewWidthPercent}
       previousDisplayVersion={previousDisplayVersion}

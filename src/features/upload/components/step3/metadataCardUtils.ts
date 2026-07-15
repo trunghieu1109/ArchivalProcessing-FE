@@ -4,20 +4,32 @@ import type { PdfMetadata } from "@/features/upload/types"
 export const METADATA_LABELS: Record<string, string> = {
   document: "Tài liệu",
   document_scan_issue: "Tài liệu",
+  document_identifier: "Mã định danh tài liệu",
+  ma_dinh_danh_tai_lieu: "Mã định danh tài liệu",
+  document_storage_id: "Mã lưu trữ tài liệu",
+  document_archive_code: "Mã lưu trữ tài liệu",
+  ma_luu_tru_tai_lieu: "Mã lưu trữ tài liệu",
   document_summary: "Trích yếu",
   trich_yeu_tai_lieu: "Trích yếu",
-  document_type: "Loại văn bản",
-  loai_van_ban: "Loại văn bản",
+  document_type: "Tên loại tài liệu",
+  loai_van_ban: "Tên loại tài liệu",
   document_number: "Số hiệu",
   so_hieu_tai_lieu: "Số hiệu",
   document_number_part: "Số của tài liệu",
   so_hieu_tai_lieu_so: "Số của tài liệu",
-  document_notation_part: "Hiệu của tài liệu",
-  so_hieu_tai_lieu_hieu: "Hiệu của tài liệu",
+  document_notation_part: "Ký hiệu của tài liệu",
+  so_hieu_tai_lieu_hieu: "Ký hiệu của tài liệu",
   issuing_agency: "Cơ quan ban hành",
   co_quan_ban_hanh: "Cơ quan ban hành",
   issued_date: "Ngày ban hành",
   ngay_ban_hanh: "Ngày ban hành",
+  language: "Ngôn ngữ",
+  information_sign: "Ký hiệu thông tin",
+  information_symbol: "Ký hiệu thông tin",
+  keywords: "Từ khóa",
+  autograph: "Bút tích",
+  physical_condition: "Tình trạng vật lý",
+  note: "Ghi chú",
   issued_day: "Ngày",
   issued_month: "Tháng",
   issued_year: "Năm",
@@ -26,28 +38,27 @@ export const METADATA_LABELS: Record<string, string> = {
   "nguoi ky": "Người ký",
 }
 
-const HIDDEN_METADATA_FIELD_KEYS = new Set([
-  "document_number",
-  "issued_day",
-  "issued_month",
-  "issued_year",
-])
-
 const ALL_METADATA_FIELDS = [
   {
-    key: "document_summary",
-    label: METADATA_LABELS.document_summary,
-    aliases: ["document_summary", "trich_yeu_tai_lieu", "trich_yeu"],
+    key: "document_identifier",
+    label: METADATA_LABELS.document_identifier,
+    aliases: ["document_identifier", "ma_dinh_danh_tai_lieu"],
+  },
+  {
+    key: "document_storage_id",
+    label: METADATA_LABELS.document_storage_id,
+    aliases: [
+      "document_storage_id",
+      "document_archive_code",
+      "archive_document_code",
+      "document_code",
+      "ma_luu_tru_tai_lieu",
+    ],
   },
   {
     key: "document_type",
     label: METADATA_LABELS.document_type,
     aliases: ["document_type", "loai_van_ban", "loai_tai_lieu"],
-  },
-  {
-    key: "document_number",
-    label: METADATA_LABELS.document_number,
-    aliases: ["document_number", "so_hieu_tai_lieu", "so_hieu", "so_ky_hieu"],
   },
   {
     key: "document_number_part",
@@ -76,50 +87,53 @@ const ALL_METADATA_FIELDS = [
     ],
   },
   {
-    key: "issuing_agency",
-    label: METADATA_LABELS.issuing_agency,
-    aliases: ["issuing_agency", "co_quan_ban_hanh", "don_vi_ban_hanh"],
-  },
-  {
     key: "issued_date",
     label: METADATA_LABELS.issued_date,
     aliases: ["issued_date", "ngay_ban_hanh", "ngay_thang_van_ban"],
   },
   {
-    key: "issued_day",
-    label: METADATA_LABELS.issued_day,
-    aliases: ["issued_day", "ngay_ban_hanh_ngay", "ngay_tai_lieu"],
+    key: "issuing_agency",
+    label: METADATA_LABELS.issuing_agency,
+    aliases: ["issuing_agency", "co_quan_ban_hanh", "don_vi_ban_hanh"],
   },
   {
-    key: "issued_month",
-    label: METADATA_LABELS.issued_month,
-    aliases: [
-      "issued_month",
-      "ngay_ban_hanh_thang",
-      "thang_ban_hanh",
-      "thang_tai_lieu",
-    ],
+    key: "document_summary",
+    label: METADATA_LABELS.document_summary,
+    aliases: ["document_summary", "trich_yeu_tai_lieu", "trich_yeu"],
   },
   {
-    key: "issued_year",
-    label: METADATA_LABELS.issued_year,
-    aliases: [
-      "issued_year",
-      "ngay_ban_hanh_nam",
-      "nam_ban_hanh",
-      "nam_tai_lieu",
-    ],
+    key: "language",
+    label: METADATA_LABELS.language,
+    aliases: ["language", "ngon_ngu", "document_language"],
   },
   {
-    key: "signer",
-    label: METADATA_LABELS.signer,
-    aliases: ["signer", "nguoi_ky", "nguoi ky", "nguoi_ki", "nguoi_ky_ten"],
+    key: "information_sign",
+    label: METADATA_LABELS.information_sign,
+    aliases: ["information_sign", "information_symbol", "ky_hieu_thong_tin"],
+  },
+  {
+    key: "keywords",
+    label: METADATA_LABELS.keywords,
+    aliases: ["keywords", "tu_khoa"],
+  },
+  {
+    key: "autograph",
+    label: METADATA_LABELS.autograph,
+    aliases: ["autograph", "but_tich"],
+  },
+  {
+    key: "physical_condition",
+    label: METADATA_LABELS.physical_condition,
+    aliases: ["physical_condition", "tinh_trang_vat_ly"],
+  },
+  {
+    key: "note",
+    label: METADATA_LABELS.note,
+    aliases: ["note", "ghi_chu"],
   },
 ] as const
 
-export const METADATA_FIELDS = ALL_METADATA_FIELDS.filter(
-  (field) => !HIDDEN_METADATA_FIELD_KEYS.has(field.key)
-)
+export const METADATA_FIELDS = ALL_METADATA_FIELDS
 
 export function metadataFieldText(
   metadata: Record<string, unknown>,
@@ -183,5 +197,6 @@ export function fieldHasWarning(
 export function metadataEditorRows(fieldKey: string): number {
   if (fieldKey === "document_summary") return 4
   if (fieldKey === "issuing_agency") return 3
+  if (fieldKey === "note") return 3
   return 2
 }

@@ -20,6 +20,7 @@ import { Metric } from "./FinalResult.documentRow"
 import { FinalResultFeedbackPanel } from "./FinalResult.feedbackPanel"
 import { ClusterGroupInformationPanel } from "./FinalResult.groupInfoPanel"
 import { DossierMetadataSidePanel } from "./FinalResult.sidePanel"
+import { DossierSuggestionsModal } from "./DossierSuggestionsModal"
 import { ResultNode } from "./FinalResult.resultNode"
 import {
   CLUSTER_PROGRESS_PHASES,
@@ -58,6 +59,7 @@ export function FinalResultView(props: Record<string, any>) {
     handleSaveDossierMetadata,
     handleSaveDocumentMetadata,
     handleSelectDossierMetadata,
+    handleSelectDossierSuggestions,
     handleSelectGroupInformation,
     handleSelectPreviewDocument,
     handleToggleDocumentSelection,
@@ -67,6 +69,8 @@ export function FinalResultView(props: Record<string, any>) {
     groupInformationLoading,
     groupInformationTable,
     handleCloseGroupInformation,
+    handleCloseDossierSuggestions,
+    handleRefreshDossierSuggestions,
     handleSelectGroupInfoDossier,
     handleSelectGroupInfoDocument,
     handleSelectRetentionCandidate,
@@ -80,6 +84,12 @@ export function FinalResultView(props: Record<string, any>) {
     pendingDossierCount,
     pendingFeedbackCount,
     previewDocument,
+    selectedDossierSuggestionsDocument,
+    dossierSuggestionRepresentativeDocuments,
+    selectedDossierSuggestionsDocumentId,
+    dossierSuggestionsLoading,
+    dossierSuggestionsRefreshing,
+    dossierSuggestionsError,
     previewLayoutRef,
     previewWidthPercent,
     previousDisplayVersion,
@@ -398,6 +408,9 @@ export function FinalResultView(props: Record<string, any>) {
                   dropTargetId={dropTargetId}
                   compact={sidePreviewOpen}
                   selectedPreviewDocumentId={selectedPreviewDocumentId}
+                  selectedDossierSuggestionsDocumentId={
+                    selectedDossierSuggestionsDocumentId
+                  }
                   selectedGroupInfoNodeId={selectedGroupInfoNodeId}
                   selectedMetadataGroupId={selectedMetadataGroupId}
                   selectedSessionDocumentIds={selectedSessionDocumentIds}
@@ -433,6 +446,7 @@ export function FinalResultView(props: Record<string, any>) {
                   onDropOnDossier={handleDropOnDossier}
                   onSelectGroupInformation={handleSelectGroupInformation}
                   onSelectPreview={handleSelectPreviewDocument}
+                  onSelectDossierSuggestions={handleSelectDossierSuggestions}
                   onSelectDossierMetadata={handleSelectDossierMetadata}
                   onSaveDocumentMetadata={handleSaveDocumentMetadata}
                   onPromoteTemporaryFolder={handlePromoteTemporaryFolder}
@@ -465,6 +479,7 @@ export function FinalResultView(props: Record<string, any>) {
               <DocumentPdfPreview
                 sessionId={sessionId}
                 document={previewDocument}
+                presentation="dossier_review"
                 className="h-[min(70svh,560px)] min-h-[420px] min-w-0"
                 onClose={() => setSelectedPreviewDocumentId(null)}
               />
@@ -487,7 +502,7 @@ export function FinalResultView(props: Record<string, any>) {
                 groupLabel={selectedGroupInfoNode.label}
                 loading={groupInformationLoading}
                 error={groupInformationError}
-                className="h-full min-h-[425px] max-w-full min-w-0"
+                className="h-[calc(min(70svh,560px)+65px)] min-h-[425px] max-w-full min-w-0"
                 sessionId={sessionId}
                 onClose={handleCloseGroupInformation}
                 onSelectDossier={handleSelectGroupInfoDossier}
@@ -499,6 +514,18 @@ export function FinalResultView(props: Record<string, any>) {
           </div>
         )}
       </div>
+      {selectedDossierSuggestionsDocument && (
+        <DossierSuggestionsModal
+          key={selectedDossierSuggestionsDocument.sessionDocumentId}
+          document={selectedDossierSuggestionsDocument}
+          representativeDocuments={dossierSuggestionRepresentativeDocuments}
+          loading={dossierSuggestionsLoading}
+          refreshing={dossierSuggestionsRefreshing}
+          error={dossierSuggestionsError}
+          onClose={handleCloseDossierSuggestions}
+          onRefresh={handleRefreshDossierSuggestions}
+        />
+      )}
       <FinalResultFeedbackPanel
         canRestoreFileRegisterVersion={canRestoreFileRegisterVersion}
         cancelingPendingFeedback={cancelingPendingFeedback}

@@ -11,6 +11,7 @@ import {
   FileText,
   GripVertical,
   Loader2,
+  ListChecks,
   Signature,
   X,
 } from "lucide-react"
@@ -47,10 +48,12 @@ export function DocumentRow({
   selected,
   selectionChecked,
   selectionDisabled,
+  selectedDossierSuggestions,
   onToggleSelection,
   onDragStart,
   onDragEnd,
   onSelectPreview,
+  onSelectDossierSuggestions,
   onSaveMetadata,
 }: {
   document: ClusterDocument
@@ -61,10 +64,12 @@ export function DocumentRow({
   selected: boolean
   selectionChecked: boolean
   selectionDisabled: boolean
+  selectedDossierSuggestions: boolean
   onToggleSelection: (sessionDocumentId: number, checked: boolean) => void
   onDragStart: (document: ClusterDocument, fromClusterId: string) => void
   onDragEnd: () => void
   onSelectPreview: (document: ClusterDocument) => void
+  onSelectDossierSuggestions: (document: ClusterDocument) => void
   onSaveMetadata: (
     document: ClusterDocument,
     clusterId: string,
@@ -84,10 +89,6 @@ export function DocumentRow({
     "title",
     "long_summary",
   ])
-  const agency = metadataText(document.metadata, [
-    "issuing_agency",
-    "co_quan_ban_hanh",
-  ])
   const issuedDate = metadataText(document.metadata, [
     "issued_date",
     "ngay_ban_hanh",
@@ -96,38 +97,10 @@ export function DocumentRow({
     "document_type",
     "loai_van_ban",
   ])
-  const documentNumberPart = metadataText(document.metadata, [
-    "document_number_part",
-    "document_number_value",
-    "so_hieu_tai_lieu_so",
-    "so_cua_tai_lieu",
-    "so_van_ban",
-  ])
-  const documentNotationPart = metadataText(document.metadata, [
-    "document_notation_part",
-    "document_notation",
-    "document_symbol",
-    "so_hieu_tai_lieu_hieu",
-    "ky_hieu_tai_lieu",
-    "ky_hieu_van_ban",
-    "hieu_tai_lieu",
-    "hieu_van_ban",
-    "hieu_cua_tai_lieu",
-  ])
-  const signer = metadataText(document.metadata, [
-    "signer",
-    "signer_name",
-    "nguoi_ky",
-    "nguoi ky",
-    "nguoi_ki",
-    "nguoi_ky_ten",
-    "ten_nguoi_ky",
-  ])
   const signatureTag = signatureTagInfo(document)
   const displaySummary = compact
     ? truncateWithDots(summary, 108)
     : truncateWithDots(summary, 190)
-  const metadataSummary = compact ? truncateWithDots(summary, 260) : summary
   const indentStep = compact ? 14 : 20
 
   const detailIndent = 8 + (depth + 1) * indentStep
@@ -336,6 +309,22 @@ export function DocumentRow({
         >
           <Eye className="size-3.5" />
         </Button>
+        <Button
+          type="button"
+          variant={selectedDossierSuggestions ? "default" : "outline"}
+          size="icon-sm"
+          draggable={false}
+          title="Xem hồ sơ được gợi ý"
+          aria-label="Xem hồ sơ được gợi ý"
+          className="mt-0.5 shrink-0"
+          onClick={(event) => {
+            event.stopPropagation()
+            onSelectDossierSuggestions(document)
+          }}
+          onDragStart={(event) => event.stopPropagation()}
+        >
+          <ListChecks className="size-3.5" />
+        </Button>
       </div>
 
       {expanded && (
@@ -419,116 +408,30 @@ export function DocumentRow({
                 onToggle={() => setShowWarningDetails((value) => !value)}
               />
             )}
-            <EditablePreviewField
-              label="Trích yếu"
-              value={metadataSummary}
-              fieldKey="document_summary"
-              draftValue={metadataDraft.document_summary ?? ""}
-              editing={editingMetadata}
-              saving={savingMetadata}
-              wide
-              onChange={(value) =>
-                setMetadataDraft((current) => ({
-                  ...current,
-                  document_summary: value,
-                }))
-              }
-            />
             <div
               className={cn(
                 "grid min-w-0 grid-cols-1 gap-2",
                 compact ? "md:grid-cols-2" : "md:grid-cols-3"
               )}
             >
-              <EditablePreviewField
-                label="Cơ quan ban hành"
-                value={agency}
-                fieldKey="issuing_agency"
-                draftValue={metadataDraft.issuing_agency ?? ""}
-                editing={editingMetadata}
-                saving={savingMetadata}
-                onChange={(value) =>
-                  setMetadataDraft((current) => ({
-                    ...current,
-                    issuing_agency: value,
-                  }))
-                }
-              />
-              <EditablePreviewField
-                label="Ngày ban hành"
-                value={issuedDate}
-                fieldKey="issued_date"
-                draftValue={metadataDraft.issued_date ?? ""}
-                editing={editingMetadata}
-                saving={savingMetadata}
-                onChange={(value) =>
-                  setMetadataDraft((current) => ({
-                    ...current,
-                    issued_date: value,
-                  }))
-                }
-              />
-              <EditablePreviewField
-                label="Loại văn bản"
-                value={docType}
-                fieldKey="document_type"
-                draftValue={metadataDraft.document_type ?? ""}
-                editing={editingMetadata}
-                saving={savingMetadata}
-                onChange={(value) =>
-                  setMetadataDraft((current) => ({
-                    ...current,
-                    document_type: value,
-                  }))
-                }
-              />
-              <EditablePreviewField
-                label="Số của tài liệu"
-                value={documentNumberPart}
-                fieldKey="document_number_part"
-                draftValue={metadataDraft.document_number_part ?? ""}
-                editing={editingMetadata}
-                saving={savingMetadata}
-                onChange={(value) =>
-                  setMetadataDraft((current) => ({
-                    ...current,
-                    document_number_part: value,
-                  }))
-                }
-              />
-              <EditablePreviewField
-                label="Hiệu của tài liệu"
-                value={documentNotationPart}
-                fieldKey="document_notation_part"
-                draftValue={metadataDraft.document_notation_part ?? ""}
-                editing={editingMetadata}
-                saving={savingMetadata}
-                onChange={(value) =>
-                  setMetadataDraft((current) => ({
-                    ...current,
-                    document_notation_part: value,
-                  }))
-                }
-              />
-              <EditablePreviewField
-                label="Người ký"
-                value={signer}
-                fieldKey="signer"
-                draftValue={metadataDraft.signer ?? ""}
-                editing={editingMetadata}
-                saving={savingMetadata}
-                icon={<Signature className="size-3" />}
-                onChange={(value) =>
-                  setMetadataDraft((current) => ({
-                    ...current,
-                    signer: value,
-                  }))
-                }
-              />
-              <PreviewField
-                label="Số trang"
-                value={String(document.pageCount ?? "")}
-              />
+              {METADATA_FIELDS.map((field) => (
+                <EditablePreviewField
+                  key={field.key}
+                  label={field.label}
+                  value={metadataFieldText(document.metadata, field.aliases)}
+                  fieldKey={field.key}
+                  draftValue={metadataDraft[field.key] ?? ""}
+                  editing={editingMetadata}
+                  saving={savingMetadata}
+                  wide={field.key === "document_summary"}
+                  onChange={(value) =>
+                    setMetadataDraft((current) => ({
+                      ...current,
+                      [field.key]: value,
+                    }))
+                  }
+                />
+              ))}
             </div>
           </div>
         </motion.div>

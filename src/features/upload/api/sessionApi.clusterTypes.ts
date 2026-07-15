@@ -65,7 +65,47 @@ export interface ClusterPlacement {
   source_page_count?: number | null
   output_page_count?: number | null
   document_numbering_mode?: DocumentNumberingMode | null
+  dossier_suggestions?: SessionDossierSuggestion[] | null
   metadata: Record<string, unknown>
+}
+
+export interface SessionDossierSuggestionRepresentativeDocument {
+  session_document_id: number
+  document_id: string
+  file_name: string
+  title?: string | null
+  issued_date?: string | null
+  document_number?: string | null
+}
+
+export interface SessionDossierSuggestion {
+  rank: number
+  session_dossier_id: number
+  dossier_id: string
+  cluster_id: string
+  title: string
+  best_other_similarity: number
+  representative_document_ids: string[]
+  representative_documents: SessionDossierSuggestionRepresentativeDocument[]
+  document_count: number
+}
+
+export interface SelectedDocumentDossierSuggestionsResponse {
+  session_id: string
+  cluster_version_id: string
+  version_number: number
+  force_refresh: boolean
+  top_k: number
+  cached_document_count: number
+  computed_document_count: number
+  documents: Array<{
+    session_document_id: number
+    document_id: string
+    current_cluster_id: string
+    current_dossier_id: string
+    source: "cache" | "computed" | string
+    dossier_suggestions: SessionDossierSuggestion[]
+  }>
 }
 
 export interface DossierClassification {
@@ -90,6 +130,7 @@ export interface SessionDossierSummary {
   dossier_number: string | null
   box_number: string | null
   folder_name: string | null
+  dossier_storage_id?: string | null
   retention_period: string | null
   notes?: string[]
   document_ids?: string[]
@@ -105,6 +146,7 @@ export interface SessionDossierSummary {
   sheet_count?: string | null
   usage_mode?: string | null
   physical_condition?: string | null
+  paper_dossier_id?: string | null
   note?: string | null
   retention_recommendation: Record<string, unknown>
   retention_override?: Record<string, unknown>
@@ -125,6 +167,7 @@ export interface SessionDossierPatchPayload {
   dossier_number?: string | null
   box_number?: string | null
   folder_name?: string | null
+  dossier_storage_id?: string | null
   retention_period?: string | null
   retention_candidate_entry_id?: string | null
   retention_candidate_version_id?: string | null
@@ -140,6 +183,7 @@ export interface SessionDossierPatchPayload {
   page_count?: number | string | null
   usage_mode?: string | null
   physical_condition?: string | null
+  paper_dossier_id?: string | null
   note?: string | null
   retention_recommendation?: Record<string, unknown> | null
   created_by?: string
