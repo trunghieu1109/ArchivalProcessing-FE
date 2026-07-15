@@ -92,30 +92,9 @@ export function DocumentRow({
     "issued_date",
     "ngay_ban_hanh",
   ])
-  const issuedDay = metadataText(document.metadata, [
-    "issued_day",
-    "ngay_ban_hanh_ngay",
-    "ngay_tai_lieu",
-  ])
-  const issuedMonth = metadataText(document.metadata, [
-    "issued_month",
-    "ngay_ban_hanh_thang",
-    "thang_ban_hanh",
-    "thang_tai_lieu",
-  ])
-  const issuedYear = metadataText(document.metadata, [
-    "issued_year",
-    "ngay_ban_hanh_nam",
-    "nam_ban_hanh",
-    "nam_tai_lieu",
-  ])
   const docType = metadataText(document.metadata, [
     "document_type",
     "loai_van_ban",
-  ])
-  const documentNumber = metadataText(document.metadata, [
-    "document_number",
-    "so_ky_hieu",
   ])
   const documentNumberPart = metadataText(document.metadata, [
     "document_number_part",
@@ -490,48 +469,6 @@ export function DocumentRow({
                 }
               />
               <EditablePreviewField
-                label="Ngày"
-                value={issuedDay}
-                fieldKey="issued_day"
-                draftValue={metadataDraft.issued_day ?? ""}
-                editing={editingMetadata}
-                saving={savingMetadata}
-                onChange={(value) =>
-                  setMetadataDraft((current) => ({
-                    ...current,
-                    issued_day: value,
-                  }))
-                }
-              />
-              <EditablePreviewField
-                label="Tháng"
-                value={issuedMonth}
-                fieldKey="issued_month"
-                draftValue={metadataDraft.issued_month ?? ""}
-                editing={editingMetadata}
-                saving={savingMetadata}
-                onChange={(value) =>
-                  setMetadataDraft((current) => ({
-                    ...current,
-                    issued_month: value,
-                  }))
-                }
-              />
-              <EditablePreviewField
-                label="Năm"
-                value={issuedYear}
-                fieldKey="issued_year"
-                draftValue={metadataDraft.issued_year ?? ""}
-                editing={editingMetadata}
-                saving={savingMetadata}
-                onChange={(value) =>
-                  setMetadataDraft((current) => ({
-                    ...current,
-                    issued_year: value,
-                  }))
-                }
-              />
-              <EditablePreviewField
                 label="Loại văn bản"
                 value={docType}
                 fieldKey="document_type"
@@ -542,20 +479,6 @@ export function DocumentRow({
                   setMetadataDraft((current) => ({
                     ...current,
                     document_type: value,
-                  }))
-                }
-              />
-              <EditablePreviewField
-                label="Số hiệu"
-                value={documentNumber}
-                fieldKey="document_number"
-                draftValue={metadataDraft.document_number ?? ""}
-                editing={editingMetadata}
-                saving={savingMetadata}
-                onChange={(value) =>
-                  setMetadataDraft((current) => ({
-                    ...current,
-                    document_number: value,
                   }))
                 }
               />

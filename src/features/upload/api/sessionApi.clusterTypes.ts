@@ -315,6 +315,8 @@ export interface ClusterGroupInformationRow {
   start_date?: string | null
   end_date?: string | null
   document_number: string
+  document_number_part?: string | null
+  document_notation_part?: string | null
   author: string
   retention_period: string
   basis: string

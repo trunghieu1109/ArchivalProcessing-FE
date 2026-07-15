@@ -26,7 +26,14 @@ export const METADATA_LABELS: Record<string, string> = {
   "nguoi ky": "Người ký",
 }
 
-export const METADATA_FIELDS = [
+const HIDDEN_METADATA_FIELD_KEYS = new Set([
+  "document_number",
+  "issued_day",
+  "issued_month",
+  "issued_year",
+])
+
+const ALL_METADATA_FIELDS = [
   {
     key: "document_summary",
     label: METADATA_LABELS.document_summary,
@@ -109,6 +116,10 @@ export const METADATA_FIELDS = [
     aliases: ["signer", "nguoi_ky", "nguoi ky", "nguoi_ki", "nguoi_ky_ten"],
   },
 ] as const
+
+export const METADATA_FIELDS = ALL_METADATA_FIELDS.filter(
+  (field) => !HIDDEN_METADATA_FIELD_KEYS.has(field.key)
+)
 
 export function metadataFieldText(
   metadata: Record<string, unknown>,

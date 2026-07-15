@@ -195,7 +195,7 @@ export function ClusterGroupInformationPanel({
           </div>
         ) : (
           <div className="h-full min-h-[320px] overflow-auto rounded-xl border border-[#D8E1EC] bg-white">
-            <table className="w-full min-w-[760px] table-fixed border-collapse text-left text-xs text-[#0F172A]">
+            <table className="w-full min-w-[840px] table-fixed border-collapse text-left text-xs text-[#0F172A]">
               <thead className="sticky top-0 z-10 bg-white shadow-[0_1px_0_#CBD5E1]">
                 <tr>
                   <HeaderCell className="w-12">Hồ sơ số</HeaderCell>
@@ -206,7 +206,8 @@ export function ClusterGroupInformationPanel({
                   <HeaderCell className="w-24">
                     Ngày ĐB&KT/Ngày tháng VB
                   </HeaderCell>
-                  <HeaderCell className="w-24">Số, ký hiệu văn bản</HeaderCell>
+                  <HeaderCell className="w-20">Số văn bản</HeaderCell>
+                  <HeaderCell className="w-20">Hiệu văn bản</HeaderCell>
                   <HeaderCell className="w-24">Tác giả văn bản</HeaderCell>
                   <HeaderCell className="w-20">Thời hạn bảo quản</HeaderCell>
                   <HeaderCell className="w-24">Căn cứ</HeaderCell>
@@ -293,7 +294,10 @@ function GroupInformationRow({
         {row.date_text}
       </BodyCell>
       <BodyCell className="align-top [overflow-wrap:anywhere] whitespace-normal">
-        {row.document_number}
+        {row.document_number_part}
+      </BodyCell>
+      <BodyCell className="align-top [overflow-wrap:anywhere] whitespace-normal">
+        {row.document_notation_part}
       </BodyCell>
       <BodyCell className="align-top [overflow-wrap:anywhere] whitespace-normal">
         {row.author}

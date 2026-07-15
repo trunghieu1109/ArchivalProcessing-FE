@@ -100,16 +100,12 @@ function signatureTagClass(kind: SignatureTagKind): string {
 
 const METADATA_LABELS: Record<string, string> = {
   loai_van_ban: "Loại văn bản",
-  so_hieu_tai_lieu: "Số hiệu",
   so_hieu_tai_lieu_so: "Số của tài liệu",
   so_hieu_tai_lieu_hieu: "Hiệu của tài liệu",
   document_number_part: "Số của tài liệu",
   document_notation_part: "Hiệu của tài liệu",
   co_quan_ban_hanh: "Cơ quan ban hành",
   ngay_ban_hanh: "Ngày ban hành",
-  issued_day: "Ngày",
-  issued_month: "Tháng",
-  issued_year: "Năm",
   trich_yeu_tai_lieu: "Trích yếu",
   mentioned_subjects: "Đối tượng đề cập",
   direct_target_subject: "Đối tượng hướng tới",
