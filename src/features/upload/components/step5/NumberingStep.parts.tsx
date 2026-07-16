@@ -39,6 +39,7 @@ import {
 
 export type DossierUpdateMode = "auto" | "manual"
 export type NumberingUpdateMode = DossierUpdateMode | "cascade"
+const METADATA_COUNT_CONFLICT_WARNING_ENABLED = false
 
 export function NumberingStepHeader({
   modeLabel,
@@ -401,7 +402,9 @@ export function NumberingMetadataPanel({
   onExportMetadata: () => void | Promise<unknown>
   onImportMetadataBoxNumbers: (file: File | null) => void | Promise<unknown>
 }) {
-  const countConflicts = metadataImportReview?.count_conflicts ?? []
+  const countConflicts = METADATA_COUNT_CONFLICT_WARNING_ENABLED
+    ? metadataImportReview?.count_conflicts ?? []
+    : []
 
   return (
     <div className="rounded-2xl border border-[#CBD5E1] bg-white px-5 py-4 shadow-sm">

@@ -63,6 +63,7 @@ const NUMBERING_DOCUMENT_REFRESH_EVERY = 3
 const NUMBERING_PAGE_SIZE = 10
 const NUMBERING_NAVIGATOR_PAGE_SIZE = 1000
 const EMPTY_NUMBERING_DOCUMENTS: NumberingDocumentStatus[] = []
+const METADATA_COUNT_CONFLICT_WARNING_ENABLED = false
 type MetadataImportReview = {
   file: File
   response: MetadataBoxNumberImportResponse
@@ -786,8 +787,14 @@ export function NumberingStep({
           created_by: "ui",
           confirm_count_conflicts: options.confirmCountConflicts,
         })
-        const countConflicts = result.count_conflicts ?? []
-        if (result.requires_confirmation && countConflicts.length > 0) {
+        const countConflicts = METADATA_COUNT_CONFLICT_WARNING_ENABLED
+          ? result.count_conflicts ?? []
+          : []
+        if (
+          METADATA_COUNT_CONFLICT_WARNING_ENABLED &&
+          result.requires_confirmation &&
+          countConflicts.length > 0
+        ) {
           setMetadataImportReview({ file, response: result })
           toast.warning(
             `Có ${countConflicts.length} hồ sơ không đồng nhất ${
@@ -1058,24 +1065,29 @@ export function NumberingStep({
     [status?.documents]
   )
   const persistedMetadataCountConflicts = useMemo(
-    () => [
-      ...((status?.dossiers ?? []).flatMap(
-        (dossier) => dossier.pending_count_conflicts ?? []
-      ) ?? []),
-      ...((status?.documents ?? []).flatMap(
-        (document) => document.pending_count_conflicts ?? []
-      ) ?? []),
-    ],
+    () =>
+      METADATA_COUNT_CONFLICT_WARNING_ENABLED
+        ? [
+            ...((status?.dossiers ?? []).flatMap(
+              (dossier) => dossier.pending_count_conflicts ?? []
+            ) ?? []),
+            ...((status?.documents ?? []).flatMap(
+              (document) => document.pending_count_conflicts ?? []
+            ) ?? []),
+          ]
+        : [],
     [status?.dossiers, status?.documents]
   )
   const metadataCountConflictsByDossier = useMemo(
     () =>
-      groupMetadataCountConflicts(
-        [
-          ...persistedMetadataCountConflicts,
-          ...(metadataImportReview?.response.count_conflicts ?? []),
-        ]
-      ),
+      METADATA_COUNT_CONFLICT_WARNING_ENABLED
+        ? groupMetadataCountConflicts(
+            [
+              ...persistedMetadataCountConflicts,
+              ...(metadataImportReview?.response.count_conflicts ?? []),
+            ]
+          )
+        : new Map<string, MetadataCountConflict[]>(),
     [metadataImportReview, persistedMetadataCountConflicts]
   )
   const normalizedNumberingFilter = useMemo(
