@@ -189,6 +189,7 @@ export interface NumberingDocumentStatus {
   blank_pages: number[]
   blank_page_warnings?: BlankPageWarning[]
   image_warning_pages?: number[]
+  pending_count_conflicts?: MetadataCountConflict[]
   numbering_pages?: number[]
   numbering_entries?: Array<{
     page_number: number
@@ -217,6 +218,7 @@ export interface NumberingDossierStatus {
   box_number?: string | null
   hoso_id?: string | null
   hop_id?: string | null
+  pending_count_conflicts?: MetadataCountConflict[]
   document_count: number
   status_counts: Record<string, number>
 }

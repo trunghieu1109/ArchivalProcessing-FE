@@ -143,13 +143,15 @@ export interface SessionDossierSummary {
   start_date?: string | null
   end_date?: string | null
   language?: string | null
-  sheet_count?: string | null
+  sheet_count?: number | string | null
   usage_mode?: string | null
   physical_condition?: string | null
   paper_dossier_id?: string | null
   note?: string | null
   retention_recommendation: Record<string, unknown>
   retention_override?: Record<string, unknown>
+  pending_metadata_import?: Record<string, unknown>
+  pending_count_conflicts?: Array<Record<string, unknown>>
   manual_metadata_fields?: string[]
   metadata_revision?: number
   classification_status?: "current" | "pending" | "running" | "failed" | string
@@ -179,7 +181,7 @@ export interface SessionDossierPatchPayload {
   start_date?: string | null
   end_date?: string | null
   language?: string | null
-  sheet_count?: string | null
+  sheet_count?: number | string | null
   page_count?: number | string | null
   usage_mode?: string | null
   physical_condition?: string | null

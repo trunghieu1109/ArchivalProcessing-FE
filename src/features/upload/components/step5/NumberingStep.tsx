@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   AlertTriangle,
+  Check,
   ChevronLeft,
   ChevronRight,
   ListChecks,
   Loader2,
+  RotateCcw,
   Search,
   Target,
   X,
@@ -17,16 +19,20 @@ import {
   downloadArtifact,
   enqueueDocumentNumbering,
   exportMetadataSnapshot,
+  clearMetadataBoxNumberPendingCounts,
   getDocumentNumberingStatus,
   getDocumentPreviewUrl,
   getNumberedDocumentPreviewUrl,
   getNumberingStyles,
   importMetadataBoxNumbers as importMetadataBoxNumbersApi,
+  patchSessionDossier,
   updateDocumentNumberingFromPage,
   type DocumentNumberingMode,
   type DocumentNumberingStylePreset,
   type MetadataBoxNumberImportResponse,
+  type MetadataCountConflict,
   type NumberingDocumentStatus,
+  type SessionDossierPatchPayload,
   type NumberingStatusResponse,
   type NumberingStyleOption,
 } from "@/features/upload/api/sessionApi"
@@ -190,8 +196,6 @@ export function NumberingStep({
   const [metadataImporting, setMetadataImporting] = useState(false)
   const [metadataImportReview, setMetadataImportReview] =
     useState<MetadataImportReview | null>(null)
-  const [metadataConflictListCollapsed, setMetadataConflictListCollapsed] =
-    useState(false)
   const metadataImportInputRef = useRef<HTMLInputElement | null>(null)
   const numberingPageCacheSessionRef = useRef<string | null>(null)
   const numberingPageCacheRef = useRef<Map<number, NumberingStatusResponse>>(
@@ -235,7 +239,6 @@ export function NumberingStep({
     numberingDocumentsRevisionRef.current = null
     setNumberingPageIndex(0)
     setMetadataImportReview(null)
-    setMetadataConflictListCollapsed(false)
   }, [sessionId])
 
   useEffect(() => {
@@ -786,7 +789,6 @@ export function NumberingStep({
         const countConflicts = result.count_conflicts ?? []
         if (result.requires_confirmation && countConflicts.length > 0) {
           setMetadataImportReview({ file, response: result })
-          setMetadataConflictListCollapsed(false)
           toast.warning(
             `Có ${countConflicts.length} hồ sơ không đồng nhất ${
               result.numbering_mode === "sheet" ? "số tờ" : "số trang"
@@ -827,22 +829,106 @@ export function NumberingStep({
     [refreshStatus, sessionId]
   )
 
-  const confirmMetadataCountConflicts = useCallback(async () => {
-    if (!metadataImportReview) return
-    await importMetadataBoxNumbers(metadataImportReview.file, {
-      confirmCountConflicts: true,
-    })
-  }, [importMetadataBoxNumbers, metadataImportReview])
+  const removeLocalMetadataCountConflicts = useCallback(
+    (resolvedConflicts: MetadataCountConflict[]) => {
+      const resolvedKeys = new Set(
+        resolvedConflicts.map(
+          (conflict) =>
+            `${conflict.session_dossier_id}:${conflict.dossier_id}:${conflict.field}`
+        )
+      )
+      setMetadataImportReview((current) => {
+        if (!current) return current
+        const remainingConflicts = (current.response.count_conflicts ?? []).filter(
+          (conflict) =>
+            !resolvedKeys.has(
+              `${conflict.session_dossier_id}:${conflict.dossier_id}:${conflict.field}`
+            )
+        )
+        if (remainingConflicts.length <= 0) return null
+        return {
+          ...current,
+          response: {
+            ...current.response,
+            count_conflicts: remainingConflicts,
+            count_conflict_count: remainingConflicts.length,
+            pending_count_updates: remainingConflicts.length,
+            requires_confirmation: true,
+          },
+        }
+      })
+    },
+    []
+  )
 
-  const keepOldMetadataCounts = useCallback(() => {
-    setMetadataImportReview(null)
-    setMetadataConflictListCollapsed(false)
-    toast.info(
-      `Đã giữ ${
-        documentNumberingMode === "sheet" ? "số tờ" : "số trang"
-      } cũ của hồ sơ.`
-    )
-  }, [documentNumberingMode])
+  const keepOldMetadataCountsForDossier = useCallback(async (
+    conflicts: MetadataCountConflict[]
+  ) => {
+    if (!sessionId || conflicts.length <= 0) return
+    const firstConflict = conflicts[0]
+    setMetadataImporting(true)
+    setError("")
+    try {
+      await clearMetadataBoxNumberPendingCounts(sessionId, {
+        created_by: "ui",
+        dossier_id: firstConflict.dossier_id || firstConflict.cluster_id,
+        session_dossier_id: firstConflict.session_dossier_id,
+        fields: conflicts.map((conflict) => conflict.field),
+      })
+      removeLocalMetadataCountConflicts(conflicts)
+      await refreshStatus({ silent: true, force: true })
+      toast.info(
+        `Đã giữ số cũ cho hồ sơ "${firstConflict.dossier_title || firstConflict.dossier_id}".`
+      )
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Không thể xóa cảnh báo xung đột số tờ/số trang."
+      setError(message)
+      toast.error(message)
+    } finally {
+      setMetadataImporting(false)
+    }
+  }, [refreshStatus, removeLocalMetadataCountConflicts, sessionId])
+
+  const confirmMetadataCountConflictsForDossier = useCallback(async (
+    conflicts: MetadataCountConflict[]
+  ) => {
+    if (!sessionId || conflicts.length <= 0) return
+    const firstConflict = conflicts[0]
+    const payload: SessionDossierPatchPayload = { created_by: "ui" }
+    for (const conflict of conflicts) {
+      if (conflict.field === "page_count") {
+        payload.page_count = conflict.new_value
+      } else {
+        payload.sheet_count = conflict.new_value
+      }
+    }
+    setMetadataImporting(true)
+    setError("")
+    try {
+      await patchSessionDossier(
+        sessionId,
+        firstConflict.dossier_id || firstConflict.cluster_id,
+        payload
+      )
+      removeLocalMetadataCountConflicts(conflicts)
+      await refreshStatus({ silent: true, force: true })
+      toast.success(
+        `Đã dùng số mới cho hồ sơ "${firstConflict.dossier_title || firstConflict.dossier_id}".`
+      )
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Không thể xác nhận dùng số mới cho hồ sơ."
+      setError(message)
+      toast.error(message)
+    } finally {
+      setMetadataImporting(false)
+    }
+  }, [refreshStatus, removeLocalMetadataCountConflicts, sessionId])
 
   useEffect(() => {
     void refreshStatus()
@@ -970,6 +1056,27 @@ export function NumberingStep({
   const documentsByDossier = useMemo(
     () => groupDocumentsByDossier(status?.documents ?? []),
     [status?.documents]
+  )
+  const persistedMetadataCountConflicts = useMemo(
+    () => [
+      ...((status?.dossiers ?? []).flatMap(
+        (dossier) => dossier.pending_count_conflicts ?? []
+      ) ?? []),
+      ...((status?.documents ?? []).flatMap(
+        (document) => document.pending_count_conflicts ?? []
+      ) ?? []),
+    ],
+    [status?.dossiers, status?.documents]
+  )
+  const metadataCountConflictsByDossier = useMemo(
+    () =>
+      groupMetadataCountConflicts(
+        [
+          ...persistedMetadataCountConflicts,
+          ...(metadataImportReview?.response.count_conflicts ?? []),
+        ]
+      ),
+    [metadataImportReview, persistedMetadataCountConflicts]
   )
   const normalizedNumberingFilter = useMemo(
     () => normalizeSearchText(numberingFilter),
@@ -1310,14 +1417,8 @@ export function NumberingStep({
         metadataExporting={metadataExporting}
         metadataImporting={metadataImporting}
         metadataImportReview={metadataImportReview?.response ?? null}
-        metadataConflictListCollapsed={metadataConflictListCollapsed}
         onExportMetadata={exportMetadata}
         onImportMetadataBoxNumbers={importMetadataBoxNumbers}
-        onToggleMetadataConflictList={() =>
-          setMetadataConflictListCollapsed((collapsed) => !collapsed)
-        }
-        onKeepOldMetadataCounts={keepOldMetadataCounts}
-        onConfirmMetadataCountConflicts={confirmMetadataCountConflicts}
       />
       {(status?.active || progressMessage || starting) && (
         <ProgressTimeline
@@ -1461,6 +1562,23 @@ export function NumberingStep({
                   Boolean(status?.active) ||
                   updatingDocumentId !== null ||
                   retryingDocumentId !== null
+                const firstDocument = group.documents[0]
+                const metadataCountConflicts =
+                  metadataCountConflictsByDossier.get(group.dossierId) ??
+                  metadataCountConflictsByDossier.get(
+                    firstDocument?.cluster_id ?? ""
+                  ) ??
+                  []
+                const oldCountChoiceLabel =
+                  formatMetadataCountChoiceLabel(
+                    metadataCountConflicts,
+                    "old"
+                  )
+                const newCountChoiceLabel =
+                  formatMetadataCountChoiceLabel(
+                    metadataCountConflicts,
+                    "new"
+                  )
                 return (
                 <section key={group.dossierId} className="px-4 py-3">
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -1478,6 +1596,50 @@ export function NumberingStep({
                           label="Hộp số"
                           value={group.boxNumber}
                         />
+                        {metadataCountConflicts.map((conflict) => (
+                          <span
+                            key={`${conflict.field}:${conflict.old_value}:${conflict.new_value}`}
+                            title={`Cũ: ${conflict.old_value} · Mới: ${conflict.new_value}`}
+                            className="inline-flex shrink-0 items-center rounded-full border border-[#F59E0B] bg-[#FFFBEB] px-2 py-0.5 text-[10px] font-semibold text-[#92400E]"
+                          >
+                            <AlertTriangle className="mr-1 size-3" />
+                            {conflict.tag}
+                          </span>
+                        ))}
+                        {metadataCountConflicts.length > 0 ? (
+                          <span className="inline-flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void keepOldMetadataCountsForDossier(
+                                  metadataCountConflicts
+                                )
+                              }
+                              disabled={metadataBusy || active}
+                              title="Giữ số cũ cho hồ sơ này"
+                              className="inline-flex h-6 items-center gap-1 rounded-md border border-[#F59E0B] bg-white px-2 text-[10px] font-semibold text-[#92400E] transition-colors hover:bg-[#FFFBEB] disabled:pointer-events-none disabled:opacity-50"
+                            >
+                              <RotateCcw className="size-3" />
+                              Giữ số cũ
+                              {oldCountChoiceLabel ? ` (${oldCountChoiceLabel})` : ""}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void confirmMetadataCountConflictsForDossier(
+                                  metadataCountConflicts
+                                )
+                              }
+                              disabled={metadataBusy || active}
+                              title="Dùng số mới cho hồ sơ này"
+                              className="inline-flex h-6 items-center gap-1 rounded-md bg-[#0052FF] px-2 text-[10px] font-semibold text-white transition-colors hover:bg-[#0046D8] disabled:pointer-events-none disabled:opacity-50"
+                            >
+                              <Check className="size-3" />
+                              Dùng số mới
+                              {newCountChoiceLabel ? ` (${newCountChoiceLabel})` : ""}
+                            </button>
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                     {hasNewNumberingDocuments ? (
@@ -1845,6 +2007,51 @@ function mergeNumberingPaginationTotal(
     ...current,
     total: next.total,
   }
+}
+
+function groupMetadataCountConflicts(
+  conflicts: MetadataCountConflict[]
+): Map<string, MetadataCountConflict[]> {
+  const grouped = new Map<string, MetadataCountConflict[]>()
+  const signaturesByKey = new Map<string, Set<string>>()
+  for (const conflict of conflicts) {
+    const keys = new Set(
+      [conflict.dossier_id, conflict.cluster_id]
+        .map((key) => String(key || "").trim())
+        .filter(Boolean)
+    )
+    const signature = [
+      conflict.field,
+      conflict.old_value,
+      conflict.new_value,
+    ].join(":")
+    for (const normalizedKey of keys) {
+      const signatures = signaturesByKey.get(normalizedKey) ?? new Set()
+      if (signatures.has(signature)) {
+        continue
+      }
+      const current = grouped.get(normalizedKey) ?? []
+      current.push(conflict)
+      grouped.set(normalizedKey, current)
+      signatures.add(signature)
+      signaturesByKey.set(normalizedKey, signatures)
+    }
+  }
+  return grouped
+}
+
+function formatMetadataCountChoiceLabel(
+  conflicts: MetadataCountConflict[],
+  choice: "old" | "new"
+): string {
+  return conflicts
+    .map((conflict) => {
+      const fieldLabel = conflict.field === "sheet_count" ? "tờ" : "trang"
+      const value =
+        choice === "old" ? conflict.old_value : conflict.new_value
+      return `${fieldLabel} ${value}`
+    })
+    .join(", ")
 }
 
 function mergeCachedNumberingPage(

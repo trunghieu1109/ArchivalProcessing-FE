@@ -160,6 +160,25 @@ export async function importMetadataBoxNumbers(
   )
 }
 
+export async function clearMetadataBoxNumberPendingCounts(
+  sessionId: string,
+  payload: {
+    created_by?: string
+    dossier_id?: string | null
+    session_dossier_id?: number | null
+    fields?: Array<"page_count" | "sheet_count">
+  } = {}
+): Promise<Record<string, unknown>> {
+  return requestJson<Record<string, unknown>>(
+    `/sessions/${encodeURIComponent(sessionId)}/artifacts/metadata-snapshot/import-box-numbers/pending-counts/clear`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
+}
+
 export async function listArtifacts(
   sessionId: string,
   status?: string
