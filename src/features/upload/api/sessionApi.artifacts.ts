@@ -142,10 +142,14 @@ export async function exportMetadataSnapshot(
 export async function importMetadataBoxNumbers(
   sessionId: string,
   file: File,
-  payload: { created_by?: string } = {}
+  payload: { created_by?: string; confirm_count_conflicts?: boolean } = {}
 ): Promise<MetadataBoxNumberImportResponse> {
   const form = new FormData()
   form.append("created_by", payload.created_by ?? "ui")
+  form.append(
+    "confirm_count_conflicts",
+    payload.confirm_count_conflicts ? "true" : "false"
+  )
   form.append("file", file)
   return requestJson<MetadataBoxNumberImportResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/artifacts/metadata-snapshot/import-box-numbers`,

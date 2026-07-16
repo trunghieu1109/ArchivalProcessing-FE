@@ -363,15 +363,36 @@ export interface MetadataBoxNumberImportResponse {
   data_row_count: number
   imported_box_rows: number
   skipped_empty_box_rows: number
+  numbering_mode?: DocumentNumberingMode
+  confirmed_count_conflicts?: boolean
   matched_rows: number
   unmatched_rows: number
   updated_dossiers: number
   unchanged_dossiers: number
   conflict_count: number
+  row_conflict_count?: number
+  count_conflict_count?: number
+  pending_count_updates?: number
+  requires_confirmation?: boolean
   updated?: Array<Record<string, unknown>>
   unchanged?: Array<Record<string, unknown>>
   conflicts?: Array<Record<string, unknown>>
+  count_conflicts?: MetadataCountConflict[]
   unmatched?: Array<Record<string, unknown>>
+}
+
+export interface MetadataCountConflict {
+  session_dossier_id: number
+  dossier_id: string
+  cluster_id: string
+  dossier_number: string
+  dossier_title: string
+  field: "page_count" | "sheet_count"
+  numbering_mode: DocumentNumberingMode
+  old_value: number
+  new_value: number
+  tag: string
+  row_numbers: number[]
 }
 
 export interface SessionDocumentResponse {

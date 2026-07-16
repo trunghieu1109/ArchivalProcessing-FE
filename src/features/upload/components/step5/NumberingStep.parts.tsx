@@ -6,7 +6,10 @@ import {
   useState,
 } from "react"
 import {
+  AlertTriangle,
   ArrowRight,
+  Check,
+  ChevronUp,
   Eye,
   FileSpreadsheet,
   FileText,
@@ -19,11 +22,13 @@ import {
   Save,
   Upload,
 } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/shared/lib/utils"
 import type {
   DocumentNumberingMode,
   DocumentNumberingStylePreset,
+  MetadataBoxNumberImportResponse,
   NumberingDocumentStatus,
   NumberingStyleOption,
 } from "@/features/upload/api/sessionApi"
@@ -385,8 +390,13 @@ export function NumberingMetadataPanel({
   metadataBusy,
   metadataExporting,
   metadataImporting,
+  metadataImportReview,
+  metadataConflictListCollapsed,
   onExportMetadata,
   onImportMetadataBoxNumbers,
+  onToggleMetadataConflictList,
+  onKeepOldMetadataCounts,
+  onConfirmMetadataCountConflicts,
 }: {
   metadataImportInputRef: RefObject<HTMLInputElement | null>
   sessionId: string | null
@@ -394,9 +404,16 @@ export function NumberingMetadataPanel({
   metadataBusy: boolean
   metadataExporting: boolean
   metadataImporting: boolean
+  metadataImportReview: MetadataBoxNumberImportResponse | null
+  metadataConflictListCollapsed: boolean
   onExportMetadata: () => void | Promise<unknown>
   onImportMetadataBoxNumbers: (file: File | null) => void | Promise<unknown>
+  onToggleMetadataConflictList: () => void
+  onKeepOldMetadataCounts: () => void
+  onConfirmMetadataCountConflicts: () => void | Promise<unknown>
 }) {
+  const countConflicts = metadataImportReview?.count_conflicts ?? []
+
   return (
     <div className="rounded-2xl border border-[#CBD5E1] bg-white px-5 py-4 shadow-sm">
       <input
@@ -413,11 +430,11 @@ export function NumberingMetadataPanel({
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <p className="text-sm font-semibold text-[#0F172A]">
-            Metadata snapshot & số hộp
+            Metadata snapshot hồ sơ
           </p>
           <p className="mt-1 max-w-3xl text-sm text-[#64748B]">
-            Xuất snapshot metadata từ phiên bản hồ sơ hiện hành, điền số hộp
-            trong file Excel rồi nhập lại trước khi tạo mục lục.
+            Xuất hoặc nhập số hộp, số hồ sơ chính, ghi chú, số tờ và số trang
+            trước khi tạo mục lục.
           </p>
         </div>
         <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:w-auto">
@@ -447,10 +464,110 @@ export function NumberingMetadataPanel({
             ) : (
               <Upload data-icon="inline-start" />
             )}
-            Nhập số hộp
+            Nhập metadata
           </Button>
         </div>
       </div>
+      {metadataImportReview && countConflicts.length > 0 ? (
+        metadataConflictListCollapsed ? (
+          <div className="mt-4 flex justify-end border-t border-[#FDE68A] pt-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="border-[#F59E0B] text-[#B45309] hover:bg-[#FFFBEB]"
+              onClick={onToggleMetadataConflictList}
+              title="Mở danh sách không đồng nhất"
+              aria-label="Mở danh sách không đồng nhất"
+            >
+              <AlertTriangle />
+            </Button>
+          </div>
+        ) : (
+          <div className="mt-4 border-t border-[#FDE68A] pt-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-start gap-3">
+                <AlertTriangle className="mt-0.5 size-5 shrink-0 text-[#B45309]" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-[#78350F]">
+                    Cần xác nhận {countConflicts.length} hồ sơ
+                  </p>
+                  <p className="mt-1 text-sm text-[#92400E]">
+                    Hệ thống đang giữ số cũ cho đến khi xác nhận dùng số mới.
+                  </p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={onToggleMetadataConflictList}
+                title="Thu nhỏ danh sách"
+                aria-label="Thu nhỏ danh sách"
+              >
+                <ChevronUp />
+              </Button>
+            </div>
+
+            <div className="mt-3 max-h-64 overflow-y-auto border-y border-[#FDE68A]">
+              {countConflicts.map((conflict) => (
+                <div
+                  key={`${conflict.dossier_id}:${conflict.field}`}
+                  className="flex flex-col gap-2 border-b border-[#FEF3C7] px-1 py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-[#0F172A]">
+                      {conflict.dossier_number
+                        ? `Hồ sơ ${conflict.dossier_number}`
+                        : conflict.dossier_title || conflict.dossier_id}
+                    </p>
+                    {conflict.dossier_number && conflict.dossier_title ? (
+                      <p className="mt-0.5 truncate text-xs text-[#64748B]">
+                        {conflict.dossier_title}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    <Badge
+                      variant="outline"
+                      className="border-[#F59E0B] bg-[#FFFBEB] text-[#92400E]"
+                    >
+                      {conflict.tag}
+                    </Badge>
+                    <span className="text-xs text-[#475569] tabular-nums">
+                      Cũ: {conflict.old_value} · Mới: {conflict.new_value}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-3 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onKeepOldMetadataCounts}
+                disabled={metadataBusy}
+              >
+                <RotateCcw data-icon="inline-start" />
+                Giữ số cũ
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void onConfirmMetadataCountConflicts()}
+                disabled={metadataBusy}
+              >
+                {metadataImporting ? (
+                  <Loader2 data-icon="inline-start" className="animate-spin" />
+                ) : (
+                  <Check data-icon="inline-start" />
+                )}
+                Xác nhận dùng số mới
+              </Button>
+            </div>
+          </div>
+        )
+      ) : null}
     </div>
   )
 }

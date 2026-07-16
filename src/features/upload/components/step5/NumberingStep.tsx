@@ -25,6 +25,7 @@ import {
   updateDocumentNumberingFromPage,
   type DocumentNumberingMode,
   type DocumentNumberingStylePreset,
+  type MetadataBoxNumberImportResponse,
   type NumberingDocumentStatus,
   type NumberingStatusResponse,
   type NumberingStyleOption,
@@ -56,6 +57,10 @@ const NUMBERING_DOCUMENT_REFRESH_EVERY = 3
 const NUMBERING_PAGE_SIZE = 10
 const NUMBERING_NAVIGATOR_PAGE_SIZE = 1000
 const EMPTY_NUMBERING_DOCUMENTS: NumberingDocumentStatus[] = []
+type MetadataImportReview = {
+  file: File
+  response: MetadataBoxNumberImportResponse
+}
 type NumberingStyleOverrides = {
   font_size?: number
   color?: string
@@ -183,6 +188,10 @@ export function NumberingStep({
   >({})
   const [metadataExporting, setMetadataExporting] = useState(false)
   const [metadataImporting, setMetadataImporting] = useState(false)
+  const [metadataImportReview, setMetadataImportReview] =
+    useState<MetadataImportReview | null>(null)
+  const [metadataConflictListCollapsed, setMetadataConflictListCollapsed] =
+    useState(false)
   const metadataImportInputRef = useRef<HTMLInputElement | null>(null)
   const numberingPageCacheSessionRef = useRef<string | null>(null)
   const numberingPageCacheRef = useRef<Map<number, NumberingStatusResponse>>(
@@ -225,6 +234,8 @@ export function NumberingStep({
     prefetchingNumberingPagesRef.current.clear()
     numberingDocumentsRevisionRef.current = null
     setNumberingPageIndex(0)
+    setMetadataImportReview(null)
+    setMetadataConflictListCollapsed(false)
   }, [sessionId])
 
   useEffect(() => {
@@ -748,7 +759,10 @@ export function NumberingStep({
   }, [sessionId])
 
   const importMetadataBoxNumbers = useCallback(
-    async (file: File | null) => {
+    async (
+      file: File | null,
+      options: { confirmCountConflicts?: boolean } = {}
+    ) => {
       if (!file) return
       if (!sessionId) {
         toast.error("Chưa có session để nhập số hộp.")
@@ -759,19 +773,43 @@ export function NumberingStep({
         return
       }
 
+      if (!options.confirmCountConflicts) {
+        setMetadataImportReview(null)
+      }
       setMetadataImporting(true)
       setError("")
       try {
         const result = await importMetadataBoxNumbersApi(sessionId, file, {
           created_by: "ui",
+          confirm_count_conflicts: options.confirmCountConflicts,
         })
-        toast.success(
-          `Đã cập nhật số hộp cho ${result.updated_dossiers} hồ sơ.`
-        )
-        const issueCount = result.unmatched_rows + result.conflict_count
+        const countConflicts = result.count_conflicts ?? []
+        if (result.requires_confirmation && countConflicts.length > 0) {
+          setMetadataImportReview({ file, response: result })
+          setMetadataConflictListCollapsed(false)
+          toast.warning(
+            `Có ${countConflicts.length} hồ sơ không đồng nhất ${
+              result.numbering_mode === "sheet" ? "số tờ" : "số trang"
+            }. Số cũ đang được giữ lại.`
+          )
+        } else {
+          setMetadataImportReview(null)
+          toast.success(
+            options.confirmCountConflicts
+              ? `Đã xác nhận số mới cho ${result.count_conflict_count ?? 0} hồ sơ.`
+              : `Đã cập nhật metadata cho ${result.updated_dossiers} hồ sơ.`
+          )
+        }
+        const issueCount =
+          result.unmatched_rows +
+          (result.row_conflict_count ??
+            Math.max(
+              0,
+              result.conflict_count - (result.count_conflict_count ?? 0)
+            ))
         if (issueCount > 0) {
           toast.info(
-            `Có ${issueCount} dòng chưa cập nhật được do chưa khớp hồ sơ hoặc bị trùng số hộp.`
+            `Có ${issueCount} dòng chưa cập nhật được do chưa khớp hồ sơ hoặc có nhiều giá trị khác nhau.`
           )
         }
         await refreshStatus({ silent: true, force: true })
@@ -779,7 +817,7 @@ export function NumberingStep({
         const message =
           err instanceof Error
             ? err.message
-            : "Không thể nhập số hộp từ metadata."
+            : "Không thể nhập metadata từ file Excel."
         setError(message)
         toast.error(message)
       } finally {
@@ -788,6 +826,23 @@ export function NumberingStep({
     },
     [refreshStatus, sessionId]
   )
+
+  const confirmMetadataCountConflicts = useCallback(async () => {
+    if (!metadataImportReview) return
+    await importMetadataBoxNumbers(metadataImportReview.file, {
+      confirmCountConflicts: true,
+    })
+  }, [importMetadataBoxNumbers, metadataImportReview])
+
+  const keepOldMetadataCounts = useCallback(() => {
+    setMetadataImportReview(null)
+    setMetadataConflictListCollapsed(false)
+    toast.info(
+      `Đã giữ ${
+        documentNumberingMode === "sheet" ? "số tờ" : "số trang"
+      } cũ của hồ sơ.`
+    )
+  }, [documentNumberingMode])
 
   useEffect(() => {
     void refreshStatus()
@@ -1254,8 +1309,15 @@ export function NumberingStep({
         metadataBusy={metadataBusy}
         metadataExporting={metadataExporting}
         metadataImporting={metadataImporting}
+        metadataImportReview={metadataImportReview?.response ?? null}
+        metadataConflictListCollapsed={metadataConflictListCollapsed}
         onExportMetadata={exportMetadata}
         onImportMetadataBoxNumbers={importMetadataBoxNumbers}
+        onToggleMetadataConflictList={() =>
+          setMetadataConflictListCollapsed((collapsed) => !collapsed)
+        }
+        onKeepOldMetadataCounts={keepOldMetadataCounts}
+        onConfirmMetadataCountConflicts={confirmMetadataCountConflicts}
       />
       {(status?.active || progressMessage || starting) && (
         <ProgressTimeline
