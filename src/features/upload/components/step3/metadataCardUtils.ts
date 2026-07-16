@@ -45,17 +45,6 @@ const ALL_METADATA_FIELDS = [
     aliases: ["document_identifier", "ma_dinh_danh_tai_lieu"],
   },
   {
-    key: "document_storage_id",
-    label: METADATA_LABELS.document_storage_id,
-    aliases: [
-      "document_storage_id",
-      "document_archive_code",
-      "archive_document_code",
-      "document_code",
-      "ma_luu_tru_tai_lieu",
-    ],
-  },
-  {
     key: "document_type",
     label: METADATA_LABELS.document_type,
     aliases: ["document_type", "loai_van_ban", "loai_tai_lieu"],
@@ -133,6 +122,8 @@ const ALL_METADATA_FIELDS = [
   },
 ] as const
 
+const DEFAULT_DOCUMENT_LANGUAGE = "Tiếng Việt"
+
 export const METADATA_FIELDS = ALL_METADATA_FIELDS
 
 export function metadataFieldText(
@@ -144,6 +135,7 @@ export function metadataFieldText(
     if (!hasMetadataValue(value)) continue
     return Array.isArray(value) ? value.map(String).join(", ") : String(value)
   }
+  if (aliases.includes("language")) return DEFAULT_DOCUMENT_LANGUAGE
   return ""
 }
 

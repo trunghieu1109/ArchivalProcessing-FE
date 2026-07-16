@@ -77,12 +77,12 @@ export function NumberedPdfPreviewPanel({
         ) : null}
       </div>
 
-      {document && loading ? (
+      {document && loading && !embedUrl ? (
         <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-[#64748B]">
           <Loader2 className="mr-2 size-4 animate-spin text-[#0052FF]" />
           Đang cấp URL preview mới...
         </div>
-      ) : document && error ? (
+      ) : document && error && !embedUrl ? (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-8 text-center text-sm text-rose-700">
           <TriangleAlert className="size-7" />
           <p>{error}</p>

@@ -26,12 +26,13 @@ export interface DossierMetadataDraft {
 
 type DossierMetadataDraftKey = keyof DossierMetadataDraft
 
+export const DEFAULT_DOSSIER_LANGUAGE = "Tiếng Việt"
+
 export const DOSSIER_METADATA_EDIT_FIELDS: Array<{
   key: DossierMetadataDraftKey
   label: string
   rows: number
 }> = [
-  { key: "dossierStorageId", label: "Mã hồ sơ lưu trữ", rows: 1 },
   { key: "title", label: "Tiêu đề hồ sơ", rows: 4 },
   { key: "retentionPeriod", label: "Thời hạn lưu trữ", rows: 2 },
   { key: "language", label: "Ngôn ngữ", rows: 1 },
@@ -49,7 +50,7 @@ export function createDossierMetadataDraft(
     dossierStorageId: group?.dossierStorageId ?? "",
     title: group?.label ?? "",
     retentionPeriod: group?.retentionPeriod ?? "",
-    language: group?.language ?? "",
+    language: group?.language || DEFAULT_DOSSIER_LANGUAGE,
     startDate: group?.startDate ?? "",
     endDate: group?.endDate ?? "",
     informationSign: group?.informationSign ?? "",

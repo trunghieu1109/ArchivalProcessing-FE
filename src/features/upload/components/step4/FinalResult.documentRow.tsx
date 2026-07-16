@@ -39,6 +39,8 @@ import {
 } from "./FinalResult.metadataUtils"
 import { pendingFeedbackActionLabel } from "./FinalResult.pendingFeedback"
 
+const SHOW_DOSSIER_SUGGESTIONS_BUTTON = false
+
 export function DocumentRow({
   document,
   clusterId,
@@ -309,22 +311,24 @@ export function DocumentRow({
         >
           <Eye className="size-3.5" />
         </Button>
-        <Button
-          type="button"
-          variant={selectedDossierSuggestions ? "default" : "outline"}
-          size="icon-sm"
-          draggable={false}
-          title="Xem hồ sơ được gợi ý"
-          aria-label="Xem hồ sơ được gợi ý"
-          className="mt-0.5 shrink-0"
-          onClick={(event) => {
-            event.stopPropagation()
-            onSelectDossierSuggestions(document)
-          }}
-          onDragStart={(event) => event.stopPropagation()}
-        >
-          <ListChecks className="size-3.5" />
-        </Button>
+        {SHOW_DOSSIER_SUGGESTIONS_BUTTON && (
+          <Button
+            type="button"
+            variant={selectedDossierSuggestions ? "default" : "outline"}
+            size="icon-sm"
+            draggable={false}
+            title="Xem hồ sơ được gợi ý"
+            aria-label="Xem hồ sơ được gợi ý"
+            className="mt-0.5 shrink-0"
+            onClick={(event) => {
+              event.stopPropagation()
+              onSelectDossierSuggestions(document)
+            }}
+            onDragStart={(event) => event.stopPropagation()}
+          >
+            <ListChecks className="size-3.5" />
+          </Button>
+        )}
       </div>
 
       {expanded && (

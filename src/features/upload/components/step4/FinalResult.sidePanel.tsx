@@ -20,6 +20,7 @@ import {
 } from "@/features/upload/api/sessionApi"
 import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
 import {
+  DEFAULT_DOSSIER_LANGUAGE,
   DOSSIER_METADATA_EDIT_FIELDS,
   createDossierMetadataDraft,
   type DossierMetadataDraft,
@@ -77,10 +78,9 @@ export function DossierMetadataSidePanel({
     value: string
     wide?: boolean
   }> = [
-    { label: "Mã hồ sơ lưu trữ", value: group.dossierStorageId ?? "" },
     { label: "Tiêu đề hồ sơ", value: group.label, wide: true },
     { label: "Thời hạn lưu trữ", value: group.retentionPeriod ?? "" },
-    { label: "Ngôn ngữ", value: group.language ?? "" },
+    { label: "Ngôn ngữ", value: group.language || DEFAULT_DOSSIER_LANGUAGE },
     { label: "Thời gian bắt đầu", value: group.startDate ?? "" },
     { label: "Thời gian kết thúc", value: group.endDate ?? "" },
     { label: "Ký hiệu thông tin", value: group.informationSign ?? "" },

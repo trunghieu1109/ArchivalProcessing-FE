@@ -162,6 +162,8 @@ export function NumberingStep({
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState("")
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0)
+  const previewUrlRef = useRef("")
+  const previewTargetRef = useRef("")
   const [numberingFilter, setNumberingFilter] = useState("")
   const [numberingPageIndex, setNumberingPageIndex] = useState(0)
   const [missingNavigatorOpen, setMissingNavigatorOpen] = useState(false)
@@ -1030,11 +1032,17 @@ export function NumberingStep({
     [previewDocumentId, status?.documents, visibleMissingNavigatorDocuments]
   )
   const previewSessionDocumentId = previewDocument?.session_document_id ?? null
-  const previewPdfVersionId = previewDocument?.numbered_pdf_version_id ?? null
+  const previewPdfVersionId = textOrNull(
+    previewDocument?.numbered_pdf_version_id
+  )
   const previewSourceUrl = textOrNull(previewDocument?.download_url)
   const previewCanPreview = previewDocument
     ? canPreviewNumberingDocument(previewDocument)
     : false
+
+  useEffect(() => {
+    previewUrlRef.current = previewUrl
+  }, [previewUrl])
 
   useEffect(() => {
     if (
@@ -1042,6 +1050,8 @@ export function NumberingStep({
       previewSessionDocumentId === null ||
       !previewCanPreview
     ) {
+      previewTargetRef.current = ""
+      previewUrlRef.current = ""
       setPreviewUrl("")
       setPreviewError("")
       setPreviewLoading(false)
@@ -1049,36 +1059,58 @@ export function NumberingStep({
     }
 
     let cancelled = false
-    setPreviewUrl("")
+    const previewTarget = `${sessionId}:${previewSessionDocumentId}`
+    const targetChanged = previewTargetRef.current !== previewTarget
+    previewTargetRef.current = previewTarget
+
+    if (targetChanged) {
+      previewUrlRef.current = ""
+      setPreviewUrl("")
+    }
+
     setPreviewError("")
     setPreviewLoading(true)
 
     const loadPreviewUrl = async () => {
       try {
+        let nextPreviewUrl: string | null = null
         if (previewPdfVersionId) {
           const response = await getNumberedDocumentPreviewUrl(
             sessionId,
             previewSessionDocumentId
           )
-          if (!cancelled) setPreviewUrl(response.download_url)
+          nextPreviewUrl = textOrNull(response.download_url)
+        } else if (previewSourceUrl) {
+          nextPreviewUrl = previewSourceUrl
+        } else {
+          const response = await getDocumentPreviewUrl(
+            sessionId,
+            previewSessionDocumentId
+          )
+          const fallbackUrl =
+            textOrNull(response.download_url) ||
+            response.preview_variants?.find((variant) =>
+              textOrNull(variant.download_url)
+            )?.download_url ||
+            null
+          nextPreviewUrl = fallbackUrl
+        }
+        if (cancelled) return
+        if (nextPreviewUrl) {
+          const resolvedPreviewUrl = nextPreviewUrl
+          if (previewUrlRef.current !== resolvedPreviewUrl) {
+            setPreviewUrl((current) => {
+              previewUrlRef.current = resolvedPreviewUrl
+              return current === resolvedPreviewUrl
+                ? current
+                : resolvedPreviewUrl
+            })
+          }
           return
         }
-        if (previewSourceUrl) {
-          if (!cancelled) setPreviewUrl(previewSourceUrl)
-          return
-        }
-        const response = await getDocumentPreviewUrl(
-          sessionId,
-          previewSessionDocumentId
-        )
-        const fallbackUrl =
-          textOrNull(response.download_url) ||
-          response.preview_variants?.find((variant) =>
-            textOrNull(variant.download_url)
-          )?.download_url ||
-          null
+        const hasFallbackUrl = Boolean(previewUrlRef.current)
         if (!cancelled) {
-          if (fallbackUrl) setPreviewUrl(fallbackUrl)
+          if (hasFallbackUrl) return
           else setPreviewError("Không có URL preview cho tài liệu này.")
         }
       } catch (err) {
