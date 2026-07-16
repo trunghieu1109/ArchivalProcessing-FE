@@ -36,6 +36,4 @@ export interface FolderTreeProps {
   onChange: (tree: FolderNode[]) => void
   onSaveTree?: (tree: FolderNode[]) => void | Promise<void>
   onCriteriaChange: (criterias: PlanCriterionSet[]) => void | Promise<void>
-  onConfirm: () => void | Promise<void>
-  confirming?: boolean
 }

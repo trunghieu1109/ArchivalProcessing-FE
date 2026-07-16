@@ -1,6 +1,6 @@
 import { delay, requestJson, requestJsonOrNull } from "./sessionApi.http"
 import type {
-  ActivePlanResponse,
+  PlanVersionResponse,
   CreateSessionResponse,
   DeleteSessionResponse,
   DossierBuildStrategy,
@@ -146,19 +146,27 @@ export async function listSessionEvents(
   )
 }
 
-export async function getActivePlan(
+export async function getReviewPlan(
   sessionId: string
-): Promise<ActivePlanResponse | null> {
-  return requestJsonOrNull<ActivePlanResponse>(
+): Promise<PlanVersionResponse | null> {
+  return requestJsonOrNull<PlanVersionResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/plan`
   )
 }
 
-export async function patchActivePlan(
+export async function getActivePlan(
+  sessionId: string
+): Promise<PlanVersionResponse | null> {
+  return requestJsonOrNull<PlanVersionResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/plan/active`
+  )
+}
+
+export async function patchReviewPlan(
   sessionId: string,
   payload: Record<string, unknown>
-): Promise<ActivePlanResponse> {
-  return requestJson<ActivePlanResponse>(
+): Promise<PlanVersionResponse> {
+  return requestJson<PlanVersionResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/plan`,
     {
       method: "PATCH",
@@ -168,15 +176,29 @@ export async function patchActivePlan(
   )
 }
 
-export async function waitForActivePlan(
+export async function approveReviewPlan(
+  sessionId: string,
+  planVersionId: string
+): Promise<PlanVersionResponse> {
+  return requestJson<PlanVersionResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/plan/approve`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plan_version_id: planVersionId }),
+    }
+  )
+}
+
+export async function waitForReviewPlan(
   sessionId: string,
   timeoutMs = 120_000,
   intervalMs = 2_000,
   options: { previousPlanId?: string; afterVersionNumber?: number } = {}
-): Promise<ActivePlanResponse> {
+): Promise<PlanVersionResponse> {
   const started = Date.now()
   while (Date.now() - started < timeoutMs) {
-    const plan = await getActivePlan(sessionId)
+    const plan = await getReviewPlan(sessionId)
     if (plan && isExpectedPlan(plan, options)) return plan
     await delay(intervalMs)
   }
@@ -186,7 +208,7 @@ export async function waitForActivePlan(
 }
 
 function isExpectedPlan(
-  plan: ActivePlanResponse,
+  plan: PlanVersionResponse,
   options: { previousPlanId?: string; afterVersionNumber?: number }
 ): boolean {
   if (options.previousPlanId && plan.id === options.previousPlanId) return false

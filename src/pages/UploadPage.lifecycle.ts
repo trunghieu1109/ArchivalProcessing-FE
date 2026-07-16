@@ -2,6 +2,7 @@ import { useEffect } from "react"
 import { toast } from "sonner"
 import {
   getActivePlan,
+  getReviewPlan,
   getSession,
   type ActiveJobSummary,
 } from "@/features/upload/api/sessionApi"
@@ -86,6 +87,11 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     setZipEntries,
     setFolderTree,
     setParsedPlan,
+    setActiveFolderTree,
+    setActiveParsedPlan,
+    setActivePlanVersionId,
+    setReviewPlanVersionId,
+    setReviewPlanDirty,
     setClusterGroups,
     setSessionId,
     setSessionMetadata,
@@ -124,6 +130,11 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     setZipEntries(cache.zipEntries)
     setFolderTree(cache.folderTree)
     setParsedPlan(cache.parsedPlan)
+    setActiveFolderTree(cache.activeFolderTree)
+    setActiveParsedPlan(cache.activeParsedPlan)
+    setActivePlanVersionId(cache.activePlanVersionId)
+    setReviewPlanVersionId(cache.reviewPlanVersionId)
+    setReviewPlanDirty(cache.reviewPlanDirty)
     setClusterGroups(cache.clusterGroups)
     setSessionId(nextSessionId)
     setSessionMetadata(cache.sessionMetadata)
@@ -150,6 +161,9 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     cache.zipEntries = []
     cache.folderTree = planToTree(EMPTY_PARSED_PLAN)
     cache.parsedPlan = EMPTY_PARSED_PLAN
+    cache.activeFolderTree = planToTree(EMPTY_PARSED_PLAN)
+    cache.activeParsedPlan = EMPTY_PARSED_PLAN
+    cache.activePlanResponse = null
     cache.clusterGroups = []
     cache.doc1State = "idle"
     cache.doc2State = "idle"
@@ -184,6 +198,8 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     cache.zipMaxFiles = ""
     cache.uploadMode = "append"
     cache.activePlanVersionId = ""
+    cache.reviewPlanVersionId = ""
+    cache.reviewPlanDirty = false
     cache.activeClusterVersionId = undefined
     cache.draftArrangementPlanFile = null
     cache.draftRetentionFile = null
@@ -221,8 +237,9 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     const loadExistingSession = async () => {
       setSessionLoading(true)
       try {
-        const [sessionDetail, activePlan] = await Promise.all([
+        const [sessionDetail, reviewPlan, activePlan] = await Promise.all([
           getSession(routeSessionId),
+          getReviewPlan(routeSessionId),
           getActivePlan(routeSessionId),
         ])
         if (cancelled) return
@@ -256,6 +273,17 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
           : false
         const activeJobHasKnownPlanInput =
           activeJobHasArrangementFile || activeJobHasRetentionFile
+        const hasPendingPlanAnalysis =
+          activePlanAnalysisJob !== null &&
+          (Boolean(arrangementPlanFile) || Boolean(retentionFile))
+        const processingArrangement =
+          hasPendingPlanAnalysis &&
+          Boolean(arrangementPlanFile) &&
+          (activeJobHasArrangementFile || !activeJobHasKnownPlanInput)
+        const processingRetention =
+          hasPendingPlanAnalysis &&
+          Boolean(retentionFile) &&
+          (activeJobHasRetentionFile || !activeJobHasKnownPlanInput)
         cache.doc1Has = Boolean(arrangementPlanFile)
         cache.doc2Has = Boolean(retentionFile)
         cache.zipHas = Boolean(zipFile)
@@ -286,18 +314,41 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
         setZipFolderPath(cache.zipFolderPath)
         setZipUploadProgress(null)
 
-        if (activePlan) {
-          const plan = activePlanToParsedPlan(activePlan)
-          const buildStrategy = activePlanBuildStrategy(activePlan)
-          const numberingMode = activePlanDocumentNumberingMode(activePlan)
+        cache.activePlanVersionId = activePlan?.id ?? ""
+        cache.activePlanResponse = activePlan
+        cache.activeParsedPlan = activePlan
+          ? activePlanToParsedPlan(activePlan)
+          : EMPTY_PARSED_PLAN
+        cache.activeFolderTree = planToTree(cache.activeParsedPlan)
+        setActivePlanVersionId(cache.activePlanVersionId)
+        setActiveParsedPlan(cache.activeParsedPlan)
+        setActiveFolderTree(cache.activeFolderTree)
+
+        if (reviewPlan) {
+          const plan = activePlanToParsedPlan(reviewPlan)
+          const buildStrategy = activePlanBuildStrategy(reviewPlan)
+          const numberingMode = activePlanDocumentNumberingMode(reviewPlan)
           const numberingStylePreset =
-            activePlanDocumentNumberingStylePreset(activePlan)
+            activePlanDocumentNumberingStylePreset(reviewPlan)
           const numberingStyleOverrides =
-            activePlanDocumentNumberingStyleOverrides(activePlan)
-          cache.activePlanVersionId = activePlan.id ?? ""
+            activePlanDocumentNumberingStyleOverrides(reviewPlan)
+          cache.reviewPlanVersionId = reviewPlan.id ?? ""
+          cache.reviewPlanDirty = false
           cache.parsedPlan = plan
           cache.folderTree = planToTree(plan)
-          cache.planAnalysisState = "done"
+          cache.doc1State = arrangementPlanFile
+            ? processingArrangement
+              ? "processing"
+              : "done"
+            : "idle"
+          cache.doc2State = retentionFile
+            ? processingRetention
+              ? "processing"
+              : "done"
+            : "idle"
+          cache.planAnalysisState = hasPendingPlanAnalysis
+            ? "processing"
+            : "done"
           cache.dossierBuildStrategy = buildStrategy
           cache.persistedDossierBuildStrategy = buildStrategy
           cache.documentNumberingMode = numberingMode
@@ -309,27 +360,37 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
             numberingStyleOverrides
           setParsedPlan(plan)
           setFolderTree(cache.folderTree)
-          setPlanAnalysisState("done")
+          setReviewPlanVersionId(cache.reviewPlanVersionId)
+          setReviewPlanDirty(false)
+          setDoc1State(cache.doc1State)
+          setDoc2State(cache.doc2State)
+          setPlanAnalysisState(cache.planAnalysisState)
           setDossierBuildStrategy(buildStrategy)
           setDocumentNumberingMode(numberingMode)
           setDocumentNumberingStylePreset(numberingStylePreset)
           setDocumentNumberingStyleOverrides(numberingStyleOverrides)
-          setPlanProgressPhase(null)
-          setPlanProgressMessage("")
-          setPlanCompletedPhases(new Set())
+          if (hasPendingPlanAnalysis && activePlanAnalysisJob) {
+            setPlanCompletedPhases(new Set(["upload_inputs"]))
+            setPlanProgressPhase(
+              processingRetention && !processingArrangement
+                ? "retention_schedule"
+                : "preparing_plan_file"
+            )
+            setPlanProgressMessage(
+              pendingPlanAnalysisMessage({
+                job: activePlanAnalysisJob,
+                processingArrangement,
+                processingRetention,
+              })
+            )
+          } else {
+            setPlanProgressPhase(null)
+            setPlanProgressMessage("")
+            setPlanCompletedPhases(new Set())
+          }
         } else {
-          const hasPendingPlanAnalysis =
-            activePlanAnalysisJob !== null &&
-            (Boolean(arrangementPlanFile) || Boolean(retentionFile))
-          const processingArrangement =
-            hasPendingPlanAnalysis &&
-            Boolean(arrangementPlanFile) &&
-            (activeJobHasArrangementFile || !activeJobHasKnownPlanInput)
-          const processingRetention =
-            hasPendingPlanAnalysis &&
-            Boolean(retentionFile) &&
-            (activeJobHasRetentionFile || !activeJobHasKnownPlanInput)
-          cache.activePlanVersionId = ""
+          cache.reviewPlanVersionId = ""
+          cache.reviewPlanDirty = false
           cache.parsedPlan = EMPTY_PARSED_PLAN
           cache.folderTree = planToTree(EMPTY_PARSED_PLAN)
           cache.dossierBuildStrategy = DEFAULT_DOSSIER_BUILD_STRATEGY
@@ -351,6 +412,8 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
             : "idle"
           setParsedPlan(cache.parsedPlan)
           setFolderTree(cache.folderTree)
+          setReviewPlanVersionId("")
+          setReviewPlanDirty(false)
           setDoc1State(cache.doc1State)
           setDoc2State(cache.doc2State)
           setPlanAnalysisState(cache.planAnalysisState)

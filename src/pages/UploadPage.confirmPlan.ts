@@ -1,177 +1,107 @@
 import { toast } from "sonner"
 import {
-  enqueueClusterBuild,
-  getActiveClusters,
-  getClusterBuildStatus,
-  getSession,
-  patchActivePlan,
+  approveReviewPlan,
+  getActivePlan,
 } from "@/features/upload/api/sessionApi"
 import { uploadPageCache as cache } from "./UploadPage.cache"
 import {
-  activeClusterBuildStrategy,
-  activePlanBuildStrategy,
   activePlanDocumentNumberingMode,
   activePlanDocumentNumberingStyleOverrides,
   activePlanDocumentNumberingStylePreset,
-  activePlanToParsedPlan,
   documentNumberingModeValue,
-  dossierBuildStrategyValue,
-  planToTree,
-  type NumberingStyleOverrides,
 } from "./UploadPage.planUtils"
 
-const CONFIRM_STATUS_REFRESH_TIMEOUT_MS = 3_000
+const STATUS_REFRESH_TIMEOUT_MS = 3_000
 const STATUS_REFRESH_TIMED_OUT = Symbol("status-refresh-timeout")
 
-export function createConfirmPlanHandler(context: Record<string, any>) {
+export function createApprovePlanHandler(context: Record<string, any>) {
   const {
     confirmingPlan,
-    planAnalysisState,
-    dossierBuildStrategy,
-    documentNumberingMode,
-    documentNumberingStylePreset,
-    documentNumberingStyleOverrides,
-    zipFolderPath,
-    existingSessionMode,
-    uploadMode,
-    zipSupplementUploaded,
-    ocr,
+    savePendingReviewChanges,
     applyActivePlanResponse,
-    applyPersistedDossierBuildStrategy,
-    applyPersistedDocumentNumberingMode,
-    applyPersistedDocumentNumberingStylePreset,
-    applyPersistedDocumentNumberingStyleOverrides,
-    parseZipMaxFiles,
-    syncZipState,
-    goTo,
-    setParsedPlan,
-    setFolderTree,
-    setClusterGroups,
     setConfirmingPlan,
-    setZipSupplementUploaded,
   } = context
 
-  return async function handleConfirmPlan() {
+  return async function handleApprovePlan() {
     if (confirmingPlan) return
     if (!cache.sessionId) {
       toast.error("Chưa có session xử lý.")
       return
     }
-    let confirmedPlanVersionId = cache.activePlanVersionId.trim()
-    const hasConfirmedPlan =
-      planAnalysisState === "done" &&
-      cache.folderTree.length > 0 &&
-      Boolean(confirmedPlanVersionId)
+
+    setConfirmingPlan(true)
+    try {
+      await savePendingReviewChanges()
+      const reviewPlanVersionId = cache.reviewPlanVersionId.trim()
+      if (!reviewPlanVersionId) {
+        toast.error("Chưa có phiên bản phương án để duyệt.")
+        return
+      }
+      const approvedPlan = await approveReviewPlan(
+        cache.sessionId,
+        reviewPlanVersionId
+      )
+      applyActivePlanResponse(approvedPlan)
+      toast.success("Đã duyệt phương án phân loại hiện tại.")
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Không thể duyệt phương án phân loại."
+      )
+    } finally {
+      setConfirmingPlan(false)
+    }
+  }
+}
+
+export function createStartMetadataExtractionHandler(
+  context: Record<string, any>
+) {
+  const {
+    confirmingPlan,
+    zipFolderPath,
+    existingSessionMode,
+    uploadMode,
+    zipSupplementUploaded,
+    ocr,
+    savePendingReviewChanges,
+    applyActivePlanResponse,
+    parseZipMaxFiles,
+    syncZipState,
+    goTo,
+    setConfirmingPlan,
+    setZipSupplementUploaded,
+  } = context
+
+  return async function handleStartMetadataExtraction() {
+    if (confirmingPlan) return
+    if (!cache.sessionId) {
+      toast.error("Chưa có session xử lý.")
+      return
+    }
 
     setConfirmingPlan(true)
     let folderPath = ""
     let maxFilesToProcess: number | undefined
-    let forceDigitization = false
     let existingStatus = ocr.status
     let statusRefreshTimedOut = false
+    let activePlan = cache.activePlanResponse
     try {
-      if (hasConfirmedPlan) {
-        if (cache.documentNumberingModeSavePromise) {
-          const planResponse = await cache.documentNumberingModeSavePromise
-          applyActivePlanResponse(planResponse)
-          confirmedPlanVersionId = cache.activePlanVersionId.trim()
-        }
-        const selectedStrategy = dossierBuildStrategy
-        const selectedNumberingMode = documentNumberingMode
-        const selectedNumberingStylePreset = documentNumberingStylePreset
-        const selectedOverrides: NumberingStyleOverrides =
-          documentNumberingStyleOverrides || {}
-        const strategyChangedBeforeSave =
-          selectedStrategy !== cache.persistedDossierBuildStrategy
-        const numberingModeChangedBeforeSave =
-          selectedNumberingMode !== cache.persistedDocumentNumberingMode
-        const numberingStyleChangedBeforeSave =
-          selectedNumberingStylePreset !==
-          cache.persistedDocumentNumberingStylePreset
-        const overridesChanged =
-          JSON.stringify(selectedOverrides) !==
-          JSON.stringify(cache.persistedDocumentNumberingStyleOverrides)
-        if (
-          strategyChangedBeforeSave ||
-          numberingModeChangedBeforeSave ||
-          numberingStyleChangedBeforeSave ||
-          overridesChanged
-        ) {
-          const planResponse = await patchActivePlan(cache.sessionId, {
-            dossier_build_strategy: selectedStrategy,
-            document_numbering_mode: selectedNumberingMode,
-            document_numbering_style_preset: selectedNumberingStylePreset,
-            document_numbering_style_overrides: selectedOverrides,
-          })
-          const plan = activePlanToParsedPlan(planResponse)
-          confirmedPlanVersionId = planResponse.id ?? ""
-          cache.activePlanVersionId = confirmedPlanVersionId
-          applyPersistedDossierBuildStrategy(
-            activePlanBuildStrategy(planResponse)
-          )
-          applyPersistedDocumentNumberingMode(
-            activePlanDocumentNumberingMode(planResponse)
-          )
-          applyPersistedDocumentNumberingStylePreset(
-            activePlanDocumentNumberingStylePreset(planResponse)
-          )
-          if (
-            typeof applyPersistedDocumentNumberingStyleOverrides === "function"
-          ) {
-            applyPersistedDocumentNumberingStyleOverrides(
-              activePlanDocumentNumberingStyleOverrides(planResponse)
-            )
-          }
-          cache.parsedPlan = plan
-          cache.folderTree = planToTree(plan)
-          setParsedPlan(plan)
-          setFolderTree(cache.folderTree)
-        }
+      await savePendingReviewChanges()
 
-        if (strategyChangedBeforeSave) {
-          let activeClusterVersionId = cache.activeClusterVersionId
-          if (activeClusterVersionId === undefined) {
-            const sessionDetail = await getSession(cache.sessionId)
-            activeClusterVersionId =
-              sessionDetail.active_cluster_version_id ?? null
-            cache.activeClusterVersionId = activeClusterVersionId
-          }
-
-          if (activeClusterVersionId) {
-            const [activeClusters, clusterBuildStatus] = await Promise.all([
-              getActiveClusters(cache.sessionId, { summaryOnly: true }),
-              getClusterBuildStatus(cache.sessionId),
-            ])
-            const activeStrategy = activeClusterBuildStrategy(activeClusters)
-            const queuedStrategy = dossierBuildStrategyValue(
-              clusterBuildStatus.job?.payload.dossier_build_strategy
-            )
-            const matchingBuildActive =
-              clusterBuildStatus.active && queuedStrategy === selectedStrategy
-            const rebuildRequired =
-              strategyChangedBeforeSave ||
-              activeStrategy === null ||
-              activeStrategy !== selectedStrategy
-
-            if (rebuildRequired) {
-              if (!matchingBuildActive) {
-                await enqueueClusterBuild(cache.sessionId, {
-                  source: "plan_reanalysis",
-                  dossier_build_strategy: selectedStrategy,
-                })
-              }
-              cache.clusterGroups = []
-              setClusterGroups([])
-              toast.success(
-                matchingBuildActive
-                  ? "Task lập lại hồ sơ đang được xử lý."
-                  : "Đã lưu cách thức lập hồ sơ và gửi task lập lại hồ sơ."
-              )
-              goTo(4, cache.sessionId)
-              return
-            }
-          }
-        }
+      const activePlanVersionId = cache.activePlanVersionId.trim()
+      if (!activePlanVersionId) {
+        toast.error("Chưa có phương án phân loại được duyệt.")
+        return
+      }
+      if (!activePlan || activePlan.id !== activePlanVersionId) {
+        activePlan = await getActivePlan(cache.sessionId)
+        if (activePlan) applyActivePlanResponse(activePlan)
+      }
+      if (!activePlan || activePlan.id !== activePlanVersionId) {
+        toast.error("Không tải được phương án phân loại đang active.")
+        return
       }
 
       folderPath =
@@ -181,9 +111,7 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
         ""
       if (!folderPath) {
         if (existingSessionMode) {
-          toast.info(
-            "Session này chưa có dữ liệu ZIP mới. Bạn có thể tiếp tục xem lại phương án chỉnh lý."
-          )
+          toast.info("Session này chưa có dữ liệu ZIP mới để extract metadata.")
           return
         }
         toast.error("Chưa có folder_path để bắt đầu lấy metadata.")
@@ -216,7 +144,7 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
           } else {
             const refreshResult = await withTimeout(
               ocr.refresh(),
-              CONFIRM_STATUS_REFRESH_TIMEOUT_MS,
+              STATUS_REFRESH_TIMEOUT_MS,
               STATUS_REFRESH_TIMED_OUT
             )
             if (refreshResult === STATUS_REFRESH_TIMED_OUT) {
@@ -238,6 +166,7 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
         goTo(3)
         return
       }
+
       const existingDocumentCount = Math.max(
         existingStatus?.total_files ?? 0,
         existingStatus?.total_jobs ?? 0,
@@ -245,12 +174,13 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
         existingStatus?.jobs.length ?? 0
       )
       if (existingDocumentCount > 0) {
+        const activeNumberingMode = activePlanDocumentNumberingMode(activePlan)
         const existingMode = documentNumberingModeValue(
           existingStatus?.document_numbering_mode
         )
-        if (existingMode && existingMode !== documentNumberingMode) {
+        if (existingMode && existingMode !== activeNumberingMode) {
           toast.info(
-            "Đã đổi cách đánh số. Metadata hiện có tiếp tục được sử dụng."
+            "Phương án active dùng cách đánh số khác. Metadata hiện có tiếp tục được sử dụng."
           )
         }
         if (!hasSupplementalZipUpload) {
@@ -271,13 +201,14 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
       toast.error(
         err instanceof Error
           ? err.message
-          : "Không thể xác nhận phương án chỉnh lý."
+          : "Không thể chuyển sang extract metadata."
       )
       return
     } finally {
       setConfirmingPlan(false)
     }
 
+    if (!activePlan) return
     if (cache.zipUpload && uploadMode === "overwrite") {
       const confirmed = window.confirm(
         "Bạn đã chọn overwrite. Các PDF trùng đường dẫn trong ZIP bổ sung sẽ ghi đè file đang có và metadata/review của các file đó sẽ được extract lại. Tiếp tục?"
@@ -285,27 +216,29 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
       if (!confirmed) return
     }
 
+    const activePlanVersionId = cache.activePlanVersionId.trim()
+    const activeNumberingMode = activePlanDocumentNumberingMode(activePlan)
+    const activeNumberingStylePreset =
+      activePlanDocumentNumberingStylePreset(activePlan)
+    const activeNumberingStyleOverrides =
+      activePlanDocumentNumberingStyleOverrides(activePlan)
     syncZipState("processing")
-    toast.success(
-      hasConfirmedPlan
-        ? "Đã xác nhận phương án. Bắt đầu lấy metadata."
-        : "Bắt đầu lấy metadata."
-    )
+    toast.success("Bắt đầu lấy metadata bằng phương án đã duyệt.")
     void ocr
       .start(folderPath, {
         maxFiles: maxFilesToProcess,
-        confirmedPlanVersionId: confirmedPlanVersionId || undefined,
-        documentNumberingMode,
-        documentNumberingStylePreset,
-        documentNumberingStyleOverrides,
+        confirmedPlanVersionId: activePlanVersionId,
+        documentNumberingMode: activeNumberingMode,
+        documentNumberingStylePreset: activeNumberingStylePreset,
+        documentNumberingStyleOverrides: activeNumberingStyleOverrides,
         sessionFileId: cache.zipUpload?.id,
         remoteFileId: cache.zipUpload?.remote_file_id ?? null,
         uploadMode:
           cache.zipUpload && !cache.zipUpload.ingestion_run
             ? uploadMode
             : undefined,
-        force: forceDigitization,
-        reextract: forceDigitization || zipSupplementUploaded,
+        force: false,
+        reextract: zipSupplementUploaded,
         previousStatus: existingStatus ?? null,
       })
       .then(() => {

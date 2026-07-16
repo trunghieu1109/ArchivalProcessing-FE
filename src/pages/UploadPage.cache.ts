@@ -1,6 +1,6 @@
 import type { SessionMetadataValues } from "@/features/upload/components/SessionMetadataBar"
 import type {
-  ActivePlanResponse,
+  PlanVersionResponse,
   DossierBuildStrategy,
   DocumentNumberingMode,
   DocumentNumberingStylePreset,
@@ -32,6 +32,9 @@ interface UploadPageCache {
   zipEntries: ArchiveEntry[]
   folderTree: FolderNode[]
   parsedPlan: ParsedPlan
+  activeFolderTree: FolderNode[]
+  activeParsedPlan: ParsedPlan
+  activePlanResponse: PlanVersionResponse | null
   clusterGroups: ClusterGroup[]
   doc1State: ProcessState
   doc2State: ProcessState
@@ -45,7 +48,7 @@ interface UploadPageCache {
   persistedDocumentNumberingStylePreset: DocumentNumberingStylePreset
   documentNumberingStyleOverrides: NumberingStyleOverrides
   persistedDocumentNumberingStyleOverrides: NumberingStyleOverrides
-  documentNumberingModeSavePromise: Promise<ActivePlanResponse> | null
+  documentNumberingModeSavePromise: Promise<PlanVersionResponse> | null
   sessionId: string | null
   sessionMetadata: SessionMetadataValues
   zipUpload: SessionInputUploadResponse | null
@@ -56,6 +59,8 @@ interface UploadPageCache {
   zipMaxFiles: string
   uploadMode: UploadMode
   activePlanVersionId: string
+  reviewPlanVersionId: string
+  reviewPlanDirty: boolean
   activeClusterVersionId: string | null | undefined
   draftArrangementPlanFile: File | null
   draftRetentionFile: File | null
@@ -74,6 +79,9 @@ export const uploadPageCache: UploadPageCache = {
   zipEntries: [],
   folderTree: planToTree(EMPTY_PARSED_PLAN),
   parsedPlan: EMPTY_PARSED_PLAN,
+  activeFolderTree: planToTree(EMPTY_PARSED_PLAN),
+  activeParsedPlan: EMPTY_PARSED_PLAN,
+  activePlanResponse: null,
   clusterGroups: [],
   doc1State: "idle",
   doc2State: "idle",
@@ -103,6 +111,8 @@ export const uploadPageCache: UploadPageCache = {
   zipMaxFiles: "",
   uploadMode: "append",
   activePlanVersionId: "",
+  reviewPlanVersionId: "",
+  reviewPlanDirty: false,
   activeClusterVersionId: undefined,
   draftArrangementPlanFile: null,
   draftRetentionFile: null,

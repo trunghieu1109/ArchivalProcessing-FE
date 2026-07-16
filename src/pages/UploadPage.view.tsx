@@ -1,5 +1,12 @@
+import { useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { ArrowLeft, FileText, Home } from "lucide-react"
+import {
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle2,
+  FileText,
+  Home,
+} from "lucide-react"
 import { toast } from "sonner"
 import { FolderTree } from "@/features/upload/components/step2/FolderTree"
 import { RetentionAppendicesPanel } from "@/features/upload/components/step2/FolderTree.nodes"
@@ -12,7 +19,13 @@ import { FinalizeArtifactsStep } from "@/pages/FinalizeArtifactsPage"
 import { SessionMetadataBar } from "@/features/upload/components/SessionMetadataBar"
 import { cn } from "@/shared/lib/utils"
 import type { AppStep } from "@/features/upload/types"
-import { easeOut } from "./UploadPage.planUtils"
+import {
+  activePlanBuildStrategy,
+  activePlanDocumentNumberingMode,
+  activePlanDocumentNumberingStyleOverrides,
+  activePlanDocumentNumberingStylePreset,
+  easeOut,
+} from "./UploadPage.planUtils"
 import { UploadPageHeader } from "./UploadPage.header"
 import { UploadPageStepOne } from "./UploadPage.step1"
 
@@ -73,6 +86,12 @@ export function UploadPageView(props: Record<string, any>) {
     zipSupplementUploaded,
     parsedPlan,
     folderTree,
+    activeParsedPlan,
+    activeFolderTree,
+    activePlanResponse,
+    activePlanVersionId,
+    reviewPlanVersionId,
+    reviewPlanDirty,
     dossierBuildStrategy,
     selectDossierBuildStrategy,
     documentNumberingMode,
@@ -88,7 +107,8 @@ export function UploadPageView(props: Record<string, any>) {
     syncFolderTree,
     saveFolderTree,
     savePlanCriterias,
-    handleConfirmPlan,
+    handleApprovePlan,
+    handleStartMetadataExtraction,
     confirmingPlan,
     ocrPdfPaths,
     ocrMetadataItems,
@@ -106,7 +126,14 @@ export function UploadPageView(props: Record<string, any>) {
     isWorkerUser,
     navigate,
   } = props
+  const [planTab, setPlanTab] = useState<"review" | "active">("review")
   const hasAnalyzedPlan = Boolean(hasAnalyzedArrangementPlan)
+  const hasActivePlan = Boolean(activePlanVersionId && activePlanResponse)
+  const canApproveReview =
+    Boolean(reviewPlanVersionId) &&
+    (reviewPlanDirty || reviewPlanVersionId !== activePlanVersionId) &&
+    !planAnalyzing &&
+    !confirmingPlan
   const planProcessingTitle =
     doc1State === "processing" && doc2State === "processing"
       ? "Đang phân tích phương án chỉnh lý và thời hạn bảo quản"
@@ -119,17 +146,6 @@ export function UploadPageView(props: Record<string, any>) {
     doc2Has &&
     (parsedPlan.retention_appendices.length > 0 ||
       parsedPlan.retention_sources.length > 0)
-  const goToMetadataStep = () => {
-    const targetSessionId = sessionId ?? routeSessionId
-    if (targetSessionId) {
-      navigate(
-        `/sessions/${encodeURIComponent(targetSessionId)}/step/3?extract=1`
-      )
-      return
-    }
-    goTo(3)
-  }
-
   return (
     <div className="min-h-svh bg-[#F0F4F8]">
       <UploadPageHeader
@@ -256,30 +272,154 @@ export function UploadPageView(props: Record<string, any>) {
               exit={{ opacity: 0, y: -16 }}
               transition={{ duration: 0.4, ease: easeOut }}
             >
-              {hasAnalyzedPlan ? (
-                <FolderTree
-                  tree={folderTree}
-                  parsedPlan={parsedPlan}
-                  fondsName={sessionMetadata?.fonds_name}
-                  readOnly={false}
-                  hasRetentionSchedule={doc2Has}
-                  dossierBuildStrategy={dossierBuildStrategy}
-                  onDossierBuildStrategyChange={selectDossierBuildStrategy}
-                  documentNumberingMode={documentNumberingMode}
-                  onDocumentNumberingModeChange={selectDocumentNumberingModeDraft}
-                  documentNumberingStylePreset={documentNumberingStylePreset}
-                  documentNumberingStyleOverrides={documentNumberingStyleOverrides}
-                  onDocumentNumberingStylePresetChange={
-                    selectDocumentNumberingStylePreset
-                  }
-                  onDocumentNumberingStyleOverridesChange={selectDocumentNumberingStyleOverrides}
-                  onFileRegisterConfigChange={saveFileRegisterConfig}
-                  onChange={syncFolderTree}
-                  onSaveTree={saveFolderTree}
-                  onCriteriaChange={savePlanCriterias}
-                  onConfirm={handleConfirmPlan}
-                  confirming={confirmingPlan}
-                />
+              {hasAnalyzedPlan || hasActivePlan ? (
+                <div className="flex flex-col gap-4">
+                  {planAnalyzing && (
+                    <ProgressTimeline
+                      phases={PLAN_PROGRESS_PHASES}
+                      activePhase={planProgressPhase}
+                      completedPhases={planCompletedPhases}
+                      title={planProcessingTitle}
+                      message={planProcessingMessage}
+                    />
+                  )}
+                  <div
+                    role="tablist"
+                    aria-label="Phiên bản phương án phân loại"
+                    className="flex border-b border-[#CBD5E1]"
+                  >
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={planTab === "review"}
+                      onClick={() => setPlanTab("review")}
+                      className={cn(
+                        "border-b-2 px-4 py-3 text-sm font-semibold transition-colors",
+                        planTab === "review"
+                          ? "border-[#0052FF] text-[#0052FF]"
+                          : "border-transparent text-[#64748B] hover:text-[#0F172A]"
+                      )}
+                    >
+                      Review
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={planTab === "active"}
+                      onClick={() => setPlanTab("active")}
+                      className={cn(
+                        "border-b-2 px-4 py-3 text-sm font-semibold transition-colors",
+                        planTab === "active"
+                          ? "border-[#0052FF] text-[#0052FF]"
+                          : "border-transparent text-[#64748B] hover:text-[#0F172A]"
+                      )}
+                    >
+                      Active
+                    </button>
+                  </div>
+
+                  {planTab === "review" ? (
+                    hasAnalyzedPlan ? (
+                      <FolderTree
+                        tree={folderTree}
+                        parsedPlan={parsedPlan}
+                        fondsName={sessionMetadata?.fonds_name}
+                        readOnly={planAnalyzing}
+                        hasRetentionSchedule={doc2Has}
+                        dossierBuildStrategy={dossierBuildStrategy}
+                        onDossierBuildStrategyChange={selectDossierBuildStrategy}
+                        documentNumberingMode={documentNumberingMode}
+                        onDocumentNumberingModeChange={
+                          selectDocumentNumberingModeDraft
+                        }
+                        documentNumberingStylePreset={
+                          documentNumberingStylePreset
+                        }
+                        documentNumberingStyleOverrides={
+                          documentNumberingStyleOverrides
+                        }
+                        onDocumentNumberingStylePresetChange={
+                          selectDocumentNumberingStylePreset
+                        }
+                        onDocumentNumberingStyleOverridesChange={
+                          selectDocumentNumberingStyleOverrides
+                        }
+                        onFileRegisterConfigChange={saveFileRegisterConfig}
+                        onChange={syncFolderTree}
+                        onSaveTree={saveFolderTree}
+                        onCriteriaChange={savePlanCriterias}
+                      />
+                    ) : (
+                      <PlanUnavailable message="Chưa có phiên bản phương án để review" />
+                    )
+                  ) : hasActivePlan ? (
+                    <FolderTree
+                      tree={activeFolderTree}
+                      parsedPlan={activeParsedPlan}
+                      fondsName={sessionMetadata?.fonds_name}
+                      readOnly
+                      hasRetentionSchedule={
+                        activeParsedPlan.retention_appendices.length > 0
+                      }
+                      dossierBuildStrategy={activePlanBuildStrategy(
+                        activePlanResponse
+                      )}
+                      onDossierBuildStrategyChange={() => undefined}
+                      documentNumberingMode={activePlanDocumentNumberingMode(
+                        activePlanResponse
+                      )}
+                      onDocumentNumberingModeChange={() => undefined}
+                      documentNumberingStylePreset={
+                        activePlanDocumentNumberingStylePreset(
+                          activePlanResponse
+                        )
+                      }
+                      documentNumberingStyleOverrides={
+                        activePlanDocumentNumberingStyleOverrides(
+                          activePlanResponse
+                        )
+                      }
+                      onDocumentNumberingStylePresetChange={() => undefined}
+                      onDocumentNumberingStyleOverridesChange={() => undefined}
+                      onFileRegisterConfigChange={() => undefined}
+                      onChange={() => undefined}
+                      onCriteriaChange={() => undefined}
+                    />
+                  ) : (
+                    <PlanUnavailable message="Chưa có phương án phân loại được duyệt" />
+                  )}
+
+                  <div className="flex flex-col justify-end gap-3 border-t border-[#CBD5E1] pt-4 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={() => void handleApprovePlan()}
+                      disabled={!canApproveReview}
+                      title={
+                        canApproveReview
+                          ? "Duyệt phiên bản review hiện tại"
+                          : "Review hiện tại không có thay đổi cần duyệt"
+                      }
+                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-[#0052FF] bg-white px-4 py-2 text-sm font-semibold text-[#0052FF] transition hover:bg-[#EEF4FF] disabled:cursor-not-allowed disabled:border-[#CBD5E1] disabled:text-[#94A3B8] disabled:hover:bg-white"
+                    >
+                      <CheckCircle2 className="size-4" />
+                      Xác nhận phương án
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleStartMetadataExtraction()}
+                      disabled={!hasActivePlan || confirmingPlan}
+                      title={
+                        hasActivePlan
+                          ? "Lưu bản review và chuyển sang extract metadata"
+                          : "Cần duyệt ít nhất một phương án trước"
+                      }
+                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-[#0052FF] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0047DB] disabled:cursor-not-allowed disabled:bg-[#94A3B8]"
+                    >
+                      Chuyển sang extract metadata
+                      <ArrowRight className="size-4" />
+                    </button>
+                  </div>
+                </div>
               ) : planAnalyzing ? (
                 <div className="flex flex-col gap-4">
                   <ProgressTimeline
@@ -302,8 +442,9 @@ export function UploadPageView(props: Record<string, any>) {
                     {zipHas && (
                       <button
                         type="button"
-                        onClick={goToMetadataStep}
-                        className="mt-5 rounded-xl bg-[#0052FF] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0047DB]"
+                        onClick={() => void handleStartMetadataExtraction()}
+                        disabled={!hasActivePlan || confirmingPlan}
+                        className="mt-5 rounded-md bg-[#0052FF] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0047DB] disabled:cursor-not-allowed disabled:bg-[#94A3B8]"
                       >
                         Đi tới extract metadata
                       </button>
@@ -336,8 +477,9 @@ export function UploadPageView(props: Record<string, any>) {
                   {zipHas && (
                     <button
                       type="button"
-                      onClick={goToMetadataStep}
-                      className="mt-5 rounded-xl bg-[#0052FF] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0047DB]"
+                      onClick={() => void handleStartMetadataExtraction()}
+                      disabled={!hasActivePlan || confirmingPlan}
+                      className="mt-5 rounded-md bg-[#0052FF] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0047DB] disabled:cursor-not-allowed disabled:bg-[#94A3B8]"
                     >
                       Đi tới extract metadata
                     </button>
@@ -533,6 +675,15 @@ export function UploadPageView(props: Record<string, any>) {
           )}
         </AnimatePresence>
       </div>
+    </div>
+  )
+}
+
+function PlanUnavailable({ message }: { message: string }) {
+  return (
+    <div className="rounded-md border border-dashed border-[#CBD5E1] bg-white px-6 py-12 text-center">
+      <FileText className="mx-auto size-9 text-[#94A3B8]" />
+      <p className="mt-3 text-sm font-medium text-[#475569]">{message}</p>
     </div>
   )
 }

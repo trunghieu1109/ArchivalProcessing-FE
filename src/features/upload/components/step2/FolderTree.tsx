@@ -1,5 +1,4 @@
 import {
-  Check,
   ChevronDown,
   Files,
   FileText,
@@ -8,7 +7,6 @@ import {
   Plus,
 } from "lucide-react"
 import { AnimatePresence, motion } from "framer-motion"
-import { toast } from "sonner"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { PaginationControls } from "@/features/upload/components/PaginationControls"
 import { usePagedItems } from "@/features/upload/hooks/usePagedItems"
@@ -96,8 +94,6 @@ export function FolderTree({
   onChange,
   onSaveTree,
   onCriteriaChange,
-  onConfirm,
-  confirming = false,
 }: FolderTreeProps) {
   const rootPagination = usePagedItems(tree, {
     defaultPageSize: 50,
@@ -129,15 +125,6 @@ export function FolderTree({
       criteria: [],
     }
     onChange([...tree, newNode])
-  }
-
-  const handleConfirm = () => {
-    if (confirming) return
-    if (tree.length === 0) {
-      toast.error("Vui lòng thêm ít nhất một thư mục.")
-      return
-    }
-    void onConfirm()
   }
 
   return (
@@ -514,20 +501,6 @@ export function FolderTree({
         hasRetentionSchedule={hasRetentionSchedule}
       />
 
-      <div className="flex justify-stretch sm:justify-end">
-        <button
-          onClick={handleConfirm}
-          disabled={confirming}
-          className="flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-white transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] disabled:cursor-wait disabled:opacity-70 sm:w-auto"
-          style={{
-            background: "linear-gradient(to right, #0052FF, #4D7CFF)",
-            boxShadow: "0 4px 14px rgba(0,82,255,0.25)",
-          }}
-        >
-          <Check className="size-4" />{" "}
-          {readOnly ? "Tiếp tục" : "Xác nhận phương án"}
-        </button>
-      </div>
     </motion.div>
   )
 }

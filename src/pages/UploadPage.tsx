@@ -8,6 +8,7 @@ import type { SessionMetadataValues } from "@/features/upload/components/Session
 import {
   ensureClusterBuild,
   getActivePlan,
+  getReviewPlan,
   listSessionEvents,
   type DossierBuildStrategy,
   type DocumentNumberingMode,
@@ -27,7 +28,10 @@ import type {
 import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
 
 import { UploadPageView } from "./UploadPage.view"
-import { createConfirmPlanHandler } from "./UploadPage.confirmPlan"
+import {
+  createApprovePlanHandler,
+  createStartMetadataExtractionHandler,
+} from "./UploadPage.confirmPlan"
 import { createUploadPageWorkflowActions } from "./UploadPage.workflow"
 import { createUploadPageActions } from "./UploadPage.actions"
 import { useUploadPageOcr } from "./UploadPage.ocr"
@@ -108,9 +112,9 @@ export function UploadPage() {
       return
     }
     const hasAnalyzedPlanForBuild =
-      Boolean(cache.activePlanVersionId) &&
+      Boolean(activePlanVersionId) &&
       doc1Has &&
-      parsedPlan.groups.length > 0
+      activeParsedPlan.groups.length > 0
     const missingInputs = missingDossierBuildInputs({
       hasArrangementPlan: doc1Has,
       hasRetentionSchedule: doc2Has,
@@ -179,6 +183,19 @@ export function UploadPage() {
   const [, setZipEntries] = useState<ArchiveEntry[]>(cache.zipEntries)
   const [folderTree, setFolderTree] = useState<FolderNode[]>(cache.folderTree)
   const [parsedPlan, setParsedPlan] = useState<ParsedPlan>(cache.parsedPlan)
+  const [activeFolderTree, setActiveFolderTree] = useState<FolderNode[]>(
+    cache.activeFolderTree
+  )
+  const [activeParsedPlan, setActiveParsedPlan] = useState<ParsedPlan>(
+    cache.activeParsedPlan
+  )
+  const [activePlanVersionId, setActivePlanVersionId] = useState(
+    cache.activePlanVersionId
+  )
+  const [reviewPlanVersionId, setReviewPlanVersionId] = useState(
+    cache.reviewPlanVersionId
+  )
+  const [reviewPlanDirty, setReviewPlanDirty] = useState(cache.reviewPlanDirty)
   const [clusterGroups, setClusterGroups] = useState<ClusterGroup[]>(
     cache.clusterGroups
   )
@@ -242,6 +259,11 @@ export function UploadPage() {
     setZipEntries,
     setFolderTree,
     setParsedPlan,
+    setActiveFolderTree,
+    setActiveParsedPlan,
+    setActivePlanVersionId,
+    setReviewPlanVersionId,
+    setReviewPlanDirty,
     setClusterGroups,
     setSessionId,
     setSessionMetadata,
@@ -327,9 +349,9 @@ export function UploadPage() {
         // Progress events are best-effort; the active-plan polling owns errors.
       }
       try {
-        const planResponse = await getActivePlan(sessionId)
+        const planResponse = await getReviewPlan(sessionId)
         if (cancelled) return
-        const currentPlanVersionId = cache.activePlanVersionId
+        const currentPlanVersionId = cache.reviewPlanVersionId
         const nextPlanVersionId = planResponse?.id ?? ""
         const shouldApplyPlan =
           Boolean(planResponse) &&
@@ -344,7 +366,8 @@ export function UploadPage() {
           const numberingStyleOverrides =
             activePlanDocumentNumberingStyleOverrides(planResponse)
 
-          cache.activePlanVersionId = planResponse.id ?? ""
+          cache.reviewPlanVersionId = planResponse.id ?? ""
+          cache.reviewPlanDirty = false
           cache.parsedPlan = plan
           cache.folderTree = planToTree(plan)
           cache.planAnalysisState = "done"
@@ -364,6 +387,8 @@ export function UploadPage() {
 
           setParsedPlan(plan)
           setFolderTree(cache.folderTree)
+          setReviewPlanVersionId(cache.reviewPlanVersionId)
+          setReviewPlanDirty(false)
           setPlanAnalysisState("done")
           setDoc1State(cache.doc1State)
           setDoc2State(cache.doc2State)
@@ -431,6 +456,7 @@ export function UploadPage() {
     savePlanCriterias,
     saveFileRegisterConfig,
     saveFolderTree,
+    savePendingReviewChanges,
     syncDoc1State,
     syncDoc2State,
     syncZipState,
@@ -461,6 +487,11 @@ export function UploadPage() {
     setZipEntries,
     setFolderTree,
     setParsedPlan,
+    setActiveFolderTree,
+    setActiveParsedPlan,
+    setActivePlanVersionId,
+    setReviewPlanVersionId,
+    setReviewPlanDirty,
     setZipState,
     setPlanProgressPhase,
     setPlanProgressMessage,
@@ -471,17 +502,19 @@ export function UploadPage() {
     planReuploadState.arrangement || planReuploadState.retention
   const planReanalysisReady = existingSessionMode && planInputsReuploaded
   const hasAnyFile = doc1Has || doc2Has || zipHas
-  const hasActivePlan = Boolean(cache.activePlanVersionId)
+  const hasActivePlan = Boolean(activePlanVersionId)
+  const hasReviewPlan = Boolean(reviewPlanVersionId)
   const hasAnalyzedArrangementPlan =
-    planAnalysisState === "done" &&
-    hasActivePlan &&
+    hasReviewPlan &&
     doc1Has &&
     parsedPlan.groups.length > 0
+  const hasActiveArrangementPlan =
+    hasActivePlan && doc1Has && activeParsedPlan.groups.length > 0
   const missingDossierInputs = missingDossierBuildInputs({
     hasArrangementPlan: doc1Has,
     hasRetentionSchedule: doc2Has,
     hasRawZip: zipHas,
-    hasActivePlan: hasAnalyzedArrangementPlan,
+    hasActivePlan: hasActiveArrangementPlan,
   })
   const missingDossierInputLabels =
     dossierBuildMissingLabels(missingDossierInputs)
@@ -538,10 +571,19 @@ export function UploadPage() {
   const primaryActionDisabled =
     sessionLoading || (allProcessing && !canOpenPlanAnalysisStep)
 
-  const startMetadataExtractionFromZip = useCallback(async () => {
+  async function startMetadataExtractionFromZip() {
     const currentSessionId = sessionId ?? routeSessionId ?? cache.sessionId
     if (!currentSessionId) {
       toast.error("Chưa có session để extract metadata.")
+      return
+    }
+    let activePlan = cache.activePlanResponse
+    if (!activePlan || activePlan.id !== cache.activePlanVersionId) {
+      activePlan = await getActivePlan(currentSessionId)
+      if (activePlan) applyActivePlanResponse(activePlan)
+    }
+    if (!activePlan?.id) {
+      toast.error("Chưa có phương án phân loại được duyệt.")
       return
     }
     const folderPath =
@@ -623,12 +665,18 @@ export function UploadPage() {
 
     syncZipState("processing")
     toast.success("Bắt đầu lấy metadata.")
+    const activeNumberingMode = activePlanDocumentNumberingMode(activePlan)
+    const activeNumberingStylePreset =
+      activePlanDocumentNumberingStylePreset(activePlan)
+    const activeNumberingStyleOverrides =
+      activePlanDocumentNumberingStyleOverrides(activePlan)
     void ocr
       .start(folderPath, {
         maxFiles: maxFilesToProcess,
-        documentNumberingMode,
-        documentNumberingStylePreset,
-        documentNumberingStyleOverrides,
+        confirmedPlanVersionId: activePlan.id,
+        documentNumberingMode: activeNumberingMode,
+        documentNumberingStylePreset: activeNumberingStylePreset,
+        documentNumberingStyleOverrides: activeNumberingStyleOverrides,
         sessionFileId: cache.zipUpload?.id,
         remoteFileId: cache.zipUpload?.remote_file_id ?? null,
         uploadMode: cache.zipUpload ? uploadMode : undefined,
@@ -644,18 +692,7 @@ export function UploadPage() {
           err instanceof Error ? err.message : "Không thể bắt đầu OCR."
         )
       })
-  }, [
-    documentNumberingMode,
-    documentNumberingStylePreset,
-    documentNumberingStyleOverrides,
-    ocr,
-    parseZipMaxFiles,
-    routeSessionId,
-    sessionId,
-    syncZipState,
-    uploadMode,
-    zipFolderPath,
-  ])
+  }
 
   useEffect(() => {
     if (currentStep !== 3) return
@@ -680,32 +717,29 @@ export function UploadPage() {
     zipHas,
   ])
 
-  const handleConfirmPlan = createConfirmPlanHandler({
+  const handleApprovePlan = createApprovePlanHandler({
     confirmingPlan,
-    planAnalysisState,
-    dossierBuildStrategy,
-    documentNumberingMode,
-    documentNumberingStylePreset,
-    documentNumberingStyleOverrides,
-    zipFolderPath,
-    existingSessionMode,
-    uploadMode,
-    zipSupplementUploaded,
-    ocr,
+    savePendingReviewChanges,
     applyActivePlanResponse,
-    applyPersistedDossierBuildStrategy,
-    applyPersistedDocumentNumberingMode,
-    applyPersistedDocumentNumberingStylePreset,
-    applyPersistedDocumentNumberingStyleOverrides,
-    parseZipMaxFiles,
-    syncZipState,
-    goTo,
-    setParsedPlan,
-    setFolderTree,
-    setClusterGroups,
     setConfirmingPlan,
-    setZipSupplementUploaded,
   })
+
+  const handleStartMetadataExtraction =
+    createStartMetadataExtractionHandler({
+      confirmingPlan,
+      zipFolderPath,
+      existingSessionMode,
+      uploadMode,
+      zipSupplementUploaded,
+      ocr,
+      savePendingReviewChanges,
+      applyActivePlanResponse,
+      parseZipMaxFiles,
+      syncZipState,
+      goTo,
+      setConfirmingPlan,
+      setZipSupplementUploaded,
+    })
 
   const { handleStartAll } = createUploadPageWorkflowActions({
     sessionId,
@@ -715,7 +749,7 @@ export function UploadPage() {
     planInputsReuploaded,
     planAnalysisState,
     allDone,
-    hasActivePlan: hasAnalyzedArrangementPlan,
+    hasActivePlan,
     planReanalysisReady,
     planReuploadState,
     dossierBuildStrategy,
@@ -726,7 +760,7 @@ export function UploadPage() {
     doc2Ref,
     navigate,
     ensureSession,
-    handleConfirmPlan,
+    handleStartMetadataExtraction,
     syncSessionMetadata,
     syncPlanAnalysisState,
     syncDoc1State,
@@ -808,6 +842,12 @@ export function UploadPage() {
       zipSupplementUploaded={zipSupplementUploaded}
       parsedPlan={parsedPlan}
       folderTree={folderTree}
+      activeParsedPlan={activeParsedPlan}
+      activeFolderTree={activeFolderTree}
+      activePlanResponse={cache.activePlanResponse}
+      activePlanVersionId={activePlanVersionId}
+      reviewPlanVersionId={reviewPlanVersionId}
+      reviewPlanDirty={reviewPlanDirty}
       dossierBuildStrategy={dossierBuildStrategy}
       selectDossierBuildStrategy={selectDossierBuildStrategy}
       documentNumberingMode={documentNumberingMode}
@@ -829,7 +869,8 @@ export function UploadPage() {
       syncFolderTree={syncFolderTree}
       saveFolderTree={saveFolderTree}
       savePlanCriterias={savePlanCriterias}
-      handleConfirmPlan={handleConfirmPlan}
+      handleApprovePlan={handleApprovePlan}
+      handleStartMetadataExtraction={handleStartMetadataExtraction}
       confirmingPlan={confirmingPlan}
       ocrPdfPaths={ocrPdfPaths}
       ocrMetadataItems={ocrMetadataItems}

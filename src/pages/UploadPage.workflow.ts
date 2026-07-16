@@ -32,7 +32,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     doc2Ref,
     navigate,
     ensureSession,
-    handleConfirmPlan,
+    handleStartMetadataExtraction,
     syncPlanAnalysisState,
     syncDoc1State,
     syncDoc2State,
@@ -150,18 +150,11 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
         return
       }
       if (zipSupplementUploaded) {
-        await handleConfirmPlan()
+        await handleStartMetadataExtraction()
         return
       }
       if (zipHas && !hasActivePlan && !doc1Has && !doc2Has) {
-        const currentSessionId = routeSessionId ?? sessionId ?? cache.sessionId
-        if (currentSessionId) {
-          navigate(
-            `/sessions/${encodeURIComponent(currentSessionId)}/step/3?extract=1`
-          )
-        } else {
-          goTo(3)
-        }
+        goTo(2)
         return
       }
       goTo(2)
@@ -287,9 +280,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
         toast.success("Đã tạo session và lưu các file đã chọn.")
         if (zipInput) {
           await wait(PLAN_DONE_VISIBLE_MS)
-          navigate(
-            `/sessions/${encodeURIComponent(currentSessionId)}/step/3?extract=1`
-          )
+          navigate(`/sessions/${encodeURIComponent(currentSessionId)}/step/2`)
           return
         }
         navigate(`/sessions/${encodeURIComponent(currentSessionId)}/step/2`)

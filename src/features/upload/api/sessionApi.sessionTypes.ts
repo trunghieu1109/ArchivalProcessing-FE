@@ -46,6 +46,7 @@ export interface SessionSummary {
   created_at: string
   updated_at?: string
   active_plan_version_id?: string | null
+  review_plan_version_id?: string | null
   active_cluster_version_id?: string | null
   file_count?: number
   document_count?: number
@@ -254,8 +255,13 @@ export interface UploadSessionInputOptions {
   onProgress?: (progress: UploadProgressSnapshot) => void
 }
 
-export interface ActivePlanResponse {
+export interface PlanVersionResponse {
   id?: string
+  session_id?: string
+  active_plan_version_id?: string | null
+  review_plan_version_id?: string | null
+  is_active?: boolean
+  is_review?: boolean
   version_number?: number
   summary: string
   dossier_build_strategy?: DossierBuildStrategy
@@ -277,6 +283,8 @@ export interface ActivePlanResponse {
   retention_appendices?: unknown[]
   retention_sources?: RetentionSourceStatus[]
 }
+
+export type ActivePlanResponse = PlanVersionResponse
 
 export interface RetentionSourceStatus {
   session_file_id?: number | null

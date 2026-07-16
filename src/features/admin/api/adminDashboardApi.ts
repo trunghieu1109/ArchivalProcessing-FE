@@ -29,6 +29,7 @@ export interface AdminDashboardSession {
   fonds_creator_code?: string | null
   coordinator_user_id?: string | null
   active_plan_version_id?: string | null
+  review_plan_version_id?: string | null
   active_cluster_version_id?: string | null
   created_at: string
   updated_at: string
