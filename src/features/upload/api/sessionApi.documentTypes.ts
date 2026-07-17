@@ -210,6 +210,7 @@ export interface NumberingDocumentStatus {
   numbering_configuration_id?: number | null
   selected_numbering_version_id?: number | null
   numbering_versions?: NumberingDocumentVersion[]
+  was_renumbered?: boolean
 }
 
 export interface NumberingDocumentVersion {
@@ -233,6 +234,7 @@ export interface NumberingConfigurationSummary {
 
 export interface NumberingSavedState {
   id: number
+  configuration_id: number
   sequence_number: number
   created_by: string
   created_at?: string | null
@@ -243,6 +245,7 @@ export interface NumberingStateNavigation {
   count: number
   can_previous: boolean
   can_next: boolean
+  can_discard?: boolean
   dirty: boolean
 }
 

@@ -15,6 +15,7 @@ import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import { PaginationControls } from "@/features/upload/components/PaginationControls"
 import {
   downloadArtifact,
+  discardNumberingStateChanges,
   enqueueDocumentNumbering,
   exportMetadataSnapshot,
   getDocumentNumberingStatus,
@@ -24,7 +25,6 @@ import {
   importMetadataBoxNumbers as importMetadataBoxNumbersApi,
   moveNumberingState,
   saveNumberingState,
-  selectDocumentNumberingVersion,
   updateDocumentNumberingFromPage,
   type DocumentNumberingMode,
   type DocumentNumberingStylePreset,
@@ -156,9 +156,6 @@ export function NumberingStep({
   const [retryingDocumentId, setRetryingDocumentId] = useState<number | null>(
     null
   )
-  const [switchingVersionDocumentId, setSwitchingVersionDocumentId] = useState<
-    number | null
-  >(null)
   const [stateMutationBusy, setStateMutationBusy] = useState(false)
   const [error, setError] = useState("")
   const [progressPhase, setProgressPhase] = useState<string | null>(null)
@@ -720,36 +717,6 @@ export function NumberingStep({
     [refreshStatus, sessionId, starting, status?.active]
   )
 
-  const selectNumberingVersion = useCallback(
-    async (document: NumberingDocumentStatus, versionId: number) => {
-      if (!sessionId || status?.active || starting) return
-      setSwitchingVersionDocumentId(document.session_document_id)
-      setError("")
-      try {
-        await selectDocumentNumberingVersion(
-          sessionId,
-          document.session_document_id,
-          versionId
-        )
-        await refreshStatus({ silent: true, force: true })
-        if (previewDocumentId === document.session_document_id) {
-          setPreviewRefreshKey((key) => key + 1)
-        }
-        toast.success("Đã chuyển phiên bản của tài liệu.")
-      } catch (err) {
-        const message =
-          err instanceof Error
-            ? err.message
-            : "Không thể chuyển phiên bản tài liệu."
-        setError(message)
-        toast.error(message)
-      } finally {
-        setSwitchingVersionDocumentId(null)
-      }
-    },
-    [previewDocumentId, refreshStatus, sessionId, starting, status?.active]
-  )
-
   const persistNumberingState = useCallback(async () => {
     if (!sessionId || status?.active || starting) return
     setStateMutationBusy(true)
@@ -783,7 +750,15 @@ export function NumberingStep({
       setError("")
       try {
         await moveNumberingState(sessionId, direction)
-        await refreshStatus({ silent: true, force: true })
+        const restored = await refreshStatus({ silent: true, force: true })
+        if (restored?.document_numbering_style_preset) {
+          onDocumentNumberingStyleApplied?.(
+            restored.document_numbering_style_preset,
+            cleanNumberingStyleOverrides(
+              restored.document_numbering_style_overrides
+            )
+          )
+        }
         setPreviewRefreshKey((key) => key + 1)
         toast.success(
           direction === "previous"
@@ -799,8 +774,51 @@ export function NumberingStep({
         setStateMutationBusy(false)
       }
     },
-    [refreshStatus, sessionId, starting, status?.active]
+    [
+      onDocumentNumberingStyleApplied,
+      refreshStatus,
+      sessionId,
+      starting,
+      status?.active,
+    ]
   )
+
+  const discardNumberingChanges = useCallback(async () => {
+    if (!sessionId || status?.active || starting) return
+    setStateMutationBusy(true)
+    setError("")
+    try {
+      await discardNumberingStateChanges(sessionId)
+      const restored = await refreshStatus({ silent: true, force: true })
+      if (restored?.document_numbering_style_preset) {
+        const restoredOverrides = cleanNumberingStyleOverrides(
+          restored.document_numbering_style_overrides
+        )
+        setStylePresetDraft(restored.document_numbering_style_preset)
+        setStyleOverridesDraft(restoredOverrides)
+        setStyleDraftDirty(false)
+        onDocumentNumberingStyleApplied?.(
+          restored.document_numbering_style_preset,
+          restoredOverrides
+        )
+      }
+      setPreviewRefreshKey((key) => key + 1)
+      toast.success("Đã bỏ thay đổi và khôi phục trạng thái hiện tại.")
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Không thể bỏ thay đổi hiện tại."
+      setError(message)
+      toast.error(message)
+    } finally {
+      setStateMutationBusy(false)
+    }
+  }, [
+    onDocumentNumberingStyleApplied,
+    refreshStatus,
+    sessionId,
+    starting,
+    status?.active,
+  ])
 
   const exportMetadata = useCallback(async () => {
     if (!sessionId) {
@@ -1225,8 +1243,11 @@ export function NumberingStep({
   const metadataBusy = metadataExporting || metadataImporting
   const canContinue = complete && failedCount === 0 && unresolvedCount === 0
   const canRestartNumbering = hasNumberingOutput
+  const effectiveDocumentNumberingMode =
+    statusForCurrentSession?.document_numbering_mode ?? documentNumberingMode
   const changeNumberingMode = async (mode: DocumentNumberingMode) => {
-    if (active || changingMode || mode === documentNumberingMode) return
+    if (active || changingMode || mode === effectiveDocumentNumberingMode)
+      return
     const shouldRenumber = hasNumberingOutput
     setChangingMode(true)
     setError("")
@@ -1271,13 +1292,15 @@ export function NumberingStep({
     )
   }
   const modeLabel =
-    documentNumberingMode === "sheet" ? "Đánh số theo tờ" : "Đánh số theo trang"
+    effectiveDocumentNumberingMode === "sheet"
+      ? "Đánh số theo tờ"
+      : "Đánh số theo trang"
 
   return (
     <div className="flex flex-col gap-5">
       <NumberingStepHeader
         modeLabel={modeLabel}
-        documentNumberingMode={documentNumberingMode}
+        documentNumberingMode={effectiveDocumentNumberingMode}
         documentNumberingStylePreset={stylePresetDraft}
         documentNumberingStyleOverrides={styleOverridesDraft}
         numberingStyleOptions={numberingStyleOptions}
@@ -1299,11 +1322,13 @@ export function NumberingStep({
         sequenceNumber={status?.numbering_state?.current?.sequence_number}
         stateCount={status?.numbering_state?.count ?? 0}
         dirty={status?.numbering_state?.dirty ?? true}
+        canDiscard={status?.numbering_state?.can_discard ?? false}
         canPrevious={status?.numbering_state?.can_previous ?? false}
         canNext={status?.numbering_state?.can_next ?? false}
         busy={stateMutationBusy}
-        disabled={active || switchingVersionDocumentId !== null}
+        disabled={active}
         onSave={() => void persistNumberingState()}
+        onDiscard={() => void discardNumberingChanges()}
         onPrevious={() => void changeNumberingState("previous")}
         onNext={() => void changeNumberingState("next")}
       />
@@ -1514,7 +1539,6 @@ export function NumberingStep({
                               document.document_number_end,
                               updateMode,
                               numberingEntryKey,
-                              document.selected_numbering_version_id ?? "none",
                             ].join(":")}
                             document={document}
                             updateMode={updateMode}
@@ -1537,10 +1561,6 @@ export function NumberingStep({
                               retryingDocumentId ===
                               document.session_document_id
                             }
-                            switchingVersion={
-                              switchingVersionDocumentId ===
-                              document.session_document_id
-                            }
                             retryable={
                               hasNumberingOutput &&
                               document.status !== "running"
@@ -1552,13 +1572,11 @@ export function NumberingStep({
                               document.status !== "running"
                             }
                             onRetry={retryIncompleteDocument}
-                            onSelectVersion={selectNumberingVersion}
                             disabled={
                               starting ||
                               Boolean(status?.active) ||
                               updatingDocumentId !== null ||
                               retryingDocumentId !== null ||
-                              switchingVersionDocumentId !== null ||
                               stateMutationBusy
                             }
                           />

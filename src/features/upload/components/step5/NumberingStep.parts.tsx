@@ -533,22 +533,26 @@ export function NumberingStateControls({
   sequenceNumber,
   stateCount,
   dirty,
+  canDiscard,
   canPrevious,
   canNext,
   busy,
   disabled,
   onSave,
+  onDiscard,
   onPrevious,
   onNext,
 }: {
   sequenceNumber?: number | null
   stateCount: number
   dirty: boolean
+  canDiscard: boolean
   canPrevious: boolean
   canNext: boolean
   busy: boolean
   disabled: boolean
   onSave: () => void
+  onDiscard: () => void
   onPrevious: () => void
   onNext: () => void
 }) {
@@ -567,6 +571,17 @@ export function NumberingStateControls({
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onDiscard}
+          disabled={disabled || busy || !canDiscard}
+          title="Bỏ các thay đổi chưa lưu và khôi phục trạng thái hiện tại"
+        >
+          <RotateCcw />
+          Bỏ thay đổi
+        </Button>
         <Button
           type="button"
           variant="outline"
@@ -714,10 +729,8 @@ export function NumberingDocumentRow({
   onPreview,
   onUpdateFromPage,
   onRetry,
-  onSelectVersion,
   updating,
   retrying,
-  switchingVersion,
   retryable,
   stalled,
   disabled,
@@ -735,13 +748,8 @@ export function NumberingDocumentRow({
     manualEntries?: Array<{ page_number: number; label: string }>
   ) => void
   onRetry: (document: NumberingDocumentStatus) => void
-  onSelectVersion: (
-    document: NumberingDocumentStatus,
-    versionId: number
-  ) => void
   updating: boolean
   retrying: boolean
-  switchingVersion: boolean
   retryable: boolean
   stalled: boolean
   disabled: boolean
@@ -820,16 +828,6 @@ export function NumberingDocumentRow({
     document.document_number_start === document.document_number_end
       ? String(document.document_number_start)
       : `${document.document_number_start}-${document.document_number_end}`
-  const versions = document.numbering_versions ?? []
-  const selectedVersionIndex = versions.findIndex(
-    (version) => version.id === document.selected_numbering_version_id
-  )
-  const previousVersion =
-    selectedVersionIndex > 0 ? versions[selectedVersionIndex - 1] : null
-  const nextVersion =
-    selectedVersionIndex >= 0 && selectedVersionIndex < versions.length - 1
-      ? versions[selectedVersionIndex + 1]
-      : null
   const handleUpdate = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!canUpdate) return
@@ -877,41 +875,6 @@ export function NumberingDocumentRow({
 
   const actionButtons = (
     <>
-      {versions.length > 1 ? (
-        <div className="mr-1 inline-flex h-8 items-center rounded-lg border border-[#CBD5E1] bg-white">
-          <button
-            type="button"
-            onClick={() =>
-              previousVersion && onSelectVersion(document, previousVersion.id)
-            }
-            disabled={disabled || switchingVersion || !previousVersion}
-            className="inline-flex size-7 items-center justify-center text-[#475569] hover:text-[#0052FF] disabled:text-[#CBD5E1]"
-            title="Phiên bản trước của tài liệu này"
-            aria-label="Phiên bản trước của tài liệu này"
-          >
-            <ChevronLeft className="size-3.5" />
-          </button>
-          <span className="min-w-8 px-1 text-center text-[10px] font-semibold text-[#475569]">
-            {switchingVersion ? (
-              <Loader2 className="mx-auto size-3 animate-spin" />
-            ) : (
-              `V${versions[selectedVersionIndex]?.version_number ?? "?"}`
-            )}
-          </span>
-          <button
-            type="button"
-            onClick={() =>
-              nextVersion && onSelectVersion(document, nextVersion.id)
-            }
-            disabled={disabled || switchingVersion || !nextVersion}
-            className="inline-flex size-7 items-center justify-center text-[#475569] hover:text-[#0052FF] disabled:text-[#CBD5E1]"
-            title="Phiên bản sau của tài liệu này"
-            aria-label="Phiên bản sau của tài liệu này"
-          >
-            <ChevronRight className="size-3.5" />
-          </button>
-        </div>
-      ) : null}
       <button
         type="submit"
         disabled={!canUpdate}
@@ -993,14 +956,21 @@ export function NumberingDocumentRow({
             <p className="min-w-0 truncate text-sm font-semibold text-[#0F172A]">
               {document.file_name || document.document_id}
             </p>
-            <span
-              className={cn(
-                "inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                badge.className
-              )}
-            >
-              {badge.label}
-            </span>
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
+              {document.was_renumbered ? (
+                <span className="inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-700">
+                  Đã đánh số lại
+                </span>
+              ) : null}
+              <span
+                className={cn(
+                  "inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                  badge.className
+                )}
+              >
+                {badge.label}
+              </span>
+            </div>
           </div>
           <p className="mt-0.5 truncate text-xs text-[#64748B]">Số {span}</p>
           {document.error ? (

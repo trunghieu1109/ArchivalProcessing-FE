@@ -173,6 +173,15 @@ export async function moveNumberingState(
   )
 }
 
+export async function discardNumberingStateChanges(
+  sessionId: string
+): Promise<NumberingStateMutationResponse> {
+  return requestJson<NumberingStateMutationResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/numbering/states/discard`,
+    { method: "POST" }
+  )
+}
+
 export async function exportMetadataSnapshot(
   sessionId: string,
   payload: { created_by?: string; groups?: MetadataSnapshotGroup[] } = {}
