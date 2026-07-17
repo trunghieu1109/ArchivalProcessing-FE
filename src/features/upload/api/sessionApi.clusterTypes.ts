@@ -401,6 +401,7 @@ export interface ClusterVersionResponse extends ApiRevisionMetadata {
   source: string
   status: string
   previous_version_id: string | null
+  plan_version_id: string | null
   summary: Record<string, unknown>
   affected_clusters: string[]
   batch_snapshot_count: number
