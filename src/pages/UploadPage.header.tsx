@@ -12,6 +12,7 @@ export function UploadPageHeader(props: Record<string, any>) {
     goTo,
     isWorkerUser,
     navigate,
+    onNavigateSessions,
   } = props
 
   return (
@@ -33,7 +34,9 @@ export function UploadPageHeader(props: Record<string, any>) {
           >
             <button
               type="button"
-              onClick={() => navigate("/sessions")}
+              onClick={() =>
+                onNavigateSessions?.() ?? navigate("/sessions")
+              }
               className="block rounded-xl focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2 focus-visible:outline-none"
               aria-label="Quay lại danh sách session"
               title="Quay lại danh sách session"

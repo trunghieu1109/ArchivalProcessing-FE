@@ -52,7 +52,7 @@ export function NumberingStepHeader({
   starting,
   active,
   complete,
-  hasPendingStyleChanges,
+  hasPendingConfigChanges,
   canRestart,
   onRefresh,
   onStart,
@@ -75,7 +75,7 @@ export function NumberingStepHeader({
   starting: boolean
   active: boolean
   complete: boolean
-  hasPendingStyleChanges: boolean
+  hasPendingConfigChanges: boolean
   canRestart: boolean
   onRefresh: () => void | Promise<unknown>
   onStart: () => void | Promise<unknown>
@@ -195,7 +195,7 @@ export function NumberingStepHeader({
             <span className="flex items-center pr-1 text-sm font-semibold text-[#475569]">
               Kiểu số: {styleLabel}
             </span>
-            {hasPendingStyleChanges ? (
+            {hasPendingConfigChanges ? (
               <span className="flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
                 Chưa áp dụng
               </span>
@@ -369,7 +369,7 @@ export function NumberingStepHeader({
             ) : (
               <Play data-icon="inline-start" />
             )}
-            {hasPendingStyleChanges
+            {hasPendingConfigChanges
               ? "Áp dụng và đánh số lại"
               : complete
                 ? "Lấy kết quả"

@@ -117,9 +117,7 @@ const FALLBACK_NUMBERING_STYLE_OPTIONS: NumberingStyleOption[] = [
 interface NumberingStepProps {
   sessionId: string | null
   documentNumberingMode: DocumentNumberingMode
-  onDocumentNumberingModeChange: (
-    mode: DocumentNumberingMode
-  ) => Promise<boolean | void>
+  onDocumentNumberingModeApplied?: (mode: DocumentNumberingMode) => void
   documentNumberingStylePreset: DocumentNumberingStylePreset
   documentNumberingStyleOverrides?: NumberingStyleOverrides
   onDocumentNumberingStyleApplied?: (
@@ -134,7 +132,7 @@ interface NumberingStepProps {
 export function NumberingStep({
   sessionId,
   documentNumberingMode,
-  onDocumentNumberingModeChange,
+  onDocumentNumberingModeApplied,
   documentNumberingStylePreset,
   documentNumberingStyleOverrides,
   onDocumentNumberingStyleApplied,
@@ -146,7 +144,12 @@ export function NumberingStep({
   const [status, setStatus] = useState<NumberingStatusResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState(false)
-  const [changingMode, setChangingMode] = useState(false)
+  const changingMode = false
+  const [numberingModeDraft, setNumberingModeDraft] =
+    useState<DocumentNumberingMode>(documentNumberingMode)
+  const [numberingModeDraftDirty, setNumberingModeDraftDirty] =
+    useState(false)
+  const numberingModeDraftSessionRef = useRef<string | null>(null)
   const [stylePresetDraft, setStylePresetDraft] =
     useState<DocumentNumberingStylePreset>(documentNumberingStylePreset)
   const [styleOverridesDraft, setStyleOverridesDraft] =
@@ -202,6 +205,7 @@ export function NumberingStep({
   const numberingPageCacheRef = useRef<Map<number, NumberingStatusResponse>>(
     new Map()
   )
+  const numberingConfigCacheKeyRef = useRef<string | null>(null)
   const prefetchingNumberingPagesRef = useRef<Set<number>>(new Set())
   const numberingDocumentsRevisionRef = useRef<string | null>(null)
   const [completedPhases, setCompletedPhases] = useState<Set<string>>(
@@ -209,9 +213,13 @@ export function NumberingStep({
   )
   const statusForCurrentSession =
     status?.session_id === sessionId ? status : null
+  const appliedNumberingMode =
+    statusForCurrentSession?.document_numbering_mode || documentNumberingMode
+  const currentPlanNumberingMode = documentNumberingMode
   const appliedStylePreset =
     statusForCurrentSession?.document_numbering_style_preset ||
     documentNumberingStylePreset
+  const currentPlanStylePreset = documentNumberingStylePreset
   const appliedStyleOverrides = useMemo(
     () =>
       cleanNumberingStyleOverrides(
@@ -221,9 +229,32 @@ export function NumberingStep({
       ),
     [documentNumberingStyleOverrides, statusForCurrentSession]
   )
+  const currentPlanStyleOverrides = useMemo(
+    () => cleanNumberingStyleOverrides(documentNumberingStyleOverrides),
+    [documentNumberingStyleOverrides]
+  )
   const hasPendingStyleChanges =
     stylePresetDraft !== appliedStylePreset ||
     !numberingStyleOverridesEqual(styleOverridesDraft, appliedStyleOverrides)
+  const hasPendingNumberingModeChange =
+    appliedNumberingMode !== numberingModeDraft
+  const hasPendingNumberingConfigChanges =
+    hasPendingStyleChanges || hasPendingNumberingModeChange
+  const numberingConfigCacheKey = useMemo(
+    () =>
+      JSON.stringify({
+        sessionId,
+        numberingModeDraft,
+        stylePresetDraft,
+        styleOverridesDraft,
+      }),
+    [
+      numberingModeDraft,
+      sessionId,
+      styleOverridesDraft,
+      stylePresetDraft,
+    ]
+  )
   const currentMissingNavigatorCacheKey = `${sessionId ?? ""}:${
     revisionToken(status?.documents_revision) ?? ""
   }`
@@ -246,10 +277,23 @@ export function NumberingStep({
     const sessionChanged = styleDraftSessionRef.current !== sessionId
     if (!sessionChanged && styleDraftDirty) return
     styleDraftSessionRef.current = sessionId
-    setStylePresetDraft(appliedStylePreset)
-    setStyleOverridesDraft(appliedStyleOverrides)
+    setStylePresetDraft(currentPlanStylePreset)
+    setStyleOverridesDraft(currentPlanStyleOverrides)
     setStyleDraftDirty(false)
-  }, [appliedStyleOverrides, appliedStylePreset, sessionId, styleDraftDirty])
+  }, [
+    currentPlanStyleOverrides,
+    currentPlanStylePreset,
+    sessionId,
+    styleDraftDirty,
+  ])
+
+  useEffect(() => {
+    const sessionChanged = numberingModeDraftSessionRef.current !== sessionId
+    if (!sessionChanged && numberingModeDraftDirty) return
+    numberingModeDraftSessionRef.current = sessionId
+    setNumberingModeDraft(currentPlanNumberingMode)
+    setNumberingModeDraftDirty(false)
+  }, [currentPlanNumberingMode, numberingModeDraftDirty, sessionId])
 
   useEffect(() => {
     let cancelled = false
@@ -422,6 +466,28 @@ export function NumberingStep({
     ]
   )
 
+  useEffect(() => {
+    if (!sessionId) {
+      numberingConfigCacheKeyRef.current = null
+      return
+    }
+    if (numberingConfigCacheKeyRef.current === numberingConfigCacheKey) return
+
+    const hadPreviousConfig = numberingConfigCacheKeyRef.current !== null
+    numberingConfigCacheKeyRef.current = numberingConfigCacheKey
+    numberingPageCacheRef.current.clear()
+    prefetchingNumberingPagesRef.current.clear()
+    numberingDocumentsRevisionRef.current = null
+    setNumberingPageIndex(0)
+    setMissingNavigatorCacheKey("")
+    setMissingNavigatorDocuments([])
+    setMissingNavigatorIndex(0)
+    if (hadPreviousConfig) {
+      setStatus(null)
+      void refreshStatus({ force: true })
+    }
+  }, [numberingConfigCacheKey, refreshStatus, sessionId])
+
   const loadMissingNavigatorDocuments = useCallback(async () => {
     if (!sessionId) {
       setMissingNavigatorDocuments([])
@@ -479,7 +545,7 @@ export function NumberingStep({
         toast.error("Chưa có session để đánh số trang.")
         return
       }
-      const shouldForce = force || hasPendingStyleChanges
+      const shouldForce = force || hasPendingNumberingConfigChanges
       setStarting(true)
       setError("")
       setProgressPhase("loading_data")
@@ -493,19 +559,23 @@ export function NumberingStep({
         const response = await enqueueDocumentNumbering(sessionId, {
           created_by: "ui",
           force: shouldForce,
+          document_numbering_mode: numberingModeDraft,
           document_numbering_style_preset: stylePresetDraft,
           document_numbering_style_overrides: styleOverridesDraft,
         })
+        onDocumentNumberingModeApplied?.(numberingModeDraft)
         onDocumentNumberingStyleApplied?.(stylePresetDraft, styleOverridesDraft)
         setStatus((current) =>
           current?.session_id === sessionId
             ? {
                 ...current,
+                document_numbering_mode: numberingModeDraft,
                 document_numbering_style_preset: stylePresetDraft,
                 document_numbering_style_overrides: styleOverridesDraft,
               }
             : current
         )
+        setNumberingModeDraftDirty(false)
         setStyleDraftDirty(false)
         if (response.status === "not_needed") {
           if (response.result) {
@@ -550,7 +620,9 @@ export function NumberingStep({
       }
     },
     [
-      hasPendingStyleChanges,
+      hasPendingNumberingConfigChanges,
+      numberingModeDraft,
+      onDocumentNumberingModeApplied,
       onDocumentNumberingStyleApplied,
       refreshStatus,
       sessionId,
@@ -1335,7 +1407,9 @@ export function NumberingStep({
     status?.summary.blank_page_warning_documents ?? 0
   const unresolvedCount = Math.max(0, totalDocuments - doneCount)
   const hasNumberingOutput = doneCount > 0 || failedCount > 0
-  const complete = Boolean(status && isNumberingComplete(status))
+  const complete = Boolean(
+    status && isNumberingComplete(status) && !hasPendingNumberingConfigChanges
+  )
   const active = starting || Boolean(status?.active)
   const stoppedWithUnresolved = Boolean(
     status &&
@@ -1349,27 +1423,20 @@ export function NumberingStep({
   const activeWorkerId =
     status?.job?.status === "running" ? status.job.locked_by : null
   const metadataBusy = metadataExporting || metadataImporting
-  const canContinue = complete && failedCount === 0 && unresolvedCount === 0
+  const canContinue =
+    complete &&
+    failedCount === 0 &&
+    unresolvedCount === 0 &&
+    !hasPendingNumberingConfigChanges
   const canRestartNumbering = hasNumberingOutput
-  const changeNumberingMode = async (mode: DocumentNumberingMode) => {
-    if (active || changingMode || mode === documentNumberingMode) return
-    const shouldRenumber = hasNumberingOutput
-    setChangingMode(true)
+  const changeNumberingMode = (mode: DocumentNumberingMode) => {
+    if (active || changingMode || mode === numberingModeDraft) return
     setError("")
-    try {
-      const saved = await onDocumentNumberingModeChange(mode)
-      if (saved === false) return
-      await refreshStatus({ silent: true, force: true })
-      setProgressPhase(null)
-      setProgressMessage("")
-      setCompletedPhases(new Set())
-      if (shouldRenumber) {
-        toast.info("Đã đổi cách đánh số. Đang đánh số lại tài liệu.")
-        await startNumbering(true)
-      }
-    } finally {
-      setChangingMode(false)
-    }
+    setNumberingModeDraft(mode)
+    setNumberingModeDraftDirty(mode !== appliedNumberingMode)
+    setProgressPhase(null)
+    setProgressMessage("")
+    setCompletedPhases(new Set())
   }
   const changeNumberingStyle = (stylePreset: DocumentNumberingStylePreset) => {
     if (active || loading || stylePreset === stylePresetDraft) return
@@ -1397,13 +1464,13 @@ export function NumberingStep({
     )
   }
   const modeLabel =
-    documentNumberingMode === "sheet" ? "Đánh số theo tờ" : "Đánh số theo trang"
+    numberingModeDraft === "sheet" ? "Đánh số theo tờ" : "Đánh số theo trang"
 
   return (
     <div className="flex flex-col gap-5">
       <NumberingStepHeader
         modeLabel={modeLabel}
-        documentNumberingMode={documentNumberingMode}
+        documentNumberingMode={numberingModeDraft}
         documentNumberingStylePreset={stylePresetDraft}
         documentNumberingStyleOverrides={styleOverridesDraft}
         numberingStyleOptions={numberingStyleOptions}
@@ -1412,7 +1479,7 @@ export function NumberingStep({
         starting={starting}
         active={active}
         complete={complete}
-        hasPendingStyleChanges={hasPendingStyleChanges}
+        hasPendingConfigChanges={hasPendingNumberingConfigChanges}
         canRestart={canRestartNumbering}
         onRefresh={() => refreshStatus({ force: true })}
         onStart={() => startNumbering(false)}

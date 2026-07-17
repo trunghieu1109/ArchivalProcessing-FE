@@ -87,7 +87,7 @@ export function DossierBuildStrategySection({
           disabled={readOnly}
           onClick={() => onDossierBuildStrategyChange("incremental")}
           className={cn(
-            "flex min-h-32 items-start gap-4 rounded-2xl border p-4 text-left transition-all focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60",
+            "flex min-h-32 items-start gap-4 rounded-2xl border p-4 text-left transition-all focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-100",
             dossierBuildStrategy === "incremental"
               ? "border-[#0052FF] bg-[#EEF4FF] shadow-[0_8px_24px_rgba(0,82,255,0.10)]"
               : "border-[#D8E1EC] bg-white hover:border-[#0052FF]/40 hover:bg-[#F8FAFC]"
@@ -126,7 +126,7 @@ export function DossierBuildStrategySection({
           disabled={readOnly}
           onClick={() => onDossierBuildStrategyChange("file_register")}
           className={cn(
-            "flex min-h-32 items-start gap-4 rounded-2xl border p-4 text-left transition-all focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60",
+            "flex min-h-32 items-start gap-4 rounded-2xl border p-4 text-left transition-all focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-100",
             dossierBuildStrategy === "file_register"
               ? "border-[#0052FF] bg-[#EEF4FF] shadow-[0_8px_24px_rgba(0,82,255,0.10)]"
               : "border-[#D8E1EC] bg-white hover:border-[#0052FF]/40 hover:bg-[#F8FAFC]"
@@ -193,7 +193,7 @@ export function DossierBuildStrategySection({
                     groupByDocumentType: event.target.value === "document_type",
                   })
                 }
-                className="h-9 min-w-0 rounded-lg border border-[#CBD5E1] bg-white px-3 text-sm font-medium text-[#0F172A] transition-colors outline-none focus:border-[#0052FF]"
+                className="h-9 min-w-0 rounded-lg border border-[#CBD5E1] bg-white px-3 text-sm font-medium text-[#0F172A] transition-colors outline-none focus:border-[#0052FF] disabled:cursor-not-allowed"
               >
                 <option value="document_type">Loại văn bản → thời gian</option>
                 <option value="issued_date">Chỉ theo thời gian</option>
@@ -211,7 +211,7 @@ export function DossierBuildStrategySection({
                       .value as FileRegisterTimeGranularity,
                   })
                 }
-                className="h-9 min-w-0 rounded-lg border border-[#CBD5E1] bg-white px-3 text-sm font-medium text-[#0F172A] transition-colors outline-none focus:border-[#0052FF]"
+                className="h-9 min-w-0 rounded-lg border border-[#CBD5E1] bg-white px-3 text-sm font-medium text-[#0F172A] transition-colors outline-none focus:border-[#0052FF] disabled:cursor-not-allowed"
               >
                 <option value="year">Năm</option>
                 <option value="quarter">Quý</option>
@@ -235,7 +235,7 @@ export function DossierBuildStrategySection({
                   })
                 }
                 className={cn(
-                  "flex h-9 w-12 items-center justify-center rounded-lg border transition-colors",
+                  "flex h-9 w-12 items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed",
                   fileRegisterConfig.merge_small_dossiers
                     ? "border-[#AFC7FF] bg-[#EEF4FF] text-[#0052FF]"
                     : "border-[#CBD5E1] bg-white text-[#64748B]"

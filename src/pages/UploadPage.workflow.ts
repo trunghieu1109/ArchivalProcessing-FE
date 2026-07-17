@@ -32,7 +32,6 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     doc2Ref,
     navigate,
     ensureSession,
-    handleConfirmPlan,
     syncPlanAnalysisState,
     syncDoc1State,
     syncDoc2State,
@@ -150,7 +149,14 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
         return
       }
       if (zipSupplementUploaded) {
-        await handleConfirmPlan()
+        const currentSessionId = routeSessionId ?? sessionId ?? cache.sessionId
+        if (currentSessionId) {
+          navigate(
+            `/sessions/${encodeURIComponent(currentSessionId)}/step/3?extract=1`
+          )
+        } else {
+          goTo(3)
+        }
         return
       }
       if (zipHas && !hasActivePlan && !doc1Has && !doc2Has) {

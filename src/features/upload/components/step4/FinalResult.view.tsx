@@ -518,7 +518,10 @@ export function FinalResultView(props: Record<string, any>) {
       {selectedDossierSuggestionsDocuments.length > 0 && (
         <DossierSuggestionsModal
           key={selectedDossierSuggestionsDocuments
-            .map((document) => document.sessionDocumentId)
+            .map(
+              (document: { sessionDocumentId: string | number }) =>
+                document.sessionDocumentId
+            )
             .join(":")}
           documents={selectedDossierSuggestionsDocuments}
           suggestions={selectedDossierSuggestionCandidates}

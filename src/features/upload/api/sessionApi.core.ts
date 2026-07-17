@@ -150,11 +150,19 @@ export async function getActivePlan(
   sessionId: string
 ): Promise<ActivePlanResponse | null> {
   return requestJsonOrNull<ActivePlanResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/plan/active`
+  )
+}
+
+export async function getWorkingPlan(
+  sessionId: string
+): Promise<ActivePlanResponse | null> {
+  return requestJsonOrNull<ActivePlanResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/plan`
   )
 }
 
-export async function patchActivePlan(
+export async function patchDraftPlan(
   sessionId: string,
   payload: Record<string, unknown>
 ): Promise<ActivePlanResponse> {
@@ -168,7 +176,22 @@ export async function patchActivePlan(
   )
 }
 
-export async function waitForActivePlan(
+export async function activatePlanVersion(
+  sessionId: string,
+  planVersionId: string,
+  payload: { created_by?: string } = {}
+): Promise<ActivePlanResponse> {
+  return requestJson<ActivePlanResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/plan/versions/${encodeURIComponent(planVersionId)}/activate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
+}
+
+export async function waitForWorkingPlan(
   sessionId: string,
   timeoutMs = 120_000,
   intervalMs = 2_000,
@@ -176,7 +199,7 @@ export async function waitForActivePlan(
 ): Promise<ActivePlanResponse> {
   const started = Date.now()
   while (Date.now() - started < timeoutMs) {
-    const plan = await getActivePlan(sessionId)
+    const plan = await getWorkingPlan(sessionId)
     if (plan && isExpectedPlan(plan, options)) return plan
     await delay(intervalMs)
   }

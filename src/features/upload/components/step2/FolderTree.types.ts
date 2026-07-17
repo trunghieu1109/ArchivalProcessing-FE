@@ -2,6 +2,7 @@ import type {
   DossierBuildStrategy,
   DocumentNumberingMode,
   DocumentNumberingStylePreset,
+  PlanVersionStatus,
 } from "@/features/upload/api/sessionApi"
 import type {
   FileRegisterConfig,
@@ -36,6 +37,12 @@ export interface FolderTreeProps {
   onChange: (tree: FolderNode[]) => void
   onSaveTree?: (tree: FolderNode[]) => void | Promise<void>
   onCriteriaChange: (criterias: PlanCriterionSet[]) => void | Promise<void>
+  onSaveDraft?: () => void | Promise<void>
   onConfirm: () => void | Promise<void>
+  onContinueToMetadata?: () => void | Promise<void>
+  savingDraft?: boolean
   confirming?: boolean
+  planDraftDirty?: boolean
+  draftDiffersActive?: boolean
+  planStatus?: PlanVersionStatus | ""
 }

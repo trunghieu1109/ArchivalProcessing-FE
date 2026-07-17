@@ -7,11 +7,12 @@ import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import type { SessionMetadataValues } from "@/features/upload/components/SessionMetadataBar"
 import {
   ensureClusterBuild,
-  getActivePlan,
+  getWorkingPlan,
   listSessionEvents,
   type DossierBuildStrategy,
   type DocumentNumberingMode,
   type DocumentNumberingStylePreset,
+  type PlanVersionStatus,
   type UploadMode,
   type UploadProgressSnapshot,
 } from "@/features/upload/api/sessionApi"
@@ -46,6 +47,9 @@ import {
   activePlanDocumentNumberingStyleOverrides,
   activePlanDocumentNumberingStylePreset,
   activePlanToParsedPlan,
+  planDraftPayloadSignature,
+  planResponseMaterialSignature,
+  planResponseToDraftPayload,
   planToTree,
 } from "./UploadPage.planUtils"
 import {
@@ -108,9 +112,9 @@ export function UploadPage() {
       return
     }
     const hasAnalyzedPlanForBuild =
-      Boolean(cache.activePlanVersionId) &&
+      Boolean(activePlanVersionId) &&
       doc1Has &&
-      parsedPlan.groups.length > 0
+      activeParsedPlan.groups.length > 0
     const missingInputs = missingDossierBuildInputs({
       hasArrangementPlan: doc1Has,
       hasRetentionSchedule: doc2Has,
@@ -125,7 +129,7 @@ export function UploadPage() {
     try {
       const response = await ensureClusterBuild(currentSessionId, {
         source: "user_view_results",
-        dossier_build_strategy: dossierBuildStrategy,
+        dossier_build_strategy: activePlanSettings.dossierBuildStrategy,
       })
       if (response.status === "queued") {
         toast.success("Đã gửi task lập hồ sơ từ tài liệu đã xác nhận.")
@@ -179,8 +183,30 @@ export function UploadPage() {
   const [, setZipEntries] = useState<ArchiveEntry[]>(cache.zipEntries)
   const [folderTree, setFolderTree] = useState<FolderNode[]>(cache.folderTree)
   const [parsedPlan, setParsedPlan] = useState<ParsedPlan>(cache.parsedPlan)
+  const [activeFolderTree, setActiveFolderTree] = useState<FolderNode[]>(
+    cache.activeFolderTree
+  )
+  const [activeParsedPlan, setActiveParsedPlan] = useState<ParsedPlan>(
+    cache.activeParsedPlan
+  )
+  const [activePlanSettings, setActivePlanSettings] = useState(
+    cache.activePlanSettings
+  )
   const [clusterGroups, setClusterGroups] = useState<ClusterGroup[]>(
     cache.clusterGroups
+  )
+  const [workingPlanVersionId, setWorkingPlanVersionId] = useState(
+    cache.workingPlanVersionId
+  )
+  const [workingPlanStatus, setWorkingPlanStatus] = useState<
+    PlanVersionStatus | ""
+  >(cache.workingPlanStatus)
+  const [planDraftDirty, setPlanDraftDirty] = useState(cache.planDraftDirty)
+  const [activePlanVersionId, setActivePlanVersionId] = useState(
+    cache.activePlanVersionId
+  )
+  const [planViewTab, setPlanViewTab] = useState<"draft" | "active">(
+    cache.planViewTab
   )
   const [sessionId, setSessionId] = useState<string | null>(cache.sessionId)
   const [sessionMetadata, setSessionMetadata] = useState<SessionMetadataValues>(
@@ -199,6 +225,7 @@ export function UploadPage() {
     useState<UploadProgressSnapshot | null>(cache.zipUploadProgress)
   const [sessionLoading, setSessionLoading] = useState(false)
   const [confirmingPlan, setConfirmingPlan] = useState(false)
+  const [savingPlanDraft, setSavingPlanDraft] = useState(false)
   const [planProgressPhase, setPlanProgressPhase] = useState<string | null>(
     null
   )
@@ -242,6 +269,14 @@ export function UploadPage() {
     setZipEntries,
     setFolderTree,
     setParsedPlan,
+    setActiveFolderTree,
+    setActiveParsedPlan,
+    setActivePlanSettings,
+    setWorkingPlanVersionId,
+    setWorkingPlanStatus,
+    setPlanDraftDirty,
+    setActivePlanVersionId,
+    setPlanViewTab,
     setClusterGroups,
     setSessionId,
     setSessionMetadata,
@@ -324,12 +359,12 @@ export function UploadPage() {
           }
         }
       } catch {
-        // Progress events are best-effort; the active-plan polling owns errors.
+        // Progress events are best-effort; the working-plan polling owns errors.
       }
       try {
-        const planResponse = await getActivePlan(sessionId)
+        const planResponse = await getWorkingPlan(sessionId)
         if (cancelled) return
-        const currentPlanVersionId = cache.activePlanVersionId
+        const currentPlanVersionId = cache.workingPlanVersionId
         const nextPlanVersionId = planResponse?.id ?? ""
         const shouldApplyPlan =
           Boolean(planResponse) &&
@@ -337,6 +372,7 @@ export function UploadPage() {
             (nextPlanVersionId && nextPlanVersionId !== currentPlanVersionId))
         if (planResponse && shouldApplyPlan) {
           const plan = activePlanToParsedPlan(planResponse)
+          const draftPayload = planResponseToDraftPayload(planResponse)
           const buildStrategy = activePlanBuildStrategy(planResponse)
           const numberingMode = activePlanDocumentNumberingMode(planResponse)
           const numberingStylePreset =
@@ -344,9 +380,16 @@ export function UploadPage() {
           const numberingStyleOverrides =
             activePlanDocumentNumberingStyleOverrides(planResponse)
 
-          cache.activePlanVersionId = planResponse.id ?? ""
+          cache.workingPlanVersionId = planResponse.id ?? ""
+          cache.workingPlanStatus = planResponse.status ?? ""
+          cache.workingPlanResponse = planResponse
+          cache.workingPlanSignature = planResponseMaterialSignature(planResponse)
+          cache.planDraftBaseSignature = planDraftPayloadSignature(draftPayload)
+          cache.planDraftDirty = false
+          cache.planDraftRevision = 0
           cache.parsedPlan = plan
           cache.folderTree = planToTree(plan)
+          cache.planViewTab = "draft"
           cache.planAnalysisState = "done"
           const { doc1Has: currentDoc1Has, doc2Has: currentDoc2Has } =
             planInputStateRef.current
@@ -364,6 +407,10 @@ export function UploadPage() {
 
           setParsedPlan(plan)
           setFolderTree(cache.folderTree)
+          setWorkingPlanVersionId(cache.workingPlanVersionId)
+          setWorkingPlanStatus(cache.workingPlanStatus)
+          setPlanDraftDirty(false)
+          setPlanViewTab(cache.planViewTab)
           setPlanAnalysisState("done")
           setDoc1State(cache.doc1State)
           setDoc2State(cache.doc2State)
@@ -418,9 +465,9 @@ export function UploadPage() {
     applyPersistedDocumentNumberingMode,
     applyPersistedDocumentNumberingStylePreset,
     applyPersistedDocumentNumberingStyleOverrides,
+    applyWorkingPlanResponse,
     applyActivePlanResponse,
     selectDocumentNumberingModeDraft,
-    selectDocumentNumberingMode,
     selectDocumentNumberingStylePreset,
     selectDocumentNumberingStyleOverrides,
     syncDoc1Has,
@@ -428,6 +475,7 @@ export function UploadPage() {
     syncZipHas,
     syncZipEntries,
     syncFolderTree,
+    savePlanChanges,
     savePlanCriterias,
     saveFileRegisterConfig,
     saveFolderTree,
@@ -461,6 +509,15 @@ export function UploadPage() {
     setZipEntries,
     setFolderTree,
     setParsedPlan,
+    setActiveFolderTree,
+    setActiveParsedPlan,
+    setActivePlanSettings,
+    setWorkingPlanVersionId,
+    setWorkingPlanStatus,
+    setPlanDraftDirty,
+    setActivePlanVersionId,
+    setPlanViewTab,
+    setClusterGroups,
     setZipState,
     setPlanProgressPhase,
     setPlanProgressMessage,
@@ -471,17 +528,24 @@ export function UploadPage() {
     planReuploadState.arrangement || planReuploadState.retention
   const planReanalysisReady = existingSessionMode && planInputsReuploaded
   const hasAnyFile = doc1Has || doc2Has || zipHas
-  const hasActivePlan = Boolean(cache.activePlanVersionId)
+  const hasActivePlan = Boolean(activePlanVersionId)
+  const hasWorkingPlan = Boolean(workingPlanVersionId)
+  const draftMatchesActive =
+    Boolean(cache.activePlanSignature) &&
+    Boolean(cache.workingPlanSignature) &&
+    cache.workingPlanSignature === cache.activePlanSignature
+  const hasActivePlanForBuild =
+    hasActivePlan && doc1Has && activeParsedPlan.groups.length > 0
   const hasAnalyzedArrangementPlan =
     planAnalysisState === "done" &&
-    hasActivePlan &&
+    hasWorkingPlan &&
     doc1Has &&
     parsedPlan.groups.length > 0
   const missingDossierInputs = missingDossierBuildInputs({
     hasArrangementPlan: doc1Has,
     hasRetentionSchedule: doc2Has,
     hasRawZip: zipHas,
-    hasActivePlan: hasAnalyzedArrangementPlan,
+    hasActivePlan: hasActivePlanForBuild,
   })
   const missingDossierInputLabels =
     dossierBuildMissingLabels(missingDossierInputs)
@@ -505,12 +569,11 @@ export function UploadPage() {
         {
           label: "Phương án",
           has: hasAnalyzedArrangementPlan,
-          state:
-            arrangementPlanAnalyzing
-              ? "processing"
-              : hasAnalyzedArrangementPlan
-                ? "done"
-                : "idle",
+          state: arrangementPlanAnalyzing
+            ? "processing"
+            : hasAnalyzedArrangementPlan
+              ? "done"
+              : "idle",
         },
         { label: "Thời hạn", has: doc2Has, state: doc2State },
         { label: "Kho lưu trữ", has: zipHas, state: zipState },
@@ -582,7 +645,9 @@ export function UploadPage() {
       existingStatus?.pagination?.total ?? 0,
       existingStatus?.jobs.length ?? 0
     )
-    if (existingDocumentCount > 0) {
+    const hasNewZipUpload =
+      cache.rawZipReuploaded && Boolean(cache.zipUpload?.id)
+    if (existingDocumentCount > 0 && !hasNewZipUpload) {
       const readyDocuments =
         existingStatus?.metadata_ready_documents ??
         existingStatus?.jobs.filter((job) => job.metadata_ready).length ??
@@ -608,9 +673,13 @@ export function UploadPage() {
                 "skipped",
                 "cancelled",
                 "missing_task",
-              ].includes(String(job.status || "").trim().toLowerCase())
+              ].includes(
+                String(job.status || "")
+                  .trim()
+                  .toLowerCase()
+              )
           )
-      )
+        )
       syncZipState(hasPendingMetadata ? "processing" : "done")
       if (hasPendingMetadata) {
         void ocr.refreshDocumentsPage({ force: true })
@@ -632,9 +701,13 @@ export function UploadPage() {
         sessionFileId: cache.zipUpload?.id,
         remoteFileId: cache.zipUpload?.remote_file_id ?? null,
         uploadMode: cache.zipUpload ? uploadMode : undefined,
-        previousStatus: ocr.status ?? null,
+        previousStatus: existingStatus,
       })
       .then(() => {
+        if (hasNewZipUpload) {
+          cache.rawZipReuploaded = false
+          setZipSupplementUploaded(false)
+        }
         syncZipState("done")
         toast.success("Đã hoàn tất lấy metadata từ remote folder.")
       })
@@ -682,30 +755,54 @@ export function UploadPage() {
 
   const handleConfirmPlan = createConfirmPlanHandler({
     confirmingPlan,
-    planAnalysisState,
-    dossierBuildStrategy,
-    documentNumberingMode,
-    documentNumberingStylePreset,
-    documentNumberingStyleOverrides,
-    zipFolderPath,
-    existingSessionMode,
-    uploadMode,
-    zipSupplementUploaded,
-    ocr,
+    applyWorkingPlanResponse,
     applyActivePlanResponse,
-    applyPersistedDossierBuildStrategy,
-    applyPersistedDocumentNumberingMode,
-    applyPersistedDocumentNumberingStylePreset,
-    applyPersistedDocumentNumberingStyleOverrides,
-    parseZipMaxFiles,
-    syncZipState,
-    goTo,
-    setParsedPlan,
-    setFolderTree,
-    setClusterGroups,
     setConfirmingPlan,
-    setZipSupplementUploaded,
+    setPlanViewTab,
   })
+
+  const handleSaveDraft = async () => {
+    if (savingPlanDraft) return
+    if (!cache.planDraftDirty) {
+      toast.info("Không có thay đổi mới để lưu.")
+      return
+    }
+    setSavingPlanDraft(true)
+    try {
+      const draftPlan = await savePlanChanges()
+      if (draftPlan?.status === "draft") {
+        cache.planViewTab = "draft"
+        setPlanViewTab("draft")
+        toast.success("Đã lưu bản nháp phương án.")
+      } else {
+        toast.info("Không có thay đổi mới để lưu.")
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Không thể lưu bản nháp phương án."
+      )
+    } finally {
+      setSavingPlanDraft(false)
+    }
+  }
+
+  const handlePlanStepNavigation = (targetStep: AppStep) => {
+    const currentSessionId = sessionId ?? routeSessionId ?? cache.sessionId
+    goTo(targetStep, currentSessionId)
+  }
+
+  const handleNavigateToSessions = () => {
+    navigate("/sessions")
+  }
+
+  const handleContinueToExtractMetadata = async () => {
+    const currentSessionId = sessionId ?? routeSessionId ?? cache.sessionId
+    if (!currentSessionId) {
+      toast.error("Chưa có session để sang Extract Metadata.")
+      return
+    }
+    handlePlanStepNavigation(3)
+  }
 
   const { handleStartAll } = createUploadPageWorkflowActions({
     sessionId,
@@ -726,7 +823,6 @@ export function UploadPage() {
     doc2Ref,
     navigate,
     ensureSession,
-    handleConfirmPlan,
     syncSessionMetadata,
     syncPlanAnalysisState,
     syncDoc1State,
@@ -748,108 +844,125 @@ export function UploadPage() {
   })
 
   return (
-    <UploadPageView
-      currentStep={currentStep}
-      highestVisitedStep={highestVisitedStep}
-      existingSessionMode={existingSessionMode}
-      routeSessionId={routeSessionId}
-      sessionId={sessionId}
-      sessionMetadata={sessionMetadata}
-      syncSessionMetadataDraft={syncSessionMetadataDraft}
-      saveSessionMetadata={saveSessionMetadata}
-      sessionLoading={sessionLoading}
-      STEP_LABELS={STEP_LABELS}
-      PLAN_PROGRESS_PHASES={PLAN_PROGRESS_PHASES}
-      goTo={goTo}
-      statusItems={statusItems}
-      readyCount={readyCount}
-      requiredFileCount={requiredFileCount}
-      selectedInputLabels={selectedInputLabels}
-      hasAnyFile={hasAnyFile}
-      allProcessing={allProcessing}
-      allDone={allDone}
-      primaryActionDisabled={primaryActionDisabled}
-      handleStartAll={handleStartAll}
-      doc1Ref={doc1Ref}
-      doc2Ref={doc2Ref}
-      zipRef={zipRef}
-      doc1Has={doc1Has}
-      doc2Has={doc2Has}
-      zipHas={zipHas}
-      hasActivePlan={hasActivePlan}
-      hasAnalyzedArrangementPlan={hasAnalyzedArrangementPlan}
-      doc1State={doc1State}
-      doc2State={doc2State}
-      zipState={zipState}
-      planAnalysisState={planAnalysisState}
-      planAnalyzing={planAnalyzing}
-      planProgressPhase={planProgressPhase}
-      planCompletedPhases={planCompletedPhases}
-      planProgressMessage={planProgressMessage}
-      ocr={ocr}
-      syncDoc1Has={syncDoc1Has}
-      syncDoc2Has={syncDoc2Has}
-      syncZipHas={syncZipHas}
-      uploadInput={uploadInput}
-      uploadRetentionInputs={uploadRetentionInputs}
-      syncDoc1State={syncDoc1State}
-      syncDoc2State={syncDoc2State}
-      syncZipState={syncZipState}
-      syncZipEntries={syncZipEntries}
-      zipFolderPath={zipFolderPath}
-      syncZipFolderPath={syncZipFolderPath}
-      zipMaxFiles={zipMaxFiles}
-      syncZipMaxFiles={syncZipMaxFiles}
-      uploadMode={uploadMode}
-      syncUploadMode={syncUploadMode}
-      zipUploadProgress={zipUploadProgress}
-      planReuploadState={planReuploadState}
-      planInputsReuploaded={planInputsReuploaded}
-      zipSupplementUploaded={zipSupplementUploaded}
-      parsedPlan={parsedPlan}
-      folderTree={folderTree}
-      dossierBuildStrategy={dossierBuildStrategy}
-      selectDossierBuildStrategy={selectDossierBuildStrategy}
-      documentNumberingMode={documentNumberingMode}
-      selectDocumentNumberingModeDraft={selectDocumentNumberingModeDraft}
-      selectDocumentNumberingMode={selectDocumentNumberingMode}
-      documentNumberingStylePreset={documentNumberingStylePreset}
-      documentNumberingStyleOverrides={documentNumberingStyleOverrides}
-      selectDocumentNumberingStylePreset={selectDocumentNumberingStylePreset}
-      selectDocumentNumberingStyleOverrides={
-        selectDocumentNumberingStyleOverrides
-      }
-      applyPersistedDocumentNumberingStylePreset={
-        applyPersistedDocumentNumberingStylePreset
-      }
-      applyPersistedDocumentNumberingStyleOverrides={
-        applyPersistedDocumentNumberingStyleOverrides
-      }
-      saveFileRegisterConfig={saveFileRegisterConfig}
-      syncFolderTree={syncFolderTree}
-      saveFolderTree={saveFolderTree}
-      savePlanCriterias={savePlanCriterias}
-      handleConfirmPlan={handleConfirmPlan}
-      confirmingPlan={confirmingPlan}
-      ocrPdfPaths={ocrPdfPaths}
-      ocrMetadataItems={ocrMetadataItems}
-      ocrLoading={ocrLoading}
-      ocrIsReextracting={ocrIsReextracting}
-      ocrPendingIngestionCount={ocrPendingIngestionCount}
-      ocrPendingIngestionMessage={ocrPendingIngestionMessage}
-      ocrMessage={ocrMessage}
-      ocrSignatureStatus={ocrSignatureStatus}
-      handleContinueToResults={handleContinueToResults}
-      missingDossierInputs={missingDossierInputs}
-      missingDossierInputLabels={missingDossierInputLabels}
-      dossierBuildBlockedMessage={dossierBuildMissingMessage(
-        missingDossierInputs
-      )}
-      clusterGroups={clusterGroups}
-      handleFinalizeAutoStartHandled={handleFinalizeAutoStartHandled}
-      searchParams={searchParams}
-      isWorkerUser={isWorkerUser}
-      navigate={navigate}
-    />
+    <>
+      <UploadPageView
+        currentStep={currentStep}
+        highestVisitedStep={highestVisitedStep}
+        existingSessionMode={existingSessionMode}
+        routeSessionId={routeSessionId}
+        sessionId={sessionId}
+        sessionMetadata={sessionMetadata}
+        syncSessionMetadataDraft={syncSessionMetadataDraft}
+        saveSessionMetadata={saveSessionMetadata}
+        sessionLoading={sessionLoading}
+        STEP_LABELS={STEP_LABELS}
+        PLAN_PROGRESS_PHASES={PLAN_PROGRESS_PHASES}
+        goTo={goTo}
+        statusItems={statusItems}
+        readyCount={readyCount}
+        requiredFileCount={requiredFileCount}
+        selectedInputLabels={selectedInputLabels}
+        hasAnyFile={hasAnyFile}
+        allProcessing={allProcessing}
+        allDone={allDone}
+        primaryActionDisabled={primaryActionDisabled}
+        handleStartAll={handleStartAll}
+        doc1Ref={doc1Ref}
+        doc2Ref={doc2Ref}
+        zipRef={zipRef}
+        doc1Has={doc1Has}
+        doc2Has={doc2Has}
+        zipHas={zipHas}
+        hasActivePlan={hasActivePlan}
+        hasAnalyzedArrangementPlan={hasAnalyzedArrangementPlan}
+        doc1State={doc1State}
+        doc2State={doc2State}
+        zipState={zipState}
+        planAnalysisState={planAnalysisState}
+        planAnalyzing={planAnalyzing}
+        planProgressPhase={planProgressPhase}
+        planCompletedPhases={planCompletedPhases}
+        planProgressMessage={planProgressMessage}
+        ocr={ocr}
+        syncDoc1Has={syncDoc1Has}
+        syncDoc2Has={syncDoc2Has}
+        syncZipHas={syncZipHas}
+        uploadInput={uploadInput}
+        uploadRetentionInputs={uploadRetentionInputs}
+        syncDoc1State={syncDoc1State}
+        syncDoc2State={syncDoc2State}
+        syncZipState={syncZipState}
+        syncZipEntries={syncZipEntries}
+        zipFolderPath={zipFolderPath}
+        syncZipFolderPath={syncZipFolderPath}
+        zipMaxFiles={zipMaxFiles}
+        syncZipMaxFiles={syncZipMaxFiles}
+        uploadMode={uploadMode}
+        syncUploadMode={syncUploadMode}
+        zipUploadProgress={zipUploadProgress}
+        planReuploadState={planReuploadState}
+        planInputsReuploaded={planInputsReuploaded}
+        zipSupplementUploaded={zipSupplementUploaded}
+        parsedPlan={parsedPlan}
+        folderTree={folderTree}
+        activeParsedPlan={activeParsedPlan}
+        activeFolderTree={activeFolderTree}
+        activePlanSettings={activePlanSettings}
+        workingPlanVersionId={workingPlanVersionId}
+        workingPlanStatus={workingPlanStatus}
+        planDraftDirty={planDraftDirty}
+        draftMatchesActive={draftMatchesActive}
+        activePlanVersionId={activePlanVersionId}
+        planViewTab={planViewTab}
+        setPlanViewTab={setPlanViewTab}
+        dossierBuildStrategy={dossierBuildStrategy}
+        selectDossierBuildStrategy={selectDossierBuildStrategy}
+        documentNumberingMode={documentNumberingMode}
+        applyPersistedDocumentNumberingMode={applyPersistedDocumentNumberingMode}
+        selectDocumentNumberingModeDraft={selectDocumentNumberingModeDraft}
+        documentNumberingStylePreset={documentNumberingStylePreset}
+        documentNumberingStyleOverrides={documentNumberingStyleOverrides}
+        selectDocumentNumberingStylePreset={selectDocumentNumberingStylePreset}
+        selectDocumentNumberingStyleOverrides={
+          selectDocumentNumberingStyleOverrides
+        }
+        applyPersistedDocumentNumberingStylePreset={
+          applyPersistedDocumentNumberingStylePreset
+        }
+        applyPersistedDocumentNumberingStyleOverrides={
+          applyPersistedDocumentNumberingStyleOverrides
+        }
+        saveFileRegisterConfig={saveFileRegisterConfig}
+        syncFolderTree={syncFolderTree}
+        saveFolderTree={saveFolderTree}
+        savePlanCriterias={savePlanCriterias}
+        handleSaveDraft={handleSaveDraft}
+        handleConfirmPlan={handleConfirmPlan}
+        handleContinueToExtractMetadata={handleContinueToExtractMetadata}
+        handlePlanStepNavigation={handlePlanStepNavigation}
+        handleNavigateToSessions={handleNavigateToSessions}
+        savingPlanDraft={savingPlanDraft}
+        confirmingPlan={confirmingPlan}
+        ocrPdfPaths={ocrPdfPaths}
+        ocrMetadataItems={ocrMetadataItems}
+        ocrLoading={ocrLoading}
+        ocrIsReextracting={ocrIsReextracting}
+        ocrPendingIngestionCount={ocrPendingIngestionCount}
+        ocrPendingIngestionMessage={ocrPendingIngestionMessage}
+        ocrMessage={ocrMessage}
+        ocrSignatureStatus={ocrSignatureStatus}
+        handleContinueToResults={handleContinueToResults}
+        missingDossierInputs={missingDossierInputs}
+        missingDossierInputLabels={missingDossierInputLabels}
+        dossierBuildBlockedMessage={dossierBuildMissingMessage(
+          missingDossierInputs
+        )}
+        clusterGroups={clusterGroups}
+        handleFinalizeAutoStartHandled={handleFinalizeAutoStartHandled}
+        searchParams={searchParams}
+        isWorkerUser={isWorkerUser}
+        navigate={navigate}
+      />
+    </>
   )
 }

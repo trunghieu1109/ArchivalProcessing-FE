@@ -4,6 +4,7 @@ import type {
   DossierBuildStrategy,
   DocumentNumberingMode,
   DocumentNumberingStylePreset,
+  PlanVersionStatus,
   SessionInputUploadResponse,
   UploadMode,
   UploadProgressSnapshot,
@@ -32,6 +33,14 @@ interface UploadPageCache {
   zipEntries: ArchiveEntry[]
   folderTree: FolderNode[]
   parsedPlan: ParsedPlan
+  activeFolderTree: FolderNode[]
+  activeParsedPlan: ParsedPlan
+  activePlanSettings: {
+    dossierBuildStrategy: DossierBuildStrategy
+    documentNumberingMode: DocumentNumberingMode
+    documentNumberingStylePreset: DocumentNumberingStylePreset
+    documentNumberingStyleOverrides: NumberingStyleOverrides
+  }
   clusterGroups: ClusterGroup[]
   doc1State: ProcessState
   doc2State: ProcessState
@@ -45,7 +54,14 @@ interface UploadPageCache {
   persistedDocumentNumberingStylePreset: DocumentNumberingStylePreset
   documentNumberingStyleOverrides: NumberingStyleOverrides
   persistedDocumentNumberingStyleOverrides: NumberingStyleOverrides
-  documentNumberingModeSavePromise: Promise<ActivePlanResponse> | null
+  workingPlanSavePromise: Promise<ActivePlanResponse> | null
+  planDraftDirty: boolean
+  planDraftRevision: number
+  planDraftBaseSignature: string
+  workingPlanSignature: string
+  activePlanSignature: string
+  workingPlanResponse: ActivePlanResponse | null
+  activePlanResponse: ActivePlanResponse | null
   sessionId: string | null
   sessionMetadata: SessionMetadataValues
   zipUpload: SessionInputUploadResponse | null
@@ -55,7 +71,10 @@ interface UploadPageCache {
   zipFolderPath: string
   zipMaxFiles: string
   uploadMode: UploadMode
+  workingPlanVersionId: string
+  workingPlanStatus: PlanVersionStatus | ""
   activePlanVersionId: string
+  planViewTab: "draft" | "active"
   activeClusterVersionId: string | null | undefined
   draftArrangementPlanFile: File | null
   draftRetentionFile: File | null
@@ -74,6 +93,16 @@ export const uploadPageCache: UploadPageCache = {
   zipEntries: [],
   folderTree: planToTree(EMPTY_PARSED_PLAN),
   parsedPlan: EMPTY_PARSED_PLAN,
+  activeFolderTree: planToTree(EMPTY_PARSED_PLAN),
+  activeParsedPlan: EMPTY_PARSED_PLAN,
+  activePlanSettings: {
+    dossierBuildStrategy: DEFAULT_DOSSIER_BUILD_STRATEGY,
+    documentNumberingMode: DEFAULT_DOCUMENT_NUMBERING_MODE,
+    documentNumberingStylePreset: DEFAULT_DOCUMENT_NUMBERING_STYLE_PRESET,
+    documentNumberingStyleOverrides: {
+      ...DEFAULT_NUMBERING_STYLE_OVERRIDES,
+    },
+  },
   clusterGroups: [],
   doc1State: "idle",
   doc2State: "idle",
@@ -87,7 +116,14 @@ export const uploadPageCache: UploadPageCache = {
   persistedDocumentNumberingStylePreset: DEFAULT_DOCUMENT_NUMBERING_STYLE_PRESET,
   documentNumberingStyleOverrides: { ...DEFAULT_NUMBERING_STYLE_OVERRIDES },
   persistedDocumentNumberingStyleOverrides: { ...DEFAULT_NUMBERING_STYLE_OVERRIDES },
-  documentNumberingModeSavePromise: null,
+  workingPlanSavePromise: null,
+  planDraftDirty: false,
+  planDraftRevision: 0,
+  planDraftBaseSignature: "",
+  workingPlanSignature: "",
+  activePlanSignature: "",
+  workingPlanResponse: null,
+  activePlanResponse: null,
   sessionId: null,
   sessionMetadata: {
     archive_name: null,
@@ -102,7 +138,10 @@ export const uploadPageCache: UploadPageCache = {
   zipFolderPath: "",
   zipMaxFiles: "",
   uploadMode: "append",
+  workingPlanVersionId: "",
+  workingPlanStatus: "",
   activePlanVersionId: "",
+  planViewTab: "draft",
   activeClusterVersionId: undefined,
   draftArrangementPlanFile: null,
   draftRetentionFile: null,

@@ -1,11 +1,14 @@
 import {
+  ArrowRight,
   Check,
   ChevronDown,
   Files,
   FileText,
   Folder,
   FolderOpen,
+  Loader2,
   Plus,
+  Save,
 } from "lucide-react"
 import { AnimatePresence, motion } from "framer-motion"
 import { toast } from "sonner"
@@ -96,8 +99,12 @@ export function FolderTree({
   onChange,
   onSaveTree,
   onCriteriaChange,
+  onSaveDraft,
   onConfirm,
+  onContinueToMetadata,
+  savingDraft = false,
   confirming = false,
+  planDraftDirty = false,
 }: FolderTreeProps) {
   const rootPagination = usePagedItems(tree, {
     defaultPageSize: 50,
@@ -132,12 +139,25 @@ export function FolderTree({
   }
 
   const handleConfirm = () => {
-    if (confirming) return
+    if (confirming || savingDraft) return
+    if (planDraftDirty) {
+      toast.warning("Hãy lưu bản nháp trước khi xác nhận phương án.")
+      return
+    }
     if (tree.length === 0) {
       toast.error("Vui lòng thêm ít nhất một thư mục.")
       return
     }
     void onConfirm()
+  }
+
+  const handleContinueToMetadata = () => {
+    void onContinueToMetadata?.()
+  }
+
+  const handleSaveDraft = () => {
+    if (savingDraft || !planDraftDirty) return
+    void onSaveDraft?.()
   }
 
   return (
@@ -202,7 +222,7 @@ export function FolderTree({
             disabled={readOnly}
             onClick={() => void onDocumentNumberingModeChange("page")}
             className={cn(
-              "flex min-h-28 items-start gap-4 rounded-2xl border p-4 text-left transition-all focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60",
+              "group relative flex min-h-28 items-start gap-4 rounded-2xl border p-4 text-left transition-all focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-100",
               documentNumberingMode === "page"
                 ? "border-[#0052FF] bg-[#EEF4FF] shadow-[0_8px_24px_rgba(0,82,255,0.10)]"
                 : "border-[#D8E1EC] bg-white hover:border-[#0052FF]/40 hover:bg-[#F8FAFC]"
@@ -240,7 +260,7 @@ export function FolderTree({
             disabled={readOnly}
             onClick={() => void onDocumentNumberingModeChange("sheet")}
             className={cn(
-              "flex min-h-28 items-start gap-4 rounded-2xl border p-4 text-left transition-all focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60",
+              "group relative flex min-h-28 items-start gap-4 rounded-2xl border p-4 text-left transition-all focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-100",
               documentNumberingMode === "sheet"
                 ? "border-[#0052FF] bg-[#EEF4FF] shadow-[0_8px_24px_rgba(0,82,255,0.10)]"
                 : "border-[#D8E1EC] bg-white hover:border-[#0052FF]/40 hover:bg-[#F8FAFC]"
@@ -286,7 +306,7 @@ export function FolderTree({
                   void onDocumentNumberingStylePresetChange(option.value)
                 }
                 className={cn(
-                  "flex h-full min-h-[9.25rem] flex-col justify-between rounded-2xl border p-4 text-left transition-all focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60",
+                  "group relative flex h-full min-h-[9.25rem] flex-col justify-between rounded-2xl border p-4 text-left transition-all focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-100",
                   documentNumberingStylePreset === option.value
                     ? "border-[#0052FF] bg-[#EEF4FF] shadow-[0_8px_24px_rgba(0,82,255,0.10)]"
                     : "border-[#D8E1EC] bg-white hover:border-[#0052FF]/40 hover:bg-[#F8FAFC]"
@@ -319,84 +339,137 @@ export function FolderTree({
             ))}
           </div>
           {/* Customization for selected style: size, color, opacity with preview */}
-          {!readOnly && onDocumentNumberingStyleOverridesChange && (
+          {onDocumentNumberingStyleOverridesChange && (
             <div className="mt-4 border-t border-[#E2E8F0] pt-4">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold text-[#0F172A]">
-                  Tùy chỉnh chi tiết – {NUMBERING_STYLE_OPTIONS.find(o => o.value === documentNumberingStylePreset)?.label || documentNumberingStylePreset}
+                  Tùy chỉnh chi tiết –{" "}
+                  {NUMBERING_STYLE_OPTIONS.find(
+                    (o) => o.value === documentNumberingStylePreset
+                  )?.label || documentNumberingStylePreset}
                 </p>
                 <button
                   type="button"
-                  onClick={() => void onDocumentNumberingStyleOverridesChange?.({})}
-                  className="text-xs text-[#64748B] hover:text-[#0052FF] underline-offset-2 hover:underline"
+                  disabled={readOnly}
+                  onClick={() =>
+                    void onDocumentNumberingStyleOverridesChange?.({})
+                  }
+                  className="text-xs text-[#64748B] underline-offset-2 hover:text-[#0052FF] hover:underline disabled:cursor-not-allowed"
                 >
                   Đặt lại mặc định
                 </button>
               </div>
 
               {(() => {
-                const base = NUMBERING_STYLE_OPTIONS.find(o => o.value === documentNumberingStylePreset) || NUMBERING_STYLE_OPTIONS[0]
-                const effSize = documentNumberingStyleOverrides?.font_size ?? base.fontSize
-                const effColor = documentNumberingStyleOverrides?.color ?? base.color
-                const effOpacity = documentNumberingStyleOverrides?.opacity ?? (base.opacity ?? 0.75)
+                const base =
+                  NUMBERING_STYLE_OPTIONS.find(
+                    (o) => o.value === documentNumberingStylePreset
+                  ) || NUMBERING_STYLE_OPTIONS[0]
+                const effSize =
+                  documentNumberingStyleOverrides?.font_size ?? base.fontSize
+                const effColor =
+                  documentNumberingStyleOverrides?.color ?? base.color
+                const effOpacity =
+                  documentNumberingStyleOverrides?.opacity ??
+                  base.opacity ??
+                  0.75
                 const currentColor = effColor
 
                 return (
                   <div className="mt-3 grid gap-4 md:grid-cols-3">
                     {/* Font size */}
                     <div>
-                      <label className="block text-xs font-medium text-[#475569]">Cỡ chữ (pt)</label>
+                      <label className="block text-xs font-medium text-[#475569]">
+                        Cỡ chữ (pt)
+                      </label>
                       <input
                         type="number"
                         min={6}
                         max={48}
                         step={0.5}
+                        disabled={readOnly}
                         value={effSize}
                         onChange={(e) => {
                           const val = parseFloat(e.target.value)
-                          const next = { ...(documentNumberingStyleOverrides || {}), font_size: isNaN(val) ? undefined : val }
+                          const next = {
+                            ...(documentNumberingStyleOverrides || {}),
+                            font_size: isNaN(val) ? undefined : val,
+                          }
                           void onDocumentNumberingStyleOverridesChange?.(next)
                         }}
-                        className="mt-1 w-full rounded-lg border border-[#CBD5E1] px-3 py-1.5 text-sm focus:border-[#0052FF]"
+                        className="mt-1 w-full rounded-lg border border-[#CBD5E1] px-3 py-1.5 text-sm focus:border-[#0052FF] disabled:cursor-not-allowed disabled:opacity-100"
                       />
-                      <div className="mt-0.5 text-[10px] text-[#94A3B8]">Mặc định: {base.fontSize}pt</div>
+                      <div className="mt-0.5 text-[10px] text-[#94A3B8]">
+                        Mặc định: {base.fontSize}pt
+                      </div>
                     </div>
 
                     {/* Color with table + picker */}
                     <div>
-                      <label className="block text-xs font-medium text-[#475569]">Màu sắc</label>
+                      <label className="block text-xs font-medium text-[#475569]">
+                        Màu sắc
+                      </label>
                       <div className="mt-1 flex flex-wrap gap-1.5">
-                        {[base.color, "#757573", "#767570", "#3D3D3B", "#000000", "#333333", "#1E3A5F", "#4B2E2E"].filter((v,i,a)=>a.indexOf(v)===i).map((c) => {
-                          const isActive = currentColor?.toLowerCase() === c.toLowerCase()
-                          return (
-                            <button
-                              key={c}
-                              type="button"
-                              className={cn(
-                                "size-6 rounded border transition-all",
-                                isActive ? "border-[#0052FF] ring-2 ring-[#0052FF]/30" : "border-[#CBD5E1] hover:border-[#0052FF]/50"
-                              )}
-                              style={{ backgroundColor: c }}
-                              title={c}
-                              onClick={() => {
-                                const next = { ...(documentNumberingStyleOverrides || {}), color: c }
-                                void onDocumentNumberingStyleOverridesChange?.(next)
-                              }}
-                            />
-                          )
-                        })}
+                        {[
+                          base.color,
+                          "#757573",
+                          "#767570",
+                          "#3D3D3B",
+                          "#000000",
+                          "#333333",
+                          "#1E3A5F",
+                          "#4B2E2E",
+                        ]
+                          .filter((v, i, a) => a.indexOf(v) === i)
+                          .map((c) => {
+                            const isActive =
+                              currentColor?.toLowerCase() === c.toLowerCase()
+                            return (
+                              <button
+                                key={c}
+                                type="button"
+                                disabled={readOnly}
+                                className={cn(
+                                  "size-6 rounded border transition-all disabled:cursor-not-allowed disabled:opacity-100",
+                                  isActive
+                                    ? "border-[#0052FF] ring-2 ring-[#0052FF]/30"
+                                    : "border-[#CBD5E1] hover:border-[#0052FF]/50"
+                                )}
+                                style={{ backgroundColor: c }}
+                                title={c}
+                                onClick={() => {
+                                  const next = {
+                                    ...(documentNumberingStyleOverrides || {}),
+                                    color: c,
+                                  }
+                                  void onDocumentNumberingStyleOverridesChange?.(
+                                    next
+                                  )
+                                }}
+                              />
+                            )
+                          })}
                         <input
                           type="color"
+                          disabled={readOnly}
                           value={currentColor}
                           onChange={(e) => {
-                            const next = { ...(documentNumberingStyleOverrides || {}), color: e.target.value }
+                            const next = {
+                              ...(documentNumberingStyleOverrides || {}),
+                              color: e.target.value,
+                            }
                             void onDocumentNumberingStyleOverridesChange?.(next)
                           }}
-                          className="size-6 cursor-pointer rounded border border-[#CBD5E1] p-0.5"
+                          className="size-6 cursor-pointer rounded border border-[#CBD5E1] p-0.5 disabled:cursor-not-allowed disabled:opacity-100"
                           title="Chọn màu khác"
                         />
                       </div>
-                      <div className="mt-1 text-[11px] text-[#64748B] font-mono">{currentColor} {documentNumberingStyleOverrides?.color ? "" : "(mặc định)"}</div>
+                      <div className="mt-1 font-mono text-[11px] text-[#64748B]">
+                        {currentColor}{" "}
+                        {documentNumberingStyleOverrides?.color
+                          ? ""
+                          : "(mặc định)"}
+                      </div>
                     </div>
 
                     {/* Opacity */}
@@ -409,15 +482,21 @@ export function FolderTree({
                         min={0.1}
                         max={1}
                         step={0.05}
+                        disabled={readOnly}
                         value={effOpacity}
                         onChange={(e) => {
                           const val = parseFloat(e.target.value)
-                          const next = { ...(documentNumberingStyleOverrides || {}), opacity: isNaN(val) ? undefined : val }
+                          const next = {
+                            ...(documentNumberingStyleOverrides || {}),
+                            opacity: isNaN(val) ? undefined : val,
+                          }
                           void onDocumentNumberingStyleOverridesChange?.(next)
                         }}
-                        className="mt-2 w-full accent-[#0052FF]"
+                        className="mt-2 w-full accent-[#0052FF] disabled:cursor-not-allowed disabled:opacity-100"
                       />
-                      <div className="mt-0.5 text-[10px] text-[#94A3B8]">Mặc định: {Math.round((base.opacity ?? 0.75) * 100)}%</div>
+                      <div className="mt-0.5 text-[10px] text-[#94A3B8]">
+                        Mặc định: {Math.round((base.opacity ?? 0.75) * 100)}%
+                      </div>
                     </div>
                   </div>
                 )
@@ -425,12 +504,22 @@ export function FolderTree({
 
               {/* Preview */}
               <div className="mt-3">
-                <div className="text-xs font-medium text-[#475569] mb-1">Xem trước</div>
+                <div className="mb-1 text-xs font-medium text-[#475569]">
+                  Xem trước
+                </div>
                 {(() => {
-                  const base = NUMBERING_STYLE_OPTIONS.find(o => o.value === documentNumberingStylePreset) || NUMBERING_STYLE_OPTIONS[0]
-                  const effSize = documentNumberingStyleOverrides?.font_size ?? base.fontSize
-                  const effColor = documentNumberingStyleOverrides?.color ?? base.color
-                  const effOpacity = documentNumberingStyleOverrides?.opacity ?? (base.opacity ?? 0.75)
+                  const base =
+                    NUMBERING_STYLE_OPTIONS.find(
+                      (o) => o.value === documentNumberingStylePreset
+                    ) || NUMBERING_STYLE_OPTIONS[0]
+                  const effSize =
+                    documentNumberingStyleOverrides?.font_size ?? base.fontSize
+                  const effColor =
+                    documentNumberingStyleOverrides?.color ?? base.color
+                  const effOpacity =
+                    documentNumberingStyleOverrides?.opacity ??
+                    base.opacity ??
+                    0.75
                   return (
                     <div
                       className="inline-flex items-center justify-center rounded border border-[#E2E8F0] bg-white px-4 py-2 text-2xl font-semibold select-none"
@@ -514,19 +603,46 @@ export function FolderTree({
         hasRetentionSchedule={hasRetentionSchedule}
       />
 
-      <div className="flex justify-stretch sm:justify-end">
-        <button
-          onClick={handleConfirm}
-          disabled={confirming}
-          className="flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-white transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] disabled:cursor-wait disabled:opacity-70 sm:w-auto"
-          style={{
-            background: "linear-gradient(to right, #0052FF, #4D7CFF)",
-            boxShadow: "0 4px 14px rgba(0,82,255,0.25)",
-          }}
-        >
-          <Check className="size-4" />{" "}
-          {readOnly ? "Tiếp tục" : "Xác nhận phương án"}
-        </button>
+      <div className="flex flex-col justify-stretch gap-3 sm:flex-row sm:justify-between">
+        {!readOnly && onSaveDraft && (
+          <button
+            type="button"
+            onClick={handleSaveDraft}
+            disabled={savingDraft || !planDraftDirty}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#CBD5E1] bg-white px-6 py-3 text-sm font-semibold text-[#0F172A] shadow-sm transition-all hover:border-[#0052FF]/30 hover:text-[#0052FF] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+          >
+            {savingDraft ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Save className="size-4" />
+            )}
+            Lưu bản nháp
+          </button>
+        )}
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={confirming || savingDraft || planDraftDirty}
+            className="flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-white transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 sm:mr-auto sm:w-auto"
+            style={{
+              background: "linear-gradient(to right, #0052FF, #4D7CFF)",
+              boxShadow: "0 4px 14px rgba(0,82,255,0.25)",
+            }}
+          >
+            <Check className="size-4" /> Duyệt phương án
+          </button>
+        )}
+        {onContinueToMetadata && (
+          <button
+            type="button"
+            onClick={handleContinueToMetadata}
+            disabled={confirming || savingDraft}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#CBD5E1] bg-white px-6 py-3 text-sm font-semibold text-[#0F172A] shadow-sm transition-all hover:border-[#0052FF]/30 hover:text-[#0052FF] disabled:cursor-wait disabled:opacity-70 sm:ml-auto sm:w-auto"
+          >
+            <ArrowRight className="size-4" /> Sang extract metadata
+          </button>
+        )}
       </div>
     </motion.div>
   )
@@ -594,7 +710,10 @@ function ArchivePlanTree({
   )
 }
 
-interface ArchiveRetentionBranchProps extends Omit<ArchivePlanTreeProps, "fondsName"> {
+interface ArchiveRetentionBranchProps extends Omit<
+  ArchivePlanTreeProps,
+  "fondsName"
+> {
   label: string
 }
 

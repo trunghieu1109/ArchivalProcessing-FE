@@ -9,6 +9,7 @@ import {
 import type {
   ArtifactListResponse,
   DocumentArchiveDownload,
+  DocumentNumberingMode,
   EnqueueNumberingResponse,
   MetadataSnapshotGroup,
   MetadataBoxNumberImportResponse,
@@ -37,6 +38,7 @@ export async function enqueueDocumentNumbering(
   payload: {
     created_by?: string
     force?: boolean
+    document_numbering_mode?: DocumentNumberingMode
     document_numbering_style_preset?: string
     style_preset?: string
     document_numbering_style_overrides?: { font_size?: number; color?: string; opacity?: number } | null
@@ -58,6 +60,26 @@ export async function getNumberingStyles(
 ): Promise<NumberingStylesResponse> {
   return requestJson<NumberingStylesResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/numbering/styles`
+  )
+}
+
+export async function updateDocumentNumberingConfig(
+  sessionId: string,
+  payload: { document_numbering_mode: DocumentNumberingMode }
+): Promise<{
+  session_id: string
+  document_numbering_mode: DocumentNumberingMode
+}> {
+  return requestJson<{
+    session_id: string
+    document_numbering_mode: DocumentNumberingMode
+  }>(
+    `/sessions/${encodeURIComponent(sessionId)}/numbering/config`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
   )
 }
 

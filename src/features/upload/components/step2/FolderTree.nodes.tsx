@@ -17,6 +17,7 @@ import { AnimatePresence, motion } from "framer-motion"
 import { toast } from "sonner"
 import { PaginationControls } from "@/features/upload/components/PaginationControls"
 import { usePagedItems } from "@/features/upload/hooks/usePagedItems"
+import { cn } from "@/shared/lib/utils"
 import type {
   FolderNode,
   ParsedPlan,
@@ -144,7 +145,7 @@ export function PlanSummary({
                       )
                     )
                   }
-                  className="h-8 min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-1 text-sm font-bold text-[#0F172A] transition-colors outline-none focus:border-[#CBD5E1] focus:bg-[#F8FAFC]"
+                  className="h-8 min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-1 text-sm font-bold text-[#0F172A] transition-colors outline-none read-only:cursor-not-allowed focus:border-[#CBD5E1] focus:bg-[#F8FAFC]"
                 />
                 {!readOnly && criteriaDrafts.length > 1 && (
                   <button
@@ -174,7 +175,7 @@ export function PlanSummary({
                 }
                 rows={3}
                 placeholder="Mô tả tiêu chí phân nhóm..."
-                className="min-h-14 w-full resize-y rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] px-3 py-2 text-sm leading-6 text-[#0F172A] transition-colors outline-none read-only:resize-none focus:border-[#0052FF]/60 focus:bg-white"
+                className="min-h-14 w-full resize-y rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] px-3 py-2 text-sm leading-6 text-[#0F172A] transition-colors outline-none read-only:cursor-not-allowed read-only:resize-none focus:border-[#0052FF]/60 focus:bg-white"
               />
             </div>
           ))}
@@ -529,7 +530,10 @@ export function FolderNodeItem({
         ) : (
           <button
             onClick={startDefinitionEdit}
-            className="min-w-0 flex-1 text-left text-sm leading-5 [overflow-wrap:anywhere] break-words whitespace-normal text-[#0F172A]"
+            className={cn(
+              "min-w-0 flex-1 text-left text-sm leading-5 [overflow-wrap:anywhere] break-words whitespace-normal text-[#0F172A]",
+              readOnly && "cursor-not-allowed"
+            )}
             title={readOnly ? "Xem định nghĩa nhóm" : "Sửa định nghĩa nhóm"}
           >
             {node.name}

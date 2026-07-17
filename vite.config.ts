@@ -11,6 +11,10 @@ export default defineConfig(({ mode }) => {
     process.env.VITE_ARCHIVAL_DEV_API_PROXY_TARGET ||
     env.VITE_ARCHIVAL_DEV_API_PROXY_TARGET ||
     "http://127.0.0.1:8000"
+  const hmrClientPort = parsePositiveInt(
+    process.env.VITE_ARCHIVAL_DEV_HMR_CLIENT_PORT ||
+      env.VITE_ARCHIVAL_DEV_HMR_CLIENT_PORT
+  )
 
   return {
     plugins: [
@@ -42,6 +46,7 @@ export default defineConfig(({ mode }) => {
       }),
     ],
     server: {
+      hmr: hmrClientPort ? { clientPort: hmrClientPort } : undefined,
       proxy: {
         "/api": {
           target: apiProxyTarget,
@@ -59,3 +64,8 @@ export default defineConfig(({ mode }) => {
     },
   }
 })
+
+function parsePositiveInt(value: string | undefined): number | undefined {
+  const parsed = Number.parseInt(String(value ?? ""), 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
+}

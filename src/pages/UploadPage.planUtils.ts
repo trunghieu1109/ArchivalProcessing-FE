@@ -1,8 +1,20 @@
 import type {
+  ActivePlanResponse,
+  DossierBuildStrategy,
+  DocumentNumberingMode,
+  DocumentNumberingStylePreset,
   SessionInputFileType,
   SessionInputUploadResponse,
 } from "@/features/upload/api/sessionApi"
 import type { FolderNode, ParsedPlan, PlanGroup } from "@/features/upload/types"
+import {
+  activePlanBuildStrategy as parsedActivePlanBuildStrategy,
+  activePlanDocumentNumberingMode as parsedActivePlanDocumentNumberingMode,
+  activePlanDocumentNumberingStyleOverrides as parsedActivePlanDocumentNumberingStyleOverrides,
+  activePlanDocumentNumberingStylePreset as parsedActivePlanDocumentNumberingStylePreset,
+  activePlanToParsedPlan as parsedActivePlanToParsedPlan,
+} from "./UploadPage.planParsing"
+import type { NumberingStyleOverrides } from "./UploadPage.planDefaults"
 
 export * from "./UploadPage.planDefaults"
 export {
@@ -110,6 +122,78 @@ export function treeToFlatGroups(nodes: FolderNode[]): Array<{
         : Array.from(group.parentRefs),
     definition: group.definition,
   }))
+}
+
+export function buildPlanDraftPayload({
+  folderTree,
+  parsedPlan,
+  dossierBuildStrategy,
+  documentNumberingMode,
+  documentNumberingStylePreset,
+  documentNumberingStyleOverrides,
+}: {
+  folderTree: FolderNode[]
+  parsedPlan: ParsedPlan
+  dossierBuildStrategy: DossierBuildStrategy
+  documentNumberingMode: DocumentNumberingMode
+  documentNumberingStylePreset: DocumentNumberingStylePreset
+  documentNumberingStyleOverrides: NumberingStyleOverrides
+}): Record<string, unknown> {
+  return {
+    groups: treeToPlanGroups(folderTree),
+    flat_groups: treeToFlatGroups(folderTree),
+    criterias: parsedPlan.criterias,
+    file_register_config: parsedPlan.file_register_config,
+    dossier_build_strategy: dossierBuildStrategy,
+    document_numbering_mode: documentNumberingMode,
+    document_numbering_style_preset: documentNumberingStylePreset,
+    document_numbering_style_overrides: documentNumberingStyleOverrides,
+  }
+}
+
+export function planResponseToDraftPayload(
+  planResponse: ActivePlanResponse
+): Record<string, unknown> {
+  const parsedPlan = parsedActivePlanToParsedPlan(planResponse)
+  return buildPlanDraftPayload({
+    folderTree: planToTree(parsedPlan),
+    parsedPlan,
+    dossierBuildStrategy: parsedActivePlanBuildStrategy(planResponse),
+    documentNumberingMode: parsedActivePlanDocumentNumberingMode(planResponse),
+    documentNumberingStylePreset:
+      parsedActivePlanDocumentNumberingStylePreset(planResponse),
+    documentNumberingStyleOverrides:
+      parsedActivePlanDocumentNumberingStyleOverrides(planResponse),
+  })
+}
+
+export function planDraftPayloadSignature(
+  payload: Record<string, unknown>
+): string {
+  return stableStringify(normalizeSignatureValue(payload))
+}
+
+export function planResponseMaterialSignature(
+  planResponse: ActivePlanResponse
+): string {
+  return planDraftPayloadSignature(planResponseToDraftPayload(planResponse))
+}
+
+function normalizeSignatureValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(normalizeSignatureValue)
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, child]) => child !== undefined)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, child]) => [key, normalizeSignatureValue(child)])
+    )
+  }
+  return value
+}
+
+function stableStringify(value: unknown): string {
+  return JSON.stringify(value)
 }
 
 export function stageInput(

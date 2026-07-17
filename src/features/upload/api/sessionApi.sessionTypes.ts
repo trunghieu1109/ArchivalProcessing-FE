@@ -11,6 +11,7 @@ export type DocumentNumberingStylePreset =
   | "pencil_miama"
   | "pencil_bradley"
   | "stamp_times_bold"
+export type PlanVersionStatus = "draft" | "active" | "superseded"
 export type UploadMode = "append" | "overwrite"
 
 export interface ApiRevisionMetadata {
@@ -256,7 +257,11 @@ export interface UploadSessionInputOptions {
 
 export interface ActivePlanResponse {
   id?: string
+  session_id?: string
   version_number?: number
+  status?: PlanVersionStatus
+  source?: string
+  created_at?: string
   summary: string
   dossier_build_strategy?: DossierBuildStrategy
   document_numbering_mode?: DocumentNumberingMode

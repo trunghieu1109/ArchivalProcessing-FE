@@ -1,8 +1,9 @@
 import { toast } from "sonner"
 import {
   createSession,
-  patchActivePlan,
+  patchDraftPlan,
   patchSessionMetadata,
+  updateDocumentNumberingConfig,
   uploadSessionInput,
   type ActivePlanResponse,
   type DossierBuildStrategy,
@@ -29,10 +30,12 @@ import {
   activePlanDocumentNumberingStyleOverrides,
   activePlanDocumentNumberingStylePreset,
   activePlanToParsedPlan,
+  buildPlanDraftPayload,
+  planDraftPayloadSignature,
+  planResponseMaterialSignature,
+  planResponseToDraftPayload,
   planToTree,
   stageInput,
-  treeToFlatGroups,
-  treeToPlanGroups,
   DEFAULT_NUMBERING_STYLE_OVERRIDES,
   type NumberingStyleOverrides,
 } from "./UploadPage.planUtils"
@@ -64,6 +67,15 @@ export function createUploadPageActions(context: Record<string, any>) {
     setZipEntries,
     setFolderTree,
     setParsedPlan,
+    setActiveFolderTree,
+    setActiveParsedPlan,
+    setActivePlanSettings,
+    setWorkingPlanVersionId,
+    setWorkingPlanStatus,
+    setPlanDraftDirty,
+    setActivePlanVersionId,
+    setPlanViewTab,
+    setClusterGroups,
     setZipState,
     setPlanProgressPhase,
     setPlanProgressMessage,
@@ -72,7 +84,10 @@ export function createUploadPageActions(context: Record<string, any>) {
 
   const ensureSession = async () => {
     if (cache.sessionId) return cache.sessionId
-    const created = await createSession("ui", normalizeSessionMetadataPayload(cache.sessionMetadata))
+    const created = await createSession(
+      "ui",
+      normalizeSessionMetadataPayload(cache.sessionMetadata)
+    )
     cache.sessionId = created.session_id
     cache.activeClusterVersionId = null
     setSessionId(created.session_id)
@@ -141,6 +156,11 @@ export function createUploadPageActions(context: Record<string, any>) {
     }
     if (fileType === "raw_zip") {
       cache.zipUpload = uploaded
+      cache.zipHas = true
+      cache.zipState = "done"
+      setZipHas(true)
+      setZipState("done")
+      syncZipFolderPath(uploaded.folder_path ?? uploaded.data_path ?? "")
       if (existingSessionMode) {
         cache.rawZipReuploaded = true
         setZipSupplementUploaded(true)
@@ -207,7 +227,11 @@ export function createUploadPageActions(context: Record<string, any>) {
 
     const uploaded = await Promise.all(
       retentionFiles.map((file) =>
-        uploadSessionInput(cache.sessionId as string, "retention_schedule", file)
+        uploadSessionInput(
+          cache.sessionId as string,
+          "retention_schedule",
+          file
+        )
       )
     )
     cache.retentionUploads = [...cache.retentionUploads, ...uploaded]
@@ -283,18 +307,45 @@ export function createUploadPageActions(context: Record<string, any>) {
   const selectDossierBuildStrategy = (strategy: DossierBuildStrategy) => {
     cache.dossierBuildStrategy = strategy
     setDossierBuildStrategy(strategy)
+    markPlanDraftDirty()
+    return true
+  }
+  const updateCachedActivePlanNumberingSettings = (
+    updates: Partial<ActivePlanResponse>
+  ) => {
+    if (cache.activePlanResponse) {
+      cache.activePlanResponse = {
+        ...cache.activePlanResponse,
+        ...updates,
+      }
+      cache.activePlanSignature = planResponseMaterialSignature(
+        cache.activePlanResponse
+      )
+    }
   }
   const applyPersistedDocumentNumberingMode = (mode: DocumentNumberingMode) => {
-    cache.documentNumberingMode = mode
-    cache.persistedDocumentNumberingMode = mode
-    setDocumentNumberingMode(mode)
+    cache.activePlanSettings = {
+      ...cache.activePlanSettings,
+      documentNumberingMode: mode,
+    }
+    updateCachedActivePlanNumberingSettings({ document_numbering_mode: mode })
+    if (typeof setActivePlanSettings === "function") {
+      setActivePlanSettings(cache.activePlanSettings)
+    }
   }
   const applyPersistedDocumentNumberingStylePreset = (
     stylePreset: DocumentNumberingStylePreset
   ) => {
-    cache.documentNumberingStylePreset = stylePreset
-    cache.persistedDocumentNumberingStylePreset = stylePreset
-    setDocumentNumberingStylePreset(stylePreset)
+    cache.activePlanSettings = {
+      ...cache.activePlanSettings,
+      documentNumberingStylePreset: stylePreset,
+    }
+    updateCachedActivePlanNumberingSettings({
+      document_numbering_style_preset: stylePreset,
+    })
+    if (typeof setActivePlanSettings === "function") {
+      setActivePlanSettings(cache.activePlanSettings)
+    }
   }
 
   const applyPersistedDocumentNumberingStyleOverrides = (
@@ -302,36 +353,113 @@ export function createUploadPageActions(context: Record<string, any>) {
   ) => {
     const clean: NumberingStyleOverrides = {}
     if (overrides && typeof overrides === "object") {
-      if (typeof overrides.font_size === "number") clean.font_size = overrides.font_size
+      if (typeof overrides.font_size === "number")
+        clean.font_size = overrides.font_size
       if (typeof overrides.color === "string" && overrides.color.trim()) {
         clean.color = overrides.color.trim()
       }
-      if (typeof overrides.opacity === "number") clean.opacity = overrides.opacity
+      if (typeof overrides.opacity === "number")
+        clean.opacity = overrides.opacity
     }
-    cache.documentNumberingStyleOverrides = clean
-    cache.persistedDocumentNumberingStyleOverrides = clean
-    if (typeof setDocumentNumberingStyleOverrides === "function") {
-      setDocumentNumberingStyleOverrides(clean)
+    cache.activePlanSettings = {
+      ...cache.activePlanSettings,
+      documentNumberingStyleOverrides: clean,
+    }
+    updateCachedActivePlanNumberingSettings({
+      document_numbering_style_overrides: clean,
+    })
+    if (typeof setActivePlanSettings === "function") {
+      setActivePlanSettings(cache.activePlanSettings)
     }
   }
-  const applyActivePlanResponse = (planResponse: ActivePlanResponse) => {
-    cache.activePlanVersionId = planResponse.id ?? ""
-    applyPersistedDossierBuildStrategy(activePlanBuildStrategy(planResponse))
-    applyPersistedDocumentNumberingMode(
-      activePlanDocumentNumberingMode(planResponse)
-    )
-    applyPersistedDocumentNumberingStylePreset(
+
+  const applyWorkingPlanResponse = (planResponse: ActivePlanResponse) => {
+    const plan = activePlanToParsedPlan(planResponse)
+    const draftPayload = planResponseToDraftPayload(planResponse)
+    const buildStrategy = activePlanBuildStrategy(planResponse)
+    const numberingMode = activePlanDocumentNumberingMode(planResponse)
+    const numberingStylePreset =
       activePlanDocumentNumberingStylePreset(planResponse)
-    )
-    if (typeof applyPersistedDocumentNumberingStyleOverrides === "function") {
-      applyPersistedDocumentNumberingStyleOverrides(
-        activePlanDocumentNumberingStyleOverrides(planResponse)
-      )
+    const numberingStyleOverrides =
+      activePlanDocumentNumberingStyleOverrides(planResponse)
+    cache.workingPlanVersionId = planResponse.id ?? ""
+    cache.workingPlanStatus = planResponse.status ?? ""
+    cache.workingPlanResponse = planResponse
+    cache.workingPlanSignature = planResponseMaterialSignature(planResponse)
+    cache.planDraftBaseSignature = planDraftPayloadSignature(draftPayload)
+    cache.planDraftDirty = false
+    cache.planDraftRevision = 0
+    cache.parsedPlan = plan
+    cache.folderTree = planToTree(plan)
+    cache.dossierBuildStrategy = buildStrategy
+    cache.persistedDossierBuildStrategy = buildStrategy
+    cache.documentNumberingMode = numberingMode
+    cache.persistedDocumentNumberingMode = numberingMode
+    cache.documentNumberingStylePreset = numberingStylePreset
+    cache.persistedDocumentNumberingStylePreset = numberingStylePreset
+    cache.documentNumberingStyleOverrides = numberingStyleOverrides
+    cache.persistedDocumentNumberingStyleOverrides = numberingStyleOverrides
+    setParsedPlan(plan)
+    setFolderTree(cache.folderTree)
+    setDossierBuildStrategy(buildStrategy)
+    setDocumentNumberingMode(numberingMode)
+    setDocumentNumberingStylePreset(numberingStylePreset)
+    setDocumentNumberingStyleOverrides(numberingStyleOverrides)
+    if (typeof setPlanDraftDirty === "function") setPlanDraftDirty(false)
+    if (typeof setWorkingPlanVersionId === "function") {
+      setWorkingPlanVersionId(cache.workingPlanVersionId)
+    }
+    if (typeof setWorkingPlanStatus === "function") {
+      setWorkingPlanStatus(cache.workingPlanStatus)
+    }
+    if (typeof setPlanViewTab === "function") {
+      cache.planViewTab = "draft"
+      setPlanViewTab("draft")
+    }
+  }
+
+  const applyActivePlanResponse = (planResponse: ActivePlanResponse) => {
+    const plan = activePlanToParsedPlan(planResponse)
+    const nextActivePlanVersionId = planResponse.id ?? ""
+    const activePlanChanged =
+      Boolean(cache.activePlanVersionId) &&
+      cache.activePlanVersionId !== nextActivePlanVersionId
+    const activePlanSettings = {
+      dossierBuildStrategy: activePlanBuildStrategy(planResponse),
+      documentNumberingMode: activePlanDocumentNumberingMode(planResponse),
+      documentNumberingStylePreset:
+        activePlanDocumentNumberingStylePreset(planResponse),
+      documentNumberingStyleOverrides:
+        activePlanDocumentNumberingStyleOverrides(planResponse),
+    }
+    cache.activePlanVersionId = nextActivePlanVersionId
+    cache.activePlanResponse = planResponse
+    cache.activePlanSignature = planResponseMaterialSignature(planResponse)
+    cache.activeParsedPlan = plan
+    cache.activeFolderTree = planToTree(plan)
+    cache.activePlanSettings = activePlanSettings
+    if (typeof setActivePlanVersionId === "function") {
+      setActivePlanVersionId(cache.activePlanVersionId)
+    }
+    if (typeof setActiveParsedPlan === "function") {
+      setActiveParsedPlan(plan)
+    }
+    if (typeof setActiveFolderTree === "function") {
+      setActiveFolderTree(cache.activeFolderTree)
+    }
+    if (typeof setActivePlanSettings === "function") {
+      setActivePlanSettings(activePlanSettings)
+    }
+    if (activePlanChanged) {
+      cache.clusterGroups = []
+      cache.activeClusterVersionId = null
+      if (typeof setClusterGroups === "function") setClusterGroups([])
     }
   }
   const selectDocumentNumberingModeDraft = (mode: DocumentNumberingMode) => {
     cache.documentNumberingMode = mode
     setDocumentNumberingMode(mode)
+    markPlanDraftDirty()
     return true
   }
   const selectDocumentNumberingMode = async (mode: DocumentNumberingMode) => {
@@ -339,16 +467,11 @@ export function createUploadPageActions(context: Record<string, any>) {
     setDocumentNumberingMode(mode)
     if (!cache.sessionId || mode === cache.persistedDocumentNumberingMode)
       return true
-    const savePromise = patchActivePlan(cache.sessionId, {
-      document_numbering_mode: mode,
-    })
-    cache.documentNumberingModeSavePromise = savePromise
     try {
-      const planResponse = await savePromise
-      if (cache.documentNumberingModeSavePromise !== savePromise) {
-        return true
-      }
-      applyActivePlanResponse(planResponse)
+      await updateDocumentNumberingConfig(cache.sessionId, {
+        document_numbering_mode: mode,
+      })
+      applyPersistedDocumentNumberingMode(mode)
       toast.success("Đã lưu cách xử lý trang PDF.")
       return true
     } catch (err) {
@@ -359,10 +482,6 @@ export function createUploadPageActions(context: Record<string, any>) {
           : "Không lưu được cách xử lý trang PDF."
       )
       return false
-    } finally {
-      if (cache.documentNumberingModeSavePromise === savePromise) {
-        cache.documentNumberingModeSavePromise = null
-      }
     }
   }
   const selectDocumentNumberingStylePreset = (
@@ -377,6 +496,7 @@ export function createUploadPageActions(context: Record<string, any>) {
     if (typeof setDocumentNumberingStyleOverrides === "function") {
       setDocumentNumberingStyleOverrides(resetOverrides)
     }
+    markPlanDraftDirty()
     return true
   }
 
@@ -384,7 +504,8 @@ export function createUploadPageActions(context: Record<string, any>) {
     overrides: NumberingStyleOverrides
   ) => {
     const clean: NumberingStyleOverrides = {}
-    if (typeof overrides.font_size === "number") clean.font_size = overrides.font_size
+    if (typeof overrides.font_size === "number")
+      clean.font_size = overrides.font_size
     if (typeof overrides.color === "string" && overrides.color.trim()) {
       clean.color = overrides.color.trim()
     }
@@ -393,6 +514,7 @@ export function createUploadPageActions(context: Record<string, any>) {
     if (typeof setDocumentNumberingStyleOverrides === "function") {
       setDocumentNumberingStyleOverrides(clean)
     }
+    markPlanDraftDirty()
     return true
   }
   const syncDoc1Has = (v: boolean) => {
@@ -449,61 +571,100 @@ export function createUploadPageActions(context: Record<string, any>) {
   const syncFolderTree = (t: FolderNode[]) => {
     cache.folderTree = t
     setFolderTree(t)
+    markPlanDraftDirty()
   }
-  const savePlanChanges = async (
-    nextTree = cache.folderTree,
-    nextCriterias = cache.parsedPlan.criterias
-  ) => {
+
+  function currentPlanDraftPayload(): Record<string, unknown> {
+    return buildPlanDraftPayload({
+      folderTree: cache.folderTree,
+      parsedPlan: cache.parsedPlan,
+      dossierBuildStrategy: cache.dossierBuildStrategy,
+      documentNumberingMode: cache.documentNumberingMode,
+      documentNumberingStylePreset: cache.documentNumberingStylePreset,
+      documentNumberingStyleOverrides: cache.documentNumberingStyleOverrides,
+    })
+  }
+
+  function markPlanDraftDirty() {
+    const payload = currentPlanDraftPayload()
+    const currentSignature = planDraftPayloadSignature(payload)
+    const dirty = cache.planDraftBaseSignature
+      ? currentSignature !== cache.planDraftBaseSignature
+      : true
+    cache.planDraftDirty = dirty
+    cache.planDraftRevision += 1
+    if (typeof setPlanDraftDirty === "function") setPlanDraftDirty(dirty)
+  }
+
+  const savePlanChanges = async () => {
     if (!cache.sessionId) {
-      cache.folderTree = nextTree
-      cache.parsedPlan = { ...cache.parsedPlan, criterias: nextCriterias }
-      setFolderTree(nextTree)
-      setParsedPlan(cache.parsedPlan)
-      toast.success("Đã lưu thay đổi trên màn hình.")
-      return
+      throw new Error("Chưa có session để lưu bản nháp phương án.")
+    }
+    if (cache.workingPlanSavePromise) {
+      return cache.workingPlanSavePromise
     }
 
-    const planResponse = await patchActivePlan(cache.sessionId, {
-      groups: treeToPlanGroups(nextTree),
-      flat_groups: treeToFlatGroups(nextTree),
-      criterias: nextCriterias,
-    })
-    const updatedPlan = activePlanToParsedPlan(planResponse)
-    cache.activePlanVersionId = planResponse.id ?? ""
-    cache.parsedPlan = updatedPlan
-    cache.folderTree = planToTree(updatedPlan)
-    setParsedPlan(updatedPlan)
-    setFolderTree(cache.folderTree)
-    toast.success("Đã lưu phương án chỉnh lý vào session.")
+    const sessionId = cache.sessionId
+    const savePromise = (async () => {
+      let planResponse: ActivePlanResponse | null = null
+      let savedRevision = -1
+      do {
+        savedRevision = cache.planDraftRevision
+        const payload = currentPlanDraftPayload()
+        const currentSignature = planDraftPayloadSignature(payload)
+        if (
+          cache.planDraftBaseSignature &&
+          currentSignature === cache.planDraftBaseSignature
+        ) {
+          planResponse = cache.workingPlanResponse ?? cache.activePlanResponse
+          if (!planResponse) {
+            throw new Error("Không có thay đổi phương án để lưu.")
+          }
+        } else {
+          planResponse = await patchDraftPlan(sessionId, payload)
+        }
+        cache.workingPlanVersionId = planResponse.id ?? ""
+        cache.workingPlanStatus = planResponse.status ?? "draft"
+        if (typeof setWorkingPlanVersionId === "function") {
+          setWorkingPlanVersionId(cache.workingPlanVersionId)
+        }
+        if (typeof setWorkingPlanStatus === "function") {
+          setWorkingPlanStatus(cache.workingPlanStatus)
+        }
+      } while (savedRevision !== cache.planDraftRevision)
+
+      applyWorkingPlanResponse(planResponse)
+      cache.planDraftDirty = false
+      if (typeof setPlanDraftDirty === "function") setPlanDraftDirty(false)
+      return planResponse
+    })()
+
+    cache.workingPlanSavePromise = savePromise
+    try {
+      return await savePromise
+    } finally {
+      if (cache.workingPlanSavePromise === savePromise) {
+        cache.workingPlanSavePromise = null
+      }
+    }
   }
 
   const savePlanCriterias = async (criterias: PlanCriterionSet[]) => {
     cache.parsedPlan = { ...cache.parsedPlan, criterias }
     setParsedPlan(cache.parsedPlan)
-    await savePlanChanges(cache.folderTree, criterias)
+    markPlanDraftDirty()
   }
 
   const saveFileRegisterConfig = async (config: FileRegisterConfig) => {
     cache.parsedPlan = { ...cache.parsedPlan, file_register_config: config }
     setParsedPlan(cache.parsedPlan)
-    if (!cache.sessionId) return
-
-    const planResponse = await patchActivePlan(cache.sessionId, {
-      file_register_config: config,
-    })
-    const updatedPlan = activePlanToParsedPlan(planResponse)
-    cache.activePlanVersionId = planResponse.id ?? ""
-    cache.parsedPlan = updatedPlan
-    cache.folderTree = planToTree(updatedPlan)
-    setParsedPlan(updatedPlan)
-    setFolderTree(cache.folderTree)
-    toast.success("Đã lưu cấu hình lập hồ sơ tập lưu.")
+    markPlanDraftDirty()
   }
 
   const saveFolderTree = async (tree: FolderNode[]) => {
     cache.folderTree = tree
     setFolderTree(tree)
-    await savePlanChanges(tree, cache.parsedPlan.criterias)
+    markPlanDraftDirty()
   }
   const syncDoc1State = (s: ProcessState) => {
     cache.doc1State = s
@@ -544,6 +705,7 @@ export function createUploadPageActions(context: Record<string, any>) {
     applyPersistedDocumentNumberingMode,
     applyPersistedDocumentNumberingStylePreset,
     applyPersistedDocumentNumberingStyleOverrides,
+    applyWorkingPlanResponse,
     applyActivePlanResponse,
     selectDocumentNumberingModeDraft,
     selectDocumentNumberingMode,
