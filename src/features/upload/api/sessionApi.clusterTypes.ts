@@ -85,6 +85,15 @@ export interface SessionDossierSuggestion {
   cluster_id: string
   title: string
   best_other_similarity: number
+  average_similarity?: number
+  matching_document_count?: number
+  matched_document_ids?: string[]
+  matched_session_document_ids?: number[]
+  document_similarity_scores?: Array<{
+    session_document_id: number
+    document_id: string
+    similarity: number
+  }>
   representative_document_ids: string[]
   representative_documents: SessionDossierSuggestionRepresentativeDocument[]
   document_count: number
@@ -96,8 +105,10 @@ export interface SelectedDocumentDossierSuggestionsResponse {
   version_number: number
   force_refresh: boolean
   top_k: number
+  selected_document_count?: number
   cached_document_count: number
   computed_document_count: number
+  dossier_suggestions?: SessionDossierSuggestion[]
   documents: Array<{
     session_document_id: number
     document_id: string
@@ -255,13 +266,11 @@ export interface SessionDossierSuggestionBaseResponse {
   error?: string | null
 }
 
-export interface SessionDossierTitleSuggestionResponse
-  extends SessionDossierSuggestionBaseResponse {
+export interface SessionDossierTitleSuggestionResponse extends SessionDossierSuggestionBaseResponse {
   suggestions: SessionDossierTitleSuggestion[]
 }
 
-export interface SessionDossierRetentionSuggestionResponse
-  extends SessionDossierSuggestionBaseResponse {
+export interface SessionDossierRetentionSuggestionResponse extends SessionDossierSuggestionBaseResponse {
   plan_version_id?: string | null
   recommendation?: Record<string, unknown> | null
   retention_recommendation?: Record<string, unknown> | null

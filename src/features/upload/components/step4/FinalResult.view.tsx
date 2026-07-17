@@ -84,7 +84,8 @@ export function FinalResultView(props: Record<string, any>) {
     pendingDossierCount,
     pendingFeedbackCount,
     previewDocument,
-    selectedDossierSuggestionsDocument,
+    selectedDossierSuggestionsDocuments,
+    selectedDossierSuggestionCandidates,
     dossierSuggestionRepresentativeDocuments,
     selectedDossierSuggestionsDocumentId,
     dossierSuggestionsLoading,
@@ -514,10 +515,13 @@ export function FinalResultView(props: Record<string, any>) {
           </div>
         )}
       </div>
-      {selectedDossierSuggestionsDocument && (
+      {selectedDossierSuggestionsDocuments.length > 0 && (
         <DossierSuggestionsModal
-          key={selectedDossierSuggestionsDocument.sessionDocumentId}
-          document={selectedDossierSuggestionsDocument}
+          key={selectedDossierSuggestionsDocuments
+            .map((document) => document.sessionDocumentId)
+            .join(":")}
+          documents={selectedDossierSuggestionsDocuments}
+          suggestions={selectedDossierSuggestionCandidates}
           representativeDocuments={dossierSuggestionRepresentativeDocuments}
           loading={dossierSuggestionsLoading}
           refreshing={dossierSuggestionsRefreshing}

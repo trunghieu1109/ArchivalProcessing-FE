@@ -8,6 +8,7 @@ import {
   suggestSelectedDocumentDossiers,
   type ClusterGroupInformationTableResponse,
   type ClusterVersionResponse,
+  type SessionDossierSuggestion,
 } from "@/features/upload/api/sessionApi"
 import { toast } from "sonner"
 import {
@@ -49,6 +50,8 @@ import {
   applyPendingFeedbackOverlay,
   clearPendingFeedbackMarkers,
 } from "./FinalResult.pendingFeedback"
+
+const DOSSIER_SUGGESTION_TOP_K = 5
 
 export function FinalResult({
   sessionId,
@@ -115,8 +118,14 @@ export function FinalResult({
   const [selectedPreviewDocumentId, setSelectedPreviewDocumentId] = useState<
     number | null
   >(null)
-  const [selectedDossierSuggestionsDocumentId, setSelectedDossierSuggestionsDocumentId] =
-    useState<number | null>(null)
+  const [
+    selectedDossierSuggestionsDocumentIds,
+    setSelectedDossierSuggestionsDocumentIds,
+  ] = useState<number[]>([])
+  const [
+    selectedDossierSuggestionCandidates,
+    setSelectedDossierSuggestionCandidates,
+  ] = useState<SessionDossierSuggestion[] | null>(null)
   const [dossierSuggestionsLoading, setDossierSuggestionsLoading] =
     useState(false)
   const [dossierSuggestionsRefreshing, setDossierSuggestionsRefreshing] =
@@ -231,19 +240,28 @@ export function FinalResult({
         : null,
     [groups, selectedMetadataGroupId]
   )
-  const selectedDossierSuggestionsDocument = useMemo(
-    () =>
-      selectedDossierSuggestionsDocumentId === null
-        ? null
-        : (groups
-            .flatMap((group) => group.documents)
-            .find(
-              (document) =>
-                document.sessionDocumentId ===
-                selectedDossierSuggestionsDocumentId
-            ) ?? null),
-    [groups, selectedDossierSuggestionsDocumentId]
-  )
+  const selectedDossierSuggestionsDocuments = useMemo(() => {
+    if (selectedDossierSuggestionsDocumentIds.length === 0) return []
+    const documentsBySessionId = new Map(
+      groups
+        .flatMap((group) => group.documents)
+        .flatMap((document) =>
+          document.sessionDocumentId === null
+            ? []
+            : [[document.sessionDocumentId, document] as const]
+        )
+    )
+    return selectedDossierSuggestionsDocumentIds.flatMap(
+      (sessionDocumentId) => {
+        const document = documentsBySessionId.get(sessionDocumentId)
+        return document ? [document] : []
+      }
+    )
+  }, [groups, selectedDossierSuggestionsDocumentIds])
+  const selectedDossierSuggestionsDocumentId =
+    selectedDossierSuggestionsDocumentIds.length === 1
+      ? selectedDossierSuggestionsDocumentIds[0]
+      : null
   const dossierSuggestionRepresentativeDocuments = useMemo(
     () => previewDocuments.map((entry) => entry.document),
     [previewDocuments]
@@ -378,7 +396,10 @@ export function FinalResult({
           hasServerPendingFeedback
         )
         setGroups(
-          applyPendingDossierDrafts(overlay.groups, response.dossier_drafts ?? [])
+          applyPendingDossierDrafts(
+            overlay.groups,
+            response.dossier_drafts ?? []
+          )
         )
         setPendingFeedbackCount(
           response.pending_feedback_count ?? overlay.pendingFeedbackCount
@@ -554,7 +575,8 @@ export function FinalResult({
     setGroupInformationTable(null)
     setGroupInformationError("")
     dossierSuggestionsRequestRef.current += 1
-    setSelectedDossierSuggestionsDocumentId(null)
+    setSelectedDossierSuggestionsDocumentIds([])
+    setSelectedDossierSuggestionCandidates(null)
     setDossierSuggestionsLoading(false)
     setDossierSuggestionsRefreshing(false)
     setDossierSuggestionsError("")
@@ -719,40 +741,62 @@ export function FinalResult({
 
   const handleCloseDossierSuggestions = useCallback(() => {
     dossierSuggestionsRequestRef.current += 1
-    setSelectedDossierSuggestionsDocumentId(null)
+    setSelectedDossierSuggestionsDocumentIds([])
+    setSelectedDossierSuggestionCandidates(null)
     setDossierSuggestionsLoading(false)
     setDossierSuggestionsRefreshing(false)
     setDossierSuggestionsError("")
   }, [])
 
-  const handleSelectDossierSuggestionsFromTree = useCallback(
-    (document: ClusterDocument, forceRefresh = false) => {
+  const handleSelectDossierSuggestionsForDocuments = useCallback(
+    (documents: ClusterDocument[], forceRefresh = false) => {
       setSelectedGroupInfoNodeId(null)
       setGroupInformationTable(null)
       setGroupInformationError("")
       setSelectedPreviewDocumentId(null)
       setSelectedMetadataGroupId(null)
-      setSelectedDossierSuggestionsDocumentId(document.sessionDocumentId)
       setDossierSuggestionsError("")
 
-      if (document.sessionDocumentId === null) {
+      const requestDocuments = documents.filter(
+        (document) => document.sessionDocumentId !== null
+      )
+      const sessionDocumentIds = Array.from(
+        new Set(
+          requestDocuments
+            .map((document) => document.sessionDocumentId)
+            .filter((id): id is number => id !== null)
+        )
+      )
+      setSelectedDossierSuggestionsDocumentIds(sessionDocumentIds)
+
+      if (sessionDocumentIds.length === 0) {
+        setSelectedDossierSuggestionCandidates(null)
         setDossierSuggestionsLoading(false)
         setDossierSuggestionsRefreshing(false)
         setDossierSuggestionsError(
-          "Tài liệu này chưa có mã trong session để lấy gợi ý hồ sơ."
+          "Tài liệu được chọn chưa có mã trong session để lấy gợi ý hồ sơ."
         )
         return
       }
+
       if (
         !forceRefresh &&
-        document.dossierSuggestions !== null &&
-        document.dossierSuggestions !== undefined
+        requestDocuments.every(
+          (document) =>
+            document.dossierSuggestions !== null &&
+            document.dossierSuggestions !== undefined
+        )
       ) {
+        setSelectedDossierSuggestionCandidates(
+          aggregateDossierSuggestionsFromDocuments(requestDocuments)
+        )
         setDossierSuggestionsLoading(false)
         setDossierSuggestionsRefreshing(false)
         return
       }
+
       if (!sessionId) {
+        setSelectedDossierSuggestionCandidates(null)
         setDossierSuggestionsLoading(false)
         setDossierSuggestionsRefreshing(false)
         setDossierSuggestionsError("Chưa có phiên hồ sơ để lấy gợi ý.")
@@ -763,8 +807,9 @@ export function FinalResult({
       dossierSuggestionsRequestRef.current = requestId
       setDossierSuggestionsLoading(!forceRefresh)
       setDossierSuggestionsRefreshing(forceRefresh)
+      setSelectedDossierSuggestionCandidates(null)
       void suggestSelectedDocumentDossiers(sessionId, {
-        session_document_ids: [document.sessionDocumentId],
+        session_document_ids: sessionDocumentIds,
         cluster_version_id: displayedClusterVersionId ?? undefined,
         force_refresh: forceRefresh,
       })
@@ -772,26 +817,41 @@ export function FinalResult({
           if (dossierSuggestionsRequestRef.current !== requestId) {
             return
           }
-          const result = response.documents.find(
-            (item) => item.session_document_id === document.sessionDocumentId
+          const resultsBySessionDocumentId = new Map(
+            response.documents.map((item) => [item.session_document_id, item])
           )
-          if (!result) {
-            throw new Error("Backend không trả về gợi ý cho tài liệu này.")
+          const missingSessionDocumentIds = sessionDocumentIds.filter(
+            (sessionDocumentId) =>
+              !resultsBySessionDocumentId.has(sessionDocumentId)
+          )
+          if (missingSessionDocumentIds.length > 0) {
+            throw new Error(
+              "Backend không trả về đủ gợi ý cho tài liệu đã chọn."
+            )
           }
+
           setGroups((previous) =>
             previous.map((group) => ({
               ...group,
               documents: group.documents.map((item) =>
-                item.sessionDocumentId === document.sessionDocumentId
+                item.sessionDocumentId !== null &&
+                resultsBySessionDocumentId.has(item.sessionDocumentId)
                   ? {
                       ...item,
-                      dossierSuggestions: result.dossier_suggestions,
+                      dossierSuggestions:
+                        resultsBySessionDocumentId.get(item.sessionDocumentId)
+                          ?.dossier_suggestions ?? [],
                     }
                   : item
               ),
             }))
           )
-          const suggestionCount = result.dossier_suggestions.length
+
+          const suggestions =
+            response.dossier_suggestions ??
+            aggregateDossierSuggestionsFromResults(response.documents)
+          setSelectedDossierSuggestionCandidates(suggestions)
+          const suggestionCount = suggestions.length
           if (forceRefresh) {
             toast.success(
               suggestionCount > 0
@@ -804,6 +864,7 @@ export function FinalResult({
           if (dossierSuggestionsRequestRef.current !== requestId) {
             return
           }
+          setSelectedDossierSuggestionCandidates(null)
           setDossierSuggestionsError(
             err instanceof Error
               ? err.message
@@ -823,16 +884,23 @@ export function FinalResult({
     [displayedClusterVersionId, sessionId]
   )
 
+  const handleSelectDossierSuggestionsFromTree = useCallback(
+    (document: ClusterDocument, forceRefresh = false) => {
+      handleSelectDossierSuggestionsForDocuments([document], forceRefresh)
+    },
+    [handleSelectDossierSuggestionsForDocuments]
+  )
+
   const handleRefreshDossierSuggestions = useCallback(() => {
-    if (!selectedDossierSuggestionsDocument) return
+    if (selectedDossierSuggestionsDocuments.length === 0) return
     toast.info("Đang tải lại gợi ý hồ sơ...")
-    handleSelectDossierSuggestionsFromTree(
-      selectedDossierSuggestionsDocument,
+    handleSelectDossierSuggestionsForDocuments(
+      selectedDossierSuggestionsDocuments,
       true
     )
   }, [
-    handleSelectDossierSuggestionsFromTree,
-    selectedDossierSuggestionsDocument,
+    handleSelectDossierSuggestionsForDocuments,
+    selectedDossierSuggestionsDocuments,
   ])
 
   const handleSelectDossierMetadataFromTree = useCallback(
@@ -1100,7 +1168,8 @@ export function FinalResult({
       pendingDossierCount={pendingDossierCount}
       pendingFeedbackCount={pendingFeedbackCount}
       previewDocument={previewDocument}
-      selectedDossierSuggestionsDocument={selectedDossierSuggestionsDocument}
+      selectedDossierSuggestionsDocuments={selectedDossierSuggestionsDocuments}
+      selectedDossierSuggestionCandidates={selectedDossierSuggestionCandidates}
       dossierSuggestionRepresentativeDocuments={
         dossierSuggestionRepresentativeDocuments
       }
@@ -1154,6 +1223,149 @@ export function FinalResult({
       onResultTreeSearchNavigate={handleResultTreeSearchNavigate}
     />
   )
+}
+
+function aggregateDossierSuggestionsFromDocuments(
+  documents: ClusterDocument[]
+): SessionDossierSuggestion[] {
+  return aggregateDossierSuggestions(
+    documents.flatMap((document) =>
+      (document.dossierSuggestions ?? []).map((suggestion) => ({
+        documentId: document.documentId,
+        sessionDocumentId: document.sessionDocumentId ?? 0,
+        suggestion,
+      }))
+    )
+  )
+}
+
+function aggregateDossierSuggestionsFromResults(
+  documents: Array<{
+    session_document_id: number
+    document_id: string
+    dossier_suggestions: SessionDossierSuggestion[]
+  }>
+): SessionDossierSuggestion[] {
+  return aggregateDossierSuggestions(
+    documents.flatMap((document) =>
+      document.dossier_suggestions.map((suggestion) => ({
+        documentId: document.document_id,
+        sessionDocumentId: document.session_document_id,
+        suggestion,
+      }))
+    )
+  )
+}
+
+function aggregateDossierSuggestions(
+  items: Array<{
+    documentId: string
+    sessionDocumentId: number
+    suggestion: SessionDossierSuggestion
+  }>
+): SessionDossierSuggestion[] {
+  const buckets = new Map<
+    string,
+    {
+      suggestion: SessionDossierSuggestion
+      similaritySum: number
+      matchedDocumentIds: string[]
+      matchedSessionDocumentIds: number[]
+      seenSessionDocumentIds: Set<number>
+    }
+  >()
+
+  for (const { documentId, sessionDocumentId, suggestion } of items) {
+    const key = dossierSuggestionKey(suggestion)
+    if (!key) continue
+    const similarity = Number(
+      suggestion.average_similarity ?? suggestion.best_other_similarity ?? 0
+    )
+    const bucket = buckets.get(key) ?? {
+      suggestion: {
+        ...suggestion,
+        representative_document_ids: [],
+        representative_documents: [],
+      },
+      similaritySum: 0,
+      matchedDocumentIds: [],
+      matchedSessionDocumentIds: [],
+      seenSessionDocumentIds: new Set<number>(),
+    }
+    if (bucket.seenSessionDocumentIds.has(sessionDocumentId)) continue
+    bucket.seenSessionDocumentIds.add(sessionDocumentId)
+    bucket.similaritySum += Number.isFinite(similarity) ? similarity : 0
+    bucket.matchedDocumentIds.push(documentId)
+    bucket.matchedSessionDocumentIds.push(sessionDocumentId)
+    bucket.suggestion.representative_document_ids = uniqueStrings([
+      ...bucket.suggestion.representative_document_ids,
+      ...suggestion.representative_document_ids,
+    ])
+    bucket.suggestion.representative_documents = uniqueRepresentatives([
+      ...bucket.suggestion.representative_documents,
+      ...suggestion.representative_documents,
+    ])
+    buckets.set(key, bucket)
+  }
+
+  return Array.from(buckets.values())
+    .map(
+      ({
+        suggestion,
+        similaritySum,
+        matchedDocumentIds,
+        matchedSessionDocumentIds,
+      }) => {
+        const matchingDocumentCount = matchedSessionDocumentIds.length
+        const averageSimilarity =
+          matchingDocumentCount > 0 ? similaritySum / matchingDocumentCount : 0
+        return {
+          ...suggestion,
+          rank: 0,
+          best_other_similarity: Number(averageSimilarity.toFixed(4)),
+          average_similarity: Number(averageSimilarity.toFixed(4)),
+          matching_document_count: matchingDocumentCount,
+          matched_document_ids: matchedDocumentIds,
+          matched_session_document_ids: matchedSessionDocumentIds,
+        }
+      }
+    )
+    .sort(
+      (left, right) =>
+        (right.matching_document_count ?? 0) -
+          (left.matching_document_count ?? 0) ||
+        (right.average_similarity ?? right.best_other_similarity ?? 0) -
+          (left.average_similarity ?? left.best_other_similarity ?? 0) ||
+        (left.title || left.dossier_id).localeCompare(
+          right.title || right.dossier_id
+        )
+    )
+    .slice(0, DOSSIER_SUGGESTION_TOP_K)
+    .map((suggestion, index) => ({ ...suggestion, rank: index + 1 }))
+}
+
+function dossierSuggestionKey(suggestion: SessionDossierSuggestion): string {
+  return (
+    suggestion.cluster_id ||
+    suggestion.dossier_id ||
+    String(suggestion.session_dossier_id || "")
+  )
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean)))
+}
+
+function uniqueRepresentatives(
+  values: SessionDossierSuggestion["representative_documents"]
+): SessionDossierSuggestion["representative_documents"] {
+  const seen = new Set<string>()
+  return values.filter((representative) => {
+    const key = `${representative.session_document_id}:${representative.document_id}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 function scrollResultTreeNodeIntoView(

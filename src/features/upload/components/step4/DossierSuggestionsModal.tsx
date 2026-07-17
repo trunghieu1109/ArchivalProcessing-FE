@@ -22,7 +22,8 @@ import {
 import type { ClusterDocument } from "@/features/upload/lib/clusterGroups"
 
 export function DossierSuggestionsModal({
-  document,
+  documents,
+  suggestions: candidateSuggestions,
   representativeDocuments,
   loading,
   refreshing,
@@ -30,7 +31,8 @@ export function DossierSuggestionsModal({
   onClose,
   onRefresh,
 }: {
-  document: ClusterDocument
+  documents: ClusterDocument[]
+  suggestions: SessionDossierSuggestion[] | null
   representativeDocuments: ClusterDocument[]
   loading: boolean
   refreshing: boolean
@@ -44,12 +46,23 @@ export function DossierSuggestionsModal({
   const [selectedRepresentativeKey, setSelectedRepresentativeKey] = useState<
     string | null
   >(null)
+  const [selectedDocumentKey, setSelectedDocumentKey] = useState<string | null>(
+    null
+  )
   const busy = loading || refreshing
-  const suggestions = busy ? [] : document.dossierSuggestions ?? []
+  const selectedDocument =
+    documents.find(
+      (document) => documentKey(document) === selectedDocumentKey
+    ) ??
+    documents[0] ??
+    null
+  const suggestions = busy ? [] : (candidateSuggestions ?? [])
   const selectedSuggestion =
     suggestions.find(
       (suggestion) => suggestion.cluster_id === selectedSuggestionKey
-    ) ?? suggestions[0] ?? null
+    ) ??
+    suggestions[0] ??
+    null
   const selectedRepresentative =
     selectedSuggestion?.representative_documents.find(
       (representative) =>
@@ -84,7 +97,8 @@ export function DossierSuggestionsModal({
                   Hồ sơ được gợi ý
                 </Dialog.Title>
                 <Dialog.Description className="mt-1 truncate text-sm text-[#64748B]">
-                  Đối chiếu metadata của tài liệu với các hồ sơ và tài liệu đại diện.
+                  Đối chiếu metadata của tài liệu đã chọn với các hồ sơ và tài
+                  liệu đại diện.
                 </Dialog.Description>
               </div>
             </div>
@@ -105,10 +119,14 @@ export function DossierSuggestionsModal({
             <div className="flex shrink-0 flex-col gap-3 border-b border-[#E2E8F0] bg-[#F8FAFC] px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-[#0F172A]">
-                  {document.fileName}
+                  {documents.length === 1
+                    ? documents[0]?.fileName
+                    : `${documents.length} tài liệu được chọn`}
                 </p>
                 <p className="mt-0.5 truncate text-xs text-[#64748B]">
-                  {document.filePath}
+                  {documents.length === 1
+                    ? documents[0]?.filePath
+                    : "Hồ sơ được xếp theo số tài liệu cùng tương thích, sau đó theo điểm trung bình."}
                 </p>
               </div>
               <Button
@@ -129,11 +147,18 @@ export function DossierSuggestionsModal({
               </Button>
             </div>
 
-            <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto xl:grid-cols-[minmax(250px,0.85fr)_minmax(320px,1fr)_minmax(320px,1.1fr)] xl:overflow-hidden">
-              <DocumentMetadataPanel document={document} />
+            <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto xl:grid-cols-[minmax(280px,0.9fr)_minmax(320px,1fr)_minmax(320px,1.1fr)] xl:overflow-hidden">
+              <SelectedDocumentsPanel
+                documents={documents}
+                selectedDocument={selectedDocument}
+                onSelect={(document) =>
+                  setSelectedDocumentKey(documentKey(document))
+                }
+              />
               <SuggestionList
                 suggestions={suggestions}
                 selectedSuggestion={selectedSuggestion}
+                selectedDocumentCount={documents.length}
                 loading={busy}
                 error={error}
                 onSelect={(suggestion) => {
@@ -147,7 +172,9 @@ export function DossierSuggestionsModal({
                 selectedRepresentativeDocument={selectedRepresentativeDocument}
                 loading={busy}
                 onSelect={(representative) =>
-                  setSelectedRepresentativeKey(representativeKey(representative))
+                  setSelectedRepresentativeKey(
+                    representativeKey(representative)
+                  )
                 }
               />
             </div>
@@ -158,30 +185,83 @@ export function DossierSuggestionsModal({
   )
 }
 
-function DocumentMetadataPanel({ document }: { document: ClusterDocument }) {
+function SelectedDocumentsPanel({
+  documents,
+  selectedDocument,
+  onSelect,
+}: {
+  documents: ClusterDocument[]
+  selectedDocument: ClusterDocument | null
+  onSelect: (document: ClusterDocument) => void
+}) {
   const metadataRows = METADATA_FIELDS.map((field) => [
     field.label,
-    metadataFieldText(document.metadata, field.aliases),
+    selectedDocument
+      ? metadataFieldText(selectedDocument.metadata, field.aliases)
+      : "",
   ])
 
   return (
     <section className="min-h-0 border-b border-[#E2E8F0] p-4 xl:overflow-y-auto xl:border-r xl:border-b-0">
-      <div className="mb-3 flex items-center gap-2">
-        <FileText className="size-4 text-[#0052FF]" />
-        <h3 className="text-sm font-semibold text-[#0F172A]">Metadata tài liệu</h3>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <FileText className="size-4 shrink-0 text-[#0052FF]" />
+          <h3 className="truncate text-sm font-semibold text-[#0F172A]">
+            Tài liệu đã chọn
+          </h3>
+        </div>
+        <span className="shrink-0 rounded-full bg-[#EAF1FF] px-2 py-0.5 text-[10px] font-semibold text-[#0052FF]">
+          {documents.length}
+        </span>
       </div>
-      <dl className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-        {metadataRows.map(([label, value]) => (
-          <div key={label} className="min-w-0">
-            <dt className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#94A3B8]">
-              {label}
-            </dt>
-            <dd className="mt-1 break-words text-xs leading-5 text-[#334155]">
-              {value || "Chưa có dữ liệu"}
-            </dd>
-          </div>
-        ))}
-      </dl>
+
+      <div className="flex flex-col gap-2">
+        {documents.map((document) => {
+          const selected =
+            selectedDocument !== null &&
+            documentKey(document) === documentKey(selectedDocument)
+          return (
+            <button
+              key={documentKey(document)}
+              type="button"
+              className={`min-w-0 rounded-lg border p-3 text-left transition-colors ${
+                selected
+                  ? "border-[#0052FF] bg-[#F0F5FF]"
+                  : "border-[#E2E8F0] bg-white hover:border-[#9DBBFF] hover:bg-[#F8FAFF]"
+              }`}
+              onClick={() => onSelect(document)}
+            >
+              <span className="block truncate text-xs font-semibold text-[#0F172A]">
+                {document.fileName}
+              </span>
+              <span className="mt-1 block truncate text-[11px] text-[#64748B]">
+                {document.filePath}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      <div className="mt-4 border-t border-[#E2E8F0] pt-4">
+        <div className="mb-3 flex min-w-0 items-center gap-2">
+          <FileText className="size-4 shrink-0 text-[#0052FF]" />
+          <h4 className="truncate text-sm font-semibold text-[#0F172A]">
+            Metadata tài liệu
+          </h4>
+        </div>
+        <dl className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+          {metadataRows.map(([label, value]) => (
+            <div key={label} className="min-w-0">
+              <dt className="text-[10px] font-semibold tracking-[0.06em] text-[#94A3B8] uppercase">
+                {label}
+              </dt>
+              <dd className="mt-1 text-xs leading-5 break-words text-[#334155]">
+                {value || "Chưa có dữ liệu"}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </div>
     </section>
   )
 }
@@ -189,12 +269,14 @@ function DocumentMetadataPanel({ document }: { document: ClusterDocument }) {
 function SuggestionList({
   suggestions,
   selectedSuggestion,
+  selectedDocumentCount,
   loading,
   error,
   onSelect,
 }: {
   suggestions: SessionDossierSuggestion[]
   selectedSuggestion: SessionDossierSuggestion | null
+  selectedDocumentCount: number
   loading: boolean
   error: string
   onSelect: (suggestion: SessionDossierSuggestion) => void
@@ -203,7 +285,9 @@ function SuggestionList({
     <section className="min-h-0 border-b border-[#E2E8F0] p-4 xl:overflow-y-auto xl:border-r xl:border-b-0">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-[#0F172A]">Danh sách hồ sơ</h3>
+          <h3 className="text-sm font-semibold text-[#0F172A]">
+            Danh sách hồ sơ
+          </h3>
           <p className="mt-1 text-xs text-[#64748B]">
             {suggestions.length} hồ sơ phù hợp
           </p>
@@ -223,7 +307,8 @@ function SuggestionList({
       ) : suggestions.length > 0 ? (
         <div className="flex flex-col gap-2">
           {suggestions.map((suggestion) => {
-            const selected = selectedSuggestion?.cluster_id === suggestion.cluster_id
+            const selected =
+              selectedSuggestion?.cluster_id === suggestion.cluster_id
             return (
               <button
                 key={`${suggestion.cluster_id}-${suggestion.rank}`}
@@ -239,11 +324,23 @@ function SuggestionList({
                   {suggestion.rank}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block break-words text-sm font-semibold text-[#0F172A]">
+                  <span className="block text-sm font-semibold break-words text-[#0F172A]">
                     {suggestion.title || suggestion.dossier_id}
                   </span>
                   <span className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-[#64748B]">
                     <span>{formatSimilarity(suggestion)} tương đồng</span>
+                    {selectedDocumentCount > 1 ? (
+                      <>
+                        <span>·</span>
+                        <span>
+                          Khớp{" "}
+                          {suggestion.matching_document_count ??
+                            suggestion.matched_session_document_ids?.length ??
+                            1}
+                          /{selectedDocumentCount} tài liệu
+                        </span>
+                      </>
+                    ) : null}
                     <span>·</span>
                     <span>{suggestion.document_count} tài liệu</span>
                     <span>·</span>
@@ -277,9 +374,7 @@ function RepresentativeDocumentList({
   selectedRepresentative: SessionDossierSuggestionRepresentativeDocument | null
   selectedRepresentativeDocument: ClusterDocument | null
   loading: boolean
-  onSelect: (
-    document: SessionDossierSuggestionRepresentativeDocument
-  ) => void
+  onSelect: (document: SessionDossierSuggestionRepresentativeDocument) => void
 }) {
   return (
     <section className="min-h-0 p-4 xl:overflow-y-auto">
@@ -313,52 +408,56 @@ function RepresentativeDocumentList({
                   ? representativeKey(selectedRepresentative)
                   : null)
               return (
-                <button
+                <div
                   key={`${document.session_document_id}-${document.document_id}`}
-                  type="button"
-                  className={`flex min-w-0 items-start gap-3 rounded-lg border p-3 text-left transition-colors ${
-                    selected
-                      ? "border-[#0052FF] bg-[#F0F5FF]"
-                      : "border-[#E2E8F0] bg-white hover:border-[#9DBBFF] hover:bg-[#F8FAFF]"
-                  }`}
-                  onClick={() => onSelect(document)}
-                  title="Xem metadata tài liệu đại diện"
+                  className="min-w-0"
                 >
-                  <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-[#EAF1FF] text-[#0052FF]">
-                    <Eye className="size-3.5" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block break-words text-xs font-semibold text-[#0F172A]">
-                      {document.file_name || document.document_id}
+                  <button
+                    type="button"
+                    className={`flex w-full min-w-0 items-start gap-3 rounded-lg border p-3 text-left transition-colors ${
+                      selected
+                        ? "border-[#0052FF] bg-[#F0F5FF]"
+                        : "border-[#E2E8F0] bg-white hover:border-[#9DBBFF] hover:bg-[#F8FAFF]"
+                    }`}
+                    onClick={() => onSelect(document)}
+                    title="Xem metadata tài liệu đại diện"
+                  >
+                    <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-[#EAF1FF] text-[#0052FF]">
+                      <Eye className="size-3.5" />
                     </span>
-                    {document.title && (
-                      <span className="mt-1 block line-clamp-2 text-[11px] leading-4 text-[#64748B]">
-                        {document.title}
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-xs font-semibold break-words text-[#0F172A]">
+                        {document.file_name || document.document_id}
                       </span>
-                    )}
-                    <span className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-[10px] text-[#94A3B8]">
-                      {document.document_number && (
-                        <span>{document.document_number}</span>
-                      )}
-                      {document.issued_date && (
-                        <span className="flex items-center gap-1">
-                          <CalendarDays className="size-3" />{" "}
-                          {document.issued_date}
+                      {document.title && (
+                        <span className="mt-1 line-clamp-2 block text-[11px] leading-4 text-[#64748B]">
+                          {document.title}
                         </span>
                       )}
+                      <span className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-[10px] text-[#94A3B8]">
+                        {document.document_number && (
+                          <span>{document.document_number}</span>
+                        )}
+                        {document.issued_date && (
+                          <span className="flex items-center gap-1">
+                            <CalendarDays className="size-3" />{" "}
+                            {document.issued_date}
+                          </span>
+                        )}
+                      </span>
                     </span>
-                  </span>
-                  <ChevronRight className="mt-1 size-4 shrink-0 text-[#94A3B8]" />
-                </button>
+                    <ChevronRight className="mt-1 size-4 shrink-0 text-[#94A3B8]" />
+                  </button>
+                  {selected ? (
+                    <RepresentativeMetadataPanel
+                      representative={document}
+                      document={selectedRepresentativeDocument}
+                    />
+                  ) : null}
+                </div>
               )
             })}
           </div>
-          {selectedRepresentative && (
-            <RepresentativeMetadataPanel
-              representative={selectedRepresentative}
-              document={selectedRepresentativeDocument}
-            />
-          )}
           {suggestion.representative_documents.length === 0 && (
             <p className="rounded-lg border border-dashed border-[#CBD5E1] p-4 text-center text-sm text-[#64748B]">
               Hồ sơ này chưa có tài liệu đại diện.
@@ -397,17 +496,19 @@ function RepresentativeMetadataPanel({
             Metadata tài liệu đại diện
           </h4>
           <p className="mt-0.5 truncate text-[11px] text-[#64748B]">
-            {document?.fileName || representative.file_name || representative.document_id}
+            {document?.fileName ||
+              representative.file_name ||
+              representative.document_id}
           </p>
         </div>
       </div>
       <dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
         {metadataRows.map(([label, value]) => (
           <div key={label} className="min-w-0">
-            <dt className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#94A3B8]">
+            <dt className="text-[10px] font-semibold tracking-[0.06em] text-[#94A3B8] uppercase">
               {label}
             </dt>
-            <dd className="mt-0.5 break-words text-xs leading-5 text-[#334155]">
+            <dd className="mt-0.5 text-xs leading-5 break-words text-[#334155]">
               {value || "Chưa có dữ liệu"}
             </dd>
           </div>
@@ -421,6 +522,10 @@ function representativeKey(
   document: SessionDossierSuggestionRepresentativeDocument
 ): string {
   return `${document.session_document_id}:${document.document_id}`
+}
+
+function documentKey(document: ClusterDocument): string {
+  return `${document.sessionDocumentId ?? "local"}:${document.documentId}`
 }
 
 function representativeMetadataFallback(
@@ -438,7 +543,12 @@ function representativeMetadataFallback(
 function formatSimilarity(suggestion: SessionDossierSuggestion): string {
   const similarity = Math.max(
     0,
-    Math.min(100, Number(suggestion.best_other_similarity || 0) * 100)
+    Math.min(
+      100,
+      Number(
+        suggestion.average_similarity ?? suggestion.best_other_similarity ?? 0
+      ) * 100
+    )
   )
   return `${similarity.toFixed(1)}%`
 }
