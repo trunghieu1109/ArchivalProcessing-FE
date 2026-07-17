@@ -22,6 +22,9 @@ import {
   getNumberedDocumentPreviewUrl,
   getNumberingStyles,
   importMetadataBoxNumbers as importMetadataBoxNumbersApi,
+  moveNumberingState,
+  saveNumberingState,
+  selectDocumentNumberingVersion,
   updateDocumentNumberingFromPage,
   type DocumentNumberingMode,
   type DocumentNumberingStylePreset,
@@ -37,6 +40,7 @@ import {
   NumberingStat,
   NumberingStepFooter,
   NumberingStepHeader,
+  NumberingStateControls,
   type DossierUpdateMode,
   type NumberingUpdateMode,
 } from "./NumberingStep.parts"
@@ -152,6 +156,10 @@ export function NumberingStep({
   const [retryingDocumentId, setRetryingDocumentId] = useState<number | null>(
     null
   )
+  const [switchingVersionDocumentId, setSwitchingVersionDocumentId] = useState<
+    number | null
+  >(null)
+  const [stateMutationBusy, setStateMutationBusy] = useState(false)
   const [error, setError] = useState("")
   const [progressPhase, setProgressPhase] = useState<string | null>(null)
   const [progressMessage, setProgressMessage] = useState("")
@@ -475,7 +483,9 @@ export function NumberingStep({
       try {
         const response = await enqueueDocumentNumbering(sessionId, {
           created_by: "ui",
-          force: shouldForce,
+          // Style changes let the backend restore a completed historical
+          // configuration. Only an explicit restart should force a new render.
+          force,
           document_numbering_style_preset: stylePresetDraft,
           document_numbering_style_overrides: styleOverridesDraft,
         })
@@ -707,12 +717,89 @@ export function NumberingStep({
         setRetryingDocumentId(null)
       }
     },
-    [
-      refreshStatus,
-      sessionId,
-      starting,
-      status?.active,
-    ]
+    [refreshStatus, sessionId, starting, status?.active]
+  )
+
+  const selectNumberingVersion = useCallback(
+    async (document: NumberingDocumentStatus, versionId: number) => {
+      if (!sessionId || status?.active || starting) return
+      setSwitchingVersionDocumentId(document.session_document_id)
+      setError("")
+      try {
+        await selectDocumentNumberingVersion(
+          sessionId,
+          document.session_document_id,
+          versionId
+        )
+        await refreshStatus({ silent: true, force: true })
+        if (previewDocumentId === document.session_document_id) {
+          setPreviewRefreshKey((key) => key + 1)
+        }
+        toast.success("Đã chuyển phiên bản của tài liệu.")
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Không thể chuyển phiên bản tài liệu."
+        setError(message)
+        toast.error(message)
+      } finally {
+        setSwitchingVersionDocumentId(null)
+      }
+    },
+    [previewDocumentId, refreshStatus, sessionId, starting, status?.active]
+  )
+
+  const persistNumberingState = useCallback(async () => {
+    if (!sessionId || status?.active || starting) return
+    setStateMutationBusy(true)
+    setError("")
+    try {
+      const result = await saveNumberingState(sessionId, { created_by: "ui" })
+      await refreshStatus({ silent: true, force: true })
+      if (result.created === false) {
+        toast.info(
+          "Trạng thái giống hệt trạng thái gần nhất nên không tạo bản mới."
+        )
+      } else {
+        toast.success("Đã lưu trạng thái lựa chọn phiên bản.")
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Không thể lưu trạng thái phiên bản."
+      setError(message)
+      toast.error(message)
+    } finally {
+      setStateMutationBusy(false)
+    }
+  }, [refreshStatus, sessionId, starting, status?.active])
+
+  const changeNumberingState = useCallback(
+    async (direction: "previous" | "next") => {
+      if (!sessionId || status?.active || starting) return
+      setStateMutationBusy(true)
+      setError("")
+      try {
+        await moveNumberingState(sessionId, direction)
+        await refreshStatus({ silent: true, force: true })
+        setPreviewRefreshKey((key) => key + 1)
+        toast.success(
+          direction === "previous"
+            ? "Đã chuyển tới trạng thái trước."
+            : "Đã chuyển tới trạng thái sau."
+        )
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Không thể chuyển trạng thái."
+        setError(message)
+        toast.error(message)
+      } finally {
+        setStateMutationBusy(false)
+      }
+    },
+    [refreshStatus, sessionId, starting, status?.active]
   )
 
   const exportMetadata = useCallback(async () => {
@@ -820,9 +907,7 @@ export function NumberingStep({
       const periodicDocumentRefresh =
         pollCount % NUMBERING_DOCUMENT_REFRESH_EVERY === 0
       const shouldRefreshDocuments =
-        !response?.active ||
-        documentsChanged ||
-        periodicDocumentRefresh
+        !response?.active || documentsChanged || periodicDocumentRefresh
       if (shouldRefreshDocuments) {
         await refreshStatus({
           silent: true,
@@ -846,8 +931,7 @@ export function NumberingStep({
           new Set(NUMBERING_PROGRESS_PHASES.map((phase) => phase.id))
         )
         setProgressMessage("Đã hoàn tất đánh số trang.")
-        const warningCount =
-          response.summary.blank_page_warning_documents ?? 0
+        const warningCount = response.summary.blank_page_warning_documents ?? 0
         if (warningCount > 0) {
           toast.warning(
             `Đã đánh số xong. Có ${warningCount} tài liệu có cảnh báo trang trắng.`
@@ -1037,11 +1121,7 @@ export function NumberingStep({
     : false
 
   useEffect(() => {
-    if (
-      !sessionId ||
-      previewSessionDocumentId === null ||
-      !previewCanPreview
-    ) {
+    if (!sessionId || previewSessionDocumentId === null || !previewCanPreview) {
       setPreviewUrl("")
       setPreviewError("")
       setPreviewLoading(false)
@@ -1215,6 +1295,18 @@ export function NumberingStep({
         onStyleChange={changeNumberingStyle}
         onOverridesChange={changeNumberingStyleOverrides}
       />
+      <NumberingStateControls
+        sequenceNumber={status?.numbering_state?.current?.sequence_number}
+        stateCount={status?.numbering_state?.count ?? 0}
+        dirty={status?.numbering_state?.dirty ?? true}
+        canPrevious={status?.numbering_state?.can_previous ?? false}
+        canNext={status?.numbering_state?.can_next ?? false}
+        busy={stateMutationBusy}
+        disabled={active || switchingVersionDocumentId !== null}
+        onSave={() => void persistNumberingState()}
+        onPrevious={() => void changeNumberingState("previous")}
+        onNext={() => void changeNumberingState("next")}
+      />
       <NumberingMetadataPanel
         metadataImportInputRef={metadataImportInputRef}
         sessionId={sessionId}
@@ -1368,102 +1460,112 @@ export function NumberingStep({
                   updatingDocumentId !== null ||
                   retryingDocumentId !== null
                 return (
-                <section key={group.dossierId} className="px-4 py-3">
-                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-[#0F172A]">
-                        {group.title || group.dossierId}
-                      </p>
-                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-[#64748B]">
-                        <span>{group.documents.length} tài liệu</span>
-                        <DossierMetaChip
-                          label="Hồ sơ số"
-                          value={group.dossierNumber}
-                        />
-                        <DossierMetaChip
-                          label="Hộp số"
-                          value={group.boxNumber}
-                        />
+                  <section key={group.dossierId} className="px-4 py-3">
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-[#0F172A]">
+                          {group.title || group.dossierId}
+                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-[#64748B]">
+                          <span>{group.documents.length} tài liệu</span>
+                          <DossierMetaChip
+                            label="Hồ sơ số"
+                            value={group.dossierNumber}
+                          />
+                          <DossierMetaChip
+                            label="Hộp số"
+                            value={group.boxNumber}
+                          />
+                        </div>
                       </div>
+                      {hasNewNumberingDocuments ? (
+                        <DossierNumberingModeToggle
+                          updateMode={dossierUpdateMode}
+                          disabled={modeToggleDisabled}
+                          onChange={(mode) =>
+                            setDossierUpdateModes((current) => ({
+                              ...current,
+                              [group.dossierId]: mode,
+                            }))
+                          }
+                        />
+                      ) : null}
                     </div>
-                    {hasNewNumberingDocuments ? (
-                      <DossierNumberingModeToggle
-                        updateMode={dossierUpdateMode}
-                        disabled={modeToggleDisabled}
-                        onChange={(mode) =>
-                          setDossierUpdateModes((current) => ({
-                            ...current,
-                            [group.dossierId]: mode,
-                          }))
-                        }
-                      />
-                    ) : null}
-                  </div>
-                  <div className="grid gap-1.5">
-                    {group.documents.map((document) => {
-                      const isAddedDocument = isAddedNumberingDocument(
-                        document,
-                        hasNumberingOutput
-                      )
-                      const updateMode: NumberingUpdateMode =
-                        isAddedDocument
+                    <div className="grid gap-1.5">
+                      {group.documents.map((document) => {
+                        const isAddedDocument = isAddedNumberingDocument(
+                          document,
+                          hasNumberingOutput
+                        )
+                        const updateMode: NumberingUpdateMode = isAddedDocument
                           ? dossierUpdateMode
                           : "cascade"
-                      const numberingEntryKey =
-                        document.numbering_entries
-                          ?.map(
-                            (entry) => `${entry.page_number}:${entry.label}`
-                          )
-                          .join("|") ?? ""
-                      return (
-                        <NumberingDocumentRow
-                          key={[
-                            document.session_document_id,
-                            document.document_number_start,
-                            document.document_number_end,
-                            updateMode,
-                            numberingEntryKey,
-                          ].join(":")}
-                          document={document}
-                          updateMode={updateMode}
-                          previewing={
-                            previewDocumentId === document.session_document_id
-                          }
-                          highlighted={
-                            highlightedDocumentId ===
-                            document.session_document_id
-                          }
-                          onPreview={() =>
-                            setPreviewDocumentId(document.session_document_id)
-                          }
-                          onUpdateFromPage={updateDocumentNumberFromPage}
-                          updating={
-                            updatingDocumentId === document.session_document_id
-                          }
-                          retrying={
-                            retryingDocumentId === document.session_document_id
-                          }
-                          retryable={
-                            hasNumberingOutput && document.status !== "running"
-                          }
-                          stalled={
-                            stoppedWithUnresolved &&
-                            document.status !== "done" &&
-                            document.status !== "failed" &&
-                            document.status !== "running"
-                          }
-                          onRetry={retryIncompleteDocument}
-                          disabled={
-                            starting ||
-                            Boolean(status?.active) ||
-                            updatingDocumentId !== null ||
-                            retryingDocumentId !== null
-                          }
-                        />
-                      )
-                    })}
-                  </div>
-                </section>
+                        const numberingEntryKey =
+                          document.numbering_entries
+                            ?.map(
+                              (entry) => `${entry.page_number}:${entry.label}`
+                            )
+                            .join("|") ?? ""
+                        return (
+                          <NumberingDocumentRow
+                            key={[
+                              document.session_document_id,
+                              document.document_number_start,
+                              document.document_number_end,
+                              updateMode,
+                              numberingEntryKey,
+                              document.selected_numbering_version_id ?? "none",
+                            ].join(":")}
+                            document={document}
+                            updateMode={updateMode}
+                            previewing={
+                              previewDocumentId === document.session_document_id
+                            }
+                            highlighted={
+                              highlightedDocumentId ===
+                              document.session_document_id
+                            }
+                            onPreview={() =>
+                              setPreviewDocumentId(document.session_document_id)
+                            }
+                            onUpdateFromPage={updateDocumentNumberFromPage}
+                            updating={
+                              updatingDocumentId ===
+                              document.session_document_id
+                            }
+                            retrying={
+                              retryingDocumentId ===
+                              document.session_document_id
+                            }
+                            switchingVersion={
+                              switchingVersionDocumentId ===
+                              document.session_document_id
+                            }
+                            retryable={
+                              hasNumberingOutput &&
+                              document.status !== "running"
+                            }
+                            stalled={
+                              stoppedWithUnresolved &&
+                              document.status !== "done" &&
+                              document.status !== "failed" &&
+                              document.status !== "running"
+                            }
+                            onRetry={retryIncompleteDocument}
+                            onSelectVersion={selectNumberingVersion}
+                            disabled={
+                              starting ||
+                              Boolean(status?.active) ||
+                              updatingDocumentId !== null ||
+                              retryingDocumentId !== null ||
+                              switchingVersionDocumentId !== null ||
+                              stateMutationBusy
+                            }
+                          />
+                        )
+                      })}
+                    </div>
+                  </section>
                 )
               })}
             </div>
@@ -1691,7 +1793,9 @@ function MissingNumberingNavigator({
   )
 }
 
-function isMissingNumberingDocument(document: NumberingDocumentStatus): boolean {
+function isMissingNumberingDocument(
+  document: NumberingDocumentStatus
+): boolean {
   return String(document.status || "").toLowerCase() !== "done"
 }
 
@@ -1813,7 +1917,9 @@ function isAddedNumberingDocument(
   hasNumberingOutput: boolean
 ): boolean {
   if (!hasNumberingOutput) return false
-  const changeStatus = String(document.document_change_status || "").toLowerCase()
+  const changeStatus = String(
+    document.document_change_status || ""
+  ).toLowerCase()
   if (!["added", "moved_cluster", "moved_dossier"].includes(changeStatus)) {
     return false
   }

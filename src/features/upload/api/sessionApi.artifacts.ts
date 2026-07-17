@@ -15,6 +15,7 @@ import type {
   MetadataSnapshotResponse,
   NumberedDocumentPreviewUrlResponse,
   NumberingStatusResponse,
+  NumberingStateMutationResponse,
   NumberingStylesResponse,
 } from "./sessionApi.types"
 
@@ -39,8 +40,16 @@ export async function enqueueDocumentNumbering(
     force?: boolean
     document_numbering_style_preset?: string
     style_preset?: string
-    document_numbering_style_overrides?: { font_size?: number; color?: string; opacity?: number } | null
-    style_overrides?: { font_size?: number; color?: string; opacity?: number } | null
+    document_numbering_style_overrides?: {
+      font_size?: number
+      color?: string
+      opacity?: number
+    } | null
+    style_overrides?: {
+      font_size?: number
+      color?: string
+      opacity?: number
+    } | null
   } = {}
 ): Promise<EnqueueNumberingResponse> {
   return requestJson<EnqueueNumberingResponse>(
@@ -122,6 +131,45 @@ export async function getNumberedDocumentPreviewUrl(
 ): Promise<NumberedDocumentPreviewUrlResponse> {
   return requestJson<NumberedDocumentPreviewUrlResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/numbering/documents/${encodeURIComponent(String(sessionDocumentId))}/preview-url`
+  )
+}
+
+export async function selectDocumentNumberingVersion(
+  sessionId: string,
+  sessionDocumentId: number,
+  versionId: number
+): Promise<Record<string, unknown>> {
+  return requestJson<Record<string, unknown>>(
+    `/sessions/${encodeURIComponent(sessionId)}/numbering/documents/${encodeURIComponent(String(sessionDocumentId))}/versions/${encodeURIComponent(String(versionId))}/select`,
+    { method: "POST" }
+  )
+}
+
+export async function saveNumberingState(
+  sessionId: string,
+  payload: { created_by?: string } = {}
+): Promise<NumberingStateMutationResponse> {
+  return requestJson<NumberingStateMutationResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/numbering/states`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
+}
+
+export async function moveNumberingState(
+  sessionId: string,
+  direction: "previous" | "next"
+): Promise<NumberingStateMutationResponse> {
+  return requestJson<NumberingStateMutationResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/numbering/states/move`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ direction }),
+    }
   )
 }
 

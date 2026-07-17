@@ -207,6 +207,43 @@ export interface NumberingDocumentStatus {
   expires_at?: string | number | null
   error?: string | null
   updated_at?: string | null
+  numbering_configuration_id?: number | null
+  selected_numbering_version_id?: number | null
+  numbering_versions?: NumberingDocumentVersion[]
+}
+
+export interface NumberingDocumentVersion {
+  id: number
+  version_number: number
+  numbered_pdf_version_id: string | number
+  created_at?: string | null
+}
+
+export interface NumberingConfigurationSummary {
+  id: number
+  cluster_version_id: string
+  document_numbering_mode: DocumentNumberingMode
+  document_numbering_style_preset: DocumentNumberingStylePreset
+  document_numbering_style_overrides?: {
+    font_size?: number
+    color?: string
+    opacity?: number
+  } | null
+}
+
+export interface NumberingSavedState {
+  id: number
+  sequence_number: number
+  created_by: string
+  created_at?: string | null
+}
+
+export interface NumberingStateNavigation {
+  current: NumberingSavedState | null
+  count: number
+  can_previous: boolean
+  can_next: boolean
+  dirty: boolean
 }
 
 export interface NumberingDossierStatus {
@@ -246,6 +283,15 @@ export interface NumberingStatusResponse extends ApiRevisionMetadata {
   documents: NumberingDocumentStatus[]
   dossiers: NumberingDossierStatus[]
   pagination?: PaginationMeta
+  numbering_configuration?: NumberingConfigurationSummary | null
+  numbering_state?: NumberingStateNavigation
+}
+
+export interface NumberingStateMutationResponse {
+  session_id: string
+  numbering_configuration_id: number
+  state: NumberingSavedState
+  created?: boolean
 }
 
 export interface NumberedDocumentPreviewUrlResponse {

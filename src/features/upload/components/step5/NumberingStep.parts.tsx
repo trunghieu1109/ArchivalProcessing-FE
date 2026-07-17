@@ -7,6 +7,8 @@ import {
 } from "react"
 import {
   ArrowRight,
+  ChevronLeft,
+  ChevronRight,
   Eye,
   FileSpreadsheet,
   FileText,
@@ -527,6 +529,81 @@ export function NumberingStepFooter({
   )
 }
 
+export function NumberingStateControls({
+  sequenceNumber,
+  stateCount,
+  dirty,
+  canPrevious,
+  canNext,
+  busy,
+  disabled,
+  onSave,
+  onPrevious,
+  onNext,
+}: {
+  sequenceNumber?: number | null
+  stateCount: number
+  dirty: boolean
+  canPrevious: boolean
+  canNext: boolean
+  busy: boolean
+  disabled: boolean
+  onSave: () => void
+  onPrevious: () => void
+  onNext: () => void
+}) {
+  return (
+    <section className="flex flex-col gap-3 rounded-2xl border border-[#D8E1EC] bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <p className="text-sm font-semibold text-[#0F172A]">
+          Trạng thái phiên bản
+        </p>
+        <p className="mt-0.5 text-xs text-[#64748B]">
+          {sequenceNumber
+            ? `Đang ở trạng thái ${sequenceNumber}/${stateCount}${dirty ? " · Có thay đổi chưa lưu" : ""}`
+            : dirty
+              ? "Chưa lưu lựa chọn phiên bản hiện tại."
+              : "Cấu hình hiện tại chưa có trạng thái."}
+        </p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onPrevious}
+          disabled={disabled || busy || !canPrevious}
+          title="Chuyển tới trạng thái ngay trước"
+        >
+          <ChevronLeft />
+          Trước
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onNext}
+          disabled={disabled || busy || !canNext}
+          title="Chuyển tới trạng thái ngay sau"
+        >
+          Sau
+          <ChevronRight />
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          onClick={onSave}
+          disabled={disabled || busy}
+          className="bg-[#0052FF] text-white hover:bg-[#0047D6]"
+        >
+          {busy ? <Loader2 className="animate-spin" /> : <Save />}
+          Lưu trạng thái
+        </Button>
+      </div>
+    </section>
+  )
+}
+
 export function NumberingStat({
   label,
   value,
@@ -637,8 +714,10 @@ export function NumberingDocumentRow({
   onPreview,
   onUpdateFromPage,
   onRetry,
+  onSelectVersion,
   updating,
   retrying,
+  switchingVersion,
   retryable,
   stalled,
   disabled,
@@ -656,8 +735,13 @@ export function NumberingDocumentRow({
     manualEntries?: Array<{ page_number: number; label: string }>
   ) => void
   onRetry: (document: NumberingDocumentStatus) => void
+  onSelectVersion: (
+    document: NumberingDocumentStatus,
+    versionId: number
+  ) => void
   updating: boolean
   retrying: boolean
+  switchingVersion: boolean
   retryable: boolean
   stalled: boolean
   disabled: boolean
@@ -717,7 +801,10 @@ export function NumberingDocumentRow({
     Number(document.entry_count) || 0,
     ...entries.map((entry) => entry.page_number)
   )
-  const parsedManualEntries = validateManualEntryRows(manualEntryRows, pageLimit)
+  const parsedManualEntries = validateManualEntryRows(
+    manualEntryRows,
+    pageLimit
+  )
   const manualPageIsValid =
     pageNumberIsValid && (pageLimit <= 0 || parsedPageNumber <= pageLimit)
   const canUpdate =
@@ -733,21 +820,31 @@ export function NumberingDocumentRow({
     document.document_number_start === document.document_number_end
       ? String(document.document_number_start)
       : `${document.document_number_start}-${document.document_number_end}`
+  const versions = document.numbering_versions ?? []
+  const selectedVersionIndex = versions.findIndex(
+    (version) => version.id === document.selected_numbering_version_id
+  )
+  const previousVersion =
+    selectedVersionIndex > 0 ? versions[selectedVersionIndex - 1] : null
+  const nextVersion =
+    selectedVersionIndex >= 0 && selectedVersionIndex < versions.length - 1
+      ? versions[selectedVersionIndex + 1]
+      : null
   const handleUpdate = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!canUpdate) return
     onUpdateFromPage(
       document,
       updateMode === "auto"
-        ? firstEntry?.page_number ?? 1
+        ? (firstEntry?.page_number ?? 1)
         : updateMode === "manual"
-        ? parsedManualEntries.entries[0]?.page_number ?? 1
-        : parsedPageNumber,
+          ? (parsedManualEntries.entries[0]?.page_number ?? 1)
+          : parsedPageNumber,
       updateMode === "auto"
         ? String(document.document_number_start || 1)
         : updateMode === "manual"
-        ? parsedManualEntries.entries[0]?.label ?? ""
-        : trimmedNumberValue,
+          ? (parsedManualEntries.entries[0]?.label ?? "")
+          : trimmedNumberValue,
       updateMode,
       updateMode === "manual" ? parsedManualEntries.entries : undefined
     )
@@ -780,6 +877,41 @@ export function NumberingDocumentRow({
 
   const actionButtons = (
     <>
+      {versions.length > 1 ? (
+        <div className="mr-1 inline-flex h-8 items-center rounded-lg border border-[#CBD5E1] bg-white">
+          <button
+            type="button"
+            onClick={() =>
+              previousVersion && onSelectVersion(document, previousVersion.id)
+            }
+            disabled={disabled || switchingVersion || !previousVersion}
+            className="inline-flex size-7 items-center justify-center text-[#475569] hover:text-[#0052FF] disabled:text-[#CBD5E1]"
+            title="Phiên bản trước của tài liệu này"
+            aria-label="Phiên bản trước của tài liệu này"
+          >
+            <ChevronLeft className="size-3.5" />
+          </button>
+          <span className="min-w-8 px-1 text-center text-[10px] font-semibold text-[#475569]">
+            {switchingVersion ? (
+              <Loader2 className="mx-auto size-3 animate-spin" />
+            ) : (
+              `V${versions[selectedVersionIndex]?.version_number ?? "?"}`
+            )}
+          </span>
+          <button
+            type="button"
+            onClick={() =>
+              nextVersion && onSelectVersion(document, nextVersion.id)
+            }
+            disabled={disabled || switchingVersion || !nextVersion}
+            className="inline-flex size-7 items-center justify-center text-[#475569] hover:text-[#0052FF] disabled:text-[#CBD5E1]"
+            title="Phiên bản sau của tài liệu này"
+            aria-label="Phiên bản sau của tài liệu này"
+          >
+            <ChevronRight className="size-3.5" />
+          </button>
+        </div>
+      ) : null}
       <button
         type="submit"
         disabled={!canUpdate}
@@ -974,11 +1106,7 @@ function ManualNumberingEntriesEditor({
   error: string
   onChange: (rows: ManualEntryRow[]) => void
 }) {
-  const updateRow = (
-    index: number,
-    field: "page" | "label",
-    value: string
-  ) => {
+  const updateRow = (index: number, field: "page" | "label", value: string) => {
     onChange(
       rows.map((row, rowIndex) =>
         rowIndex === index ? { ...row, [field]: value } : row
@@ -1035,7 +1163,9 @@ function ManualNumberingEntriesEditor({
               id={`numbering-manual-label-${documentId}-${index}`}
               type="text"
               value={row.label}
-              onChange={(event) => updateRow(index, "label", event.target.value)}
+              onChange={(event) =>
+                updateRow(index, "label", event.target.value)
+              }
               disabled={disabled}
               placeholder="VD: 12"
               className="h-7 min-w-0 rounded-md border border-[#CBD5E1] bg-[#F8FAFC] px-2 text-xs font-medium text-[#0F172A] transition-colors outline-none placeholder:text-[#CBD5E1] focus:border-[#0052FF] focus:bg-white focus:ring-2 focus:ring-[#0052FF]/10 disabled:bg-[#F1F5F9] disabled:text-[#94A3B8]"
