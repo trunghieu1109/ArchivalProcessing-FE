@@ -534,22 +534,24 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
     return metadata
   }
 
-  const handleCreateDossierFromSelection = async () => {
+  const handleCreateDossierFromSelection = async (
+    requestedSessionDocumentIds?: Iterable<number>
+  ): Promise<boolean> => {
     if (viewingHistoricalClusterVersion) {
       toast.error(
         "Bạn đang xem phiên bản cũ. Hãy kích hoạt phiên bản này trước khi tạo hồ sơ."
       )
-      return
+      return false
     }
     if (!sessionId) {
       toast.error("Chưa có session để tạo hồ sơ từ tài liệu đã chọn.")
-      return
+      return false
     }
     if (pendingClusterVersion) {
       toast.error(
         "Có phiên bản hồ sơ mới. Hãy áp dụng trước khi tạo hồ sơ khác."
       )
-      return
+      return false
     }
     if (
       loading ||
@@ -560,16 +562,19 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
       movingSelectedDocumentsTargetId
     ) {
       toast.error("Đang cập nhật hồ sơ. Vui lòng chờ xong rồi thử lại.")
-      return
+      return false
     }
     const sessionDocumentIds = Array.from(
-      selectedSessionDocumentIds as Set<number>
+      new Set(
+        requestedSessionDocumentIds ??
+          (selectedSessionDocumentIds as Set<number>)
+      )
     ).filter((sessionDocumentId) =>
       selectableSessionDocumentIdSet.has(sessionDocumentId)
     )
     if (sessionDocumentIds.length === 0) {
       toast.error("Chưa chọn tài liệu hợp lệ để tạo hồ sơ mới.")
-      return
+      return false
     }
 
     setPromotingSelectedDocuments(true)
@@ -594,40 +599,51 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
         Math.max(0, count - cancelledFeedbackCount + response.feedback_count)
       )
       setPendingFeedbackRefreshKey((key: number) => key + 1)
-      setSelectedSessionDocumentIds(new Set())
+      setSelectedSessionDocumentIds((current: Set<number>) => {
+        const next = new Set(current)
+        sessionDocumentIds.forEach((sessionDocumentId) =>
+          next.delete(sessionDocumentId)
+        )
+        return next
+      })
       setStatus(
         Object.keys(metadata).length > 0
           ? "Đã ghi nhận hồ sơ tạm kèm metadata gợi ý. Bạn có thể sửa trước khi bấm Cập nhật hồ sơ."
           : "Đã ghi nhận hồ sơ tạm. Bạn có thể sửa metadata trước khi bấm Cập nhật hồ sơ."
       )
       toast.success("Đã ghi nhận hồ sơ mới từ tài liệu đã chọn.")
+      return true
     } catch (err) {
       toast.error(
         err instanceof Error
           ? err.message
           : "Không thể tạo hồ sơ mới từ tài liệu đã chọn."
       )
+      return false
     } finally {
       setPromotingSelectedDocuments(false)
     }
   }
 
-  const handleMoveSelectionToDossier = async (group: ClusterGroup) => {
+  const handleMoveSelectionToDossier = async (
+    group: ClusterGroup,
+    requestedSessionDocumentIds?: Iterable<number>
+  ): Promise<boolean> => {
     if (viewingHistoricalClusterVersion) {
       toast.error(
         "Bạn đang xem phiên bản cũ. Hãy kích hoạt phiên bản này trước khi chuyển tài liệu."
       )
-      return
+      return false
     }
     if (!sessionId) {
       toast.error("Chưa có session để chuyển tài liệu đã chọn.")
-      return
+      return false
     }
     if (pendingClusterVersion) {
       toast.error(
         "Có phiên bản hồ sơ mới. Hãy áp dụng trước khi chuyển tài liệu."
       )
-      return
+      return false
     }
     if (
       loading ||
@@ -638,16 +654,19 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
       movingSelectedDocumentsTargetId
     ) {
       toast.error("Đang cập nhật hồ sơ. Vui lòng chờ xong rồi thử lại.")
-      return
+      return false
     }
     const sessionDocumentIds = Array.from(
-      selectedSessionDocumentIds as Set<number>
+      new Set(
+        requestedSessionDocumentIds ??
+          (selectedSessionDocumentIds as Set<number>)
+      )
     ).filter((sessionDocumentId) =>
       selectableSessionDocumentIdSet.has(sessionDocumentId)
     )
     if (sessionDocumentIds.length === 0) {
       toast.error("Chưa chọn tài liệu hợp lệ để chuyển.")
-      return
+      return false
     }
 
     const targetIsTemporary = Boolean(group.isTemporary)
@@ -679,7 +698,13 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
         Math.max(0, count - cancelledFeedbackCount + response.feedback_count)
       )
       setPendingFeedbackRefreshKey((key: number) => key + 1)
-      setSelectedSessionDocumentIds(new Set())
+      setSelectedSessionDocumentIds((current: Set<number>) => {
+        const next = new Set(current)
+        sessionDocumentIds.forEach((sessionDocumentId) =>
+          next.delete(sessionDocumentId)
+        )
+        return next
+      })
       setStatus(
         targetIsTemporary
           ? `Đã ghi nhận ${response.moved_document_ids.length} tài liệu chuyển vào Thư mục tạm. Bấm Cập nhật hồ sơ để áp dụng.`
@@ -690,6 +715,7 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
           ? "Đã ghi nhận chuyển tài liệu vào Thư mục tạm."
           : "Đã ghi nhận chuyển tài liệu tới hồ sơ."
       )
+      return true
     } catch (err) {
       toast.error(
         err instanceof Error
@@ -701,6 +727,7 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
       if (previousGroups) {
         setGroups(previousGroups)
       }
+      return false
     } finally {
       setMovingSelectedDocumentsTargetId(null)
     }

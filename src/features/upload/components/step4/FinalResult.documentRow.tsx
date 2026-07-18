@@ -39,7 +39,7 @@ import {
 } from "./FinalResult.metadataUtils"
 import { pendingFeedbackActionLabel } from "./FinalResult.pendingFeedback"
 
-const SHOW_DOSSIER_SUGGESTIONS_BUTTON = false
+const SHOW_DOSSIER_SUGGESTIONS_BUTTON = true
 
 export function DocumentRow({
   document,

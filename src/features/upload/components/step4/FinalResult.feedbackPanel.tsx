@@ -3,19 +3,48 @@ import {
   CheckCircle2,
   CircleX,
   FolderPlus,
+  ListChecks,
   Loader2,
   RefreshCw,
   Undo2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
-export function FinalResultFeedbackPanel(props: Record<string, any>) {
+interface FinalResultFeedbackPanelProps {
+  canRestoreFileRegisterVersion: boolean
+  cancelingPendingFeedback: boolean
+  clusterJobMode: string
+  handleCancelPendingFeedback: () => Promise<unknown> | void
+  handleCreateDossierFromSelection: () => Promise<boolean>
+  handleFinish: () => void
+  handleRebuildClusters: (strategy?: string) => Promise<unknown> | void
+  handleRestorePreviousClusterVersion: () => Promise<unknown> | void
+  handleSelectDossierSuggestionsFromSelection: () => void
+  loading: boolean
+  movingSelectedDocumentsTargetId: string | null
+  pendingClusterVersion: unknown | null
+  pendingFeedbackCount: number
+  promotingSelectedDocuments: boolean
+  promotingTemporaryFolder: boolean
+  rebuildBaselineVersionId: string | null
+  rebuildSubmitting: boolean
+  restoringClusterVersion: boolean
+  selectedDocumentCount: number
+  selectedDocumentsActionDisabled: boolean
+  sessionId: string | null
+  totalDossiers: number
+  totalFiles: number
+  viewingHistoricalClusterVersion: boolean
+}
+
+export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
   const {
     canRestoreFileRegisterVersion,
     cancelingPendingFeedback,
     clusterJobMode,
     handleCancelPendingFeedback,
     handleCreateDossierFromSelection,
+    handleSelectDossierSuggestionsFromSelection,
     handleFinish,
     handleRebuildClusters,
     handleRestorePreviousClusterVersion,
@@ -45,7 +74,7 @@ export function FinalResultFeedbackPanel(props: Record<string, any>) {
             ? `Có ${pendingFeedbackCount} feedback đã lưu và đang chờ cập nhật hồ sơ.`
             : "Chọn tài liệu bằng checkbox hoặc kéo tài liệu vào Thư mục tạm để xử lý sau."}
       </p>
-      <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5 xl:flex xl:w-auto xl:flex-wrap xl:items-center xl:justify-end">
+      <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-6 xl:flex xl:w-auto xl:flex-wrap xl:items-center xl:justify-end">
         <Button
           variant="outline"
           onClick={() =>
@@ -83,6 +112,16 @@ export function FinalResultFeedbackPanel(props: Record<string, any>) {
           {canRestoreFileRegisterVersion
             ? "Quay trở lại phiên bản ban đầu"
             : "Lập lại theo tập lưu"}
+        </Button>
+        <Button
+          variant="outline"
+          onClick={handleSelectDossierSuggestionsFromSelection}
+          className="w-full xl:w-auto"
+          disabled={selectedDocumentsActionDisabled}
+          title="Tìm hồ sơ phù hợp cho toàn bộ tài liệu đang chọn"
+        >
+          <ListChecks data-icon="inline-start" />
+          Gợi ý hồ sơ
         </Button>
         <Button
           variant="outline"

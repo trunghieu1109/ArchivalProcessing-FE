@@ -48,6 +48,7 @@ export function FinalResultView(props: Record<string, any>) {
     handleApplyPendingClusterVersion,
     handleCancelPendingFeedback,
     handleCreateDossierFromSelection,
+    handleCreateDossierFromSuggestions,
     handleDropOnDossier,
     handleFinish,
     handleMoveSelectionToDossier,
@@ -60,6 +61,7 @@ export function FinalResultView(props: Record<string, any>) {
     handleSaveDocumentMetadata,
     handleSelectDossierMetadata,
     handleSelectDossierSuggestions,
+    handleSelectDossierSuggestionsFromSelection,
     handleSelectGroupInformation,
     handleSelectPreviewDocument,
     handleToggleDocumentSelection,
@@ -71,6 +73,7 @@ export function FinalResultView(props: Record<string, any>) {
     handleCloseGroupInformation,
     handleCloseDossierSuggestions,
     handleRefreshDossierSuggestions,
+    handleMoveDossierSuggestion,
     handleSelectGroupInfoDossier,
     handleSelectGroupInfoDocument,
     handleSelectRetentionCandidate,
@@ -87,6 +90,7 @@ export function FinalResultView(props: Record<string, any>) {
     selectedDossierSuggestionsDocuments,
     selectedDossierSuggestionCandidates,
     dossierSuggestionRepresentativeDocuments,
+    dossierSuggestionDossiers,
     selectedDossierSuggestionsDocumentId,
     dossierSuggestionsLoading,
     dossierSuggestionsRefreshing,
@@ -525,12 +529,17 @@ export function FinalResultView(props: Record<string, any>) {
             .join(":")}
           documents={selectedDossierSuggestionsDocuments}
           suggestions={selectedDossierSuggestionCandidates}
+          dossiers={dossierSuggestionDossiers}
           representativeDocuments={dossierSuggestionRepresentativeDocuments}
           loading={dossierSuggestionsLoading}
           refreshing={dossierSuggestionsRefreshing}
+          creatingDossier={promotingSelectedDocuments}
+          moveDisabled={temporaryFolderUpdateDisabled}
           error={dossierSuggestionsError}
           onClose={handleCloseDossierSuggestions}
           onRefresh={handleRefreshDossierSuggestions}
+          onCreateDossier={handleCreateDossierFromSuggestions}
+          onMoveToDossier={handleMoveDossierSuggestion}
         />
       )}
       <FinalResultFeedbackPanel
@@ -539,6 +548,9 @@ export function FinalResultView(props: Record<string, any>) {
         clusterJobMode={clusterJobMode}
         handleCancelPendingFeedback={handleCancelPendingFeedback}
         handleCreateDossierFromSelection={handleCreateDossierFromSelection}
+        handleSelectDossierSuggestionsFromSelection={
+          handleSelectDossierSuggestionsFromSelection
+        }
         handleFinish={handleFinish}
         handleRebuildClusters={handleRebuildClusters}
         handleRestorePreviousClusterVersion={

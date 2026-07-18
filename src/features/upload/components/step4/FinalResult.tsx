@@ -891,6 +891,23 @@ export function FinalResult({
     [handleSelectDossierSuggestionsForDocuments]
   )
 
+  const handleSelectDossierSuggestionsFromSelection = useCallback(() => {
+    const documents = previewDocuments.flatMap((entry) =>
+      selectedSessionDocumentIds.has(entry.sessionDocumentId)
+        ? [entry.document]
+        : []
+    )
+    if (documents.length === 0) {
+      toast.error("Chưa chọn tài liệu hợp lệ để lấy gợi ý hồ sơ.")
+      return
+    }
+    handleSelectDossierSuggestionsForDocuments(documents)
+  }, [
+    handleSelectDossierSuggestionsForDocuments,
+    previewDocuments,
+    selectedSessionDocumentIds,
+  ])
+
   const handleRefreshDossierSuggestions = useCallback(() => {
     if (selectedDossierSuggestionsDocuments.length === 0) return
     toast.info("Đang tải lại gợi ý hồ sơ...")
@@ -902,6 +919,46 @@ export function FinalResult({
     handleSelectDossierSuggestionsForDocuments,
     selectedDossierSuggestionsDocuments,
   ])
+
+  const handleMoveDossierSuggestion = useCallback(
+    async (suggestion: SessionDossierSuggestion) => {
+      const targetGroup =
+        groups.find(
+          (group) =>
+            !group.isTemporary &&
+            (group.id === suggestion.dossier_id ||
+              group.dossierId === suggestion.dossier_id ||
+              group.dossierStorageId === suggestion.dossier_id)
+        ) ??
+        groups.find(
+          (group) =>
+            !group.isTemporary &&
+            (group.clusterId === suggestion.cluster_id ||
+              group.id === suggestion.cluster_id)
+        )
+      if (!targetGroup) {
+        toast.error("Không tìm thấy hồ sơ đích trong phiên bản đang xem.")
+        return false
+      }
+
+      const sessionDocumentIds = selectedDossierSuggestionsDocuments.flatMap(
+        (document) =>
+          document.sessionDocumentId === null
+            ? []
+            : [document.sessionDocumentId]
+      )
+      return handleMoveSelectionToDossier(targetGroup, sessionDocumentIds)
+    },
+    [groups, handleMoveSelectionToDossier, selectedDossierSuggestionsDocuments]
+  )
+
+  const handleCreateDossierFromSuggestions = useCallback(() => {
+    const sessionDocumentIds = selectedDossierSuggestionsDocuments.flatMap(
+      (document) =>
+        document.sessionDocumentId === null ? [] : [document.sessionDocumentId]
+    )
+    return handleCreateDossierFromSelection(sessionDocumentIds)
+  }, [handleCreateDossierFromSelection, selectedDossierSuggestionsDocuments])
 
   const handleSelectDossierMetadataFromTree = useCallback(
     (group: ClusterGroup) => {
@@ -1132,6 +1189,7 @@ export function FinalResult({
       handleApplyPendingClusterVersion={handleApplyPendingClusterVersion}
       handleCancelPendingFeedback={handleCancelPendingFeedback}
       handleCreateDossierFromSelection={handleCreateDossierFromSelection}
+      handleCreateDossierFromSuggestions={handleCreateDossierFromSuggestions}
       handleDropOnDossier={handleDropOnDossier}
       handleFinish={handleFinish}
       handleMoveSelectionToDossier={handleMoveSelectionToDossier}
@@ -1144,7 +1202,11 @@ export function FinalResult({
       handleSaveDocumentMetadata={handleSaveDocumentMetadata}
       handleSelectDossierMetadata={handleSelectDossierMetadataFromTree}
       handleSelectDossierSuggestions={handleSelectDossierSuggestionsFromTree}
+      handleSelectDossierSuggestionsFromSelection={
+        handleSelectDossierSuggestionsFromSelection
+      }
       handleRefreshDossierSuggestions={handleRefreshDossierSuggestions}
+      handleMoveDossierSuggestion={handleMoveDossierSuggestion}
       handleSelectGroupInformation={handleSelectGroupInformation}
       handleSelectRetentionCandidate={handleSelectRetentionCandidate}
       handleSelectPreviewDocument={handleSelectPreviewDocumentFromTree}
@@ -1173,6 +1235,7 @@ export function FinalResult({
       dossierSuggestionRepresentativeDocuments={
         dossierSuggestionRepresentativeDocuments
       }
+      dossierSuggestionDossiers={groups}
       selectedDossierSuggestionsDocumentId={
         selectedDossierSuggestionsDocumentId
       }

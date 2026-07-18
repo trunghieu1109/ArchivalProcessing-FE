@@ -1,11 +1,14 @@
 import { useMemo, useState } from "react"
 import {
   CalendarDays,
+  ChevronDown,
   ChevronRight,
   Eye,
   FileText,
+  FolderPlus,
   Loader2,
   ListChecks,
+  MoveRight,
   RefreshCw,
   X,
 } from "lucide-react"
@@ -19,26 +22,39 @@ import {
   METADATA_FIELDS,
   metadataFieldText,
 } from "@/features/upload/components/step3/metadataCardUtils"
-import type { ClusterDocument } from "@/features/upload/lib/clusterGroups"
+import type {
+  ClusterDocument,
+  ClusterGroup,
+} from "@/features/upload/lib/clusterGroups"
 
 export function DossierSuggestionsModal({
   documents,
   suggestions: candidateSuggestions,
+  dossiers,
   representativeDocuments,
   loading,
   refreshing,
+  creatingDossier,
+  moveDisabled,
   error,
   onClose,
   onRefresh,
+  onCreateDossier,
+  onMoveToDossier,
 }: {
   documents: ClusterDocument[]
   suggestions: SessionDossierSuggestion[] | null
+  dossiers: ClusterGroup[]
   representativeDocuments: ClusterDocument[]
   loading: boolean
   refreshing: boolean
+  creatingDossier: boolean
+  moveDisabled: boolean
   error: string
   onClose: () => void
   onRefresh: () => void
+  onCreateDossier: () => Promise<boolean>
+  onMoveToDossier: (suggestion: SessionDossierSuggestion) => Promise<boolean>
 }) {
   const [selectedSuggestionKey, setSelectedSuggestionKey] = useState<
     string | null
@@ -49,27 +65,24 @@ export function DossierSuggestionsModal({
   const [selectedDocumentKey, setSelectedDocumentKey] = useState<string | null>(
     null
   )
+  const [movingSuggestionKey, setMovingSuggestionKey] = useState<string | null>(
+    null
+  )
   const busy = loading || refreshing
   const selectedDocument =
     documents.find(
       (document) => documentKey(document) === selectedDocumentKey
-    ) ??
-    documents[0] ??
-    null
+    ) ?? null
   const suggestions = busy ? [] : (candidateSuggestions ?? [])
   const selectedSuggestion =
     suggestions.find(
-      (suggestion) => suggestion.cluster_id === selectedSuggestionKey
-    ) ??
-    suggestions[0] ??
-    null
+      (suggestion) => suggestionKey(suggestion) === selectedSuggestionKey
+    ) ?? null
   const selectedRepresentative =
     selectedSuggestion?.representative_documents.find(
       (representative) =>
         representativeKey(representative) === selectedRepresentativeKey
-    ) ??
-    selectedSuggestion?.representative_documents[0] ??
-    null
+    ) ?? null
   const selectedRepresentativeDocument = useMemo(
     () =>
       selectedRepresentative
@@ -81,6 +94,23 @@ export function DossierSuggestionsModal({
         : null,
     [representativeDocuments, selectedRepresentative]
   )
+
+  const handleMoveToDossier = async (suggestion: SessionDossierSuggestion) => {
+    const key = suggestionKey(suggestion)
+    setMovingSuggestionKey(key)
+    let moved = false
+    try {
+      moved = await onMoveToDossier(suggestion)
+    } finally {
+      setMovingSuggestionKey(null)
+    }
+    if (moved) onClose()
+  }
+
+  const handleCreateDossier = async () => {
+    const created = await onCreateDossier()
+    if (created) onClose()
+  }
 
   return (
     <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
@@ -129,53 +159,91 @@ export function DossierSuggestionsModal({
                     : "Hồ sơ được xếp theo số tài liệu cùng tương thích, sau đó theo điểm trung bình."}
                 </p>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="shrink-0 gap-1.5"
-                onClick={onRefresh}
-                disabled={loading || refreshing}
-                title="Tải lại danh sách gợi ý"
-              >
-                {refreshing ? (
-                  <Loader2 data-icon="inline-start" className="animate-spin" />
-                ) : (
-                  <RefreshCw data-icon="inline-start" />
-                )}
-                {refreshing ? "Đang tính lại..." : "Tải lại gợi ý"}
-              </Button>
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => void handleCreateDossier()}
+                  disabled={moveDisabled || loading || refreshing}
+                  title="Ghi nhận hồ sơ mới từ các tài liệu trong modal"
+                >
+                  {creatingDossier ? (
+                    <Loader2
+                      data-icon="inline-start"
+                      className="animate-spin"
+                    />
+                  ) : (
+                    <FolderPlus data-icon="inline-start" />
+                  )}
+                  {creatingDossier
+                    ? "Đang tạo và gợi ý..."
+                    : "Tạo hồ sơ từ tài liệu đã chọn"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={onRefresh}
+                  disabled={moveDisabled || loading || refreshing}
+                  title="Tải lại danh sách gợi ý"
+                >
+                  {refreshing ? (
+                    <Loader2
+                      data-icon="inline-start"
+                      className="animate-spin"
+                    />
+                  ) : (
+                    <RefreshCw data-icon="inline-start" />
+                  )}
+                  {refreshing ? "Đang tính lại..." : "Tải lại gợi ý"}
+                </Button>
+              </div>
             </div>
 
             <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto xl:grid-cols-[minmax(280px,0.9fr)_minmax(320px,1fr)_minmax(320px,1.1fr)] xl:overflow-hidden">
               <SelectedDocumentsPanel
                 documents={documents}
                 selectedDocument={selectedDocument}
-                onSelect={(document) =>
-                  setSelectedDocumentKey(documentKey(document))
-                }
+                onSelect={(document) => {
+                  const key = documentKey(document)
+                  setSelectedDocumentKey((current) =>
+                    current === key ? null : key
+                  )
+                }}
               />
               <SuggestionList
                 suggestions={suggestions}
                 selectedSuggestion={selectedSuggestion}
                 selectedDocumentCount={documents.length}
+                dossiers={dossiers}
                 loading={busy}
+                moveDisabled={moveDisabled || movingSuggestionKey !== null}
+                movingSuggestionKey={movingSuggestionKey}
                 error={error}
                 onSelect={(suggestion) => {
-                  setSelectedSuggestionKey(suggestion.cluster_id)
+                  const key = suggestionKey(suggestion)
+                  setSelectedSuggestionKey((current) =>
+                    current === key ? null : key
+                  )
                   setSelectedRepresentativeKey(null)
                 }}
+                onMoveToDossier={(suggestion) =>
+                  void handleMoveToDossier(suggestion)
+                }
               />
               <RepresentativeDocumentList
                 suggestion={selectedSuggestion}
                 selectedRepresentative={selectedRepresentative}
                 selectedRepresentativeDocument={selectedRepresentativeDocument}
                 loading={busy}
-                onSelect={(representative) =>
-                  setSelectedRepresentativeKey(
-                    representativeKey(representative)
+                onSelect={(representative) => {
+                  const key = representativeKey(representative)
+                  setSelectedRepresentativeKey((current) =>
+                    current === key ? null : key
                   )
-                }
+                }}
               />
             </div>
           </div>
@@ -194,13 +262,6 @@ function SelectedDocumentsPanel({
   selectedDocument: ClusterDocument | null
   onSelect: (document: ClusterDocument) => void
 }) {
-  const metadataRows = METADATA_FIELDS.map((field) => [
-    field.label,
-    selectedDocument
-      ? metadataFieldText(selectedDocument.metadata, field.aliases)
-      : "",
-  ])
-
   return (
     <section className="min-h-0 border-b border-[#E2E8F0] p-4 xl:overflow-y-auto xl:border-r xl:border-b-0">
       <div className="mb-3 flex items-center justify-between gap-2">
@@ -221,65 +282,74 @@ function SelectedDocumentsPanel({
             selectedDocument !== null &&
             documentKey(document) === documentKey(selectedDocument)
           return (
-            <button
-              key={documentKey(document)}
-              type="button"
-              className={`min-w-0 rounded-lg border p-3 text-left transition-colors ${
-                selected
-                  ? "border-[#0052FF] bg-[#F0F5FF]"
-                  : "border-[#E2E8F0] bg-white hover:border-[#9DBBFF] hover:bg-[#F8FAFF]"
-              }`}
-              onClick={() => onSelect(document)}
-            >
-              <span className="block truncate text-xs font-semibold text-[#0F172A]">
-                {document.fileName}
-              </span>
-              <span className="mt-1 block truncate text-[11px] text-[#64748B]">
-                {document.filePath}
-              </span>
-            </button>
+            <div key={documentKey(document)} className="min-w-0">
+              <button
+                type="button"
+                className={`flex w-full min-w-0 items-start gap-2 rounded-lg border p-3 text-left transition-colors ${
+                  selected
+                    ? "border-[#0052FF] bg-[#F0F5FF]"
+                    : "border-[#E2E8F0] bg-white hover:border-[#9DBBFF] hover:bg-[#F8FAFF]"
+                }`}
+                aria-expanded={selected}
+                title={
+                  selected ? "Ẩn metadata tài liệu" : "Xem metadata tài liệu"
+                }
+                onClick={() => onSelect(document)}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-semibold text-[#0F172A]">
+                    {document.fileName}
+                  </span>
+                  <span className="mt-1 block truncate text-[11px] text-[#64748B]">
+                    {document.filePath}
+                  </span>
+                </span>
+                {selected ? (
+                  <ChevronDown className="mt-0.5 size-4 shrink-0 text-[#0052FF]" />
+                ) : (
+                  <ChevronRight className="mt-0.5 size-4 shrink-0 text-[#94A3B8]" />
+                )}
+              </button>
+              {selected ? <DocumentMetadataPanel document={document} /> : null}
+            </div>
           )
         })}
       </div>
-
-      <div className="mt-4 border-t border-[#E2E8F0] pt-4">
-        <div className="mb-3 flex min-w-0 items-center gap-2">
-          <FileText className="size-4 shrink-0 text-[#0052FF]" />
-          <h4 className="truncate text-sm font-semibold text-[#0F172A]">
-            Metadata tài liệu
-          </h4>
-        </div>
-        <dl className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-          {metadataRows.map(([label, value]) => (
-            <div key={label} className="min-w-0">
-              <dt className="text-[10px] font-semibold tracking-[0.06em] text-[#94A3B8] uppercase">
-                {label}
-              </dt>
-              <dd className="mt-1 text-xs leading-5 break-words text-[#334155]">
-                {value || "Chưa có dữ liệu"}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </div>
     </section>
   )
+}
+
+function DocumentMetadataPanel({ document }: { document: ClusterDocument }) {
+  const metadataRows = METADATA_FIELDS.map((field) => [
+    field.label,
+    metadataFieldText(document.metadata, field.aliases),
+  ])
+
+  return <MetadataPanel title="Metadata tài liệu" rows={metadataRows} />
 }
 
 function SuggestionList({
   suggestions,
   selectedSuggestion,
   selectedDocumentCount,
+  dossiers,
   loading,
+  moveDisabled,
+  movingSuggestionKey,
   error,
   onSelect,
+  onMoveToDossier,
 }: {
   suggestions: SessionDossierSuggestion[]
   selectedSuggestion: SessionDossierSuggestion | null
   selectedDocumentCount: number
+  dossiers: ClusterGroup[]
   loading: boolean
+  moveDisabled: boolean
+  movingSuggestionKey: string | null
   error: string
   onSelect: (suggestion: SessionDossierSuggestion) => void
+  onMoveToDossier: (suggestion: SessionDossierSuggestion) => void
 }) {
   return (
     <section className="min-h-0 border-b border-[#E2E8F0] p-4 xl:overflow-y-auto xl:border-r xl:border-b-0">
@@ -308,49 +378,95 @@ function SuggestionList({
         <div className="flex flex-col gap-2">
           {suggestions.map((suggestion) => {
             const selected =
-              selectedSuggestion?.cluster_id === suggestion.cluster_id
+              selectedSuggestion !== null &&
+              suggestionKey(selectedSuggestion) === suggestionKey(suggestion)
+            const dossier = dossierForSuggestion(dossiers, suggestion)
+            const moving = movingSuggestionKey === suggestionKey(suggestion)
             return (
-              <button
+              <div
                 key={`${suggestion.cluster_id}-${suggestion.rank}`}
-                type="button"
-                className={`flex min-w-0 items-start gap-3 rounded-lg border p-3 text-left transition-colors ${
+                className={`min-w-0 overflow-hidden rounded-lg border transition-colors ${
                   selected
                     ? "border-[#0052FF] bg-[#F0F5FF]"
-                    : "border-[#E2E8F0] bg-white hover:border-[#9DBBFF] hover:bg-[#F8FAFF]"
+                    : "border-[#E2E8F0] bg-white"
                 }`}
-                onClick={() => onSelect(suggestion)}
               >
-                <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-[#EAF1FF] text-xs font-bold text-[#0052FF]">
-                  {suggestion.rank}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold break-words text-[#0F172A]">
-                    {suggestion.title || suggestion.dossier_id}
+                <button
+                  type="button"
+                  className="flex w-full min-w-0 items-start gap-3 p-3 text-left transition-colors hover:bg-[#F8FAFF]"
+                  aria-expanded={selected}
+                  title={selected ? "Ẩn metadata hồ sơ" : "Xem metadata hồ sơ"}
+                  onClick={() => onSelect(suggestion)}
+                >
+                  <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-[#EAF1FF] text-xs font-bold text-[#0052FF]">
+                    {suggestion.rank}
                   </span>
-                  <span className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-[#64748B]">
-                    <span>{formatSimilarity(suggestion)} tương đồng</span>
-                    {selectedDocumentCount > 1 ? (
-                      <>
-                        <span>·</span>
-                        <span>
-                          Khớp{" "}
-                          {suggestion.matching_document_count ??
-                            suggestion.matched_session_document_ids?.length ??
-                            1}
-                          /{selectedDocumentCount} tài liệu
-                        </span>
-                      </>
-                    ) : null}
-                    <span>·</span>
-                    <span>{suggestion.document_count} tài liệu</span>
-                    <span>·</span>
-                    <span>
-                      {suggestion.representative_documents.length} đại diện
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold break-words text-[#0F172A]">
+                      {suggestion.title || suggestion.dossier_id}
+                    </span>
+                    <span className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-[#64748B]">
+                      <span>{formatSimilarity(suggestion)} tương đồng</span>
+                      {selectedDocumentCount > 1 ? (
+                        <>
+                          <span>·</span>
+                          <span>
+                            Khớp {matchingDocumentCount(suggestion)}/
+                            {selectedDocumentCount} tài liệu
+                          </span>
+                        </>
+                      ) : null}
+                      <span>·</span>
+                      <span>{suggestion.document_count} tài liệu</span>
+                      <span>·</span>
+                      <span>
+                        {suggestion.representative_documents.length} đại diện
+                      </span>
                     </span>
                   </span>
-                </span>
-                <ChevronRight className="mt-1 size-4 shrink-0 text-[#94A3B8]" />
-              </button>
+                  {selected ? (
+                    <ChevronDown className="mt-1 size-4 shrink-0 text-[#0052FF]" />
+                  ) : (
+                    <ChevronRight className="mt-1 size-4 shrink-0 text-[#94A3B8]" />
+                  )}
+                </button>
+
+                {selected ? (
+                  <DossierMetadataPanel
+                    suggestion={suggestion}
+                    dossier={dossier}
+                    selectedDocumentCount={selectedDocumentCount}
+                  />
+                ) : null}
+
+                <div className="flex justify-end border-t border-[#E2E8F0] bg-white px-3 py-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="gap-1.5"
+                    disabled={moveDisabled || !dossier}
+                    title={
+                      dossier
+                        ? "Ghi feedback chuyển tài liệu; cần bấm Cập nhật hồ sơ để áp dụng"
+                        : "Không tìm thấy hồ sơ đích trong phiên bản đang xem"
+                    }
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onMoveToDossier(suggestion)
+                    }}
+                  >
+                    {moving ? (
+                      <Loader2
+                        data-icon="inline-start"
+                        className="animate-spin"
+                      />
+                    ) : (
+                      <MoveRight data-icon="inline-start" />
+                    )}
+                    {moving ? "Đang ghi feedback..." : "Chuyển tới hồ sơ"}
+                  </Button>
+                </div>
+              </div>
             )
           })}
         </div>
@@ -420,7 +536,12 @@ function RepresentativeDocumentList({
                         : "border-[#E2E8F0] bg-white hover:border-[#9DBBFF] hover:bg-[#F8FAFF]"
                     }`}
                     onClick={() => onSelect(document)}
-                    title="Xem metadata tài liệu đại diện"
+                    aria-expanded={selected}
+                    title={
+                      selected
+                        ? "Ẩn metadata tài liệu đại diện"
+                        : "Xem metadata tài liệu đại diện"
+                    }
                   >
                     <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-[#EAF1FF] text-[#0052FF]">
                       <Eye className="size-3.5" />
@@ -446,7 +567,11 @@ function RepresentativeDocumentList({
                         )}
                       </span>
                     </span>
-                    <ChevronRight className="mt-1 size-4 shrink-0 text-[#94A3B8]" />
+                    {selected ? (
+                      <ChevronDown className="mt-1 size-4 shrink-0 text-[#0052FF]" />
+                    ) : (
+                      <ChevronRight className="mt-1 size-4 shrink-0 text-[#94A3B8]" />
+                    )}
                   </button>
                   {selected ? (
                     <RepresentativeMetadataPanel
@@ -488,22 +613,87 @@ function RepresentativeMetadataPanel({
   ])
 
   return (
-    <div className="mt-2 rounded-lg border border-[#BFD3FF] bg-[#F8FAFF] p-3">
+    <MetadataPanel
+      title="Metadata tài liệu đại diện"
+      subtitle={
+        document?.fileName ||
+        representative.file_name ||
+        representative.document_id
+      }
+      rows={metadataRows}
+    />
+  )
+}
+
+function DossierMetadataPanel({
+  suggestion,
+  dossier,
+  selectedDocumentCount,
+}: {
+  suggestion: SessionDossierSuggestion
+  dossier: ClusterGroup | null
+  selectedDocumentCount: number
+}) {
+  const dateRange = [dossier?.startDate, dossier?.endDate]
+    .filter((value): value is string => Boolean(value))
+    .join(" – ")
+  const rows = [
+    ["Mã hồ sơ", suggestion.dossier_id],
+    ["Mã cụm", suggestion.cluster_id],
+    ["Độ tương đồng", formatSimilarity(suggestion)],
+    [
+      "Tài liệu phù hợp",
+      `${matchingDocumentCount(suggestion)}/${selectedDocumentCount}`,
+    ],
+    ["Số tài liệu", String(suggestion.document_count)],
+    ["Thời hạn bảo quản", dossier?.retentionPeriod ?? ""],
+    ["Khoảng thời gian", dateRange],
+    ["Ngôn ngữ", dossier?.language ?? ""],
+    ["Ký hiệu thông tin", dossier?.informationSign ?? ""],
+    ["Mã hồ sơ gốc giấy", dossier?.paperDossierId ?? ""],
+    ["Ghi chú", dossier?.note ?? ""],
+  ]
+
+  return (
+    <MetadataPanel
+      title="Metadata hồ sơ"
+      subtitle={dossier?.label || suggestion.title || suggestion.dossier_id}
+      rows={rows}
+      inset
+    />
+  )
+}
+
+function MetadataPanel({
+  title,
+  subtitle,
+  rows,
+  inset = false,
+}: {
+  title: string
+  subtitle?: string
+  rows: string[][]
+  inset?: boolean
+}) {
+  return (
+    <div
+      className={`border border-[#BFD3FF] bg-[#F8FAFF] p-3 ${
+        inset ? "mx-3 mb-3 rounded-lg" : "mt-2 rounded-lg"
+      }`}
+    >
       <div className="mb-3 flex items-start gap-2">
         <FileText className="mt-0.5 size-4 shrink-0 text-[#0052FF]" />
         <div className="min-w-0">
-          <h4 className="text-xs font-semibold text-[#0F172A]">
-            Metadata tài liệu đại diện
-          </h4>
-          <p className="mt-0.5 truncate text-[11px] text-[#64748B]">
-            {document?.fileName ||
-              representative.file_name ||
-              representative.document_id}
-          </p>
+          <h4 className="text-xs font-semibold text-[#0F172A]">{title}</h4>
+          {subtitle ? (
+            <p className="mt-0.5 truncate text-[11px] text-[#64748B]">
+              {subtitle}
+            </p>
+          ) : null}
         </div>
       </div>
       <dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-        {metadataRows.map(([label, value]) => (
+        {rows.map(([label, value]) => (
           <div key={label} className="min-w-0">
             <dt className="text-[10px] font-semibold tracking-[0.06em] text-[#94A3B8] uppercase">
               {label}
@@ -522,6 +712,44 @@ function representativeKey(
   document: SessionDossierSuggestionRepresentativeDocument
 ): string {
   return `${document.session_document_id}:${document.document_id}`
+}
+
+function suggestionKey(suggestion: SessionDossierSuggestion): string {
+  return (
+    suggestion.cluster_id ||
+    suggestion.dossier_id ||
+    String(suggestion.session_dossier_id)
+  )
+}
+
+function dossierForSuggestion(
+  dossiers: ClusterGroup[],
+  suggestion: SessionDossierSuggestion
+): ClusterGroup | null {
+  return (
+    dossiers.find(
+      (dossier) =>
+        !dossier.isTemporary &&
+        (dossier.id === suggestion.dossier_id ||
+          dossier.dossierId === suggestion.dossier_id ||
+          dossier.dossierStorageId === suggestion.dossier_id)
+    ) ??
+    dossiers.find(
+      (dossier) =>
+        !dossier.isTemporary &&
+        (dossier.clusterId === suggestion.cluster_id ||
+          dossier.id === suggestion.cluster_id)
+    ) ??
+    null
+  )
+}
+
+function matchingDocumentCount(suggestion: SessionDossierSuggestion): number {
+  return (
+    suggestion.matching_document_count ??
+    suggestion.matched_session_document_ids?.length ??
+    1
+  )
 }
 
 function documentKey(document: ClusterDocument): string {
