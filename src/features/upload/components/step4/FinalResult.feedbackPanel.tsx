@@ -9,6 +9,7 @@ import {
   Undo2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { SHOW_DOSSIER_SUGGESTIONS } from "./temporaryFeatureVisibility"
 
 interface FinalResultFeedbackPanelProps {
   canRestoreFileRegisterVersion: boolean
@@ -113,16 +114,18 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
             ? "Quay trở lại phiên bản ban đầu"
             : "Lập lại theo tập lưu"}
         </Button>
-        <Button
-          variant="outline"
-          onClick={handleSelectDossierSuggestionsFromSelection}
-          className="w-full xl:w-auto"
-          disabled={selectedDocumentsActionDisabled}
-          title="Tìm hồ sơ phù hợp cho toàn bộ tài liệu đang chọn"
-        >
-          <ListChecks data-icon="inline-start" />
-          Gợi ý hồ sơ
-        </Button>
+        {SHOW_DOSSIER_SUGGESTIONS && (
+          <Button
+            variant="outline"
+            onClick={handleSelectDossierSuggestionsFromSelection}
+            className="w-full xl:w-auto"
+            disabled={selectedDocumentsActionDisabled}
+            title="Tìm hồ sơ phù hợp cho toàn bộ tài liệu đang chọn"
+          >
+            <ListChecks data-icon="inline-start" />
+            Gợi ý hồ sơ
+          </Button>
+        )}
         <Button
           variant="outline"
           onClick={() => void handleCreateDossierFromSelection()}

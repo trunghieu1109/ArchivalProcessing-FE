@@ -10,10 +10,12 @@ import type {
 } from "@/features/upload/lib/clusterGroups"
 import { clusterDocumentTotals } from "@/features/upload/lib/clusterGroups"
 import type { SignatureTagKind } from "@/features/upload/lib/signatureStatus"
+import { SHOW_DOSSIER_CODE } from "./temporaryFeatureVisibility"
 
 export const UNKNOWN_YEAR_LABEL = "Không rõ năm"
 export interface DossierMetadataDraft {
   dossierStorageId: string
+  dossierCode: string
   informationSign: string
   title: string
   startDate: string
@@ -34,6 +36,9 @@ export const DOSSIER_METADATA_EDIT_FIELDS: Array<{
   rows: number
 }> = [
   { key: "title", label: "Tiêu đề hồ sơ", rows: 4 },
+  ...(SHOW_DOSSIER_CODE
+    ? [{ key: "dossierCode" as const, label: "Ký hiệu hồ sơ", rows: 1 }]
+    : []),
   { key: "retentionPeriod", label: "Thời hạn lưu trữ", rows: 2 },
   { key: "language", label: "Ngôn ngữ", rows: 1 },
   { key: "startDate", label: "Thời gian bắt đầu", rows: 1 },
@@ -48,6 +53,7 @@ export function createDossierMetadataDraft(
 ): DossierMetadataDraft {
   return {
     dossierStorageId: group?.dossierStorageId ?? "",
+    dossierCode: group?.dossierCode ?? "",
     title: group?.label ?? "",
     retentionPeriod: group?.retentionPeriod ?? "",
     language: group?.language || DEFAULT_DOSSIER_LANGUAGE,
@@ -71,6 +77,7 @@ export function dossierPatchPayloadFromDraft(
       "dossier_storage_id",
       trimmedOrNull(draft.dossierStorageId),
     ],
+    dossierCode: ["dossier_code", trimmedOrNull(draft.dossierCode)],
     title: ["title", trimmedOrNull(draft.title)],
     retentionPeriod: [
       "retention_period",
@@ -106,6 +113,7 @@ export function updateDossierGroupFromResponse(
       dossierId: dossier.dossier_id ?? group.dossierId,
       dossierStorageId: dossier.dossier_storage_id ?? group.dossierStorageId ?? null,
       dossierNumber: dossier.dossier_number ?? null,
+      dossierCode: dossier.dossier_code ?? null,
       boxNumber: dossier.box_number ?? null,
       folderName: dossier.folder_name ?? null,
       archiveName: dossier.archive_name ?? null,

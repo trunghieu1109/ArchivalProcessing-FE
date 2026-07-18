@@ -22,6 +22,7 @@ import { ClusterGroupInformationPanel } from "./FinalResult.groupInfoPanel"
 import { DossierMetadataSidePanel } from "./FinalResult.sidePanel"
 import { DossierSuggestionsModal } from "./DossierSuggestionsModal"
 import { ResultNode } from "./FinalResult.resultNode"
+import { SHOW_DOSSIER_SUGGESTIONS } from "./temporaryFeatureVisibility"
 import {
   CLUSTER_PROGRESS_PHASES,
   clusterVersionSourceLabel,
@@ -519,7 +520,7 @@ export function FinalResultView(props: Record<string, any>) {
           </div>
         )}
       </div>
-      {selectedDossierSuggestionsDocuments.length > 0 && (
+      {SHOW_DOSSIER_SUGGESTIONS && selectedDossierSuggestionsDocuments.length > 0 && (
         <DossierSuggestionsModal
           key={selectedDossierSuggestionsDocuments
             .map(

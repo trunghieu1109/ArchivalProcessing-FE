@@ -36,6 +36,7 @@ export interface ClusterGroup {
   dossierId?: string | null
   dossierStorageId?: string | null
   dossierNumber?: string | null
+  dossierCode?: string | null
   boxNumber?: string | null
   folderName?: string | null
   archiveName?: string | null
@@ -491,6 +492,7 @@ function clusterToGroup(
     metadataRevision: dossier?.metadata_revision ?? 0,
     classificationStatus: dossier?.classification_status ?? null,
     dossierNumber: dossier?.dossier_number ?? null,
+    dossierCode: dossier?.dossier_code ?? null,
     boxNumber: dossier?.box_number ?? null,
     folderName: dossier?.folder_name ?? null,
     archiveName: dossier?.archive_name ?? null,

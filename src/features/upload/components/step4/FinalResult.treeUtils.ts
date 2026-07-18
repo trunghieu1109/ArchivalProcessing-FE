@@ -10,6 +10,7 @@ import {
   dossierYearLabel,
 } from "./FinalResult.metadataUtils"
 import type { DraggedDocument, ResultTreeNode } from "./FinalResult.types"
+import { SHOW_DOSSIER_CODE } from "./temporaryFeatureVisibility"
 
 const UNKNOWN_FONDS_LABEL = "Ch\u01b0a \u0111\u1eb7t t\u00ean ph\u00f4ng"
 export const PERMANENT_RETENTION_LABEL = "V\u0129nh vi\u1ec5n"
@@ -242,6 +243,7 @@ function resultTreeNodeMatchesSearch(
       group?.label,
       group?.dossierId,
       group?.dossierNumber,
+      ...(SHOW_DOSSIER_CODE ? [group?.dossierCode] : []),
       group?.boxNumber,
     ].join(" ")
   ).includes(normalizedQuery)

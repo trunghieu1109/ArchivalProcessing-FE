@@ -112,6 +112,7 @@ export function applyPendingDossierDrafts(
       label: title ?? group.label,
       dossierStorageId: textValue(metadata.dossier_storage_id),
       dossierNumber: textValue(metadata.dossier_number),
+      dossierCode: textValue(metadata.dossier_code),
       boxNumber: textValue(metadata.box_number),
       folderName: textValue(metadata.folder_name),
       archiveName: textValue(metadata.archive_name),

@@ -139,6 +139,7 @@ export interface SessionDossierSummary {
   title: string
   title_override: string | null
   dossier_number: string | null
+  dossier_code?: string | null
   box_number: string | null
   folder_name: string | null
   dossier_storage_id?: string | null
@@ -178,6 +179,7 @@ export interface SessionDossierSummary {
 export interface SessionDossierPatchPayload {
   title?: string | null
   dossier_number?: string | null
+  dossier_code?: string | null
   box_number?: string | null
   folder_name?: string | null
   dossier_storage_id?: string | null

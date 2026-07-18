@@ -25,6 +25,7 @@ import {
   createDossierMetadataDraft,
   type DossierMetadataDraft,
 } from "./FinalResult.metadataUtils"
+import { SHOW_DOSSIER_CODE } from "./temporaryFeatureVisibility"
 
 const LEGACY_RETENTION_VERSION_ID = "__current_retention_candidates__"
 
@@ -79,6 +80,9 @@ export function DossierMetadataSidePanel({
     wide?: boolean
   }> = [
     { label: "Tiêu đề hồ sơ", value: group.label, wide: true },
+    ...(SHOW_DOSSIER_CODE
+      ? [{ label: "Ký hiệu hồ sơ", value: group.dossierCode ?? "" }]
+      : []),
     { label: "Thời hạn lưu trữ", value: group.retentionPeriod ?? "" },
     { label: "Ngôn ngữ", value: group.language || DEFAULT_DOSSIER_LANGUAGE },
     { label: "Thời gian bắt đầu", value: group.startDate ?? "" },

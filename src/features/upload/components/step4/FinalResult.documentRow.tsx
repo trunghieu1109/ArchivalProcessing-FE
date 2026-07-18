@@ -38,8 +38,7 @@ import {
   truncateWithDots,
 } from "./FinalResult.metadataUtils"
 import { pendingFeedbackActionLabel } from "./FinalResult.pendingFeedback"
-
-const SHOW_DOSSIER_SUGGESTIONS_BUTTON = true
+import { SHOW_DOSSIER_SUGGESTIONS } from "./temporaryFeatureVisibility"
 
 export function DocumentRow({
   document,
@@ -311,7 +310,7 @@ export function DocumentRow({
         >
           <Eye className="size-3.5" />
         </Button>
-        {SHOW_DOSSIER_SUGGESTIONS_BUTTON && (
+        {SHOW_DOSSIER_SUGGESTIONS && (
           <Button
             type="button"
             variant={selectedDossierSuggestions ? "default" : "outline"}

@@ -22,6 +22,7 @@ import type { DraggedDocument, ResultTreeNode } from "./FinalResult.types"
 import { CountBadge, DocumentRow } from "./FinalResult.documentRow"
 import { SelectionCheckbox } from "./FinalResult.selection"
 import { dossierPageCount, formatDateRange } from "./FinalResult.metadataUtils"
+import { SHOW_DOSSIER_CODE } from "./temporaryFeatureVisibility"
 
 export function ResultNode({
   node,
@@ -268,6 +269,12 @@ export function ResultNode({
                   ? `Số ${group.dossierNumber}`
                   : "Chưa có số hồ sơ"}
               </span>
+              {SHOW_DOSSIER_CODE && group.dossierCode && (
+                <>
+                  <span>·</span>
+                  <span>Ký hiệu {group.dossierCode}</span>
+                </>
+              )}
               {group.boxNumber && (
                 <>
                   <span>·</span>
