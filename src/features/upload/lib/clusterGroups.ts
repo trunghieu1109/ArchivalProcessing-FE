@@ -81,6 +81,10 @@ export interface ClusterDocument {
   dossierSuggestions?: SessionDossierSuggestion[] | null
   clusterWarning: ClusterDocumentWarning | null
   pendingFeedback?: PendingClusterFeedbackMarker | null
+  lifecycleStatus?: "active" | "delete_pending" | "deleted" | string
+  deletedAt?: string | null
+  deletedByName?: string | null
+  previewAvailable?: boolean
 }
 
 export interface PendingClusterFeedbackMarker {
@@ -414,6 +418,13 @@ function clusterToGroup(
           Boolean(placement.requires_review) || Boolean(clusterWarning),
         metadata,
         clusterWarning,
+        lifecycleStatus:
+          placement.lifecycle_status ?? item?.lifecycle_status ?? "active",
+        deletedAt: placement.deleted_at ?? item?.deleted_at ?? null,
+        deletedByName:
+          placement.deleted_by_name ?? item?.deleted_by_name ?? null,
+        previewAvailable:
+          placement.preview_available ?? item?.preview_available ?? true,
       }
     })
   const placedIds = new Set(documents.map((document) => document.documentId))
@@ -469,6 +480,10 @@ function clusterToGroup(
         requiresReview: Boolean(clusterWarning),
         metadata,
         clusterWarning,
+        lifecycleStatus: item?.lifecycle_status ?? "active",
+        deletedAt: item?.deleted_at ?? null,
+        deletedByName: item?.deleted_by_name ?? null,
+        previewAvailable: item?.preview_available ?? true,
       }
     })
   const allDocuments = [...documents, ...fallbackDocuments]

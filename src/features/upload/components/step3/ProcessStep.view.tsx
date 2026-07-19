@@ -1,4 +1,4 @@
-import { type CSSProperties } from "react"
+import { useState, type CSSProperties } from "react"
 import { Download, FileArchive, Loader2 } from "lucide-react"
 import { motion } from "framer-motion"
 import {
@@ -10,6 +10,10 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { PaginationControls } from "@/features/upload/components/PaginationControls"
 import { DocumentPdfPreview } from "@/features/upload/components/DocumentPdfPreview"
 import { DocumentDownloadDialog } from "./DocumentDownloadDialog"
+import {
+  DocumentDeletionDialog,
+  type DocumentDeletionTarget,
+} from "../DocumentDeletionDialog"
 import { MetadataCard } from "./MetadataCard"
 import { ProcessStepReviewControls } from "./ProcessStep.reviewControls"
 import { MAX_LOADING_PLACEHOLDERS } from "./ProcessStep.types"
@@ -21,6 +25,7 @@ import {
 import { canUserEditMetadataItem } from "./ProcessStep.batchUtils"
 import type { SessionDocumentResponse } from "@/features/upload/api/sessionApi"
 import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
+import type { PdfMetadata } from "@/features/upload/types"
 import type { createProcessStepActions } from "./ProcessStep.actions"
 import type { useProcessStepModel } from "./useProcessStepModel"
 
@@ -62,6 +67,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     bulkReviewSelectionActive,
     bulkRetryItems,
     bulkSelectedIds,
+    bulkSelectedItems,
     bulkSelectionCount,
     bulkVerifyItems,
     bulkVerifying,
@@ -92,6 +98,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     confirmingAutoBatchIndexes,
     confirmingManualQuickWorkerIds,
     handleApply,
+    handleDocumentsDeleted,
     handleExportMetadataReview,
     handlePreviewResizePointerDown,
     handleRetryMetadata,
@@ -161,6 +168,18 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     workersLoading,
     autoVerifiedItems,
   } = props
+  const [deletionTargets, setDeletionTargets] = useState<
+    DocumentDeletionTarget[]
+  >([])
+  const deletionDialogOpen = deletionTargets.length > 0
+  const openDocumentDeletion = (documents: PdfMetadata[]) => {
+    setDeletionTargets(
+      documents.map((document) => ({
+        id: document.id,
+        name: document.data_path.split("/").pop() || document.data_path,
+      }))
+    )
+  }
 
   const warningCount =
     metadataWarningTotal !== undefined
@@ -350,6 +369,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
               bulkVerifyItems={bulkVerifyItems}
               bulkVerifying={bulkVerifying}
               canBulkSelectMetadata={canBulkSelectMetadata}
+              canDeleteDocuments={isCoordinator}
               canManageMetadataBatches={canManageMetadataBatches}
               cancelManualSplit={cancelManualSplit}
               clearBulkReviewSelection={clearBulkReviewSelection}
@@ -372,6 +392,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
               handleReviewModeChange={handleReviewModeChange}
               handleSelectBatch={handleSelectBatch}
               handleVerifyAllReady={handleVerifyAllReady}
+              onDeleteSelected={() => openDocumentDeletion(bulkSelectedItems)}
               hasServerPagination={hasServerPagination}
               manualSelectedIds={manualSelectedIds}
               manualSelectedOnly={manualSelectedOnly}
@@ -410,6 +431,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
                   )
                   const bulkSelectionDisabled =
                     bulkReviewSelectionActive &&
+                    !isCoordinator &&
                     ((!isMetadataConfirmable(item) &&
                       !isMetadataFailedItem(item)) ||
                       (isMetadataFailedItem(item) && !canRestartMetadata) ||
@@ -441,6 +463,11 @@ export function ProcessStepView(props: ProcessStepViewProps) {
                       onRetry={
                         canRestartMetadata
                           ? () => void handleRetryMetadata(item)
+                          : undefined
+                      }
+                      onDelete={
+                        isCoordinator
+                          ? () => openDocumentDeletion([item])
                           : undefined
                       }
                     />
@@ -515,6 +542,16 @@ export function ProcessStepView(props: ProcessStepViewProps) {
           />
         </div>
       </div>
+
+      <DocumentDeletionDialog
+        open={deletionDialogOpen}
+        sessionId={sessionId}
+        targets={deletionTargets}
+        onOpenChange={(open) => {
+          if (!open) setDeletionTargets([])
+        }}
+        onMutationCompleted={handleDocumentsDeleted}
+      />
 
       <ProcessStepFooter
         pendingReadyItems={pendingReadyItems}

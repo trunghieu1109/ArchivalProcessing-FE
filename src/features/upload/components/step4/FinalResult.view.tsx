@@ -32,6 +32,7 @@ import {
 export function FinalResultView(props: Record<string, any>) {
   const {
     activeClusterVersionId,
+    canDeleteDocuments,
     activeResultTreeSearchNodeId,
     canRestoreFileRegisterVersion,
     cancelingPendingFeedback,
@@ -41,6 +42,8 @@ export function FinalResultView(props: Record<string, any>) {
     clusterProgressMessage,
     clusterProgressPhase,
     clusterVersionNavigationBusy,
+    clusterVersionStale,
+    deleteSelectedDocumentsDisabled,
     displayedClusterVersion,
     displayedClusterVersionId,
     draggedDocument,
@@ -51,6 +54,7 @@ export function FinalResultView(props: Record<string, any>) {
     handleCreateDossierFromSelection,
     handleCreateDossierFromSuggestions,
     handleDropOnDossier,
+    handleDeleteSelectedDocuments,
     handleFinish,
     handleMoveSelectionToDossier,
     handlePreviewResizePointerDown,
@@ -243,7 +247,9 @@ export function FinalResultView(props: Record<string, any>) {
                 size="sm"
                 onClick={() => void handleActivateDisplayedClusterVersion()}
                 disabled={
-                  clusterVersionNavigationBusy || Boolean(pendingClusterVersion)
+                  clusterVersionNavigationBusy ||
+                  Boolean(pendingClusterVersion) ||
+                  Boolean(displayedClusterVersion.is_stale)
                 }
                 className="h-9"
               >
@@ -258,6 +264,16 @@ export function FinalResultView(props: Record<string, any>) {
           </div>
         </div>
       )}
+
+      {clusterVersionStale ? (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <p className="font-semibold">Cần lập hồ sơ lại</p>
+          <p className="mt-1 text-xs">
+            Tập tài liệu của session đã thay đổi. Phiên bản hồ sơ này chỉ còn
+            giá trị lịch sử; đánh số, tạo mục lục và xuất bản đang bị khóa.
+          </p>
+        </div>
+      ) : null}
 
       {showClusterProgress && (
         <ProgressTimeline
@@ -544,11 +560,15 @@ export function FinalResultView(props: Record<string, any>) {
         />
       )}
       <FinalResultFeedbackPanel
+        canDeleteDocuments={canDeleteDocuments}
         canRestoreFileRegisterVersion={canRestoreFileRegisterVersion}
         cancelingPendingFeedback={cancelingPendingFeedback}
         clusterJobMode={clusterJobMode}
+        clusterVersionStale={clusterVersionStale}
+        deleteSelectedDocumentsDisabled={deleteSelectedDocumentsDisabled}
         handleCancelPendingFeedback={handleCancelPendingFeedback}
         handleCreateDossierFromSelection={handleCreateDossierFromSelection}
+        handleDeleteSelectedDocuments={handleDeleteSelectedDocuments}
         handleSelectDossierSuggestionsFromSelection={
           handleSelectDossierSuggestionsFromSelection
         }

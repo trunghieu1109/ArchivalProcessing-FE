@@ -8,6 +8,7 @@ import {
   getDigitizationStatus,
   verifyDocumentMetadata,
   type SessionDocumentResponse,
+  type DocumentDeletionOperationResponse,
 } from "@/features/upload/api/sessionApi"
 import type { PdfMetadata } from "@/features/upload/types"
 import type {
@@ -195,6 +196,40 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     } finally {
       setVerifyingIds((previous) => removeId(previous, item.id))
     }
+  }
+
+  const handleDocumentsDeleted = (
+    _result: DocumentDeletionOperationResponse,
+    targetedDocumentIds: number[]
+  ) => {
+    const removedIds = new Set(targetedDocumentIds)
+    setItems((previous) =>
+      previous.filter((item) => !removedIds.has(item.id))
+    )
+    setSelectedDocumentId((previous) =>
+      previous !== null && removedIds.has(previous) ? null : previous
+    )
+    setBulkSelectedIds((previous) => {
+      const next = new Set(previous)
+      removedIds.forEach((id) => next.delete(id))
+      return next
+    })
+    setBulkSelectedItemSnapshots((previous) => {
+      const next = new Map(previous)
+      removedIds.forEach((id) => next.delete(id))
+      return next
+    })
+    setManualSelectedIds((previous) => {
+      const next = new Set(previous)
+      removedIds.forEach((id) => next.delete(id))
+      return next
+    })
+    setManualSelectedItemSnapshots((previous) => {
+      const next = new Map(previous)
+      removedIds.forEach((id) => next.delete(id))
+      return next
+    })
+    onMetadataDocumentsChanged?.()
   }
 
   const handleVerifyAllReady = async () => {
@@ -1212,6 +1247,7 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
 
   return {
     handleApply,
+    handleDocumentsDeleted,
     handleVerifyAllReady,
     handleReviewModeChange,
     handleBatchSizeInputChange,

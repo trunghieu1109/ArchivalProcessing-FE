@@ -466,11 +466,12 @@ export function useProcessStepModel({
     [canRestartMetadata, displayedItems]
   )
   const displayedBulkSelectableItems = useMemo(() => {
+    if (isCoordinator) return displayedItems
     const byId = new Map<number, PdfMetadata>()
     displayedConfirmableItems.forEach((item) => byId.set(item.id, item))
     displayedRetryableItems.forEach((item) => byId.set(item.id, item))
     return displayedItems.filter((item) => byId.has(item.id))
-  }, [displayedConfirmableItems, displayedItems, displayedRetryableItems])
+  }, [displayedConfirmableItems, displayedItems, displayedRetryableItems, isCoordinator])
   const bulkSelectedKnownItems = useMemo(
     () =>
       Array.from(bulkSelectedIds)
@@ -482,10 +483,12 @@ export function useProcessStepModel({
     () =>
       bulkSelectedKnownItems.filter(
         (item) =>
-          (isMetadataConfirmable(item) || isMetadataFailedItem(item)) &&
+          (isCoordinator ||
+            isMetadataConfirmable(item) ||
+            isMetadataFailedItem(item)) &&
           canUserEditMetadataItem(item, currentUserIdentity)
       ),
-    [bulkSelectedKnownItems, currentUserIdentity]
+    [bulkSelectedKnownItems, currentUserIdentity, isCoordinator]
   )
   const bulkRetryItems = bulkReviewSelectionActive
     ? bulkSelectedItems.filter(isMetadataFailedItem)

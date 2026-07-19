@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Scissors,
   Search,
+  Trash2,
   UserRound,
   X,
 } from "lucide-react"
@@ -45,6 +46,7 @@ interface ProcessStepReviewControlsProps {
   bulkVerifyItems: PdfMetadata[]
   bulkVerifying: boolean
   canBulkSelectMetadata: boolean
+  canDeleteDocuments: boolean
   canManageMetadataBatches: boolean
   cancelManualSplit: () => void
   clearBulkReviewSelection: () => void
@@ -67,6 +69,7 @@ interface ProcessStepReviewControlsProps {
   handleSelectBatch: (group: MetadataBatchGroup) => void
   handleRetrySelectedMetadata: () => Promise<void>
   handleVerifyAllReady: () => Promise<void>
+  onDeleteSelected: () => void
   hasServerPagination: boolean
   manualSelectedIds: Set<number>
   manualSelectedOnly: boolean
@@ -118,6 +121,7 @@ export function ProcessStepReviewControls(
     bulkVerifyItems,
     bulkVerifying,
     canBulkSelectMetadata,
+    canDeleteDocuments,
     canManageMetadataBatches,
     cancelManualSplit,
     clearBulkReviewSelection,
@@ -140,6 +144,7 @@ export function ProcessStepReviewControls(
     handleSelectBatch,
     handleRetrySelectedMetadata,
     handleVerifyAllReady,
+    onDeleteSelected,
     hasServerPagination,
     manualSelectedIds,
     manualSelectedOnly,
@@ -430,6 +435,19 @@ export function ProcessStepReviewControls(
                 >
                   Bỏ chọn
                 </Button>
+                {canDeleteDocuments ? (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    onClick={onDeleteSelected}
+                    disabled={bulkVerifying || bulkSelectionCount === 0}
+                    className="h-8 gap-1.5 text-xs"
+                  >
+                    <Trash2 className="size-3" />
+                    Xóa đã chọn ({bulkSelectionCount})
+                  </Button>
+                ) : null}
               </>
             )}
             {(bulkVerifyItems.length > 0 || bulkReviewSelectionActive) && (

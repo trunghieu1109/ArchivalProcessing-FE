@@ -8,8 +8,10 @@ import {
   suggestSelectedDocumentDossiers,
   type ClusterGroupInformationTableResponse,
   type ClusterVersionResponse,
+  type DocumentDeletionOperationResponse,
   type SessionDossierSuggestion,
 } from "@/features/upload/api/sessionApi"
+import { useAuth } from "@/features/auth/lib/AuthContext"
 import { toast } from "sonner"
 import {
   ensureTemporaryFolderGroup,
@@ -18,6 +20,10 @@ import {
   type ClusterGroup,
 } from "@/features/upload/lib/clusterGroups"
 import { FinalResultView } from "./FinalResult.view"
+import {
+  DocumentDeletionDialog,
+  type DocumentDeletionTarget,
+} from "../DocumentDeletionDialog"
 import { useFinalResultPolling } from "./useFinalResultPolling"
 import { useFinalResultVersionActions } from "./useFinalResultVersionActions"
 import { useFinalResultTreeActions } from "./useFinalResultTreeActions"
@@ -60,6 +66,7 @@ export function FinalResult({
   metadataItems = [],
   onFinish,
 }: FinalResultProps) {
+  const { user } = useAuth()
   const initialDossierCount = regularDossierCount(initialGroups)
   const [groups, setGroups] = useState<ClusterGroup[]>(() =>
     ensureTemporaryFolderGroup(initialGroups)
@@ -115,6 +122,9 @@ export function FinalResult({
   const [selectedSessionDocumentIds, setSelectedSessionDocumentIds] = useState<
     Set<number>
   >(() => new Set())
+  const [deletionTargets, setDeletionTargets] = useState<
+    DocumentDeletionTarget[]
+  >([])
   const [selectedPreviewDocumentId, setSelectedPreviewDocumentId] = useState<
     number | null
   >(null)
@@ -212,10 +222,21 @@ export function FinalResult({
     [groups]
   )
   const selectableSessionDocumentIdSet = useMemo(
-    () => new Set(previewDocuments.map((entry) => entry.sessionDocumentId)),
+    () =>
+      new Set(
+        previewDocuments
+          .filter(
+            (entry) =>
+              !entry.document.lifecycleStatus ||
+              entry.document.lifecycleStatus === "active"
+          )
+          .map((entry) => entry.sessionDocumentId)
+      ),
     [previewDocuments]
   )
   const selectedDocumentCount = selectedSessionDocumentIds.size
+  const userRole = String(user?.role ?? "").trim().toLowerCase()
+  const canDeleteDocuments = userRole === "admin" || userRole === "coordinator"
   const selectedPreviewEntry = useMemo(
     () =>
       previewDocuments.find(
@@ -1132,6 +1153,92 @@ export function FinalResult({
               ? `Đang cập nhật hồ sơ. ${status}`
               : `Đang lập hồ sơ mới. ${status}`
       : status
+  const handleDeleteSelectedDocuments = useCallback(() => {
+    const targets = previewDocuments
+      .filter(
+        (entry) =>
+          selectedSessionDocumentIds.has(entry.sessionDocumentId) &&
+          entry.document.lifecycleStatus !== "deleted" &&
+          entry.document.lifecycleStatus !== "delete_pending"
+      )
+      .map((entry) => ({
+        id: entry.sessionDocumentId,
+        name: entry.document.fileName,
+      }))
+    if (targets.length === 0) {
+      toast.error("Chưa chọn tài liệu active để xóa.")
+      return
+    }
+    setDeletionTargets(targets)
+  }, [previewDocuments, selectedSessionDocumentIds])
+
+  const handleDocumentDeletionCompleted = useCallback(
+    (
+      result: DocumentDeletionOperationResponse,
+      targetedDocumentIds: number[]
+    ) => {
+      const targetedIds = new Set(targetedDocumentIds)
+      const pendingIds = new Set(
+        result.pending_session_documents.map(
+          (document) => document.session_document_id
+        )
+      )
+      setGroups((previous) =>
+        previous.map((group) => ({
+          ...group,
+          documents: group.documents.map((document) =>
+            document.sessionDocumentId !== null &&
+            targetedIds.has(document.sessionDocumentId)
+              ? {
+                  ...document,
+                  lifecycleStatus: pendingIds.has(document.sessionDocumentId)
+                    ? "delete_pending"
+                    : "deleted",
+                  previewAvailable: false,
+                }
+              : document
+          ),
+        }))
+      )
+      setSelectedSessionDocumentIds((previous) => {
+        const next = new Set(previous)
+        targetedIds.forEach((id) => next.delete(id))
+        return next
+      })
+      setSelectedPreviewDocumentId((previous) =>
+        previous !== null && targetedIds.has(previous) ? null : previous
+      )
+      setPendingFeedbackCount(0)
+      setStatus("Tập tài liệu đã thay đổi. Cần lập hồ sơ lại.")
+      setDisplayedClusterVersion((previous) =>
+        previous
+          ? {
+              ...previous,
+              status: "stale",
+              is_stale: true,
+              stale_reason: "document_deleted",
+              current_document_set_revision: result.document_set_revision,
+            }
+          : previous
+      )
+      setClusterVersions((previous) =>
+        previous.map((version) =>
+          version.id === activeClusterVersionId
+            ? {
+                ...version,
+                status: "stale",
+                is_stale: true,
+                stale_reason: "document_deleted",
+                current_document_set_revision: result.document_set_revision,
+              }
+            : version
+        )
+      )
+    },
+    [activeClusterVersionId]
+  )
+
+  const clusterVersionStale = Boolean(displayedClusterVersion?.is_stale)
   const showClusterProgress =
     loading ||
     checkingClusters ||
@@ -1157,7 +1264,11 @@ export function FinalResult({
     Boolean(rebuildBaselineVersionId) ||
     Boolean(pendingClusterVersion)
   const selectedDocumentsActionDisabled =
-    temporaryFolderUpdateDisabled || selectedDocumentCount === 0
+    temporaryFolderUpdateDisabled || clusterVersionStale || selectedDocumentCount === 0
+  const deleteSelectedDocumentsDisabled =
+    !canDeleteDocuments ||
+    temporaryFolderUpdateDisabled ||
+    selectedDocumentCount === 0
   const handleResultTreeSearchNavigate = useCallback(
     (direction: number) => {
       setResultTreeSearchIndex((current) => {
@@ -1169,8 +1280,10 @@ export function FinalResult({
     [resultTreeSearchMatches.length]
   )
   return (
-    <FinalResultView
+    <>
+      <FinalResultView
       activeClusterVersionId={activeClusterVersionId}
+      canDeleteDocuments={canDeleteDocuments}
       canRestoreFileRegisterVersion={canRestoreFileRegisterVersion}
       cancelingPendingFeedback={cancelingPendingFeedback}
       checkingClusters={checkingClusters}
@@ -1179,6 +1292,8 @@ export function FinalResult({
       clusterProgressMessage={clusterProgressMessage}
       clusterProgressPhase={clusterProgressPhase}
       clusterVersionNavigationBusy={clusterVersionNavigationBusy}
+      clusterVersionStale={clusterVersionStale}
+      deleteSelectedDocumentsDisabled={deleteSelectedDocumentsDisabled}
       displayedClusterVersion={displayedClusterVersion}
       displayedClusterVersionId={displayedClusterVersionId}
       draggedDocument={draggedDocument}
@@ -1191,6 +1306,7 @@ export function FinalResult({
       handleCreateDossierFromSelection={handleCreateDossierFromSelection}
       handleCreateDossierFromSuggestions={handleCreateDossierFromSuggestions}
       handleDropOnDossier={handleDropOnDossier}
+      handleDeleteSelectedDocuments={handleDeleteSelectedDocuments}
       handleFinish={handleFinish}
       handleMoveSelectionToDossier={handleMoveSelectionToDossier}
       handlePreviewResizePointerDown={handlePreviewResizePointerDown}
@@ -1284,7 +1400,17 @@ export function FinalResult({
       viewingHistoricalClusterVersion={viewingHistoricalClusterVersion}
       activeResultTreeSearchNodeId={activeResultTreeSearchMatch?.nodeId ?? null}
       onResultTreeSearchNavigate={handleResultTreeSearchNavigate}
-    />
+      />
+      <DocumentDeletionDialog
+        open={deletionTargets.length > 0}
+        sessionId={sessionId}
+        targets={deletionTargets}
+        onOpenChange={(open) => {
+          if (!open) setDeletionTargets([])
+        }}
+        onMutationCompleted={handleDocumentDeletionCompleted}
+      />
+    </>
   )
 }
 

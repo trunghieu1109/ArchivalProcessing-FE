@@ -18,6 +18,14 @@ export interface PaginationMeta {
 
 export interface DigitizationDocument {
   id: number
+  lifecycle_status?: "active" | "delete_pending" | "deleted" | string
+  generation?: number
+  delete_requested_at?: string | null
+  deleted_at?: string | null
+  deleted_by_user_id?: string | number | null
+  deleted_by_name?: string | null
+  delete_error?: string | null
+  preview_available?: boolean
   ocr_batch_id?: number | null
   document_id: string
   data_path: string
@@ -59,6 +67,9 @@ export interface DigitizationBatch {
   recursive: boolean
   total_files: number | null
   total_jobs: number | null
+  raw_total_files?: number | null
+  raw_total_jobs?: number | null
+  excluded_document_count?: number
   missing_files: string[]
   status_counts: Record<string, number>
   status: string
@@ -400,6 +411,14 @@ export interface MetadataCountConflict {
 export interface SessionDocumentResponse {
   id: number
   session_id: string
+  lifecycle_status?: "active" | "delete_pending" | "deleted" | string
+  generation?: number
+  delete_requested_at?: string | null
+  deleted_at?: string | null
+  deleted_by_user_id?: string | number | null
+  deleted_by_name?: string | null
+  delete_error?: string | null
+  preview_available?: boolean
   ocr_batch_id?: number | null
   document_id: string
   data_path: string
@@ -443,6 +462,89 @@ export interface BulkVerifyDocumentsResponse {
     document_id: number
     detail: string
   }>
+}
+
+export interface DocumentDeletionBlocker {
+  job_id?: number | null
+  job_type: string
+  status: string
+  operation_id?: string | null
+  ocr_batch_id?: number | null
+  remote_document_id?: string | null
+  started_at?: string | null
+  created_at?: string | null
+}
+
+export interface DocumentDeletionImpact {
+  active_cluster_version_id?: string | null
+  affected_dossier_ids: string[]
+  clustering_will_be_stale: boolean
+  numbering_will_be_stale: boolean
+  ready_artifact_count: number
+  artifact_downloads_will_be_blocked: boolean
+  publication_will_be_stale: boolean
+}
+
+export interface DocumentDeletionPreviewResponse {
+  session_id: string
+  allowed: boolean
+  documents: Array<{
+    session_document_id: number
+    document_id: string
+    file_name: string
+    data_path: string
+    lifecycle_status: string
+    generation: number
+    remote_ingestion_batch_id?: string | null
+    remote_document_id?: string | null
+    delete_requested_at?: string | null
+    deleted_at?: string | null
+    deleted_by_name?: string | null
+  }>
+  blocking_jobs: DocumentDeletionBlocker[]
+  jobs_to_cancel: DocumentDeletionBlocker[]
+  continuing_jobs: DocumentDeletionBlocker[]
+  impact: DocumentDeletionImpact
+  document_set_revision: number
+  document_mutation_status: string
+  document_mutation_operation_id?: string | null
+}
+
+export interface DocumentDeletionOperationResponse {
+  operation_id: string
+  session_id: string
+  status: "pending" | "completed" | "partial_failed" | "failed" | string
+  deleted_session_document_ids: number[]
+  already_deleted_session_document_ids: number[]
+  not_found_session_document_ids?: number[]
+  pending_session_documents: Array<{
+    session_document_id: number
+    remote_ingestion_batch_id?: string | null
+    remote_document_id?: string | null
+    error: string
+  }>
+  remote_batches?: Array<Record<string, unknown>>
+  cancelled_jobs?: Array<
+    DocumentDeletionBlocker & {
+      previous_status?: string
+      operation_id?: string
+      session_document_ids?: number[]
+    }
+  >
+  continuing_jobs?: DocumentDeletionBlocker[]
+  document_set_revision: number
+  cluster_state: "not_started" | "current" | "stale" | string
+  requested_document_ids?: number[]
+  document_mutation_status?: string
+  retry_count?: number
+  max_retry_count?: number
+  retry_exhausted?: boolean
+  retry_exhausted_at?: string | null
+  requires_manual_review?: boolean
+  reason?: string | null
+  error?: string | null
+  created_at?: string | null
+  finished_at?: string | null
 }
 
 export interface CreateMetadataBatchResponse {

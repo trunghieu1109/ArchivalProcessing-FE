@@ -6,17 +6,22 @@ import {
   ListChecks,
   Loader2,
   RefreshCw,
+  Trash2,
   Undo2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { SHOW_DOSSIER_SUGGESTIONS } from "./temporaryFeatureVisibility"
 
 interface FinalResultFeedbackPanelProps {
+  canDeleteDocuments: boolean
   canRestoreFileRegisterVersion: boolean
   cancelingPendingFeedback: boolean
   clusterJobMode: string
+  clusterVersionStale: boolean
+  deleteSelectedDocumentsDisabled: boolean
   handleCancelPendingFeedback: () => Promise<unknown> | void
   handleCreateDossierFromSelection: () => Promise<boolean>
+  handleDeleteSelectedDocuments: () => void
   handleFinish: () => void
   handleRebuildClusters: (strategy?: string) => Promise<unknown> | void
   handleRestorePreviousClusterVersion: () => Promise<unknown> | void
@@ -40,11 +45,15 @@ interface FinalResultFeedbackPanelProps {
 
 export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
   const {
+    canDeleteDocuments,
     canRestoreFileRegisterVersion,
     cancelingPendingFeedback,
     clusterJobMode,
+    clusterVersionStale,
+    deleteSelectedDocumentsDisabled,
     handleCancelPendingFeedback,
     handleCreateDossierFromSelection,
+    handleDeleteSelectedDocuments,
     handleSelectDossierSuggestionsFromSelection,
     handleFinish,
     handleRebuildClusters,
@@ -141,6 +150,18 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
             ? "Đang tạo và gợi ý..."
             : "Tạo hồ sơ từ lựa chọn"}
         </Button>
+        {canDeleteDocuments ? (
+          <Button
+            variant="destructive"
+            onClick={handleDeleteSelectedDocuments}
+            className="w-full xl:w-auto"
+            disabled={deleteSelectedDocumentsDisabled}
+            title="Xóa các tài liệu đã chọn khỏi toàn session"
+          >
+            <Trash2 data-icon="inline-start" />
+            Xóa khỏi session
+          </Button>
+        ) : null}
         <Button
           variant="outline"
           onClick={() => void handleRebuildClusters()}
@@ -163,7 +184,7 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
           ) : (
             <RefreshCw data-icon="inline-start" />
           )}
-          Cập nhật hồ sơ
+          {clusterVersionStale ? "Lập hồ sơ lại" : "Cập nhật hồ sơ"}
         </Button>
         <Button
           variant="outline"
@@ -196,6 +217,7 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
           className="w-full xl:w-auto"
           disabled={
             totalDossiers === 0 ||
+            clusterVersionStale ||
             pendingFeedbackCount > 0 ||
             loading ||
             rebuildSubmitting ||
