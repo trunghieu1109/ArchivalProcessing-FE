@@ -1,5 +1,6 @@
 import {
   Archive,
+  ArrowRightLeft,
   CheckCircle2,
   CircleX,
   FolderPlus,
@@ -14,14 +15,17 @@ import { SHOW_DOSSIER_SUGGESTIONS } from "./temporaryFeatureVisibility"
 
 interface FinalResultFeedbackPanelProps {
   canDeleteDocuments: boolean
+  canTransferDocuments: boolean
   canRestoreFileRegisterVersion: boolean
   cancelingPendingFeedback: boolean
   clusterJobMode: string
   clusterVersionStale: boolean
   deleteSelectedDocumentsDisabled: boolean
+  transferSelectedDocumentsDisabled: boolean
   handleCancelPendingFeedback: () => Promise<unknown> | void
   handleCreateDossierFromSelection: () => Promise<boolean>
   handleDeleteSelectedDocuments: () => void
+  handleTransferSelectedDocuments: () => void
   handleFinish: () => void
   handleRebuildClusters: (strategy?: string) => Promise<unknown> | void
   handleRestorePreviousClusterVersion: () => Promise<unknown> | void
@@ -46,14 +50,17 @@ interface FinalResultFeedbackPanelProps {
 export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
   const {
     canDeleteDocuments,
+    canTransferDocuments,
     canRestoreFileRegisterVersion,
     cancelingPendingFeedback,
     clusterJobMode,
     clusterVersionStale,
     deleteSelectedDocumentsDisabled,
+    transferSelectedDocumentsDisabled,
     handleCancelPendingFeedback,
     handleCreateDossierFromSelection,
     handleDeleteSelectedDocuments,
+    handleTransferSelectedDocuments,
     handleSelectDossierSuggestionsFromSelection,
     handleFinish,
     handleRebuildClusters,
@@ -160,6 +167,18 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
           >
             <Trash2 data-icon="inline-start" />
             Xóa khỏi session
+          </Button>
+        ) : null}
+        {canTransferDocuments ? (
+          <Button
+            variant="outline"
+            onClick={handleTransferSelectedDocuments}
+            className="w-full border-[#BFD3FF] text-[#0052FF] hover:bg-[#F3F7FF] xl:w-auto"
+            disabled={transferSelectedDocumentsDisabled}
+            title="Chuyển các tài liệu đã chọn sang một phông khác"
+          >
+            <ArrowRightLeft data-icon="inline-start" />
+            Chuyển phông
           </Button>
         ) : null}
         <Button

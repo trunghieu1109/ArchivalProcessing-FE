@@ -33,6 +33,7 @@ export function FinalResultView(props: Record<string, any>) {
   const {
     activeClusterVersionId,
     canDeleteDocuments,
+    canTransferDocuments,
     activeResultTreeSearchNodeId,
     canRestoreFileRegisterVersion,
     cancelingPendingFeedback,
@@ -44,6 +45,7 @@ export function FinalResultView(props: Record<string, any>) {
     clusterVersionNavigationBusy,
     clusterVersionStale,
     deleteSelectedDocumentsDisabled,
+    transferSelectedDocumentsDisabled,
     displayedClusterVersion,
     displayedClusterVersionId,
     draggedDocument,
@@ -55,6 +57,7 @@ export function FinalResultView(props: Record<string, any>) {
     handleCreateDossierFromSuggestions,
     handleDropOnDossier,
     handleDeleteSelectedDocuments,
+    handleTransferSelectedDocuments,
     handleFinish,
     handleMoveSelectionToDossier,
     handlePreviewResizePointerDown,
@@ -145,6 +148,9 @@ export function FinalResultView(props: Record<string, any>) {
   const previewColumns = selectedGroupInfoNode
     ? "minmax(340px,0.34fr) minmax(760px,0.66fr)"
     : `minmax(0, ${100 - previewWidthPercent}fr) minmax(460px, ${previewWidthPercent}fr)`
+  const staleReason = String(displayedClusterVersion?.stale_reason ?? "")
+  const documentsTransferredOut = staleReason === "documents_transferred_out"
+  const documentsTransferredIn = staleReason === "documents_transferred_in"
 
   return (
     <motion.div
@@ -267,10 +273,19 @@ export function FinalResultView(props: Record<string, any>) {
 
       {clusterVersionStale ? (
         <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          <p className="font-semibold">Cần lập hồ sơ lại</p>
+          <p className="font-semibold">
+            {documentsTransferredOut
+              ? "Có tài liệu đã được chuyển sang phông khác"
+              : documentsTransferredIn
+                ? "Có tài liệu mới được chuyển tới phông này"
+                : "Cần lập hồ sơ lại"}
+          </p>
           <p className="mt-1 text-xs">
-            Tập tài liệu của session đã thay đổi. Phiên bản hồ sơ này chỉ còn
-            giá trị lịch sử; đánh số, tạo mục lục và xuất bản đang bị khóa.
+            {documentsTransferredOut
+              ? "Các tài liệu đã chuyển vẫn được hiển thị trong phiên bản lịch sử với trạng thái Đã chuyển. Hãy cập nhật lại kết quả lập hồ sơ trước khi đánh số, tạo mục lục hoặc xuất bản."
+              : documentsTransferredIn
+                ? "Tài liệu mới chưa được tự động phân loại. Hãy chủ động cập nhật lại kết quả lập hồ sơ trước khi đánh số, tạo mục lục hoặc xuất bản."
+                : "Tập tài liệu của session đã thay đổi. Phiên bản hồ sơ này chỉ còn giá trị lịch sử; đánh số, tạo mục lục và xuất bản đang bị khóa."}
           </p>
         </div>
       ) : null}
@@ -561,14 +576,17 @@ export function FinalResultView(props: Record<string, any>) {
       )}
       <FinalResultFeedbackPanel
         canDeleteDocuments={canDeleteDocuments}
+        canTransferDocuments={canTransferDocuments}
         canRestoreFileRegisterVersion={canRestoreFileRegisterVersion}
         cancelingPendingFeedback={cancelingPendingFeedback}
         clusterJobMode={clusterJobMode}
         clusterVersionStale={clusterVersionStale}
         deleteSelectedDocumentsDisabled={deleteSelectedDocumentsDisabled}
+        transferSelectedDocumentsDisabled={transferSelectedDocumentsDisabled}
         handleCancelPendingFeedback={handleCancelPendingFeedback}
         handleCreateDossierFromSelection={handleCreateDossierFromSelection}
         handleDeleteSelectedDocuments={handleDeleteSelectedDocuments}
+        handleTransferSelectedDocuments={handleTransferSelectedDocuments}
         handleSelectDossierSuggestionsFromSelection={
           handleSelectDossierSuggestionsFromSelection
         }

@@ -23,6 +23,8 @@ export function sessionDocumentToJobSummary(
   return {
     id: document.id,
     ocr_batch_id: document.ocr_batch_id,
+    metadata_retry_available: document.metadata_retry_available,
+    metadata_retry_disabled_reason: document.metadata_retry_disabled_reason,
     document_id: document.document_id,
     data_path: document.data_path,
     import_action: document.import_action,

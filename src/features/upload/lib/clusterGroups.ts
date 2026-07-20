@@ -84,6 +84,10 @@ export interface ClusterDocument {
   lifecycleStatus?: "active" | "delete_pending" | "deleted" | string
   deletedAt?: string | null
   deletedByName?: string | null
+  transferredAt?: string | null
+  transferredByName?: string | null
+  transferredToSessionId?: string | null
+  transferredToSessionDocumentId?: number | null
   previewAvailable?: boolean
 }
 
@@ -423,6 +427,11 @@ function clusterToGroup(
         deletedAt: placement.deleted_at ?? item?.deleted_at ?? null,
         deletedByName:
           placement.deleted_by_name ?? item?.deleted_by_name ?? null,
+        transferredAt: placement.transferred_at ?? null,
+        transferredByName: placement.transferred_by_name ?? null,
+        transferredToSessionId: placement.transferred_to_session_id ?? null,
+        transferredToSessionDocumentId:
+          placement.transferred_to_session_document_id ?? null,
         previewAvailable:
           placement.preview_available ?? item?.preview_available ?? true,
       }

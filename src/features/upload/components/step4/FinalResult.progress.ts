@@ -146,6 +146,7 @@ export function clusterJobModeFromSource(source: unknown): ClusterJobMode {
 }
 
 export function clusterVersionSourceLabel(source: unknown): string {
+  if (source === "document_transfer_prune") return "cập nhật sau chuyển phông"
   if (source === "plan_reanalysis") return "theo phương án mới"
   if (source === "user_file_register") return "theo tập lưu"
   if (source === "user_feedback") return "từ feedback"

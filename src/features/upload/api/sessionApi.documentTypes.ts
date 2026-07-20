@@ -27,6 +27,14 @@ export interface DigitizationDocument {
   delete_error?: string | null
   preview_available?: boolean
   ocr_batch_id?: number | null
+  metadata_retry_available?: boolean
+  metadata_retry_disabled_reason?: string | null
+  transferred_at?: string | null
+  transferred_by_name?: string | null
+  transferred_from_session_id?: string | null
+  transferred_from_session_document_id?: number | null
+  transferred_to_session_id?: string | null
+  transferred_to_session_document_id?: number | null
   document_id: string
   data_path: string
   metadata_batch_id?: string | null
@@ -420,6 +428,14 @@ export interface SessionDocumentResponse {
   delete_error?: string | null
   preview_available?: boolean
   ocr_batch_id?: number | null
+  metadata_retry_available?: boolean
+  metadata_retry_disabled_reason?: string | null
+  transferred_at?: string | null
+  transferred_by_name?: string | null
+  transferred_from_session_id?: string | null
+  transferred_from_session_document_id?: number | null
+  transferred_to_session_id?: string | null
+  transferred_to_session_document_id?: number | null
   document_id: string
   data_path: string
   file_name: string
@@ -483,6 +499,48 @@ export interface DocumentDeletionImpact {
   ready_artifact_count: number
   artifact_downloads_will_be_blocked: boolean
   publication_will_be_stale: boolean
+  cluster_projection_status?: DocumentTransferProjectionStatus
+  cluster_projection_skip_reason?: string | null
+  previous_cluster_version_id?: string | null
+  new_cluster_version_id?: string | null
+  affected_cluster_ids?: string[]
+  removed_cluster_ids?: string[]
+  removed_dossier_ids?: string[]
+}
+
+export type DocumentTransferProjectionStatus =
+  | "eligible"
+  | "created"
+  | "skipped"
+  | "not_applicable"
+  | string
+
+export interface DocumentTransferClusterProjection {
+  status: DocumentTransferProjectionStatus
+  eligible: boolean
+  previous_cluster_version_id?: string | null
+  cluster_version_id?: string | null
+  new_cluster_version_id?: string | null
+  cluster_version_number?: number | null
+  affected_cluster_ids: string[]
+  affected_dossier_ids: string[]
+  removed_cluster_ids: string[]
+  removed_dossier_ids: string[]
+  skip_reason?: string | null
+  distance_matrix_shared_read_only?: boolean
+  remaining_document_count?: number
+}
+
+export interface DocumentTransferTargetSession {
+  session_id: string
+  fonds_name?: string | null
+  archive_name?: string | null
+  fonds_creator_code?: string | null
+}
+
+export interface DocumentTransferTargetsResponse {
+  targets: DocumentTransferTargetSession[]
+  pagination: PaginationMeta
 }
 
 export interface DocumentDeletionPreviewResponse {
@@ -545,6 +603,88 @@ export interface DocumentDeletionOperationResponse {
   error?: string | null
   created_at?: string | null
   finished_at?: string | null
+}
+
+export interface DocumentTransferBlocker extends DocumentDeletionBlocker {
+  session_id?: string
+  session_role?: "source" | "target" | string
+}
+
+export interface DocumentTransferDuplicate {
+  target_session_document_id: number
+  document_id: string
+  file_name: string
+  data_path: string
+  lifecycle_status: string
+  match_types: string[]
+}
+
+export interface DocumentTransferPreviewResponse {
+  source_session_id: string
+  target_session_id: string
+  target_session: {
+    session_id: string
+    status: string
+    archive_name?: string | null
+    archive_code?: string | null
+    fonds_name?: string | null
+    fonds_creator_code?: string | null
+  }
+  allowed: boolean
+  documents: Array<{
+    session_document_id: number
+    document_id: string
+    file_name: string
+    data_path: string
+    lifecycle_status: string
+    remote_ingestion_batch_id?: string | null
+    remote_document_id?: string | null
+    metadata_ready: boolean
+    metadata_final: boolean
+    review_status: string
+    is_reviewed: boolean
+  }>
+  validation_errors: Array<{
+    code: string
+    session_document_id: number
+    message: string
+  }>
+  blocking_jobs: DocumentTransferBlocker[]
+  duplicates: DocumentTransferDuplicate[]
+  source_impact: DocumentDeletionImpact
+  target_impact: DocumentDeletionImpact
+  source_cluster_projection: DocumentTransferClusterProjection
+  source_document_set_revision: number
+  target_document_set_revision: number
+  requires_source_reclustering: boolean
+  requires_target_reclustering: boolean
+}
+
+export interface DocumentTransferOperationResponse {
+  operation_id: string
+  status: "completed" | string
+  source_session_id: string
+  target_session_id: string
+  transferred_count: number
+  transferred_documents: Array<{
+    source_session_document_id: number
+    target_session_document_id: number
+    document_id: string
+    file_name: string
+    remote_ingestion_batch_id?: string | null
+    remote_document_id?: string | null
+    target_ocr_batch_id: null
+  }>
+  source_session_document_ids: number[]
+  target_session_document_ids: number[]
+  source_document_set_revision: number
+  target_document_set_revision: number
+  source_impact: DocumentDeletionImpact
+  target_impact: DocumentDeletionImpact
+  source_cluster_projection: DocumentTransferClusterProjection
+  remote_operation_performed: false
+  requires_source_reclustering: boolean
+  requires_target_reclustering: boolean
 }
 
 export interface CreateMetadataBatchResponse {

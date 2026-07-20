@@ -3,12 +3,15 @@ import type { DocumentPreviewTarget } from "@/features/upload/components/Documen
 import {
   cancelPendingClusterFeedback,
   getClusterGroupInformationTable,
+  getClusterVersion,
   listClusterFeedback,
+  listClusterVersions,
   patchSessionDossier,
   suggestSelectedDocumentDossiers,
   type ClusterGroupInformationTableResponse,
   type ClusterVersionResponse,
   type DocumentDeletionOperationResponse,
+  type DocumentTransferOperationResponse,
   type SessionDossierSuggestion,
 } from "@/features/upload/api/sessionApi"
 import { useAuth } from "@/features/auth/lib/AuthContext"
@@ -24,6 +27,10 @@ import {
   DocumentDeletionDialog,
   type DocumentDeletionTarget,
 } from "../DocumentDeletionDialog"
+import {
+  DocumentTransferDialog,
+  type DocumentTransferTarget,
+} from "../DocumentTransferDialog"
 import { useFinalResultPolling } from "./useFinalResultPolling"
 import { useFinalResultVersionActions } from "./useFinalResultVersionActions"
 import { useFinalResultTreeActions } from "./useFinalResultTreeActions"
@@ -47,6 +54,7 @@ import {
   updateDossierGroupFromResponse,
 } from "./FinalResult.metadataUtils"
 import {
+  clusterJobModeFromSource,
   clusterProgressLabel,
   completedClusterPhaseSet,
   type ClusterJobMode,
@@ -124,6 +132,9 @@ export function FinalResult({
   >(() => new Set())
   const [deletionTargets, setDeletionTargets] = useState<
     DocumentDeletionTarget[]
+  >([])
+  const [transferTargets, setTransferTargets] = useState<
+    DocumentTransferTarget[]
   >([])
   const [selectedPreviewDocumentId, setSelectedPreviewDocumentId] = useState<
     number | null
@@ -237,6 +248,7 @@ export function FinalResult({
   const selectedDocumentCount = selectedSessionDocumentIds.size
   const userRole = String(user?.role ?? "").trim().toLowerCase()
   const canDeleteDocuments = userRole === "admin" || userRole === "coordinator"
+  const canTransferDocuments = canDeleteDocuments
   const selectedPreviewEntry = useMemo(
     () =>
       previewDocuments.find(
@@ -1172,6 +1184,25 @@ export function FinalResult({
     setDeletionTargets(targets)
   }, [previewDocuments, selectedSessionDocumentIds])
 
+  const handleTransferSelectedDocuments = useCallback(() => {
+    const targets = previewDocuments
+      .filter(
+        (entry) =>
+          selectedSessionDocumentIds.has(entry.sessionDocumentId) &&
+          (!entry.document.lifecycleStatus ||
+            entry.document.lifecycleStatus === "active")
+      )
+      .map((entry) => ({
+        id: entry.sessionDocumentId,
+        name: entry.document.fileName,
+      }))
+    if (targets.length === 0) {
+      toast.error("Chưa chọn tài liệu active để chuyển phông.")
+      return
+    }
+    setTransferTargets(targets)
+  }, [previewDocuments, selectedSessionDocumentIds])
+
   const handleDocumentDeletionCompleted = useCallback(
     (
       result: DocumentDeletionOperationResponse,
@@ -1238,6 +1269,125 @@ export function FinalResult({
     [activeClusterVersionId]
   )
 
+  const handleDocumentTransferCompleted = useCallback(
+    async (
+      result: DocumentTransferOperationResponse,
+      targetedDocumentIds: number[]
+    ) => {
+      const targetedIds = new Set(targetedDocumentIds)
+      setGroups((previous) =>
+        previous.map((group) => ({
+          ...group,
+          documents: group.documents.map((document) =>
+            document.sessionDocumentId !== null &&
+            targetedIds.has(document.sessionDocumentId)
+              ? {
+                  ...document,
+                  lifecycleStatus: "transferred_out",
+                  transferredToSessionId: result.target_session_id,
+                  previewAvailable: false,
+                }
+              : document
+          ),
+        }))
+      )
+      setSelectedSessionDocumentIds((previous) => {
+        const next = new Set(previous)
+        targetedIds.forEach((id) => next.delete(id))
+        return next
+      })
+      setSelectedPreviewDocumentId((previous) =>
+        previous !== null && targetedIds.has(previous) ? null : previous
+      )
+      setPendingFeedbackCount(0)
+      const projection = result.source_cluster_projection
+      const projectedVersionId =
+        projection?.new_cluster_version_id ?? projection?.cluster_version_id
+      if (
+        projection?.status === "created" &&
+        projectedVersionId &&
+        sessionId
+      ) {
+        setLoadingClusterVersionId(projectedVersionId)
+        try {
+          const [version, versionsResponse] = await Promise.all([
+            getClusterVersion(sessionId, projectedVersionId),
+            listClusterVersions(sessionId),
+          ])
+          const nextGroups = versionToGroups(version, metadataItems)
+          setGroups(nextGroups)
+          setActiveClusterVersionId(version.id)
+          setDisplayedClusterVersionId(version.id)
+          setDisplayedClusterVersion(version)
+          setClusterVersions(versionsResponse.versions)
+          setPendingClusterVersion(null)
+          setRebuildBaselineVersionId(null)
+          setClusterJobMode(clusterJobModeFromSource(version.source))
+          setClusterProgressPhase(null)
+          setClusterCompletedPhases(completedClusterPhaseSet())
+          setClusterProgressMessage(
+            "Đã tự cập nhật hồ sơ nguồn sau khi chuyển phông."
+          )
+          setPendingFeedbackRefreshKey((key) => key + 1)
+          setStatus(
+            `Đã chuyển ${result.transferred_count} tài liệu sang ${result.target_session_id}. Phông nguồn đã được cập nhật tự động.`
+          )
+          return
+        } catch (caught) {
+          toast.warning(
+            caught instanceof Error
+              ? `Đã chuyển tài liệu nhưng chưa tải lại được phiên bản hồ sơ: ${caught.message}`
+              : "Đã chuyển tài liệu nhưng chưa tải lại được phiên bản hồ sơ nguồn."
+          )
+        } finally {
+          setLoadingClusterVersionId(null)
+        }
+        setStatus(
+          `Đã chuyển ${result.transferred_count} tài liệu sang ${result.target_session_id}. Hãy tải lại màn hình để xem phiên bản hồ sơ nguồn mới.`
+        )
+        return
+      }
+
+      if (projection?.status === "not_applicable") {
+        setStatus(
+          `Đã chuyển ${result.transferred_count} tài liệu sang ${result.target_session_id}. Phông nguồn chưa có phiên bản hồ sơ nên không cần cập nhật lại.`
+        )
+        return
+      }
+
+      setStatus(
+        `Đã chuyển ${result.transferred_count} tài liệu sang ${result.target_session_id}. Cần cập nhật lại kết quả lập hồ sơ.`
+      )
+      setDisplayedClusterVersion((previous) =>
+        previous
+          ? {
+              ...previous,
+              status: "stale",
+              is_stale: true,
+              stale_reason: "documents_transferred_out",
+              current_document_set_revision:
+                result.source_document_set_revision,
+            }
+          : previous
+      )
+      setClusterVersions((previous) =>
+        previous.map((version) =>
+          version.id === activeClusterVersionId
+            ? {
+                ...version,
+                status: "stale",
+                is_stale: true,
+                stale_reason: "documents_transferred_out",
+                current_document_set_revision:
+                  result.source_document_set_revision,
+              }
+            : version
+        )
+      )
+    },
+    [activeClusterVersionId, metadataItems, sessionId]
+  )
+
   const clusterVersionStale = Boolean(displayedClusterVersion?.is_stale)
   const showClusterProgress =
     loading ||
@@ -1269,6 +1419,10 @@ export function FinalResult({
     !canDeleteDocuments ||
     temporaryFolderUpdateDisabled ||
     selectedDocumentCount === 0
+  const transferSelectedDocumentsDisabled =
+    !canTransferDocuments ||
+    temporaryFolderUpdateDisabled ||
+    selectedDocumentCount === 0
   const handleResultTreeSearchNavigate = useCallback(
     (direction: number) => {
       setResultTreeSearchIndex((current) => {
@@ -1284,6 +1438,7 @@ export function FinalResult({
       <FinalResultView
       activeClusterVersionId={activeClusterVersionId}
       canDeleteDocuments={canDeleteDocuments}
+      canTransferDocuments={canTransferDocuments}
       canRestoreFileRegisterVersion={canRestoreFileRegisterVersion}
       cancelingPendingFeedback={cancelingPendingFeedback}
       checkingClusters={checkingClusters}
@@ -1294,6 +1449,7 @@ export function FinalResult({
       clusterVersionNavigationBusy={clusterVersionNavigationBusy}
       clusterVersionStale={clusterVersionStale}
       deleteSelectedDocumentsDisabled={deleteSelectedDocumentsDisabled}
+      transferSelectedDocumentsDisabled={transferSelectedDocumentsDisabled}
       displayedClusterVersion={displayedClusterVersion}
       displayedClusterVersionId={displayedClusterVersionId}
       draggedDocument={draggedDocument}
@@ -1307,6 +1463,7 @@ export function FinalResult({
       handleCreateDossierFromSuggestions={handleCreateDossierFromSuggestions}
       handleDropOnDossier={handleDropOnDossier}
       handleDeleteSelectedDocuments={handleDeleteSelectedDocuments}
+      handleTransferSelectedDocuments={handleTransferSelectedDocuments}
       handleFinish={handleFinish}
       handleMoveSelectionToDossier={handleMoveSelectionToDossier}
       handlePreviewResizePointerDown={handlePreviewResizePointerDown}
@@ -1409,6 +1566,15 @@ export function FinalResult({
           if (!open) setDeletionTargets([])
         }}
         onMutationCompleted={handleDocumentDeletionCompleted}
+      />
+      <DocumentTransferDialog
+        open={transferTargets.length > 0}
+        sourceSessionId={sessionId}
+        targets={transferTargets}
+        onOpenChange={(open) => {
+          if (!open) setTransferTargets([])
+        }}
+        onMutationCompleted={handleDocumentTransferCompleted}
       />
     </>
   )

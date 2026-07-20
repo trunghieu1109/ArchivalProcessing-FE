@@ -123,6 +123,8 @@ export interface PdfMetadata {
   delete_error?: string | null
   preview_available?: boolean
   ocr_batch_id?: number | null
+  metadata_retry_available?: boolean
+  metadata_retry_disabled_reason?: string | null
   document_id: string
   data_path: string
   import_action?: string | null

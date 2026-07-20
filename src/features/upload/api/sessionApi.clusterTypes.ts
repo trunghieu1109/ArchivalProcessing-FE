@@ -70,6 +70,10 @@ export interface ClusterPlacement {
   lifecycle_status?: "active" | "delete_pending" | "deleted" | string
   deleted_at?: string | null
   deleted_by_name?: string | null
+  transferred_at?: string | null
+  transferred_by_name?: string | null
+  transferred_to_session_id?: string | null
+  transferred_to_session_document_id?: number | null
   preview_available?: boolean
 }
 

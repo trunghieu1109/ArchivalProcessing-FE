@@ -461,7 +461,10 @@ export function useProcessStepModel({
   const displayedRetryableItems = useMemo(
     () =>
       displayedItems.filter(
-        (item) => isMetadataFailedItem(item) && canRestartMetadata
+        (item) =>
+          isMetadataFailedItem(item) &&
+          item.metadata_retry_available !== false &&
+          canRestartMetadata
       ),
     [canRestartMetadata, displayedItems]
   )
@@ -491,7 +494,10 @@ export function useProcessStepModel({
     [bulkSelectedKnownItems, currentUserIdentity, isCoordinator]
   )
   const bulkRetryItems = bulkReviewSelectionActive
-    ? bulkSelectedItems.filter(isMetadataFailedItem)
+    ? bulkSelectedItems.filter(
+        (item) =>
+          isMetadataFailedItem(item) && item.metadata_retry_available !== false
+      )
     : EMPTY_METADATA_ITEMS
   const bulkVerifyItems = bulkReviewSelectionActive
     ? bulkSelectedItems.filter(isMetadataConfirmable)

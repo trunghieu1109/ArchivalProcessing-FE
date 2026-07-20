@@ -94,7 +94,12 @@ export function MetadataCard({
   const metadataUnavailable = metadataFailed && !item.metadata_ready
   const hasMetadataEdits = item.metadata_user_edited === true
   const signatureTag = signatureTagInfo(item)
-  const canRetryMetadata = Boolean(!readOnly && onRetry && !metadataPending)
+  const canRetryMetadata = Boolean(
+    !readOnly &&
+      onRetry &&
+      !metadataPending &&
+      item.metadata_retry_available !== false
+  )
   const blankPageWarningPages = blankPageWarningOriginalPages(item)
   const hasBlankPageWarnings =
     blankPageWarningPages.length > 0 || hasBlankPageWarningEntries(item)

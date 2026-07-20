@@ -86,16 +86,32 @@ export function DocumentRow({
   const clusterWarning = document.clusterWarning
   const documentDeleted = document.lifecycleStatus === "deleted"
   const documentDeletePending = document.lifecycleStatus === "delete_pending"
-  const documentInactive = documentDeleted || documentDeletePending
-  const deletedDetails = documentDeleted
+  const documentTransferred = document.lifecycleStatus === "transferred_out"
+  const documentInactive =
+    documentDeleted || documentDeletePending || documentTransferred
+  const inactiveDetails = documentTransferred
     ? [
-        "Đã xóa khỏi session",
-        document.deletedByName ? `bởi ${document.deletedByName}` : "",
-        document.deletedAt ? `lúc ${formatDeletedAt(document.deletedAt)}` : "",
+        document.transferredToSessionId
+          ? `Đã chuyển sang ${document.transferredToSessionId}`
+          : "Đã chuyển sang phông khác",
+        document.transferredByName ? `bởi ${document.transferredByName}` : "",
+        document.transferredAt
+          ? `lúc ${formatDeletedAt(document.transferredAt)}`
+          : "",
       ]
         .filter(Boolean)
         .join(" ")
-    : "Đang chờ xác nhận xóa từ Chỉnh Lý"
+    : documentDeleted
+      ? [
+          "Đã xóa khỏi session",
+          document.deletedByName ? `bởi ${document.deletedByName}` : "",
+          document.deletedAt
+            ? `lúc ${formatDeletedAt(document.deletedAt)}`
+            : "",
+        ]
+          .filter(Boolean)
+          .join(" ")
+      : "Đang chờ xác nhận xóa từ Chỉnh Lý"
   const summary = metadataText(document.metadata, [
     "document_summary",
     "trich_yeu_van_ban",
@@ -217,10 +233,21 @@ export function DocumentRow({
             </span>
             {documentInactive ? (
               <span
-                title={deletedDetails}
-                className="shrink-0 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700"
+                title={inactiveDetails}
+                className={cn(
+                  "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                  documentTransferred
+                    ? "border-blue-200 bg-blue-50 text-blue-700"
+                    : "border-red-200 bg-red-50 text-red-700"
+                )}
               >
-                {documentDeleted ? "Đã xóa khỏi session" : "Đang xóa"}
+                {documentTransferred
+                  ? document.transferredToSessionId
+                    ? `Đã chuyển sang ${document.transferredToSessionId}`
+                    : "Đã chuyển phông"
+                  : documentDeleted
+                    ? "Đã xóa khỏi session"
+                    : "Đang xóa"}
               </span>
             ) : null}
             {docType && (
@@ -420,7 +447,9 @@ export function DocumentRow({
                   variant="outline"
                   size="icon-sm"
                   title="Sửa metadata"
-                  disabled={document.sessionDocumentId === null || documentInactive}
+                  disabled={
+                    document.sessionDocumentId === null || documentInactive
+                  }
                   onClick={(event) => {
                     event.stopPropagation()
                     startMetadataEdit()

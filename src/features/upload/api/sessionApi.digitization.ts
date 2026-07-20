@@ -25,6 +25,9 @@ import type {
   DigitizationStatusResponse,
   DocumentDeletionOperationResponse,
   DocumentDeletionPreviewResponse,
+  DocumentTransferOperationResponse,
+  DocumentTransferPreviewResponse,
+  DocumentTransferTargetsResponse,
   DocumentArchiveDownload,
   DocumentNumberingMode,
   DocumentNumberingStylePreset,
@@ -33,6 +36,21 @@ import type {
   SessionDocumentResponse,
   UploadMode,
 } from "./sessionApi.types"
+
+export async function listSessionDocumentTransferTargets(
+  sourceSessionId: string,
+  options: { q?: string; limit?: number; offset?: number } = {}
+): Promise<DocumentTransferTargetsResponse> {
+  const searchParams = new URLSearchParams()
+  const query = options.q?.trim()
+  if (query) searchParams.set("q", query)
+  searchParams.set("limit", String(options.limit ?? 50))
+  searchParams.set("offset", String(options.offset ?? 0))
+  return requestJson<DocumentTransferTargetsResponse>(
+    `/sessions/${encodeURIComponent(sourceSessionId)}/documents/transfer-targets?${searchParams.toString()}`,
+    { cache: "no-store" }
+  )
+}
 
 export async function previewSessionDocumentDeletion(
   sessionId: string,
@@ -85,6 +103,45 @@ export async function retrySessionDocumentDeletion(
   return requestJson<DocumentDeletionOperationResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/document-deletions/${encodeURIComponent(operationId)}/retry`,
     { method: "POST", headers: { "Content-Type": "application/json" } }
+  )
+}
+
+export async function previewSessionDocumentTransfer(
+  sourceSessionId: string,
+  targetSessionId: string,
+  documentIds: number[]
+): Promise<DocumentTransferPreviewResponse> {
+  return requestJson<DocumentTransferPreviewResponse>(
+    `/sessions/${encodeURIComponent(sourceSessionId)}/documents/transfer-preview`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        target_session_id: targetSessionId,
+        session_document_ids: documentIds,
+      }),
+    }
+  )
+}
+
+export async function transferSessionDocuments(
+  sourceSessionId: string,
+  targetSessionId: string,
+  documentIds: number[],
+  reason: string | null = null
+): Promise<DocumentTransferOperationResponse> {
+  return requestJson<DocumentTransferOperationResponse>(
+    `/sessions/${encodeURIComponent(sourceSessionId)}/documents/transfer`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        target_session_id: targetSessionId,
+        session_document_ids: documentIds,
+        reason: reason?.trim() || null,
+        confirmed: true,
+      }),
+    }
   )
 }
 
@@ -415,6 +472,8 @@ export function digitizationToFolderStatus(
       delete_error: document.delete_error,
       preview_available: document.preview_available,
       ocr_batch_id: document.ocr_batch_id,
+      metadata_retry_available: document.metadata_retry_available,
+      metadata_retry_disabled_reason: document.metadata_retry_disabled_reason,
       document_id: document.document_id,
       data_path: document.data_path,
       import_action: document.import_action,

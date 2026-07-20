@@ -461,7 +461,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
                       onSelect={() => setSelectedDocumentId(item.id)}
                       onApply={handleApply}
                       onRetry={
-                        canRestartMetadata
+                        canRestartMetadata && item.metadata_retry_available !== false
                           ? () => void handleRetryMetadata(item)
                           : undefined
                       }
