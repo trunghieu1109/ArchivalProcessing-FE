@@ -63,7 +63,7 @@ const NUMBERING_DOCUMENT_REFRESH_EVERY = 3
 const NUMBERING_PAGE_SIZE = 10
 const NUMBERING_NAVIGATOR_PAGE_SIZE = 1000
 const EMPTY_NUMBERING_DOCUMENTS: NumberingDocumentStatus[] = []
-const METADATA_COUNT_CONFLICT_WARNING_ENABLED = false
+const METADATA_COUNT_CONFLICT_WARNING_ENABLED = true
 type MetadataImportReview = {
   file: File
   response: MetadataBoxNumberImportResponse

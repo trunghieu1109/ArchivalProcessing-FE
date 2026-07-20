@@ -39,7 +39,7 @@ import {
 
 export type DossierUpdateMode = "auto" | "manual"
 export type NumberingUpdateMode = DossierUpdateMode | "cascade"
-const METADATA_COUNT_CONFLICT_WARNING_ENABLED = false
+const METADATA_COUNT_CONFLICT_WARNING_ENABLED = true
 
 export function NumberingStepHeader({
   modeLabel,

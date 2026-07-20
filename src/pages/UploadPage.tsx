@@ -801,7 +801,9 @@ export function UploadPage() {
       toast.error("Chưa có session để sang Extract Metadata.")
       return
     }
-    handlePlanStepNavigation(3)
+    navigate(
+      `/sessions/${encodeURIComponent(currentSessionId)}/step/3?extract=1`
+    )
   }
 
   const { handleStartAll } = createUploadPageWorkflowActions({
