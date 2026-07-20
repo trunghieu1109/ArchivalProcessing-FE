@@ -36,10 +36,10 @@ import {
   statusBadge,
   textOrNull,
 } from "./NumberingStep.utils"
+import { SHOW_METADATA_COUNT_CONFLICT_WARNING } from "../step4/temporaryFeatureVisibility"
 
 export type DossierUpdateMode = "auto" | "manual"
 export type NumberingUpdateMode = DossierUpdateMode | "cascade"
-const METADATA_COUNT_CONFLICT_WARNING_ENABLED = false
 
 export function NumberingStepHeader({
   modeLabel,
@@ -402,7 +402,7 @@ export function NumberingMetadataPanel({
   onExportMetadata: () => void | Promise<unknown>
   onImportMetadataBoxNumbers: (file: File | null) => void | Promise<unknown>
 }) {
-  const countConflicts = METADATA_COUNT_CONFLICT_WARNING_ENABLED
+  const countConflicts = SHOW_METADATA_COUNT_CONFLICT_WARNING
     ? metadataImportReview?.count_conflicts ?? []
     : []
 
@@ -425,8 +425,8 @@ export function NumberingMetadataPanel({
             Metadata snapshot hồ sơ
           </p>
           <p className="mt-1 max-w-3xl text-sm text-[#64748B]">
-            Xuất hoặc nhập số hộp, số hồ sơ chính, ghi chú, số tờ và số trang
-            trước khi tạo mục lục.
+            Xuất hoặc nhập số hộp, số hồ sơ chính, ký hiệu hồ sơ, ghi chú hồ
+            sơ, số tờ và số trang trước khi tạo mục lục.
           </p>
         </div>
         <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:w-auto">

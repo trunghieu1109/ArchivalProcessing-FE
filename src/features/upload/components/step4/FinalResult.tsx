@@ -27,6 +27,7 @@ import {
   DocumentDeletionDialog,
   type DocumentDeletionTarget,
 } from "../DocumentDeletionDialog"
+import { SHOW_DOCUMENT_DELETION } from "./temporaryFeatureVisibility"
 import {
   DocumentTransferDialog,
   type DocumentTransferTarget,
@@ -247,8 +248,9 @@ export function FinalResult({
   )
   const selectedDocumentCount = selectedSessionDocumentIds.size
   const userRole = String(user?.role ?? "").trim().toLowerCase()
-  const canDeleteDocuments = userRole === "admin" || userRole === "coordinator"
-  const canTransferDocuments = canDeleteDocuments
+  const canManageDocuments = userRole === "admin" || userRole === "coordinator"
+  const canDeleteDocuments = SHOW_DOCUMENT_DELETION && canManageDocuments
+  const canTransferDocuments = canManageDocuments
   const selectedPreviewEntry = useMemo(
     () =>
       previewDocuments.find(

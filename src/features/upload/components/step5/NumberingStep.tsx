@@ -57,13 +57,13 @@ import {
   statusBadge,
   textOrNull,
 } from "./NumberingStep.utils"
+import { SHOW_METADATA_COUNT_CONFLICT_WARNING } from "../step4/temporaryFeatureVisibility"
 
 const NUMBERING_POLL_INTERVAL_MS = 5_000
 const NUMBERING_DOCUMENT_REFRESH_EVERY = 3
 const NUMBERING_PAGE_SIZE = 10
 const NUMBERING_NAVIGATOR_PAGE_SIZE = 1000
 const EMPTY_NUMBERING_DOCUMENTS: NumberingDocumentStatus[] = []
-const METADATA_COUNT_CONFLICT_WARNING_ENABLED = false
 type MetadataImportReview = {
   file: File
   response: MetadataBoxNumberImportResponse
@@ -859,11 +859,11 @@ export function NumberingStep({
           created_by: "ui",
           confirm_count_conflicts: options.confirmCountConflicts,
         })
-        const countConflicts = METADATA_COUNT_CONFLICT_WARNING_ENABLED
+        const countConflicts = SHOW_METADATA_COUNT_CONFLICT_WARNING
           ? result.count_conflicts ?? []
           : []
         if (
-          METADATA_COUNT_CONFLICT_WARNING_ENABLED &&
+          SHOW_METADATA_COUNT_CONFLICT_WARNING &&
           result.requires_confirmation &&
           countConflicts.length > 0
         ) {
@@ -1138,7 +1138,7 @@ export function NumberingStep({
   )
   const persistedMetadataCountConflicts = useMemo(
     () =>
-      METADATA_COUNT_CONFLICT_WARNING_ENABLED
+      SHOW_METADATA_COUNT_CONFLICT_WARNING
         ? [
             ...((status?.dossiers ?? []).flatMap(
               (dossier) => dossier.pending_count_conflicts ?? []
@@ -1152,7 +1152,7 @@ export function NumberingStep({
   )
   const metadataCountConflictsByDossier = useMemo(
     () =>
-      METADATA_COUNT_CONFLICT_WARNING_ENABLED
+      SHOW_METADATA_COUNT_CONFLICT_WARNING
         ? groupMetadataCountConflicts(
             [
               ...persistedMetadataCountConflicts,

@@ -80,6 +80,7 @@ export function DossierMetadataSidePanel({
     wide?: boolean
   }> = [
     { label: "Tiêu đề hồ sơ", value: group.label, wide: true },
+    { label: "Số hồ sơ", value: group.dossierNumber ?? "" },
     ...(SHOW_DOSSIER_CODE
       ? [{ label: "Ký hiệu hồ sơ", value: group.dossierCode ?? "" }]
       : []),

@@ -15,6 +15,7 @@ import { SHOW_DOSSIER_CODE } from "./temporaryFeatureVisibility"
 export const UNKNOWN_YEAR_LABEL = "Không rõ năm"
 export interface DossierMetadataDraft {
   dossierStorageId: string
+  dossierNumber: string
   dossierCode: string
   informationSign: string
   title: string
@@ -36,6 +37,7 @@ export const DOSSIER_METADATA_EDIT_FIELDS: Array<{
   rows: number
 }> = [
   { key: "title", label: "Tiêu đề hồ sơ", rows: 4 },
+  { key: "dossierNumber", label: "Số hồ sơ", rows: 1 },
   ...(SHOW_DOSSIER_CODE
     ? [{ key: "dossierCode" as const, label: "Ký hiệu hồ sơ", rows: 1 }]
     : []),
@@ -53,6 +55,7 @@ export function createDossierMetadataDraft(
 ): DossierMetadataDraft {
   return {
     dossierStorageId: group?.dossierStorageId ?? "",
+    dossierNumber: group?.dossierNumber ?? "",
     dossierCode: group?.dossierCode ?? "",
     title: group?.label ?? "",
     retentionPeriod: group?.retentionPeriod ?? "",
@@ -77,6 +80,7 @@ export function dossierPatchPayloadFromDraft(
       "dossier_storage_id",
       trimmedOrNull(draft.dossierStorageId),
     ],
+    dossierNumber: ["dossier_number", trimmedOrNull(draft.dossierNumber)],
     dossierCode: ["dossier_code", trimmedOrNull(draft.dossierCode)],
     title: ["title", trimmedOrNull(draft.title)],
     retentionPeriod: [

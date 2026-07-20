@@ -1,7 +1,13 @@
 // TEMPORARY_HIDE_TAG: DOSSIER_SUGGESTIONS
-// Remove this guard (or set it to true) when the dossier-suggestion UI is ready.
-export const SHOW_DOSSIER_SUGGESTIONS = false
+// The dossier-suggestion UI and API flow are ready for users again.
+export const SHOW_DOSSIER_SUGGESTIONS = true
 
 // TEMPORARY_HIDE_TAG: DOSSIER_CODE
-// The backend foundation remains available; only the current FE exposure is hidden.
-export const SHOW_DOSSIER_CODE = false
+// Dossier code is available in the editor, result tree, and metadata import/export.
+export const SHOW_DOSSIER_CODE = true
+
+// Metadata imports warn before replacing the system-calculated sheet/page count.
+export const SHOW_METADATA_COUNT_CONFLICT_WARNING = true
+
+// Temporarily keep document deletion available in the API but hidden from UI.
+export const SHOW_DOCUMENT_DELETION = false

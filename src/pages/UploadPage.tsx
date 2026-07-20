@@ -788,6 +788,12 @@ export function UploadPage() {
 
   const handlePlanStepNavigation = (targetStep: AppStep) => {
     const currentSessionId = sessionId ?? routeSessionId ?? cache.sessionId
+    if (targetStep === 3 && currentSessionId) {
+      navigate(
+        `/sessions/${encodeURIComponent(currentSessionId)}/step/3?extract=1`
+      )
+      return
+    }
     goTo(targetStep, currentSessionId)
   }
 

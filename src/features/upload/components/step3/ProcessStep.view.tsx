@@ -28,6 +28,7 @@ import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
 import type { PdfMetadata } from "@/features/upload/types"
 import type { createProcessStepActions } from "./ProcessStep.actions"
 import type { useProcessStepModel } from "./useProcessStepModel"
+import { SHOW_DOCUMENT_DELETION } from "../step4/temporaryFeatureVisibility"
 
 type ProcessStepViewProps = ReturnType<typeof useProcessStepModel> &
   ReturnType<typeof createProcessStepActions> & {
@@ -369,7 +370,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
               bulkVerifyItems={bulkVerifyItems}
               bulkVerifying={bulkVerifying}
               canBulkSelectMetadata={canBulkSelectMetadata}
-              canDeleteDocuments={isCoordinator}
+              canDeleteDocuments={SHOW_DOCUMENT_DELETION && isCoordinator}
               canManageMetadataBatches={canManageMetadataBatches}
               cancelManualSplit={cancelManualSplit}
               clearBulkReviewSelection={clearBulkReviewSelection}
@@ -466,7 +467,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
                           : undefined
                       }
                       onDelete={
-                        isCoordinator
+                        SHOW_DOCUMENT_DELETION && isCoordinator
                           ? () => openDocumentDeletion([item])
                           : undefined
                       }
