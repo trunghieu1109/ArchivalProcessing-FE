@@ -643,6 +643,7 @@ export interface DocumentTransferPreviewResponse {
     metadata_final: boolean
     review_status: string
     is_reviewed: boolean
+    issued_date?: string | null
   }>
   validation_errors: Array<{
     code: string
