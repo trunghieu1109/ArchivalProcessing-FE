@@ -176,7 +176,12 @@ export function planDraftPayloadSignature(
 export function planResponseMaterialSignature(
   planResponse: ActivePlanResponse
 ): string {
-  return planDraftPayloadSignature(planResponseToDraftPayload(planResponse))
+  const parsedPlan = parsedActivePlanToParsedPlan(planResponse)
+  return planDraftPayloadSignature({
+    ...planResponseToDraftPayload(planResponse),
+    retention_appendices: parsedPlan.retention_appendices,
+    retention_sources: parsedPlan.retention_sources,
+  })
 }
 
 function normalizeSignatureValue(value: unknown): unknown {
