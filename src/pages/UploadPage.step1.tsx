@@ -46,7 +46,7 @@ export function UploadPageStepOne(props: Record<string, any>) {
     allDone,
     zipSupplementUploaded,
     hasAnyFile,
-    hasActivePlan,
+    hasPlanReady,
     readyCount,
     requiredFileCount,
     selectedInputLabels,
@@ -125,7 +125,8 @@ export function UploadPageStepOne(props: Record<string, any>) {
                 Thông tin phông
               </p>
               <p className="mt-1 text-sm text-[#64748B]">
-                Nhập thông tin nền cho session. Khi nhấn Bắt đầu xử lý, hệ thống sẽ tạo session mới và lưu các thông tin này tự động.
+                Nhập thông tin nền cho session. Khi nhấn Bắt đầu xử lý, hệ thống
+                sẽ tạo session mới và lưu các thông tin này tự động.
               </p>
             </div>
           </div>
@@ -443,7 +444,7 @@ export function UploadPageStepOne(props: Record<string, any>) {
                     ? planReanalysisActionLabel
                     : existingSessionMode && zipSupplementUploaded
                       ? "Extract metadata ZIP bổ sung"
-                      : existingSessionMode && zipHas && !hasActivePlan
+                      : existingSessionMode && zipHas && !hasPlanReady
                         ? "Đi tới extract metadata"
                         : allDone
                           ? "Tiếp tục"
@@ -506,9 +507,7 @@ function SessionMetadataInput({
 
 function updateSessionMetadataDraft(
   metadata: SessionMetadataValues | undefined,
-  syncDraft:
-    | ((metadata: SessionMetadataValues) => void)
-    | undefined,
+  syncDraft: ((metadata: SessionMetadataValues) => void) | undefined,
   field: keyof SessionMetadataValues,
   value: string
 ) {

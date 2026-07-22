@@ -111,15 +111,13 @@ export function UploadPage() {
       toast.error("Chưa có session để lập hồ sơ.")
       return
     }
-    const hasAnalyzedPlanForBuild =
-      Boolean(activePlanVersionId) &&
-      doc1Has &&
-      activeParsedPlan.groups.length > 0
+    const hasActivePlanData = activeParsedPlan.groups.length > 0
     const missingInputs = missingDossierBuildInputs({
       hasArrangementPlan: doc1Has,
       hasRetentionSchedule: doc2Has,
       hasRawZip: zipHas,
-      hasActivePlan: hasAnalyzedPlanForBuild,
+      hasActivePlan: Boolean(activePlanVersionId),
+      hasActivePlanData,
     })
     if (missingInputs.length > 0) {
       toast.error(dossierBuildMissingMessage(missingInputs))
@@ -383,7 +381,8 @@ export function UploadPage() {
           cache.workingPlanVersionId = planResponse.id ?? ""
           cache.workingPlanStatus = planResponse.status ?? ""
           cache.workingPlanResponse = planResponse
-          cache.workingPlanSignature = planResponseMaterialSignature(planResponse)
+          cache.workingPlanSignature =
+            planResponseMaterialSignature(planResponse)
           cache.planDraftBaseSignature = planDraftPayloadSignature(draftPayload)
           cache.planDraftDirty = false
           cache.planDraftRevision = 0
@@ -529,13 +528,12 @@ export function UploadPage() {
   const planReanalysisReady = existingSessionMode && planInputsReuploaded
   const hasAnyFile = doc1Has || doc2Has || zipHas
   const hasActivePlan = Boolean(activePlanVersionId)
+  const hasApprovedPlan = hasActivePlan
   const hasWorkingPlan = Boolean(workingPlanVersionId)
   const draftMatchesActive =
     Boolean(cache.activePlanSignature) &&
     Boolean(cache.workingPlanSignature) &&
     cache.workingPlanSignature === cache.activePlanSignature
-  const hasActivePlanForBuild =
-    hasActivePlan && doc1Has && activeParsedPlan.groups.length > 0
   const hasAnalyzedArrangementPlan =
     planAnalysisState === "done" &&
     hasWorkingPlan &&
@@ -545,7 +543,8 @@ export function UploadPage() {
     hasArrangementPlan: doc1Has,
     hasRetentionSchedule: doc2Has,
     hasRawZip: zipHas,
-    hasActivePlan: hasActivePlanForBuild,
+    hasActivePlan,
+    hasActivePlanData: activeParsedPlan.groups.length > 0,
   })
   const missingDossierInputLabels =
     dossierBuildMissingLabels(missingDossierInputs)
@@ -568,10 +567,10 @@ export function UploadPage() {
     ? [
         {
           label: "Phương án",
-          has: hasAnalyzedArrangementPlan,
+          has: hasAnalyzedArrangementPlan || hasApprovedPlan,
           state: arrangementPlanAnalyzing
             ? "processing"
-            : hasAnalyzedArrangementPlan
+            : hasAnalyzedArrangementPlan || hasApprovedPlan
               ? "done"
               : "idle",
         },
@@ -595,7 +594,9 @@ export function UploadPage() {
     doc1State === "processing" ||
     doc2State === "processing" ||
     zipProcessingBlocksAction
-  const allDone = hasAnalyzedArrangementPlan && !planInputsReuploaded
+  const allDone =
+    (hasAnalyzedArrangementPlan || hasApprovedPlan) &&
+    !planInputsReuploaded
   const canOpenPlanAnalysisStep =
     existingSessionMode && planAnalyzing && (doc1Has || doc2Has)
   const primaryActionDisabled =
@@ -814,7 +815,7 @@ export function UploadPage() {
     planInputsReuploaded,
     planAnalysisState,
     allDone,
-    hasActivePlan: hasAnalyzedArrangementPlan,
+    hasPlanReady: hasAnalyzedArrangementPlan || hasApprovedPlan,
     planReanalysisReady,
     planReuploadState,
     dossierBuildStrategy,
@@ -920,7 +921,9 @@ export function UploadPage() {
         dossierBuildStrategy={dossierBuildStrategy}
         selectDossierBuildStrategy={selectDossierBuildStrategy}
         documentNumberingMode={documentNumberingMode}
-        applyPersistedDocumentNumberingMode={applyPersistedDocumentNumberingMode}
+        applyPersistedDocumentNumberingMode={
+          applyPersistedDocumentNumberingMode
+        }
         selectDocumentNumberingModeDraft={selectDocumentNumberingModeDraft}
         documentNumberingStylePreset={documentNumberingStylePreset}
         documentNumberingStyleOverrides={documentNumberingStyleOverrides}

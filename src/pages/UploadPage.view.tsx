@@ -1,11 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion"
-import {
-  ArrowLeft,
-  BadgeCheck,
-  FileText,
-  Home,
-  PenLine,
-} from "lucide-react"
+import { ArrowLeft, BadgeCheck, FileText, Home, PenLine } from "lucide-react"
 import { toast } from "sonner"
 import { FolderTree } from "@/features/upload/components/step2/FolderTree"
 import { RetentionAppendicesPanel } from "@/features/upload/components/step2/FolderTree.nodes"
@@ -50,6 +44,7 @@ export function UploadPageView(props: Record<string, any>) {
     zipRef,
     doc2Has,
     zipHas,
+    hasActivePlan,
     hasAnalyzedArrangementPlan,
     doc1State,
     doc2State,
@@ -128,8 +123,11 @@ export function UploadPageView(props: Record<string, any>) {
     navigate,
   } = props
   const hasAnalyzedPlan = Boolean(hasAnalyzedArrangementPlan)
+  const hasApprovedPlan =
+    Boolean(hasActivePlan) && Boolean(activePlanVersionId)
   const hasActivePlanVersion =
-    Boolean(activePlanVersionId) && activeParsedPlan.groups.length > 0
+    hasApprovedPlan && activeParsedPlan.groups.length > 0
+  const hasPlanReady = hasAnalyzedPlan || hasApprovedPlan
   const showActivePlanTab = planViewTab === "active"
   const draftIsActiveFallback =
     Boolean(activePlanVersionId) &&
@@ -146,7 +144,8 @@ export function UploadPageView(props: Record<string, any>) {
         ? "Đang phân tích thời hạn bảo quản"
         : "Đang phân tích phương án chỉnh lý"
   const planProcessingMessage =
-    planProgressMessage || `${planProcessingTitle}. Kết quả sẽ tự hiển thị khi backend xử lý xong.`
+    planProgressMessage ||
+    `${planProcessingTitle}. Kết quả sẽ tự hiển thị khi backend xử lý xong.`
   const hasAnalyzedRetentionSchedule =
     doc2Has &&
     (parsedPlan.retention_appendices.length > 0 ||
@@ -269,7 +268,7 @@ export function UploadPageView(props: Record<string, any>) {
               allDone={allDone}
               zipSupplementUploaded={zipSupplementUploaded}
               hasAnyFile={hasAnyFile}
-              hasActivePlan={hasAnalyzedPlan}
+              hasPlanReady={hasPlanReady}
               readyCount={readyCount}
               requiredFileCount={requiredFileCount}
               selectedInputLabels={selectedInputLabels}
@@ -291,11 +290,11 @@ export function UploadPageView(props: Record<string, any>) {
               exit={{ opacity: 0, y: -16 }}
               transition={{ duration: 0.4, ease: easeOut }}
             >
-              {hasAnalyzedPlan ? (
+              {hasPlanReady ? (
                 <div className="flex flex-col gap-4">
                   <div className="rounded-2xl border border-[#D8E1EC] bg-white p-3 shadow-sm sm:flex sm:items-center sm:justify-between sm:gap-5">
                     <div className="px-1 pb-2 sm:pb-0">
-                      <p className="text-[11px] font-semibold uppercase text-[#64748B]">
+                      <p className="text-[11px] font-semibold text-[#64748B] uppercase">
                         Phiên bản phương án
                       </p>
                       <p className="mt-1 text-xs text-[#94A3B8]">
@@ -393,10 +392,10 @@ export function UploadPageView(props: Record<string, any>) {
                         documentNumberingStyleOverrides={
                           activePlanSettings.documentNumberingStyleOverrides
                         }
-                        onDocumentNumberingStylePresetChange={
-                          () => undefined
+                        onDocumentNumberingStylePresetChange={() => undefined}
+                        onDocumentNumberingStyleOverridesChange={() =>
+                          undefined
                         }
-                        onDocumentNumberingStyleOverridesChange={() => undefined}
                         onFileRegisterConfigChange={() => undefined}
                         onChange={() => undefined}
                         onSaveTree={() => undefined}
@@ -409,10 +408,14 @@ export function UploadPageView(props: Record<string, any>) {
                       <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-white px-6 py-8 text-center shadow-sm">
                         <FileText className="mx-auto size-9 text-[#94A3B8]" />
                         <h2 className="mt-3 text-xl font-semibold text-[#0F172A]">
-                          Chưa có phương án đã duyệt
+                          {hasApprovedPlan
+                            ? "Không tải được nội dung phương án đã duyệt"
+                            : "Chưa có phương án đã duyệt"}
                         </h2>
                         <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[#64748B]">
-                          Hãy duyệt phương án nháp trước khi lập hồ sơ.
+                          {hasApprovedPlan
+                            ? "Session đã có phiên bản phương án được duyệt, nhưng dữ liệu cây phân loại chưa được tải về. Hãy tải lại session; nếu vẫn còn lỗi, cần kiểm tra dữ liệu phiên bản active."
+                            : "Hãy duyệt phương án nháp trước khi lập hồ sơ."}
                         </p>
                       </div>
                     )
@@ -420,34 +423,38 @@ export function UploadPageView(props: Record<string, any>) {
                     <>
                       {planDraftDirty && (
                         <div className="rounded-xl border border-[#FBBF24] bg-[#FFFBEB] px-4 py-3 text-sm font-medium text-[#92400E]">
-                          Bản draft hiện tại đang có sự thay đổi. Hãy lưu lại để tránh bị mất thông tin.
+                          Bản draft hiện tại đang có sự thay đổi. Hãy lưu lại để
+                          tránh bị mất thông tin.
                         </div>
                       )}
                       {hasPersistedDraft && (
                         <div className="rounded-xl border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3 text-sm font-medium text-[#1E3A8A]">
-                          Bản draft đang khác so với bản active. Nhấn duyệt để ghi nhận những thay đổi.
+                          Bản draft đang khác so với bản active. Nhấn duyệt để
+                          ghi nhận những thay đổi.
                         </div>
                       )}
                       {draftIsActiveFallback &&
                         !planDraftDirty &&
                         !hasPersistedDraft && (
                           <div className="rounded-xl border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3 text-sm text-[#1E3A8A]">
-                            Chưa có draft riêng. Màn hình đang dùng bản active gần nhất làm nền chỉnh sửa.
+                            Chưa có draft riêng. Màn hình đang dùng bản active
+                            gần nhất làm nền chỉnh sửa.
                           </div>
                         )}
-                      {false && (draftIsActiveFallback ||
-                        hasPersistedDraft ||
-                        planDraftDirty) && (
-                        <div className="rounded-xl border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3 text-sm text-[#1E3A8A]">
-                          {planDraftDirty
-                            ? draftIsActiveFallback
-                              ? "Chưa có draft riêng trên hệ thống. Các thay đổi đang được lưu tạm trên trình duyệt và sẽ tạo draft mới khi bạn rời màn hình hoặc xác nhận phương án."
-                              : "Các thay đổi đang được lưu tạm trên trình duyệt và sẽ tạo draft mới khi bạn rời màn hình hoặc xác nhận phương án."
-                            : hasPersistedDraft
-                              ? "Đây là bản nháp chưa được duyệt. Bạn có thể tiếp tục chỉnh sửa hoặc xác nhận phương án."
-                            : "Chưa có draft riêng. Màn hình đang dùng bản active gần nhất làm nền chỉnh sửa."}
-                        </div>
-                      )}
+                      {false &&
+                        (draftIsActiveFallback ||
+                          hasPersistedDraft ||
+                          planDraftDirty) && (
+                          <div className="rounded-xl border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3 text-sm text-[#1E3A8A]">
+                            {planDraftDirty
+                              ? draftIsActiveFallback
+                                ? "Chưa có draft riêng trên hệ thống. Các thay đổi đang được lưu tạm trên trình duyệt và sẽ tạo draft mới khi bạn rời màn hình hoặc xác nhận phương án."
+                                : "Các thay đổi đang được lưu tạm trên trình duyệt và sẽ tạo draft mới khi bạn rời màn hình hoặc xác nhận phương án."
+                              : hasPersistedDraft
+                                ? "Đây là bản nháp chưa được duyệt. Bạn có thể tiếp tục chỉnh sửa hoặc xác nhận phương án."
+                                : "Chưa có draft riêng. Màn hình đang dùng bản active gần nhất làm nền chỉnh sửa."}
+                          </div>
+                        )}
                       <FolderTree
                         tree={folderTree}
                         parsedPlan={parsedPlan}
@@ -455,15 +462,25 @@ export function UploadPageView(props: Record<string, any>) {
                         readOnly={false}
                         hasRetentionSchedule={doc2Has}
                         dossierBuildStrategy={dossierBuildStrategy}
-                        onDossierBuildStrategyChange={selectDossierBuildStrategy}
+                        onDossierBuildStrategyChange={
+                          selectDossierBuildStrategy
+                        }
                         documentNumberingMode={documentNumberingMode}
-                        onDocumentNumberingModeChange={selectDocumentNumberingModeDraft}
-                        documentNumberingStylePreset={documentNumberingStylePreset}
-                        documentNumberingStyleOverrides={documentNumberingStyleOverrides}
+                        onDocumentNumberingModeChange={
+                          selectDocumentNumberingModeDraft
+                        }
+                        documentNumberingStylePreset={
+                          documentNumberingStylePreset
+                        }
+                        documentNumberingStyleOverrides={
+                          documentNumberingStyleOverrides
+                        }
                         onDocumentNumberingStylePresetChange={
                           selectDocumentNumberingStylePreset
                         }
-                        onDocumentNumberingStyleOverridesChange={selectDocumentNumberingStyleOverrides}
+                        onDocumentNumberingStyleOverridesChange={
+                          selectDocumentNumberingStyleOverrides
+                        }
                         onFileRegisterConfigChange={saveFileRegisterConfig}
                         onChange={syncFolderTree}
                         onSaveTree={saveFolderTree}
@@ -581,8 +598,12 @@ export function UploadPageView(props: Record<string, any>) {
                     (ocr.status?.status_counts?.cancelled ?? 0) +
                     (ocr.status?.status_counts?.missing_task ?? 0)
                 }
-                metadataReviewedTotal={ocr.status?.metadata_reviewed_documents ?? 0}
-                metadataWarningTotal={ocr.status?.metadata_warning_documents ?? 0}
+                metadataReviewedTotal={
+                  ocr.status?.metadata_reviewed_documents ?? 0
+                }
+                metadataWarningTotal={
+                  ocr.status?.metadata_warning_documents ?? 0
+                }
                 metadataPagination={{
                   pagination: ocr.status?.pagination ?? null,
                   pageIndex: ocr.documentPageIndex,
@@ -660,9 +681,7 @@ export function UploadPageView(props: Record<string, any>) {
             >
               <NumberingStep
                 sessionId={sessionId ?? routeSessionId ?? null}
-                documentNumberingMode={
-                  activePlanSettings.documentNumberingMode
-                }
+                documentNumberingMode={activePlanSettings.documentNumberingMode}
                 onDocumentNumberingModeApplied={
                   applyPersistedDocumentNumberingMode
                 }

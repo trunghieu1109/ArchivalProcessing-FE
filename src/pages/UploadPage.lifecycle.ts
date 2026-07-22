@@ -263,13 +263,22 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     const loadExistingSession = async () => {
       setSessionLoading(true)
       try {
-        const [sessionDetail, initialWorkingPlan, activePlan] =
+        const [sessionDetail, initialWorkingPlan, initialActivePlan] =
           await Promise.all([
             getSession(routeSessionId),
             getWorkingPlan(routeSessionId),
             getActivePlan(routeSessionId),
           ])
         let workingPlan = initialWorkingPlan
+        const referencedActivePlanVersionId = String(
+          sessionDetail.active_plan_version_id ?? ""
+        ).trim()
+        const activePlan =
+          initialActivePlan ??
+          (referencedActivePlanVersionId &&
+          initialWorkingPlan?.id === referencedActivePlanVersionId
+            ? initialWorkingPlan
+            : null)
         if (cancelled) return
 
         cache.planDraftDirty = false
@@ -401,7 +410,7 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
           setActiveFolderTree(cache.activeFolderTree)
           setActivePlanSettings(activePlanSettings)
         } else {
-          cache.activePlanVersionId = ""
+          cache.activePlanVersionId = referencedActivePlanVersionId
           cache.activePlanResponse = null
           cache.activePlanSignature = ""
           cache.activeParsedPlan = EMPTY_PARSED_PLAN
@@ -415,10 +424,15 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
               ...DEFAULT_NUMBERING_STYLE_OVERRIDES,
             },
           }
-          setActivePlanVersionId("")
+          setActivePlanVersionId(cache.activePlanVersionId)
           setActiveParsedPlan(cache.activeParsedPlan)
           setActiveFolderTree(cache.activeFolderTree)
           setActivePlanSettings(cache.activePlanSettings)
+          if (referencedActivePlanVersionId) {
+            toast.warning(
+              "Session đã có phương án được duyệt nhưng backend chưa trả được nội dung phiên bản active. Hãy tải lại session; nếu vẫn còn lỗi, cần kiểm tra dữ liệu phiên bản active."
+            )
+          }
         }
 
         if (workingPlan) {
@@ -433,13 +447,19 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
           cache.workingPlanVersionId = workingPlan.id ?? ""
           cache.workingPlanStatus = workingPlan.status ?? ""
           cache.workingPlanResponse = workingPlan
-          cache.workingPlanSignature = planResponseMaterialSignature(workingPlan)
+          cache.workingPlanSignature =
+            planResponseMaterialSignature(workingPlan)
           cache.planDraftBaseSignature =
             planDraftPayloadSignature(workingDraftPayload)
           cache.parsedPlan = plan
           cache.folderTree = planToTree(plan)
           cache.planAnalysisState = "done"
-          cache.planViewTab = "draft"
+          cache.planViewTab =
+            workingPlan.status === "draft"
+              ? "draft"
+              : cache.activePlanVersionId
+                ? "active"
+                : "draft"
           cache.dossierBuildStrategy = buildStrategy
           cache.persistedDossierBuildStrategy = buildStrategy
           cache.documentNumberingMode = numberingMode
@@ -482,7 +502,7 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
           cache.planDraftBaseSignature = ""
           cache.parsedPlan = EMPTY_PARSED_PLAN
           cache.folderTree = planToTree(EMPTY_PARSED_PLAN)
-          cache.planViewTab = activePlan ? "active" : "draft"
+          cache.planViewTab = cache.activePlanVersionId ? "active" : "draft"
           cache.dossierBuildStrategy = DEFAULT_DOSSIER_BUILD_STRATEGY
           cache.persistedDossierBuildStrategy = DEFAULT_DOSSIER_BUILD_STRATEGY
           cache.documentNumberingMode = DEFAULT_DOCUMENT_NUMBERING_MODE
