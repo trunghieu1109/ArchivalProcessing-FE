@@ -263,14 +263,40 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     const loadExistingSession = async () => {
       setSessionLoading(true)
       try {
-        const [sessionDetail, initialWorkingPlan, activePlan] =
+        let activePlanLoadError: unknown = null
+        const [sessionDetail, initialWorkingPlan, fetchedActivePlan] =
           await Promise.all([
             getSession(routeSessionId),
             getWorkingPlan(routeSessionId),
-            getActivePlan(routeSessionId),
+            getActivePlan(routeSessionId).catch((err: unknown) => {
+              activePlanLoadError = err
+              return null
+            }),
           ])
         let workingPlan = initialWorkingPlan
         if (cancelled) return
+
+        const sessionActivePlanVersionId = String(
+          sessionDetail.active_plan_version_id ?? ""
+        ).trim()
+        const fetchedActivePlanVersionId = String(
+          fetchedActivePlan?.id ?? ""
+        ).trim()
+        const loadedActivePlan =
+          fetchedActivePlan &&
+          (!sessionActivePlanVersionId ||
+            fetchedActivePlanVersionId === sessionActivePlanVersionId)
+            ? fetchedActivePlan
+            : null
+        const fallbackActivePlan =
+          !loadedActivePlan &&
+          sessionActivePlanVersionId &&
+          String(workingPlan?.id ?? "").trim() === sessionActivePlanVersionId
+            ? workingPlan
+            : null
+        const activePlanForDisplay = loadedActivePlan ?? fallbackActivePlan
+        const effectiveActivePlanVersionId =
+          sessionActivePlanVersionId || String(loadedActivePlan?.id ?? "").trim()
 
         cache.planDraftDirty = false
         cache.planDraftRevision = 0
@@ -380,28 +406,30 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
         setZipFolderPath(cache.zipFolderPath)
         setZipUploadProgress(null)
 
-        if (activePlan) {
-          const activeParsedPlan = activePlanToParsedPlan(activePlan)
+        cache.activePlanVersionId = effectiveActivePlanVersionId
+        setActivePlanVersionId(cache.activePlanVersionId)
+        if (activePlanForDisplay) {
+          const activeParsedPlan = activePlanToParsedPlan(activePlanForDisplay)
           const activePlanSettings = {
-            dossierBuildStrategy: activePlanBuildStrategy(activePlan),
-            documentNumberingMode: activePlanDocumentNumberingMode(activePlan),
+            dossierBuildStrategy: activePlanBuildStrategy(activePlanForDisplay),
+            documentNumberingMode:
+              activePlanDocumentNumberingMode(activePlanForDisplay),
             documentNumberingStylePreset:
-              activePlanDocumentNumberingStylePreset(activePlan),
+              activePlanDocumentNumberingStylePreset(activePlanForDisplay),
             documentNumberingStyleOverrides:
-              activePlanDocumentNumberingStyleOverrides(activePlan),
+              activePlanDocumentNumberingStyleOverrides(activePlanForDisplay),
           }
-          cache.activePlanVersionId = activePlan.id ?? ""
-          cache.activePlanResponse = activePlan
-          cache.activePlanSignature = planResponseMaterialSignature(activePlan)
+          cache.activePlanResponse = loadedActivePlan
+          cache.activePlanSignature = planResponseMaterialSignature(
+            activePlanForDisplay
+          )
           cache.activeParsedPlan = activeParsedPlan
           cache.activeFolderTree = planToTree(activeParsedPlan)
           cache.activePlanSettings = activePlanSettings
-          setActivePlanVersionId(cache.activePlanVersionId)
           setActiveParsedPlan(activeParsedPlan)
           setActiveFolderTree(cache.activeFolderTree)
           setActivePlanSettings(activePlanSettings)
         } else {
-          cache.activePlanVersionId = ""
           cache.activePlanResponse = null
           cache.activePlanSignature = ""
           cache.activeParsedPlan = EMPTY_PARSED_PLAN
@@ -415,10 +443,23 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
               ...DEFAULT_NUMBERING_STYLE_OVERRIDES,
             },
           }
-          setActivePlanVersionId("")
           setActiveParsedPlan(cache.activeParsedPlan)
           setActiveFolderTree(cache.activeFolderTree)
           setActivePlanSettings(cache.activePlanSettings)
+        }
+
+        if (effectiveActivePlanVersionId && !loadedActivePlan) {
+          toast.warning(
+            fallbackActivePlan
+              ? "Chưa tải được phiên bản active từ backend. Đang dùng working plan cùng phiên bản làm dữ liệu dự phòng."
+              : "Session đã có phương án được duyệt nhưng chưa tải được dữ liệu cây của phiên bản active."
+          )
+        } else if (activePlanLoadError) {
+          toast.warning(
+            activePlanLoadError instanceof Error
+              ? activePlanLoadError.message
+              : "Không thể kiểm tra phương án active của session."
+          )
         }
 
         if (workingPlan) {
@@ -439,7 +480,13 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
           cache.parsedPlan = plan
           cache.folderTree = planToTree(plan)
           cache.planAnalysisState = "done"
-          cache.planViewTab = "draft"
+          cache.planViewTab =
+            effectiveActivePlanVersionId &&
+            String(workingPlan.id ?? "").trim() ===
+              effectiveActivePlanVersionId &&
+            workingPlan.status !== "draft"
+              ? "active"
+              : "draft"
           cache.dossierBuildStrategy = buildStrategy
           cache.persistedDossierBuildStrategy = buildStrategy
           cache.documentNumberingMode = numberingMode
@@ -482,7 +529,7 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
           cache.planDraftBaseSignature = ""
           cache.parsedPlan = EMPTY_PARSED_PLAN
           cache.folderTree = planToTree(EMPTY_PARSED_PLAN)
-          cache.planViewTab = activePlan ? "active" : "draft"
+          cache.planViewTab = effectiveActivePlanVersionId ? "active" : "draft"
           cache.dossierBuildStrategy = DEFAULT_DOSSIER_BUILD_STRATEGY
           cache.persistedDossierBuildStrategy = DEFAULT_DOSSIER_BUILD_STRATEGY
           cache.documentNumberingMode = DEFAULT_DOCUMENT_NUMBERING_MODE

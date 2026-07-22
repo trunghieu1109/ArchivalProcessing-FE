@@ -50,7 +50,8 @@ export function UploadPageView(props: Record<string, any>) {
     zipRef,
     doc2Has,
     zipHas,
-    hasAnalyzedArrangementPlan,
+    hasActivePlan,
+    hasPlanReady,
     doc1State,
     doc2State,
     zipState,
@@ -127,8 +128,7 @@ export function UploadPageView(props: Record<string, any>) {
     isWorkerUser,
     navigate,
   } = props
-  const hasAnalyzedPlan = Boolean(hasAnalyzedArrangementPlan)
-  const hasActivePlanVersion =
+  const hasActivePlanData =
     Boolean(activePlanVersionId) && activeParsedPlan.groups.length > 0
   const showActivePlanTab = planViewTab === "active"
   const draftIsActiveFallback =
@@ -269,7 +269,7 @@ export function UploadPageView(props: Record<string, any>) {
               allDone={allDone}
               zipSupplementUploaded={zipSupplementUploaded}
               hasAnyFile={hasAnyFile}
-              hasActivePlan={hasAnalyzedPlan}
+              hasPlanReady={hasPlanReady}
               readyCount={readyCount}
               requiredFileCount={requiredFileCount}
               selectedInputLabels={selectedInputLabels}
@@ -291,7 +291,7 @@ export function UploadPageView(props: Record<string, any>) {
               exit={{ opacity: 0, y: -16 }}
               transition={{ duration: 0.4, ease: easeOut }}
             >
-              {hasAnalyzedPlan ? (
+              {hasPlanReady ? (
                 <div className="flex flex-col gap-4">
                   <div className="rounded-2xl border border-[#D8E1EC] bg-white p-3 shadow-sm sm:flex sm:items-center sm:justify-between sm:gap-5">
                     <div className="px-1 pb-2 sm:pb-0">
@@ -372,7 +372,7 @@ export function UploadPageView(props: Record<string, any>) {
                     </div>
                   </div>
                   {showActivePlanTab ? (
-                    hasActivePlanVersion ? (
+                    hasActivePlanData ? (
                       <FolderTree
                         tree={activeFolderTree}
                         parsedPlan={activeParsedPlan}
@@ -409,10 +409,14 @@ export function UploadPageView(props: Record<string, any>) {
                       <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-white px-6 py-8 text-center shadow-sm">
                         <FileText className="mx-auto size-9 text-[#94A3B8]" />
                         <h2 className="mt-3 text-xl font-semibold text-[#0F172A]">
-                          Chưa có phương án đã duyệt
+                          {hasActivePlan
+                            ? "Chưa tải được dữ liệu phương án đã duyệt"
+                            : "Chưa có phương án đã duyệt"}
                         </h2>
                         <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[#64748B]">
-                          Hãy duyệt phương án nháp trước khi lập hồ sơ.
+                          {hasActivePlan
+                            ? "Session đã có phương án được duyệt nhưng chưa tải được dữ liệu cây của phiên bản active. Hãy tải lại trang trước khi lập hồ sơ."
+                            : "Hãy duyệt phương án nháp trước khi lập hồ sơ."}
                         </p>
                       </div>
                     )

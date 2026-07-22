@@ -46,7 +46,7 @@ export function UploadPageStepOne(props: Record<string, any>) {
     allDone,
     zipSupplementUploaded,
     hasAnyFile,
-    hasActivePlan,
+    hasPlanReady,
     readyCount,
     requiredFileCount,
     selectedInputLabels,
@@ -443,7 +443,7 @@ export function UploadPageStepOne(props: Record<string, any>) {
                     ? planReanalysisActionLabel
                     : existingSessionMode && zipSupplementUploaded
                       ? "Extract metadata ZIP bổ sung"
-                      : existingSessionMode && zipHas && !hasActivePlan
+                      : existingSessionMode && zipHas && !hasPlanReady
                         ? "Đi tới extract metadata"
                         : allDone
                           ? "Tiếp tục"

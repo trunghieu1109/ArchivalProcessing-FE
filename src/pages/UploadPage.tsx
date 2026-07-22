@@ -111,15 +111,15 @@ export function UploadPage() {
       toast.error("Chưa có session để lập hồ sơ.")
       return
     }
-    const hasAnalyzedPlanForBuild =
-      Boolean(activePlanVersionId) &&
-      doc1Has &&
-      activeParsedPlan.groups.length > 0
+    const hasActivePlanForBuild = Boolean(activePlanVersionId)
+    const hasActivePlanDataForBuild =
+      hasActivePlanForBuild && activeParsedPlan.groups.length > 0
     const missingInputs = missingDossierBuildInputs({
       hasArrangementPlan: doc1Has,
       hasRetentionSchedule: doc2Has,
       hasRawZip: zipHas,
-      hasActivePlan: hasAnalyzedPlanForBuild,
+      hasActivePlan: hasActivePlanForBuild,
+      hasActivePlanData: hasActivePlanDataForBuild,
     })
     if (missingInputs.length > 0) {
       toast.error(dossierBuildMissingMessage(missingInputs))
@@ -534,18 +534,20 @@ export function UploadPage() {
     Boolean(cache.activePlanSignature) &&
     Boolean(cache.workingPlanSignature) &&
     cache.workingPlanSignature === cache.activePlanSignature
-  const hasActivePlanForBuild =
-    hasActivePlan && doc1Has && activeParsedPlan.groups.length > 0
-  const hasAnalyzedArrangementPlan =
+  const hasActivePlanData =
+    hasActivePlan && activeParsedPlan.groups.length > 0
+  const hasAnalyzedPlan =
     planAnalysisState === "done" &&
     hasWorkingPlan &&
     doc1Has &&
     parsedPlan.groups.length > 0
+  const hasPlanReady = hasAnalyzedPlan || hasActivePlan
   const missingDossierInputs = missingDossierBuildInputs({
     hasArrangementPlan: doc1Has,
     hasRetentionSchedule: doc2Has,
     hasRawZip: zipHas,
-    hasActivePlan: hasActivePlanForBuild,
+    hasActivePlan,
+    hasActivePlanData,
   })
   const missingDossierInputLabels =
     dossierBuildMissingLabels(missingDossierInputs)
@@ -568,10 +570,10 @@ export function UploadPage() {
     ? [
         {
           label: "Phương án",
-          has: hasAnalyzedArrangementPlan,
+          has: hasPlanReady,
           state: arrangementPlanAnalyzing
             ? "processing"
-            : hasAnalyzedArrangementPlan
+            : hasPlanReady
               ? "done"
               : "idle",
         },
@@ -595,7 +597,7 @@ export function UploadPage() {
     doc1State === "processing" ||
     doc2State === "processing" ||
     zipProcessingBlocksAction
-  const allDone = hasAnalyzedArrangementPlan && !planInputsReuploaded
+  const allDone = hasPlanReady && !planInputsReuploaded
   const canOpenPlanAnalysisStep =
     existingSessionMode && planAnalyzing && (doc1Has || doc2Has)
   const primaryActionDisabled =
@@ -818,7 +820,7 @@ export function UploadPage() {
     planInputsReuploaded,
     planAnalysisState,
     allDone,
-    hasActivePlan: hasAnalyzedArrangementPlan,
+    hasPlanReady,
     planReanalysisReady,
     planReuploadState,
     dossierBuildStrategy,
@@ -880,7 +882,7 @@ export function UploadPage() {
         doc2Has={doc2Has}
         zipHas={zipHas}
         hasActivePlan={hasActivePlan}
-        hasAnalyzedArrangementPlan={hasAnalyzedArrangementPlan}
+        hasPlanReady={hasPlanReady}
         doc1State={doc1State}
         doc2State={doc2State}
         zipState={zipState}

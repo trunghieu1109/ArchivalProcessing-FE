@@ -562,7 +562,6 @@ export function ProcessStepView(props: ProcessStepViewProps) {
         readyItems={readyItems}
         metadataMessage={metadataMessage}
         canContinue={canContinue}
-        canAttemptContinue={canAttemptContinue}
         buildBlockedMessage={buildBlockedMessage}
         onContinue={onContinue}
       />

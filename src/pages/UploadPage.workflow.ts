@@ -21,7 +21,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     planInputsReuploaded,
     planAnalysisState,
     allDone,
-    hasActivePlan,
+    hasPlanReady,
     planReanalysisReady,
     planReuploadState,
     dossierBuildStrategy,
@@ -159,7 +159,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
         }
         return
       }
-      if (zipHas && !hasActivePlan && !doc1Has && !doc2Has) {
+      if (zipHas && !hasPlanReady) {
         const currentSessionId = routeSessionId ?? sessionId ?? cache.sessionId
         if (currentSessionId) {
           navigate(

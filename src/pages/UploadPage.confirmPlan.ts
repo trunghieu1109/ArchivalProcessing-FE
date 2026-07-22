@@ -24,11 +24,6 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
 
     setConfirmingPlan(true)
     try {
-      const draftMatchesActive =
-        Boolean(cache.activePlanSignature) &&
-        Boolean(cache.workingPlanSignature) &&
-        cache.workingPlanSignature === cache.activePlanSignature
-
       if (cache.planDraftDirty) {
         toast.warning(
           "Bản draft hiện tại đang có thay đổi chưa lưu. Hãy lưu bản nháp trước khi duyệt."
@@ -36,16 +31,29 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
         return false
       }
 
-      const targetPlanVersionId =
-        cache.workingPlanStatus === "draft" && !draftMatchesActive
-          ? cache.workingPlanVersionId.trim()
-          : ""
+      const targetPlanVersionId = cache.workingPlanVersionId.trim()
+      const activePlanVersionId = cache.activePlanVersionId.trim()
+      const loadedActivePlanVersionId = String(
+        cache.activePlanResponse?.id ?? ""
+      ).trim()
+      const currentPlanIsLoadedActive = Boolean(
+        targetPlanVersionId &&
+          activePlanVersionId &&
+          loadedActivePlanVersionId === activePlanVersionId &&
+          targetPlanVersionId === activePlanVersionId &&
+          cache.workingPlanStatus !== "draft"
+      )
 
-      if (!targetPlanVersionId) {
+      if (currentPlanIsLoadedActive) {
         toast.info("Phương án hiện tại đã được duyệt.")
         cache.planViewTab = "active"
         if (typeof setPlanViewTab === "function") setPlanViewTab("active")
         return true
+      }
+
+      if (!targetPlanVersionId) {
+        toast.error("Chưa có phiên bản phương án để duyệt.")
+        return false
       }
 
       const activePlan = await activatePlanVersion(

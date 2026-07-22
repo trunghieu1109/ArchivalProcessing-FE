@@ -3,12 +3,14 @@ export type DossierBuildInputKey =
   | "retention_schedule"
   | "raw_zip"
   | "active_plan"
+  | "active_plan_data"
 
 const INPUT_LABELS: Record<DossierBuildInputKey, string> = {
   arrangement_plan: "phương án chỉnh lý",
   retention_schedule: "thông tư thời hạn bảo quản",
   raw_zip: "file data ZIP",
-  active_plan: "phương án chỉnh lý đã phân tích",
+  active_plan: "phương án chỉnh lý đã được duyệt",
+  active_plan_data: "dữ liệu cây của phương án đã duyệt",
 }
 
 export function missingDossierBuildInputs({
@@ -16,15 +18,18 @@ export function missingDossierBuildInputs({
   hasRetentionSchedule,
   hasRawZip,
   hasActivePlan,
+  hasActivePlanData,
 }: {
   hasArrangementPlan: boolean
   hasRetentionSchedule: boolean
   hasRawZip: boolean
   hasActivePlan: boolean
+  hasActivePlanData: boolean
 }): DossierBuildInputKey[] {
   const missing: DossierBuildInputKey[] = []
   if (!hasArrangementPlan) missing.push("arrangement_plan")
   else if (!hasActivePlan) missing.push("active_plan")
+  else if (!hasActivePlanData) missing.push("active_plan_data")
   if (!hasRetentionSchedule) missing.push("retention_schedule")
   if (!hasRawZip) missing.push("raw_zip")
   return missing

@@ -130,7 +130,7 @@ export function ProcessStepFooter({
   dossierReadyCount,
   readyItems,
   metadataMessage,
-  canAttemptContinue,
+  canContinue,
   buildBlockedMessage,
   onContinue,
 }: Record<string, any>) {
@@ -143,7 +143,12 @@ export function ProcessStepFooter({
   return (
     <div className="flex flex-col gap-4 rounded-2xl border border-[#CBD5E1] bg-white px-4 py-4 shadow-sm sm:px-6 lg:flex-row lg:items-center lg:justify-between">
       <div className="min-w-0 text-sm text-[#475569]">
-        {pendingReadyItems.length > 0 && dossierReadyItems.length === 0 ? (
+        {buildBlockedMessage ? (
+          <span className="flex items-center gap-2 text-amber-700">
+            <AlertTriangle className="size-4" />
+            {buildBlockedMessage}
+          </span>
+        ) : pendingReadyItems.length > 0 && dossierReadyItems.length === 0 ? (
           <span className="flex items-center gap-2 text-amber-700">
             <AlertTriangle className="size-4" />
             Còn {pendingReadyItems.length} tài liệu cần review metadata.
@@ -155,11 +160,6 @@ export function ProcessStepFooter({
             kiện;
             {` ${pendingReadyItems.length}`} tài liệu còn lại có thể cập nhật hồ
             sơ sau.
-          </span>
-        ) : buildBlockedMessage ? (
-          <span className="flex items-center gap-2 text-amber-700">
-            <AlertTriangle className="size-4" />
-            {buildBlockedMessage}
           </span>
         ) : readyItems.length > 0 ? (
           <span className="flex items-center gap-2 text-emerald-700">
@@ -173,19 +173,19 @@ export function ProcessStepFooter({
         )}
       </div>
       <button
-        disabled={!canAttemptContinue}
+        disabled={!canContinue}
         onClick={() => {
-          if (!canAttemptContinue) return
+          if (!canContinue) return
           onContinue([])
         }}
         className={cn(
           "group flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold transition-all duration-200 sm:w-auto",
-          canAttemptContinue
+          canContinue
             ? "text-white hover:-translate-y-0.5 active:scale-[0.98]"
             : "cursor-not-allowed bg-[#CBD5E1] text-[#475569]"
         )}
         style={
-          canAttemptContinue
+          canContinue
             ? {
                 background: "linear-gradient(to right, #0052FF, #4D7CFF)",
                 boxShadow: "0 4px 14px rgba(0,82,255,0.25)",
@@ -193,7 +193,7 @@ export function ProcessStepFooter({
             : {}
         }
       >
-        {canAttemptContinue
+        {canContinue
           ? `Lập hồ sơ (${dossierReadyItems.length} tài liệu)`
           : "Lập hồ sơ"}
       </button>
