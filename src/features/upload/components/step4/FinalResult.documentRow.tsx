@@ -92,7 +92,7 @@ export function DocumentRow({
   const inactiveDetails = documentTransferred
     ? [
         document.transferredToSessionId
-          ? `Đã chuyển sang ${document.transferredToSessionId}`
+          ? `Đã chuyển sang session ${document.transferredToSessionId}`
           : "Đã chuyển sang phông khác",
         document.transferredByName ? `bởi ${document.transferredByName}` : "",
         document.transferredAt
@@ -243,7 +243,7 @@ export function DocumentRow({
               >
                 {documentTransferred
                   ? document.transferredToSessionId
-                    ? `Đã chuyển sang ${document.transferredToSessionId}`
+                    ? `Đã chuyển sang session ${document.transferredToSessionId}`
                     : "Đã chuyển phông"
                   : documentDeleted
                     ? "Đã xóa khỏi session"

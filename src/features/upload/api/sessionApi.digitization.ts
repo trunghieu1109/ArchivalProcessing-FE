@@ -145,6 +145,26 @@ export async function transferSessionDocuments(
   )
 }
 
+export async function getSessionDocumentTransfer(
+  sourceSessionId: string,
+  operationId: string
+): Promise<DocumentTransferOperationResponse> {
+  return requestJson<DocumentTransferOperationResponse>(
+    `/sessions/${encodeURIComponent(sourceSessionId)}/document-transfers/${encodeURIComponent(operationId)}`,
+    { cache: "no-store" }
+  )
+}
+
+export async function retrySessionDocumentTransfer(
+  sourceSessionId: string,
+  operationId: string
+): Promise<DocumentTransferOperationResponse> {
+  return requestJson<DocumentTransferOperationResponse>(
+    `/sessions/${encodeURIComponent(sourceSessionId)}/document-transfers/${encodeURIComponent(operationId)}/retry`,
+    { method: "POST", headers: { "Content-Type": "application/json" } }
+  )
+}
+
 export async function startDigitization(
   sessionId: string,
   payload: {

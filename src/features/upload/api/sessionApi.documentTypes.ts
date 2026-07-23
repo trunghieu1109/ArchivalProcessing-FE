@@ -665,10 +665,18 @@ export interface DocumentTransferPreviewResponse {
 
 export interface DocumentTransferOperationResponse {
   operation_id: string
-  status: "completed" | string
+  status:
+    | "pending"
+    | "moving_remote"
+    | "retry_required"
+    | "completed"
+    | "completed_with_errors"
+    | "failed"
+    | string
   source_session_id: string
   target_session_id: string
   transferred_count: number
+  failed_count: number
   transferred_documents: Array<{
     source_session_document_id: number
     target_session_document_id: number
@@ -678,14 +686,38 @@ export interface DocumentTransferOperationResponse {
     remote_document_id?: string | null
     target_ocr_batch_id: null
   }>
+  failed_documents: Array<{
+    source_session_document_id: number
+    document_id: string
+    file_name: string
+    error?: string | null
+    status_code?: number | null
+  }>
   source_session_document_ids: number[]
+  successful_source_session_document_ids?: number[]
   target_session_document_ids: number[]
   source_document_set_revision: number
   target_document_set_revision: number
   source_impact: DocumentDeletionImpact
   target_impact: DocumentDeletionImpact
   source_cluster_projection: DocumentTransferClusterProjection
-  remote_operation_performed: false
+  remote_operation_performed: boolean
+  retryable: boolean
+  error?: string | null
+  items?: Record<
+    string,
+    {
+      source_session_document_id: number
+      remote_document_id: string
+      source_batch_id: string
+      target_batch_id: string
+      client_request_id: string
+      status: string
+      attempts: number
+      error?: string | null
+      target_session_document_id?: number | null
+    }
+  >
   requires_source_reclustering: boolean
   requires_target_reclustering: boolean
 }

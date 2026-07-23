@@ -19,6 +19,7 @@ import {
   listSessionDocumentTransferTargets,
   previewSessionDocumentTransfer,
   promoteTemporaryFolderDocuments,
+  retrySessionDocumentTransfer,
   suggestSessionDossierRetention,
   suggestSessionDossierTitle,
   transferSessionDocuments,
@@ -99,6 +100,11 @@ export function DocumentTransferDialog({
     useState("")
   const [completedTransfer, setCompletedTransfer] =
     useState<DocumentTransferOperationResponse | null>(null)
+  const [retryableTransfer, setRetryableTransfer] =
+    useState<DocumentTransferOperationResponse | null>(null)
+  const [terminalTransfer, setTerminalTransfer] =
+    useState<DocumentTransferOperationResponse | null>(null)
+  const [submissionUncertain, setSubmissionUncertain] = useState(false)
   const [loadingSessions, setLoadingSessions] = useState(false)
   const [loadingMoreSessions, setLoadingMoreSessions] = useState(false)
   const [loadingPreview, setLoadingPreview] = useState(false)
@@ -164,7 +170,10 @@ export function DocumentTransferDialog({
       !sourceSessionId ||
       !selectedTargetSessionId ||
       documentIds.length === 0 ||
-      completedTransfer
+      completedTransfer ||
+      retryableTransfer ||
+      terminalTransfer ||
+      submissionUncertain
     ) {
       return
     }
@@ -203,8 +212,11 @@ export function DocumentTransferDialog({
     completedTransfer,
     documentIds,
     open,
+    retryableTransfer,
     selectedTargetSessionId,
     sourceSessionId,
+    submissionUncertain,
+    terminalTransfer,
   ])
 
   const loadDossierSuggestions = useCallback(
@@ -319,6 +331,12 @@ export function DocumentTransferDialog({
   const selectedRetentionCandidate = retentionCandidates.find(
     (candidate) => candidate.key === selectedRetentionCandidateKey
   )
+  const transferStateLocked = Boolean(
+    completedTransfer ||
+      retryableTransfer ||
+      terminalTransfer ||
+      submissionUncertain
+  )
 
   const resetDialogState = () => {
     setSearch("")
@@ -326,6 +344,9 @@ export function DocumentTransferDialog({
     setReason("")
     setMode("automatic")
     setCompletedTransfer(null)
+    setRetryableTransfer(null)
+    setTerminalTransfer(null)
+    setSubmissionUncertain(false)
     setDossierDraft(EMPTY_DOSSIER_DRAFT)
     setRetentionRecommendation({})
     setRetentionCandidates([])
@@ -411,10 +432,11 @@ export function DocumentTransferDialog({
       await retryTemporaryDossier()
       return
     }
+    if (terminalTransfer) return
     if (
       !sourceSessionId ||
       !selectedTargetSessionId ||
-      !preview?.allowed ||
+      (!retryableTransfer && !submissionUncertain && !preview?.allowed) ||
       documentIds.length === 0
     ) {
       return
@@ -423,13 +445,19 @@ export function DocumentTransferDialog({
     setError("")
     let result: DocumentTransferOperationResponse
     try {
-      result = await transferSessionDocuments(
-        sourceSessionId,
-        selectedTargetSessionId,
-        documentIds,
-        reason
-      )
+      result = retryableTransfer
+        ? await retrySessionDocumentTransfer(
+            sourceSessionId,
+            retryableTransfer.operation_id
+          )
+        : await transferSessionDocuments(
+            sourceSessionId,
+            selectedTargetSessionId,
+            documentIds,
+            reason
+          )
     } catch (caught) {
+      setSubmissionUncertain(true)
       const message = transferErrorMessage(
         caught,
         "Không thể chuyển tài liệu sang phông đích."
@@ -450,13 +478,43 @@ export function DocumentTransferDialog({
       return
     }
 
-    try {
-      await onMutationCompleted(result, documentIds)
-    } catch (caught) {
-      console.warn(
-        "Transferred documents but could not refresh source UI",
-        caught
+    setSubmissionUncertain(false)
+    if (
+      result.status === "retry_required" ||
+      result.status === "pending" ||
+      result.status === "moving_remote"
+    ) {
+      setRetryableTransfer(result)
+      setError(
+        "Chưa xác định được kết quả chuyển trên Chỉnh Lý. Tài liệu đang được giữ nguyên trạng thái chờ; hãy thử đồng bộ lại thao tác này."
       )
+      toast.warning("Kết quả chuyển chưa rõ, có thể thử đồng bộ lại an toàn.")
+      setSubmitting(false)
+      return
+    }
+
+    setRetryableTransfer(null)
+    if (result.transferred_count > 0) {
+      try {
+        await onMutationCompleted(result, documentIds)
+      } catch (caught) {
+        console.warn(
+          "Transferred documents but could not refresh source UI",
+          caught
+        )
+      }
+    }
+
+    if (result.status !== "completed" || result.failed_count > 0) {
+      setTerminalTransfer(result)
+      const message =
+        result.transferred_count > 0
+          ? `Đã chuyển ${result.transferred_count} tài liệu; ${result.failed_count} tài liệu không chuyển được và vẫn active ở session nguồn.`
+          : `Không chuyển được ${result.failed_count || documentIds.length} tài liệu; các tài liệu vẫn active ở session nguồn.`
+      setError(message)
+      toast.warning(message)
+      setSubmitting(false)
+      return
     }
 
     if (mode === "automatic") {
@@ -509,7 +567,11 @@ export function DocumentTransferDialog({
     loadingPreview ||
     loadingSuggestions ||
     !selectedTargetSessionId ||
-    (!completedTransfer && !preview?.allowed)
+    Boolean(terminalTransfer) ||
+    (!completedTransfer &&
+      !retryableTransfer &&
+      !submissionUncertain &&
+      !preview?.allowed)
 
   return (
     <Dialog.Root open={open} onOpenChange={handleOpenChange}>
@@ -550,7 +612,7 @@ export function DocumentTransferDialog({
                     onChange={(event) => setSearch(event.target.value)}
                     placeholder="Tên phông hoặc mã session"
                     className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-                    disabled={Boolean(completedTransfer)}
+                    disabled={transferStateLocked}
                   />
                 </label>
               </div>
@@ -573,7 +635,7 @@ export function DocumentTransferDialog({
                             setSelectedTargetSessionId(session.session_id)
                             setError("")
                           }}
-                          disabled={Boolean(completedTransfer)}
+                          disabled={transferStateLocked}
                           className={cn(
                             "w-full rounded-xl border px-3 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-70",
                             selected
@@ -615,7 +677,7 @@ export function DocumentTransferDialog({
                         variant="outline"
                         className="w-full"
                         disabled={
-                          loadingMoreSessions || Boolean(completedTransfer)
+                          loadingMoreSessions || transferStateLocked
                         }
                         onClick={() => void loadMoreTargetSessions()}
                       >
@@ -663,7 +725,7 @@ export function DocumentTransferDialog({
                 <div className="mt-2 grid gap-3 sm:grid-cols-2">
                   <TransferModeCard
                     selected={mode === "automatic"}
-                    disabled={Boolean(completedTransfer)}
+                    disabled={transferStateLocked}
                     icon={<Bot className="size-5" />}
                     title="Tự động phân loại"
                     description="Chuyển tài liệu rồi chạy luồng phân loại tự động hiện có ở phông đích."
@@ -671,7 +733,7 @@ export function DocumentTransferDialog({
                   />
                   <TransferModeCard
                     selected={mode === "temporary_dossier"}
-                    disabled={Boolean(completedTransfer)}
+                    disabled={transferStateLocked}
                     icon={<FolderPlus className="size-5" />}
                     title="Tạo hồ sơ tạm"
                     description="Chuyển tài liệu, gom thành hồ sơ tạm và ghi nhận làm feedback lập hồ sơ."
@@ -788,6 +850,43 @@ export function DocumentTransferDialog({
                 </WarningBox>
               ) : null}
 
+              {retryableTransfer ? (
+                <WarningBox title="Kết quả chuyển chưa được xác định">
+                  <li>
+                    Hệ thống sẽ dùng lại đúng mã yêu cầu cũ khi thử lại, không
+                    tạo một thao tác chuyển mới.
+                  </li>
+                  <li>
+                    Thao tác {retryableTransfer.operation_id} · session đích{" "}
+                    {retryableTransfer.target_session_id}
+                  </li>
+                </WarningBox>
+              ) : null}
+
+              {submissionUncertain ? (
+                <WarningBox title="Chưa nhận được phản hồi của thao tác chuyển">
+                  <li>
+                    Có thể gửi lại đúng yêu cầu này. Backend sẽ trả lại operation
+                    đang chạy hoặc kết quả đã lưu, không chuyển lại tài liệu đã
+                    thành công.
+                  </li>
+                </WarningBox>
+              ) : null}
+
+              {terminalTransfer ? (
+                <WarningBox title="Thao tác chuyển đã kết thúc">
+                  <li>
+                    Đã chuyển {terminalTransfer.transferred_count} tài liệu;{" "}
+                    {terminalTransfer.failed_count} tài liệu không chuyển được
+                    vẫn active ở session nguồn.
+                  </li>
+                  <li>
+                    Đóng hộp thoại, chọn lại các tài liệu lỗi nếu muốn thực hiện
+                    một thao tác mới.
+                  </li>
+                </WarningBox>
+              ) : null}
+
               {error ? (
                 <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs leading-5 text-red-700">
                   {error}
@@ -800,7 +899,7 @@ export function DocumentTransferDialog({
                   value={reason}
                   onChange={(event) => setReason(event.target.value)}
                   rows={2}
-                  disabled={Boolean(completedTransfer)}
+                  disabled={transferStateLocked}
                   className="mt-1 w-full resize-none rounded-lg border border-[#CBD5E1] bg-white px-3 py-2 text-sm text-[#0F172A] outline-none focus:border-[#0052FF] focus:ring-2 focus:ring-[#0052FF]/15 disabled:bg-[#F1F5F9]"
                 />
               </label>
@@ -832,7 +931,11 @@ export function DocumentTransferDialog({
                 )}
                 {completedTransfer
                   ? "Thử tạo hồ sơ tạm lại"
-                  : mode === "temporary_dossier"
+                  : retryableTransfer
+                    ? "Thử đồng bộ lại kết quả chuyển"
+                    : submissionUncertain
+                      ? "Thử lại yêu cầu chuyển"
+                    : mode === "temporary_dossier"
                     ? "Chuyển và tạo hồ sơ tạm"
                     : "Chuyển và tự động phân loại"}
               </Button>

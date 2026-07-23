@@ -1274,9 +1274,15 @@ export function FinalResult({
   const handleDocumentTransferCompleted = useCallback(
     async (
       result: DocumentTransferOperationResponse,
-      targetedDocumentIds: number[]
+      _targetedDocumentIds: number[]
     ) => {
-      const targetedIds = new Set(targetedDocumentIds)
+      void _targetedDocumentIds
+      const targetedIds = new Set(
+        result.transferred_documents.map(
+          (document) => document.source_session_document_id
+        )
+      )
+      if (targetedIds.size === 0) return
       setGroups((previous) =>
         previous.map((group) => ({
           ...group,
