@@ -31,7 +31,6 @@ import {
   type DocumentNumberingStylePreset,
   type MetadataBoxNumberImportResponse,
   type MetadataCountConflict,
-  type MetadataExportMode,
   type NumberingDocumentStatus,
   type SessionDossierPatchPayload,
   type NumberingStatusResponse,
@@ -805,7 +804,7 @@ export function NumberingStep({
     ]
   )
 
-  const exportMetadata = useCallback(async (metadataExportMode: MetadataExportMode) => {
+  const exportMetadata = useCallback(async () => {
     if (!sessionId) {
       toast.error("Chưa có session để xuất metadata.")
       return
@@ -815,7 +814,7 @@ export function NumberingStep({
     try {
       const result = await exportMetadataSnapshot(sessionId, {
         created_by: "ui",
-        metadata_export_mode: metadataExportMode,
+        metadata_export_mode: "combined",
       })
       const artifacts = [...result.artifacts].sort((left, right) => {
         const leftPriority = left.artifact_type.includes("dossiers") ? 0 : 1
@@ -829,11 +828,7 @@ export function NumberingStep({
         const download = await downloadArtifact(sessionId, artifact.id)
         saveBlob(download.blob, download.fileName)
       }
-      toast.success(
-        metadataExportMode === "separated"
-          ? "Đã tạo và tải 2 file metadata hồ sơ, tài liệu."
-          : "Đã tạo và tải file metadata tổng hợp."
-      )
+      toast.success("Đã tạo và tải file metadata tổng hợp.")
     } catch (err) {
       const message =
         err instanceof Error

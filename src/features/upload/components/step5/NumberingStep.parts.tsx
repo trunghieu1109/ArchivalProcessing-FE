@@ -26,7 +26,6 @@ import type {
   DocumentNumberingMode,
   DocumentNumberingStylePreset,
   MetadataBoxNumberImportResponse,
-  MetadataExportMode,
   NumberingDocumentStatus,
   NumberingStyleOption,
 } from "@/features/upload/api/sessionApi"
@@ -400,12 +399,9 @@ export function NumberingMetadataPanel({
   metadataExporting: boolean
   metadataImporting: boolean
   metadataImportReview: MetadataBoxNumberImportResponse | null
-  onExportMetadata: (mode: MetadataExportMode) => void | Promise<unknown>
+  onExportMetadata: () => void | Promise<unknown>
   onImportMetadataBoxNumbers: (file: File | null) => void | Promise<unknown>
 }) {
-  const [exportDialogOpen, setExportDialogOpen] = useState(false)
-  const [exportMode, setExportMode] =
-    useState<MetadataExportMode>("combined")
   const countConflicts = METADATA_COUNT_CONFLICT_WARNING_ENABLED
     ? metadataImportReview?.count_conflicts ?? []
     : []
@@ -430,15 +426,14 @@ export function NumberingMetadataPanel({
           </p>
           <p className="mt-1 max-w-3xl text-sm text-[#64748B]">
             Xuất hoặc nhập số hộp, số hồ sơ, ghi chú, số tờ và số trang
-            trước khi tạo mục lục. Với chế độ tách, hãy nhập lại file metadata
-            hồ sơ.
+            trước khi tạo mục lục.
           </p>
         </div>
         <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:w-auto">
           <Button
             type="button"
             variant="outline"
-            onClick={() => setExportDialogOpen(true)}
+            onClick={() => void onExportMetadata()}
             disabled={!sessionId || active || metadataBusy}
             className="w-full lg:w-auto"
           >
@@ -480,101 +475,6 @@ export function NumberingMetadataPanel({
                   dùng số mới. Xử lý từng hồ sơ trong danh sách bên dưới.
                 </p>
               </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-      {exportDialogOpen ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-8"
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget && !metadataExporting) {
-              setExportDialogOpen(false)
-            }
-          }}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="metadata-export-mode-title"
-            className="w-full max-w-xl rounded-2xl border border-[#D8E1EC] bg-white p-5 shadow-2xl"
-          >
-            <h3
-              id="metadata-export-mode-title"
-              className="text-lg font-semibold text-[#0F172A]"
-            >
-              Chọn chế độ xuất metadata
-            </h3>
-            <p className="mt-1 text-sm text-[#64748B]">
-              Chế độ tách loại bỏ việc lặp metadata hồ sơ trên từng tài liệu.
-            </p>
-            <div className="mt-4 grid gap-3">
-              {(
-                [
-                  {
-                    value: "combined",
-                    title: "Một file tổng hợp",
-                    description:
-                      "Giữ cấu trúc hiện tại: mỗi dòng là một tài liệu và có kèm metadata hồ sơ.",
-                  },
-                  {
-                    value: "separated",
-                    title: "Tách file hồ sơ và tài liệu",
-                    description:
-                      "Sinh một file có một dòng mỗi hồ sơ và một file chỉ chứa metadata tài liệu.",
-                  },
-                ] satisfies Array<{
-                  value: MetadataExportMode
-                  title: string
-                  description: string
-                }>
-              ).map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setExportMode(option.value)}
-                  disabled={metadataExporting}
-                  className={cn(
-                    "rounded-xl border px-4 py-3 text-left transition-colors",
-                    exportMode === option.value
-                      ? "border-[#0052FF] bg-[#EAF1FF]"
-                      : "border-[#CBD5E1] bg-white hover:border-[#0052FF]/50"
-                  )}
-                >
-                  <span className="block text-sm font-semibold text-[#0F172A]">
-                    {option.title}
-                  </span>
-                  <span className="mt-1 block text-sm text-[#64748B]">
-                    {option.description}
-                  </span>
-                </button>
-              ))}
-            </div>
-            <div className="mt-5 flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={metadataExporting}
-                onClick={() => setExportDialogOpen(false)}
-              >
-                Hủy
-              </Button>
-              <Button
-                type="button"
-                disabled={metadataExporting}
-                onClick={async () => {
-                  await onExportMetadata(exportMode)
-                  setExportDialogOpen(false)
-                }}
-              >
-                {metadataExporting ? (
-                  <Loader2 data-icon="inline-start" className="animate-spin" />
-                ) : (
-                  <FileSpreadsheet data-icon="inline-start" />
-                )}
-                Xuất metadata
-              </Button>
             </div>
           </div>
         </div>
