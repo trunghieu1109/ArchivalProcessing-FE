@@ -16,7 +16,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/shared/lib/utils"
 import { UserMenu } from "@/features/auth/components/UserMenu"
-import type { SessionArtifact } from "@/features/upload/api/sessionApi"
+import type {
+  MetadataExportMode,
+  SessionArtifact,
+} from "@/features/upload/api/sessionApi"
 import {
   artifactExtension,
   artifactTypeLabel,
@@ -151,6 +154,72 @@ export function FinalizeToolbar({
         </Button>
       </div>
     </div>
+  )
+}
+
+export function MetadataExportModeSelector({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: MetadataExportMode
+  disabled: boolean
+  onChange: (value: MetadataExportMode) => void
+}) {
+  const options: Array<{
+    value: MetadataExportMode
+    title: string
+    description: string
+  }> = [
+    {
+      value: "combined",
+      title: "Một file metadata tổng hợp",
+      description:
+        "Giữ cấu trúc hiện tại, metadata hồ sơ đi cùng từng dòng tài liệu.",
+    },
+    {
+      value: "separated",
+      title: "Tách metadata hồ sơ và tài liệu",
+      description:
+        "Sinh hai file riêng; metadata hồ sơ chỉ xuất một dòng cho mỗi hồ sơ.",
+    },
+  ]
+
+  return (
+    <section className="rounded-2xl border border-[#D8E1EC] bg-white px-5 py-4 shadow-sm">
+      <div>
+        <h3 className="text-sm font-semibold text-[#0F172A]">
+          Chế độ xuất metadata
+        </h3>
+        <p className="mt-1 text-sm text-[#64748B]">
+          Lựa chọn này chỉ thay đổi các file metadata trong bộ mục lục.
+        </p>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            disabled={disabled}
+            aria-pressed={value === option.value}
+            onClick={() => onChange(option.value)}
+            className={cn(
+              "rounded-xl border px-4 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+              value === option.value
+                ? "border-[#0052FF] bg-[#EAF1FF]"
+                : "border-[#CBD5E1] hover:border-[#0052FF]/50"
+            )}
+          >
+            <span className="block text-sm font-semibold text-[#0F172A]">
+              {option.title}
+            </span>
+            <span className="mt-1 block text-sm text-[#64748B]">
+              {option.description}
+            </span>
+          </button>
+        ))}
+      </div>
+    </section>
   )
 }
 

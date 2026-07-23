@@ -156,6 +156,8 @@ export interface SessionArtifact {
   generated_at?: string
 }
 
+export type MetadataExportMode = "combined" | "separated"
+
 export interface NumberingDocumentStatus {
   session_document_id: number
   document_id: string
@@ -350,6 +352,7 @@ export interface MetadataSnapshotGroup {
 export interface MetadataSnapshotResponse {
   session_id: string
   run_id: string
+  metadata_export_mode: MetadataExportMode
   artifact: SessionArtifact
   artifacts: SessionArtifact[]
   summary: Record<string, unknown>

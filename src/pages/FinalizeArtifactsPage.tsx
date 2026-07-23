@@ -16,6 +16,7 @@ import {
   FinalizePageHeader,
   FinalizeStatusCard,
   FinalizeToolbar,
+  MetadataExportModeSelector,
 } from "./FinalizeArtifactsPage.parts"
 import {
   ArtifactPreviewPanel,
@@ -41,6 +42,7 @@ import {
   getArtifactPreviewHtml,
   listArtifacts,
   listSessionEvents,
+  type MetadataExportMode,
   type SessionArtifact,
 } from "@/features/upload/api/sessionApi"
 
@@ -80,6 +82,8 @@ export function FinalizeArtifactsStep({
   const [artifacts, setArtifacts] = useState<SessionArtifact[]>([])
   const [loading, setLoading] = useState(true)
   const [finalizing, setFinalizing] = useState(false)
+  const [metadataExportMode, setMetadataExportMode] =
+    useState<MetadataExportMode>("combined")
   const [pollAfterArtifactId, setPollAfterArtifactId] = useState(0)
   const [statusMessage, setStatusMessage] = useState("Đang tải tệp mục lục...")
   const [error, setError] = useState("")
@@ -187,7 +191,10 @@ export function FinalizeArtifactsStep({
       const currentArtifacts = await refreshArtifacts({ silent: true })
       setLoading(false)
       setPollAfterArtifactId(maxArtifactId(currentArtifacts))
-      await enqueueFinalizeArtifacts(sessionId, { created_by: "ui" })
+      await enqueueFinalizeArtifacts(sessionId, {
+        created_by: "ui",
+        metadata_export_mode: metadataExportMode,
+      })
       setProgressPhase("loading_data")
       setProgressMessage("Đã gửi yêu cầu tạo mục lục. Đang chờ worker xử lý.")
       setCompletedPhases(new Set())
@@ -208,7 +215,12 @@ export function FinalizeArtifactsStep({
       toast.error(message)
       onAutoStartHandled?.()
     }
-  }, [onAutoStartHandled, refreshArtifacts, sessionId])
+  }, [
+    metadataExportMode,
+    onAutoStartHandled,
+    refreshArtifacts,
+    sessionId,
+  ])
 
   useEffect(() => {
     if (!autoStart || autoStartHandled.current) return
@@ -459,6 +471,12 @@ export function FinalizeArtifactsStep({
             : "mx-auto flex max-w-[1560px] flex-col gap-6 px-4 py-5 sm:px-6 sm:py-8 lg:px-8"
         }
       >
+        <MetadataExportModeSelector
+          value={metadataExportMode}
+          disabled={finalizing}
+          onChange={setMetadataExportMode}
+        />
+
         <FinalizeToolbar
           embedded={embedded}
           sessionId={sessionId}

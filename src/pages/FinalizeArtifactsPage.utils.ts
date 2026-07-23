@@ -26,6 +26,10 @@ const SECTION_ARTIFACT_TYPE_ORDER: Record<string, string[]> = {
     "metadata_digitalized_documents_xlsx",
     "metadata_extracted_documents_xlsx",
     "metadata_snapshot_xlsx",
+    "metadata_dossiers_xlsx",
+    "metadata_documents_xlsx",
+    "metadata_snapshot_dossiers_xlsx",
+    "metadata_snapshot_documents_xlsx",
   ],
   dossierIndex: [
     "muc_luc_ho_so_xlsx",
@@ -183,6 +187,10 @@ export function artifactTypeLabel(value: string): string {
     metadata_extracted_documents_xlsx: "Metadata tài liệu trích xuất",
     metadata_digitalized_documents_xlsx: "Metadata tài liệu số hóa",
     metadata_snapshot_xlsx: "Snapshot metadata",
+    metadata_dossiers_xlsx: "Metadata hồ sơ",
+    metadata_documents_xlsx: "Metadata tài liệu",
+    metadata_snapshot_dossiers_xlsx: "Snapshot metadata hồ sơ",
+    metadata_snapshot_documents_xlsx: "Snapshot metadata tài liệu",
   }
   return labels[value] ?? value.replace(/_/g, " ")
 }
