@@ -31,6 +31,7 @@ import {
   type DocumentNumberingStylePreset,
   type MetadataBoxNumberImportResponse,
   type MetadataCountConflict,
+  type MetadataExportMode,
   type NumberingDocumentStatus,
   type SessionDossierPatchPayload,
   type NumberingStatusResponse,
@@ -804,35 +805,50 @@ export function NumberingStep({
     ]
   )
 
-  const exportMetadata = useCallback(async () => {
-    if (!sessionId) {
-      toast.error("Chưa có session để xuất metadata.")
-      return
-    }
-    setMetadataExporting(true)
-    setError("")
-    try {
-      const result = await exportMetadataSnapshot(sessionId, {
-        created_by: "ui",
-      })
-      const artifact = result.artifact ?? result.artifacts[0]
-      if (!artifact) {
-        throw new Error("Backend chưa trả về artifact metadata.")
+  const exportMetadata = useCallback(
+    async (mode: MetadataExportMode) => {
+      if (!sessionId) {
+        toast.error("Chưa có session để xuất metadata.")
+        return
       }
-      toast.success("Đã tạo snapshot metadata. Đang tải file.")
-      const download = await downloadArtifact(sessionId, artifact.id)
-      saveBlob(download.blob, download.fileName)
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : "Không thể xuất metadata tại thời điểm hiện tại."
-      setError(message)
-      toast.error(message)
-    } finally {
-      setMetadataExporting(false)
-    }
-  }, [sessionId])
+      setMetadataExporting(true)
+      setError("")
+      try {
+        const result = await exportMetadataSnapshot(sessionId, {
+          created_by: "ui",
+          metadata_export_mode: mode,
+        })
+        const artifacts =
+          result.artifacts?.length > 0
+            ? result.artifacts
+            : result.artifact
+              ? [result.artifact]
+              : []
+        if (artifacts.length === 0) {
+          throw new Error("Backend chưa trả về artifact metadata.")
+        }
+        toast.success(
+          mode === "separated"
+            ? "Đã tạo hai file metadata. Đang tải lần lượt."
+            : "Đã tạo snapshot metadata. Đang tải file."
+        )
+        for (const artifact of artifacts) {
+          const download = await downloadArtifact(sessionId, artifact.id)
+          saveBlob(download.blob, download.fileName || artifact.file_name)
+        }
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Không thể xuất metadata tại thời điểm hiện tại."
+        setError(message)
+        toast.error(message)
+      } finally {
+        setMetadataExporting(false)
+      }
+    },
+    [sessionId]
+  )
 
   const importMetadataBoxNumbers = useCallback(
     async (

@@ -11,6 +11,7 @@ import type {
   DocumentArchiveDownload,
   DocumentNumberingMode,
   EnqueueNumberingResponse,
+  MetadataExportMode,
   MetadataSnapshotGroup,
   MetadataBoxNumberImportResponse,
   MetadataSnapshotResponse,
@@ -21,7 +22,10 @@ import type {
 
 export async function enqueueFinalizeArtifacts(
   sessionId: string,
-  payload: { created_by?: string } = {}
+  payload: {
+    created_by?: string
+    metadata_export_mode?: MetadataExportMode
+  } = {}
 ): Promise<Record<string, unknown>> {
   return requestJson<Record<string, unknown>>(
     `/sessions/${encodeURIComponent(sessionId)}/artifacts/finalize`,
@@ -149,7 +153,11 @@ export async function getNumberedDocumentPreviewUrl(
 
 export async function exportMetadataSnapshot(
   sessionId: string,
-  payload: { created_by?: string; groups?: MetadataSnapshotGroup[] } = {}
+  payload: {
+    created_by?: string
+    groups?: MetadataSnapshotGroup[]
+    metadata_export_mode?: MetadataExportMode
+  } = {}
 ): Promise<MetadataSnapshotResponse> {
   return requestJson<MetadataSnapshotResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/artifacts/metadata-snapshot`,

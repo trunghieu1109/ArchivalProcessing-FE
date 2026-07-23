@@ -693,7 +693,7 @@ export function UploadPageView(props: Record<string, any>) {
                     return
                   }
                   navigate(
-                    `/sessions/${encodeURIComponent(currentSessionId)}/step/6?start=1`
+                    `/sessions/${encodeURIComponent(currentSessionId)}/step/6`
                   )
                 }}
               />

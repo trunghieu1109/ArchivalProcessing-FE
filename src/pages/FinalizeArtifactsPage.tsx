@@ -41,6 +41,7 @@ import {
   getArtifactPreviewHtml,
   listArtifacts,
   listSessionEvents,
+  type MetadataExportMode,
   type SessionArtifact,
 } from "@/features/upload/api/sessionApi"
 
@@ -80,6 +81,8 @@ export function FinalizeArtifactsStep({
   const [artifacts, setArtifacts] = useState<SessionArtifact[]>([])
   const [loading, setLoading] = useState(true)
   const [finalizing, setFinalizing] = useState(false)
+  const [metadataExportMode, setMetadataExportMode] =
+    useState<MetadataExportMode>("combined")
   const [pollAfterArtifactId, setPollAfterArtifactId] = useState(0)
   const [statusMessage, setStatusMessage] = useState("Đang tải tệp mục lục...")
   const [error, setError] = useState("")
@@ -187,7 +190,10 @@ export function FinalizeArtifactsStep({
       const currentArtifacts = await refreshArtifacts({ silent: true })
       setLoading(false)
       setPollAfterArtifactId(maxArtifactId(currentArtifacts))
-      await enqueueFinalizeArtifacts(sessionId, { created_by: "ui" })
+      await enqueueFinalizeArtifacts(sessionId, {
+        created_by: "ui",
+        metadata_export_mode: metadataExportMode,
+      })
       setProgressPhase("loading_data")
       setProgressMessage("Đã gửi yêu cầu tạo mục lục. Đang chờ worker xử lý.")
       setCompletedPhases(new Set())
@@ -208,7 +214,7 @@ export function FinalizeArtifactsStep({
       toast.error(message)
       onAutoStartHandled?.()
     }
-  }, [onAutoStartHandled, refreshArtifacts, sessionId])
+  }, [metadataExportMode, onAutoStartHandled, refreshArtifacts, sessionId])
 
   useEffect(() => {
     if (!autoStart || autoStartHandled.current) return
@@ -466,10 +472,12 @@ export function FinalizeArtifactsStep({
           finalizing={finalizing}
           visibleArtifactCount={visibleArtifacts.length}
           downloadingAll={downloadingAll}
+          metadataExportMode={metadataExportMode}
           onBack={() => navigate(-1)}
           onRefreshArtifacts={refreshArtifacts}
           onStartFinalize={startFinalize}
           onDownloadAll={handleDownloadAll}
+          onMetadataExportModeChange={setMetadataExportMode}
         />
 
         {(finalizing || progressMessage) && (

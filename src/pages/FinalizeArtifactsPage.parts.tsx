@@ -16,7 +16,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/shared/lib/utils"
 import { UserMenu } from "@/features/auth/components/UserMenu"
-import type { SessionArtifact } from "@/features/upload/api/sessionApi"
+import type {
+  MetadataExportMode,
+  SessionArtifact,
+} from "@/features/upload/api/sessionApi"
 import {
   artifactExtension,
   artifactTypeLabel,
@@ -67,10 +70,12 @@ export function FinalizeToolbar({
   finalizing,
   visibleArtifactCount,
   downloadingAll,
+  metadataExportMode,
   onBack,
   onRefreshArtifacts,
   onStartFinalize,
   onDownloadAll,
+  onMetadataExportModeChange,
 }: {
   embedded: boolean
   sessionId: string | null | undefined
@@ -78,10 +83,12 @@ export function FinalizeToolbar({
   finalizing: boolean
   visibleArtifactCount: number
   downloadingAll: boolean
+  metadataExportMode: MetadataExportMode
   onBack: () => void
   onRefreshArtifacts: () => void | Promise<unknown>
   onStartFinalize: () => void | Promise<unknown>
   onDownloadAll: () => void | Promise<unknown>
+  onMetadataExportModeChange: (mode: MetadataExportMode) => void
 }) {
   return (
     <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -111,6 +118,40 @@ export function FinalizeToolbar({
           </Button>
         </div>
       )}
+      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center">
+        <span className="text-xs font-semibold text-[#475569]">
+          File metadata:
+        </span>
+        <div
+          className="grid grid-cols-2 rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] p-1"
+          role="radiogroup"
+          aria-label="Chế độ xuất metadata khi tạo mục lục"
+        >
+          {(
+            [
+              ["combined", "Tổng hợp"],
+              ["separated", "Tách riêng"],
+            ] as const
+          ).map(([mode, label]) => (
+            <button
+              key={mode}
+              type="button"
+              role="radio"
+              aria-checked={metadataExportMode === mode}
+              disabled={finalizing}
+              onClick={() => onMetadataExportModeChange(mode)}
+              className={cn(
+                "rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+                metadataExportMode === mode
+                  ? "bg-white text-[#0052FF] shadow-sm"
+                  : "text-[#64748B] hover:text-[#0F172A]"
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-3 lg:flex lg:w-auto lg:flex-wrap lg:items-center lg:justify-end">
         <Button
           variant="outline"

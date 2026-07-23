@@ -320,6 +320,8 @@ export interface ArtifactListResponse extends ApiRevisionMetadata {
   artifacts: SessionArtifact[]
 }
 
+export type MetadataExportMode = "combined" | "separated"
+
 export interface MetadataSnapshotDocument {
   documentId: string
   sessionDocumentId?: number | null

@@ -5,6 +5,7 @@ import {
   useMemo,
   useState,
 } from "react"
+import { Dialog } from "radix-ui"
 import {
   AlertTriangle,
   ArrowRight,
@@ -19,6 +20,7 @@ import {
   RotateCcw,
   Save,
   Upload,
+  X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/shared/lib/utils"
@@ -26,6 +28,7 @@ import type {
   DocumentNumberingMode,
   DocumentNumberingStylePreset,
   MetadataBoxNumberImportResponse,
+  MetadataExportMode,
   NumberingDocumentStatus,
   NumberingStyleOption,
 } from "@/features/upload/api/sessionApi"
@@ -399,9 +402,11 @@ export function NumberingMetadataPanel({
   metadataExporting: boolean
   metadataImporting: boolean
   metadataImportReview: MetadataBoxNumberImportResponse | null
-  onExportMetadata: () => void | Promise<unknown>
+  onExportMetadata: (mode: MetadataExportMode) => void | Promise<unknown>
   onImportMetadataBoxNumbers: (file: File | null) => void | Promise<unknown>
 }) {
+  const [exportDialogOpen, setExportDialogOpen] = useState(false)
+  const [exportMode, setExportMode] = useState<MetadataExportMode>("combined")
   const countConflicts = SHOW_METADATA_COUNT_CONFLICT_WARNING
     ? metadataImportReview?.count_conflicts ?? []
     : []
@@ -425,15 +430,15 @@ export function NumberingMetadataPanel({
             Metadata snapshot hồ sơ
           </p>
           <p className="mt-1 max-w-3xl text-sm text-[#64748B]">
-            Xuất hoặc nhập số hộp, số hồ sơ chính, ký hiệu hồ sơ, ghi chú hồ
-            sơ, số tờ và số trang trước khi tạo mục lục.
+            Xuất hoặc nhập số hộp, số hồ sơ, ký hiệu hồ sơ, ghi chú hồ sơ, số
+            tờ và số trang trước khi tạo mục lục.
           </p>
         </div>
         <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:w-auto">
           <Button
             type="button"
             variant="outline"
-            onClick={() => void onExportMetadata()}
+            onClick={() => setExportDialogOpen(true)}
             disabled={!sessionId || active || metadataBusy}
             className="w-full lg:w-auto"
           >
@@ -479,7 +484,118 @@ export function NumberingMetadataPanel({
           </div>
         </div>
       ) : null}
+      <MetadataExportDialog
+        open={exportDialogOpen}
+        mode={exportMode}
+        disabled={metadataBusy || !sessionId}
+        onOpenChange={setExportDialogOpen}
+        onModeChange={setExportMode}
+        onExport={() => {
+          setExportDialogOpen(false)
+          void onExportMetadata(exportMode)
+        }}
+      />
     </div>
+  )
+}
+
+function MetadataExportDialog({
+  open,
+  mode,
+  disabled,
+  onOpenChange,
+  onModeChange,
+  onExport,
+}: {
+  open: boolean
+  mode: MetadataExportMode
+  disabled: boolean
+  onOpenChange: (open: boolean) => void
+  onModeChange: (mode: MetadataExportMode) => void
+  onExport: () => void
+}) {
+  const options = [
+    {
+      mode: "combined",
+      title: "Một file tổng hợp",
+      description: "Mỗi tài liệu một dòng, kèm metadata hồ sơ tương ứng.",
+    },
+    {
+      mode: "separated",
+      title: "Hai file tách riêng",
+      description:
+        "Một file hồ sơ và một file tài liệu, không lặp metadata hồ sơ.",
+    },
+  ] as const
+  return (
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-[#0F172A]/50 backdrop-blur-[2px]" />
+        <Dialog.Content className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl border border-[#CBD5E1] bg-white shadow-2xl outline-none">
+          <div className="flex items-start gap-3 border-b border-[#E2E8F0] px-5 py-4">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#EAF1FF] text-[#0052FF]">
+              <FileSpreadsheet className="size-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <Dialog.Title className="text-base font-semibold text-[#0F172A]">
+                Chọn cách xuất metadata
+              </Dialog.Title>
+              <Dialog.Description className="mt-1 text-sm text-[#64748B]">
+                File hồ sơ trong chế độ tách riêng là file dùng để nhập lại
+                metadata.
+              </Dialog.Description>
+            </div>
+            <Dialog.Close asChild>
+              <Button variant="ghost" size="sm" className="size-8 p-0">
+                <X className="size-4" />
+                <span className="sr-only">Đóng</span>
+              </Button>
+            </Dialog.Close>
+          </div>
+          <div
+            className="grid gap-3 px-5 py-5 sm:grid-cols-2"
+            role="radiogroup"
+            aria-label="Chế độ xuất metadata"
+          >
+            {options.map((option) => {
+              const selected = mode === option.mode
+              return (
+                <button
+                  key={option.mode}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  onClick={() => onModeChange(option.mode)}
+                  className={cn(
+                    "rounded-xl border px-4 py-4 text-left transition-colors",
+                    selected
+                      ? "border-[#0052FF] bg-[#EAF1FF] ring-2 ring-[#0052FF]/10"
+                      : "border-[#CBD5E1] bg-white hover:border-[#0052FF]/45"
+                  )}
+                >
+                  <span className="block text-sm font-semibold text-[#0F172A]">
+                    {option.title}
+                  </span>
+                  <span className="mt-1.5 block text-xs leading-5 text-[#64748B]">
+                    {option.description}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+          <div className="flex justify-end gap-2 border-t border-[#E2E8F0] px-5 py-4">
+            <Dialog.Close asChild>
+              <Button type="button" variant="outline">
+                Hủy
+              </Button>
+            </Dialog.Close>
+            <Button type="button" disabled={disabled} onClick={onExport}>
+              Xuất metadata
+            </Button>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   )
 }
 
