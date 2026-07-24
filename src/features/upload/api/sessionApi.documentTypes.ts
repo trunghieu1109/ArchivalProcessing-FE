@@ -298,6 +298,21 @@ export interface EnqueueNumberingResponse {
   result?: NumberingStatusResponse
 }
 
+export interface FinalizeArtifactDispatchResponse {
+  session_id: string
+  job_id: number | null
+  job_type: "finalize_artifacts"
+  status: "queued" | "already_queued_or_running" | "not_needed"
+  job_status?: string
+  created: boolean
+  payload: Record<string, unknown>
+  worker_required: boolean
+  artifact_run_id?: string
+  source_fingerprint?: string
+  component_fingerprints?: Record<string, string>
+  freshness_reason?: string
+}
+
 export interface ArtifactListResponse extends ApiRevisionMetadata {
   session_id: string
   artifacts: SessionArtifact[]

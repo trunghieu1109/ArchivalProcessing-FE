@@ -170,53 +170,86 @@ export function FinalizeArtifactsStep({
     [sessionId]
   )
 
-  const startFinalize = useCallback(async () => {
-    if (!sessionId) {
-      const message = "Chưa có session để tạo mục lục."
-      setError(message)
-      setLoading(false)
-      setStatusMessage(message)
-      toast.error(message)
-      onAutoStartHandled?.()
-      return
-    }
-    setFinalizing(true)
-    setError("")
-    setStatusMessage("Đang chuẩn bị tạo mục lục...")
-    try {
-      const currentArtifacts = await refreshArtifacts({ silent: true })
-      setLoading(false)
-      setPollAfterArtifactId(maxArtifactId(currentArtifacts))
-      await enqueueFinalizeArtifacts(sessionId, {
-        created_by: "ui",
-        metadata_export_mode: "combined",
-      })
-      setProgressPhase("loading_data")
-      setProgressMessage("Đã gửi yêu cầu tạo mục lục. Đang chờ worker xử lý.")
-      setCompletedPhases(new Set())
-      setStatusMessage(
-        "Đã gửi yêu cầu tạo mục lục. Đang chờ worker sinh tệp..."
-      )
-      toast.success("Đã gửi yêu cầu tạo mục lục.")
-      onAutoStartHandled?.()
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : "Không thể gửi yêu cầu tạo mục lục."
-      setFinalizing(false)
-      setLoading(false)
-      setError(message)
-      setStatusMessage("Chưa chạy được bước tạo mục lục.")
-      toast.error(message)
-      onAutoStartHandled?.()
-    }
-  }, [onAutoStartHandled, refreshArtifacts, sessionId])
+  const startFinalize = useCallback(
+    async (options: { force?: boolean } = {}) => {
+      if (!sessionId) {
+        const message = "Chưa có session để tạo mục lục."
+        setError(message)
+        setLoading(false)
+        setStatusMessage(message)
+        toast.error(message)
+        onAutoStartHandled?.()
+        return
+      }
+      setFinalizing(true)
+      setError("")
+      setStatusMessage("Đang chuẩn bị tạo mục lục...")
+      try {
+        const currentArtifacts = await refreshArtifacts({ silent: true })
+        setLoading(false)
+        setPollAfterArtifactId(maxArtifactId(currentArtifacts))
+        const dispatch = await enqueueFinalizeArtifacts(sessionId, {
+          created_by: "ui",
+          metadata_export_mode: "combined",
+          force: options.force ?? false,
+        })
+        if (dispatch.status === "not_needed") {
+          setFinalizing(false)
+          setProgressPhase(null)
+          setCompletedPhases(
+            new Set(FINALIZE_PROGRESS_PHASES.map((phase) => phase.id))
+          )
+          setProgressMessage(
+            "Bộ mục lục hiện tại đã cập nhật theo dữ liệu hồ sơ."
+          )
+          setStatusMessage(
+            `Đã có ${currentArtifacts.length} tệp mục lục mới nhất, không cần tạo lại.`
+          )
+          toast.success("Mục lục đã được cập nhật, không cần tạo lại.")
+          onAutoStartHandled?.()
+          return
+        }
+        setProgressPhase("loading_data")
+        setProgressMessage(
+          dispatch.status === "already_queued_or_running"
+            ? "Đã có yêu cầu tạo mục lục đang được xử lý."
+            : "Đã gửi yêu cầu tạo mục lục. Đang chờ worker xử lý."
+        )
+        setCompletedPhases(new Set())
+        setStatusMessage(
+          dispatch.status === "already_queued_or_running"
+            ? "Yêu cầu tạo mục lục đang chạy. Đang chờ worker sinh tệp..."
+            : "Đã gửi yêu cầu tạo mục lục. Đang chờ worker sinh tệp..."
+        )
+        if (dispatch.status === "queued") {
+          toast.success("Đã gửi yêu cầu tạo mục lục.")
+        }
+        onAutoStartHandled?.()
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Không thể gửi yêu cầu tạo mục lục."
+        setFinalizing(false)
+        setLoading(false)
+        setError(message)
+        setStatusMessage("Chưa chạy được bước tạo mục lục.")
+        toast.error(message)
+        onAutoStartHandled?.()
+      }
+    },
+    [onAutoStartHandled, refreshArtifacts, sessionId]
+  )
+
+  const handleUserFinalize = useCallback(
+    () => startFinalize({ force: true }),
+    [startFinalize]
+  )
 
   useEffect(() => {
     if (!autoStart || autoStartHandled.current) return
     autoStartHandled.current = true
-    void startFinalize()
+    void startFinalize({ force: false })
   }, [autoStart, startFinalize])
 
   useEffect(() => {
@@ -471,7 +504,7 @@ export function FinalizeArtifactsStep({
           downloadingAll={downloadingAll}
           onBack={() => navigate(-1)}
           onRefreshArtifacts={refreshArtifacts}
-          onStartFinalize={startFinalize}
+          onStartFinalize={handleUserFinalize}
           onDownloadAll={handleDownloadAll}
         />
 
@@ -571,7 +604,7 @@ export function FinalizeArtifactsStep({
           <FinalizeEmptyState
             finalizing={finalizing}
             sessionId={sessionId}
-            onStartFinalize={startFinalize}
+            onStartFinalize={handleUserFinalize}
           />
         )}
         {embedded && visibleArtifacts.length > 0 && !finalizing && onContinue ? (

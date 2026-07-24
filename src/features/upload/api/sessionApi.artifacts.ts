@@ -11,6 +11,7 @@ import type {
   DocumentArchiveDownload,
   DocumentNumberingMode,
   EnqueueNumberingResponse,
+  FinalizeArtifactDispatchResponse,
   MetadataExportMode,
   MetadataSnapshotGroup,
   MetadataBoxNumberImportResponse,
@@ -25,9 +26,10 @@ export async function enqueueFinalizeArtifacts(
   payload: {
     created_by?: string
     metadata_export_mode?: MetadataExportMode
+    force?: boolean
   } = {}
-): Promise<Record<string, unknown>> {
-  return requestJson<Record<string, unknown>>(
+): Promise<FinalizeArtifactDispatchResponse> {
+  return requestJson<FinalizeArtifactDispatchResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/artifacts/finalize`,
     {
       method: "POST",
