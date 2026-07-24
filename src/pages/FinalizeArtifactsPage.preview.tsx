@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react"
 import {
   AlertCircle,
+  CloudDownload,
   Download,
   ExternalLink,
   Eye,
@@ -55,6 +56,8 @@ export function ArtifactPreviewPanel({
   onRefresh,
   onDownload,
   downloading,
+  onRemoteDownload,
+  remoteDownloading,
 }: {
   artifact: SessionArtifact | null
   preview: ArtifactPreviewContent | null
@@ -63,6 +66,8 @@ export function ArtifactPreviewPanel({
   onRefresh: () => void
   onDownload: () => void
   downloading: boolean
+  onRemoteDownload: () => void
+  remoteDownloading: boolean
 }) {
   const [zoom, setZoom] = useState<ArtifactPreviewZoom>(1)
   const previewKind = preview?.kind ?? null
@@ -193,6 +198,29 @@ export function ArtifactPreviewPanel({
                 <Loader2 className="size-3.5 animate-spin" />
               ) : (
                 <Download className="size-3.5" />
+              )}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              title={
+                artifact.remote_artifact_id &&
+                artifact.remote_status === "available"
+                  ? "Tải từ kho Chỉnh Lý"
+                  : "Artifact chưa được lưu trên Chỉnh Lý"
+              }
+              disabled={
+                !artifact.remote_artifact_id ||
+                artifact.remote_status !== "available" ||
+                remoteDownloading
+              }
+              onClick={onRemoteDownload}
+            >
+              {remoteDownloading ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <CloudDownload className="size-3.5" />
               )}
             </Button>
           </div>

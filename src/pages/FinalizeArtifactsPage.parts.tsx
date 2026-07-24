@@ -2,6 +2,7 @@ import {
   Archive,
   ArrowLeft,
   CheckCircle2,
+  CloudDownload,
   Download,
   Eye,
   FileText,
@@ -286,17 +287,24 @@ export function ArtifactRow({
   index,
   selected,
   downloading,
+  remoteDownloading,
   onPreview,
   onDownload,
+  onRemoteDownload,
 }: {
   artifact: SessionArtifact
   index: number
   selected: boolean
   downloading: boolean
+  remoteDownloading: boolean
   onPreview: () => void
   onDownload: () => void
+  onRemoteDownload: () => void
 }) {
   const extension = artifactExtension(artifact.file_name)
+  const remoteAvailable = Boolean(
+    artifact.remote_artifact_id && artifact.remote_status === "available"
+  )
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -362,6 +370,26 @@ export function ArtifactRow({
             <Loader2 className="size-4 animate-spin" />
           ) : (
             <Download className="size-4" />
+          )}
+        </Button>
+        <Button
+          variant="outline"
+          size="icon-sm"
+          title={
+            remoteAvailable
+              ? "Tải từ kho Chỉnh Lý"
+              : "Artifact chưa được lưu trên Chỉnh Lý"
+          }
+          disabled={!remoteAvailable || remoteDownloading}
+          onClick={(event) => {
+            event.stopPropagation()
+            onRemoteDownload()
+          }}
+        >
+          {remoteDownloading ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <CloudDownload className="size-4" />
           )}
         </Button>
       </div>

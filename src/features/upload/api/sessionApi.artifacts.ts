@@ -18,6 +18,7 @@ import type {
   NumberedDocumentPreviewUrlResponse,
   NumberingStatusResponse,
   NumberingStylesResponse,
+  RemoteArtifactSignedUrlResponse,
 } from "./sessionApi.types"
 
 export async function enqueueFinalizeArtifacts(
@@ -216,6 +217,15 @@ export async function listArtifacts(
   const query = status ? `?status=${encodeURIComponent(status)}` : ""
   return requestJson<ArtifactListResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/artifacts${query}`
+  )
+}
+
+export async function getArtifactRemoteSignedUrl(
+  sessionId: string,
+  artifactId: number
+): Promise<RemoteArtifactSignedUrlResponse> {
+  return requestJson<RemoteArtifactSignedUrlResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/artifacts/${encodeURIComponent(String(artifactId))}/remote-signed-url`
   )
 }
 

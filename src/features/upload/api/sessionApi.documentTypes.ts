@@ -171,8 +171,25 @@ export interface SessionArtifact {
   status: string
   related_plan_version_id?: string | null
   related_cluster_version_id?: string | null
+  generation_job_id?: number | null
+  remote_batch_id?: string | null
+  remote_artifact_id?: string | null
+  remote_status?: string | null
+  remote_download_url?: string | null
+  remote_download_url_refreshed_at?: string | null
+  remote_synced_at?: string | null
+  remote_error?: string | null
   manifest?: Record<string, unknown>
   generated_at?: string
+}
+
+export interface RemoteArtifactSignedUrlResponse {
+  artifact_id: number
+  remote_batch_id: string
+  remote_artifact_id: string
+  remote_status: string
+  download_url: string
+  refreshed_at?: string
 }
 
 export interface NumberingDocumentStatus {

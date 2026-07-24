@@ -38,6 +38,7 @@ import {
   downloadAllArtifacts,
   downloadArtifact,
   enqueueFinalizeArtifacts,
+  getArtifactRemoteSignedUrl,
   getArtifactPreviewHtml,
   listArtifacts,
   listSessionEvents,
@@ -93,6 +94,8 @@ export function FinalizeArtifactsStep({
   const [downloadingArtifactId, setDownloadingArtifactId] = useState<
     number | null
   >(null)
+  const [remoteDownloadingArtifactId, setRemoteDownloadingArtifactId] =
+    useState<number | null>(null)
   const [previewContent, setPreviewContent] =
     useState<ArtifactPreviewContent | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
@@ -442,6 +445,34 @@ export function FinalizeArtifactsStep({
     [sessionId]
   )
 
+  const handleRemoteDownloadArtifact = useCallback(
+    async (artifact: SessionArtifact) => {
+      if (!sessionId || !artifact.remote_artifact_id) return
+      const downloadWindow = window.open("about:blank", "_blank")
+      if (downloadWindow) downloadWindow.opener = null
+      setRemoteDownloadingArtifactId(artifact.id)
+      try {
+        const result = await getArtifactRemoteSignedUrl(sessionId, artifact.id)
+        if (downloadWindow) {
+          downloadWindow.location.replace(result.download_url)
+        } else {
+          window.open(result.download_url, "_blank", "noopener,noreferrer")
+        }
+      } catch (err) {
+        downloadWindow?.close()
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Không thể lấy đường dẫn tải từ kho Chỉnh Lý."
+        setError(message)
+        toast.error(message)
+      } finally {
+        setRemoteDownloadingArtifactId(null)
+      }
+    },
+    [sessionId]
+  )
+
   return (
     <div
       className={
@@ -543,9 +574,15 @@ export function FinalizeArtifactsStep({
                           index={index}
                           selected={artifact.id === selectedArtifactId}
                           downloading={downloadingArtifactId === artifact.id}
+                          remoteDownloading={
+                            remoteDownloadingArtifactId === artifact.id
+                          }
                           onPreview={() => setSelectedArtifactId(artifact.id)}
                           onDownload={() =>
                             void handleDownloadArtifact(artifact)
+                          }
+                          onRemoteDownload={() =>
+                            void handleRemoteDownloadArtifact(artifact)
                           }
                         />
                       ))}
@@ -568,6 +605,16 @@ export function FinalizeArtifactsStep({
               downloading={
                 selectedArtifact
                   ? downloadingArtifactId === selectedArtifact.id
+                  : false
+              }
+              onRemoteDownload={() =>
+                selectedArtifact
+                  ? void handleRemoteDownloadArtifact(selectedArtifact)
+                  : undefined
+              }
+              remoteDownloading={
+                selectedArtifact
+                  ? remoteDownloadingArtifactId === selectedArtifact.id
                   : false
               }
             />
