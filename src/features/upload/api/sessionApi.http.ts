@@ -16,12 +16,14 @@ export async function requestJson<T>(
 
 export async function postJson<T>(
   path: string,
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
+  signal?: AbortSignal
 ): Promise<T> {
   return requestJson<T>(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+    signal,
   })
 }
 
@@ -188,6 +190,21 @@ export function setXhrAuthHeader(xhr: XMLHttpRequest): void {
   }
 }
 
-export function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, ms))
+export function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Request was aborted.", "AbortError"))
+      return
+    }
+    const timeoutId = window.setTimeout(() => {
+      signal?.removeEventListener("abort", handleAbort)
+      resolve()
+    }, ms)
+    const handleAbort = () => {
+      window.clearTimeout(timeoutId)
+      signal?.removeEventListener("abort", handleAbort)
+      reject(new DOMException("Request was aborted.", "AbortError"))
+    }
+    signal?.addEventListener("abort", handleAbort, { once: true })
+  })
 }

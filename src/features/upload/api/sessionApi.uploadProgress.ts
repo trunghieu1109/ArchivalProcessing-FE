@@ -23,7 +23,8 @@ export async function withSessionUploadEventProgress<T>(
   fileName: string,
   remoteFileId: string | null,
   pending: Promise<T>,
-  onProgress?: (progress: UploadProgressSnapshot) => void
+  onProgress?: (progress: UploadProgressSnapshot) => void,
+  signal?: AbortSignal
 ): Promise<T> {
   if (!onProgress) return pending
   let stopped = false
@@ -49,7 +50,8 @@ export async function withSessionUploadEventProgress<T>(
     while (!stopped) {
       try {
         const response = await requestJson<SessionEventResponse>(
-          `/sessions/${encodeURIComponent(sessionId)}/events?after_id=${encodeURIComponent(String(afterId))}&limit=50`
+          `/sessions/${encodeURIComponent(sessionId)}/events?after_id=${encodeURIComponent(String(afterId))}&limit=50`,
+          { signal }
         )
         for (const event of response.events) {
           afterId = Math.max(afterId, event.id)
@@ -65,6 +67,7 @@ export async function withSessionUploadEventProgress<T>(
       } catch {
         // Upload itself owns the user-facing error; event polling is best-effort progress only.
       }
+      if (stopped || signal?.aborted) break
       await waitForNextPoll()
     }
   }
@@ -116,10 +119,12 @@ function uploadProgressFromEvent(
 export function requestJsonWithUploadProgress<T>(
   path: string,
   body: FormData,
-  onProgress?: (progress: UploadProgressSnapshot) => void
+  onProgress?: (progress: UploadProgressSnapshot) => void,
+  signal?: AbortSignal
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
+    const detachAbortSignal = bindAbortSignal(xhr, signal)
     let lastProgress: UploadProgressSnapshot | null = null
     xhr.open("POST", apiUrl(path), true)
     setXhrAuthHeader(xhr)
@@ -148,6 +153,7 @@ export function requestJsonWithUploadProgress<T>(
     }
 
     xhr.onload = () => {
+      detachAbortSignal()
       const ok = xhr.status >= 200 && xhr.status < 300
       if (!ok) {
         if (lastProgress) {
@@ -181,6 +187,7 @@ export function requestJsonWithUploadProgress<T>(
     }
 
     xhr.onerror = () => {
+      detachAbortSignal()
       if (lastProgress) {
         onProgress?.(
           uploadProgressSnapshot(
@@ -193,6 +200,7 @@ export function requestJsonWithUploadProgress<T>(
       reject(new Error("Không thể kết nối backend để upload."))
     }
     xhr.onabort = () => {
+      detachAbortSignal()
       if (lastProgress) {
         onProgress?.(
           uploadProgressSnapshot(
@@ -202,7 +210,7 @@ export function requestJsonWithUploadProgress<T>(
           )
         )
       }
-      reject(new Error("Upload đã bị hủy."))
+      reject(abortError())
     }
     xhr.send(body)
   })
@@ -212,10 +220,12 @@ export function requestJsonWithBinaryUploadProgress<T>(
   path: string,
   file: File,
   contentType: string,
-  onProgress?: (progress: UploadProgressSnapshot) => void
+  onProgress?: (progress: UploadProgressSnapshot) => void,
+  signal?: AbortSignal
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
+    const detachAbortSignal = bindAbortSignal(xhr, signal)
     let lastProgress: UploadProgressSnapshot | null = uploadProgressSnapshot(
       "uploading",
       0,
@@ -242,6 +252,7 @@ export function requestJsonWithBinaryUploadProgress<T>(
     }
 
     xhr.onload = () => {
+      detachAbortSignal()
       const ok = xhr.status >= 200 && xhr.status < 300
       if (!ok) {
         onProgress?.(
@@ -265,6 +276,7 @@ export function requestJsonWithBinaryUploadProgress<T>(
     }
 
     xhr.onerror = () => {
+      detachAbortSignal()
       onProgress?.(
         uploadProgressSnapshot(
           "error",
@@ -275,6 +287,7 @@ export function requestJsonWithBinaryUploadProgress<T>(
       reject(new Error("Không thể kết nối backend để upload ZIP."))
     }
     xhr.onabort = () => {
+      detachAbortSignal()
       onProgress?.(
         uploadProgressSnapshot(
           "error",
@@ -282,7 +295,7 @@ export function requestJsonWithBinaryUploadProgress<T>(
           lastProgress?.totalBytes ?? file.size
         )
       )
-      reject(new Error("Upload ZIP đã bị hủy."))
+      reject(abortError())
     }
     xhr.send(file)
   })
@@ -294,10 +307,12 @@ export function putPresignedFile(
   uploadUrl: string,
   file: File,
   contentType: string,
-  onProgress?: (progress: UploadProgressSnapshot) => void
+  onProgress?: (progress: UploadProgressSnapshot) => void,
+  signal?: AbortSignal
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
+    const detachAbortSignal = bindAbortSignal(xhr, signal)
     let lastProgress: UploadProgressSnapshot | null = uploadProgressSnapshot(
       "uploading",
       0,
@@ -317,6 +332,7 @@ export function putPresignedFile(
       if (settled) return
       settled = true
       clearStallTimer()
+      detachAbortSignal()
       callback()
     }
     const rejectForFallback = () => {
@@ -401,7 +417,7 @@ export function putPresignedFile(
           lastProgress?.totalBytes ?? file.size
         )
       )
-      reject(new Error("Upload ZIP lên Chỉnh Lý đã bị hủy."))
+      finish(() => reject(abortError()))
     }
     armStallTimer()
     xhr.send(file)
@@ -412,10 +428,12 @@ export function putPresignedBlob(
   uploadUrl: string,
   blob: Blob,
   contentType?: string | null,
-  onProgress?: (loadedBytes: number) => void
+  onProgress?: (loadedBytes: number) => void,
+  signal?: AbortSignal
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
+    const detachAbortSignal = bindAbortSignal(xhr, signal)
     xhr.open("PUT", uploadUrl, true)
     if (contentType) xhr.setRequestHeader("Content-Type", contentType)
 
@@ -424,6 +442,7 @@ export function putPresignedBlob(
     }
 
     xhr.onload = () => {
+      detachAbortSignal()
       const ok = xhr.status >= 200 && xhr.status < 300
       if (!ok) {
         if (xhr.status === 0) {
@@ -443,9 +462,11 @@ export function putPresignedBlob(
     }
 
     xhr.onabort = () => {
-      reject(new Error("Upload chunk lên Chỉnh Lý đã bị hủy."))
+      detachAbortSignal()
+      reject(abortError())
     }
     xhr.onerror = () => {
+      detachAbortSignal()
       reject(
         new PresignedUploadNetworkError(
           "Direct presigned chunk upload did not respond."
@@ -454,4 +475,22 @@ export function putPresignedBlob(
     }
     xhr.send(blob)
   })
+}
+
+function bindAbortSignal(
+  xhr: XMLHttpRequest,
+  signal?: AbortSignal
+): () => void {
+  if (!signal) return () => undefined
+  const handleAbort = () => xhr.abort()
+  if (signal.aborted) {
+    queueMicrotask(handleAbort)
+  } else {
+    signal.addEventListener("abort", handleAbort, { once: true })
+  }
+  return () => signal.removeEventListener("abort", handleAbort)
+}
+
+function abortError(): DOMException {
+  return new DOMException("Upload đã bị hủy.", "AbortError")
 }

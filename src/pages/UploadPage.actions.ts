@@ -80,6 +80,7 @@ export function createUploadPageActions(context: Record<string, any>) {
     setPlanProgressPhase,
     setPlanProgressMessage,
     setPlanCompletedPhases,
+    zipUploadManager,
   } = context
 
   const ensureSession = async () => {
@@ -130,17 +131,22 @@ export function createUploadPageActions(context: Record<string, any>) {
     }
     let uploaded: SessionInputUploadResponse
     try {
-      uploaded = await uploadSessionInput(currentSessionId, fileType, file, {
-        ...(fileType === "raw_zip"
-          ? {
-              uploadMode: cache.uploadMode,
-              maxFiles: parseZipMaxFiles(),
-            }
-          : {}),
-        onProgress: fileType === "raw_zip" ? syncZipUploadProgress : undefined,
-      })
-    } catch (err) {
       if (fileType === "raw_zip") {
+        const started = zipUploadManager.start({
+          sessionId: currentSessionId,
+          file,
+          mode: cache.uploadMode,
+          maxFiles: parseZipMaxFiles(),
+        })
+        uploaded = await started.completion
+      } else {
+        uploaded = await uploadSessionInput(currentSessionId, fileType, file)
+      }
+    } catch (err) {
+      if (
+        fileType === "raw_zip" &&
+        (!cache.sessionId || cache.sessionId === currentSessionId)
+      ) {
         syncZipUploadProgress(
           zipUploadProgressForFile(
             file,
@@ -150,6 +156,13 @@ export function createUploadPageActions(context: Record<string, any>) {
         )
       }
       throw err
+    }
+    if (
+      fileType === "raw_zip" &&
+      cache.sessionId &&
+      cache.sessionId !== currentSessionId
+    ) {
+      return uploaded
     }
     if (fileType === "raw_zip") {
       syncZipUploadProgress(zipUploadProgressForFile(file, "done", file.size))

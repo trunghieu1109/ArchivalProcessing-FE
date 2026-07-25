@@ -10,6 +10,7 @@ interface FileChipProps {
   processState: ProcessState
   onClear: () => void
   icon: ReactNode
+  hideClear?: boolean
 }
 
 export function FileChip({
@@ -18,6 +19,7 @@ export function FileChip({
   processState,
   onClear,
   icon,
+  hideClear = false,
 }: FileChipProps) {
   const done = processState === "done"
   const processing = processState === "processing"
@@ -53,7 +55,7 @@ export function FileChip({
         </p>
       </div>
 
-      {!processing && !loading && (
+      {!hideClear && !processing && !loading && (
         <Button
           variant="ghost"
           size="sm"

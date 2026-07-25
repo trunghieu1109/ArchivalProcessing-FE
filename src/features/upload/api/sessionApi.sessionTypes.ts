@@ -1,4 +1,5 @@
 import type { FileRegisterConfig } from "@/features/upload/types"
+import type { FolderUploadSummary } from "@/features/folder-upload/types"
 
 export type SessionInputFileType =
   | "arrangement_plan"
@@ -81,12 +82,16 @@ export interface DeleteSessionResponse {
 export interface SessionDetailResponse extends SessionSummary {
   files: SessionInputUploadResponse[]
   active_plan_analysis_job?: ActiveJobSummary | null
+  latest_folder_upload?: FolderUploadSummary | null
 }
 
 export interface SessionInputUploadResponse {
   id: number
   session_id: string
   file_type: SessionInputFileType
+  client_upload_id?: string | null
+  upload_status?: string | null
+  remote_upload_id?: string | null
   file_name: string
   local_cached_path: string | null
   data_path?: string | null
@@ -99,6 +104,8 @@ export interface SessionInputUploadResponse {
   remote_status?: string | null
   size_bytes?: number | null
   content_type?: string | null
+  cancelled_at?: string | null
+  cancel_reason?: string | null
   ingestion_run?: SessionIngestionRun | null
 }
 
@@ -106,6 +113,9 @@ export interface SessionIngestionRun {
   id: number
   session_id: string
   session_file_id?: number | null
+  folder_upload_id?: string | null
+  ingestion_source?: "zip" | "folder" | string
+  ocr_batch_ids?: number[]
   file_name?: string | null
   remote_ingestion_batch_id?: string | null
   remote_file_id?: string | null
@@ -126,6 +136,9 @@ export interface SessionIngestionRun {
 
 export interface SessionInputRemoteUploadPresignResponse {
   session_id: string
+  session_file_id?: number | null
+  client_upload_id?: string | null
+  upload_status?: string | null
   file_type: SessionInputFileType
   file_name: string
   folder_path?: string | null
@@ -140,6 +153,9 @@ export interface SessionInputRemoteUploadPresignResponse {
 
 export interface SessionInputRemoteChunkedCreateResponse {
   session_id: string
+  session_file_id?: number | null
+  client_upload_id?: string | null
+  upload_status?: string | null
   file_type: SessionInputFileType
   file_name: string
   folder_path?: string | null
@@ -252,6 +268,8 @@ export interface UploadSessionInputOptions {
   createdBy?: string
   uploadMode?: UploadMode
   maxFiles?: number
+  signal?: AbortSignal
+  uploadJobId?: string
   onProgress?: (progress: UploadProgressSnapshot) => void
 }
 

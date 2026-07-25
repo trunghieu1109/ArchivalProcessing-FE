@@ -3,6 +3,11 @@ import { useCallback } from "react"
 import { useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 import { useAuth } from "@/features/auth/lib/AuthContext"
+import {
+  useFolderUploadJobs,
+  useFolderUploadManager,
+} from "@/features/folder-upload"
+import { useZipUploadJobs, useZipUploadManager } from "@/features/zip-upload"
 import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import type { SessionMetadataValues } from "@/features/upload/components/SessionMetadataBar"
 import {
@@ -13,9 +18,11 @@ import {
   type DocumentNumberingMode,
   type DocumentNumberingStylePreset,
   type PlanVersionStatus,
+  type SessionInputUploadResponse,
   type UploadMode,
   type UploadProgressSnapshot,
 } from "@/features/upload/api/sessionApi"
+import { isOcrWaitSupersededError } from "@/features/upload/hooks/useOcrFolder"
 import type { NumberingStyleOverrides } from "./UploadPage.planDefaults"
 import type {
   ProcessState,
@@ -62,6 +69,10 @@ import {
 export function UploadPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
+  const folderUploadJobs = useFolderUploadJobs()
+  const folderUploadManager = useFolderUploadManager()
+  const zipUploadJobs = useZipUploadJobs()
+  const zipUploadManager = useZipUploadManager()
   const { step, sessionId: routeSessionId } = useParams<{
     step: string
     sessionId?: string
@@ -117,7 +128,7 @@ export function UploadPage() {
     const missingInputs = missingDossierBuildInputs({
       hasArrangementPlan: doc1Has,
       hasRetentionSchedule: doc2Has,
-      hasRawZip: zipHas,
+      hasRawZip: dataInputHas,
       hasActivePlan: hasActivePlanForBuild,
       hasActivePlanData: hasActivePlanDataForBuild,
     })
@@ -160,6 +171,17 @@ export function UploadPage() {
   const doc2Ref = useRef<SectionHandle>(null)
   const zipRef = useRef<SectionHandle>(null)
   const metadataAutoStartRef = useRef(false)
+  const primaryActionLockRef = useRef(false)
+  const folderAutoNavigationRef = useRef<{
+    sessionId: string
+    jobId: string
+    status: string
+  } | null>(null)
+  const zipAutoNavigationRef = useRef<{
+    sessionId: string
+    jobId: string
+    status: string
+  } | null>(null)
 
   const [doc1State, setDoc1State] = useState<ProcessState>(cache.doc1State)
   const [doc2State, setDoc2State] = useState<ProcessState>(cache.doc2State)
@@ -223,7 +245,10 @@ export function UploadPage() {
   const [zipMaxFiles, setZipMaxFiles] = useState(cache.zipMaxFiles)
   const [zipUploadProgress, setZipUploadProgress] =
     useState<UploadProgressSnapshot | null>(cache.zipUploadProgress)
+  const [latestZipUploadAttempt, setLatestZipUploadAttempt] =
+    useState<SessionInputUploadResponse | null>(null)
   const [sessionLoading, setSessionLoading] = useState(false)
+  const [primaryActionPending, setPrimaryActionPending] = useState(false)
   const [confirmingPlan, setConfirmingPlan] = useState(false)
   const [savingPlanDraft, setSavingPlanDraft] = useState(false)
   const [planProgressPhase, setPlanProgressPhase] = useState<string | null>(
@@ -283,6 +308,7 @@ export function UploadPage() {
     setZipFolderPath,
     setZipMaxFiles,
     setZipUploadProgress,
+    setLatestZipUploadAttempt,
     setUploadModeState,
     setPlanReuploadState,
     setZipSupplementUploaded,
@@ -290,6 +316,9 @@ export function UploadPage() {
     setPlanProgressMessage,
     setPlanCompletedPhases,
     setSessionLoading,
+    restoreFolderUploadSummary: (
+      summary: Parameters<typeof folderUploadManager.restoreFromSummary>[0]
+    ) => folderUploadManager.restoreFromSummary(summary),
   })
 
   const {
@@ -383,7 +412,8 @@ export function UploadPage() {
           cache.workingPlanVersionId = planResponse.id ?? ""
           cache.workingPlanStatus = planResponse.status ?? ""
           cache.workingPlanResponse = planResponse
-          cache.workingPlanSignature = planResponseMaterialSignature(planResponse)
+          cache.workingPlanSignature =
+            planResponseMaterialSignature(planResponse)
           cache.planDraftBaseSignature = planDraftPayloadSignature(draftPayload)
           cache.planDraftDirty = false
           cache.planDraftRevision = 0
@@ -522,20 +552,88 @@ export function UploadPage() {
     setPlanProgressPhase,
     setPlanProgressMessage,
     setPlanCompletedPhases,
+    zipUploadManager,
   })
 
   const planInputsReuploaded =
     planReuploadState.arrangement || planReuploadState.retention
   const planReanalysisReady = existingSessionMode && planInputsReuploaded
-  const hasAnyFile = doc1Has || doc2Has || zipHas
+  const currentSessionKey = sessionId ?? routeSessionId ?? cache.sessionId
+  const latestZipUploadJob = [...zipUploadJobs]
+    .reverse()
+    .find((job) => job.sessionId === currentSessionKey)
+  const currentFolderUploadJob = [...folderUploadJobs]
+    .reverse()
+    .find(
+      (job) => job.sessionId === currentSessionKey && job.status !== "cancelled"
+    )
+  const currentZipUploadJob = [...zipUploadJobs]
+    .reverse()
+    .find(
+      (job) => job.sessionId === currentSessionKey && job.status !== "cancelled"
+    )
+  const zipInterruptionNotice = latestZipUploadJob
+    ? ["cancelled", "attention_required"].includes(latestZipUploadJob.status)
+      ? {
+          fileName: latestZipUploadJob.fileName,
+          status: latestZipUploadJob.status,
+          cancelReason:
+            latestZipUploadJob.status === "cancelled" ? "user_cancelled" : null,
+        }
+      : null
+    : latestZipUploadAttempt &&
+        !(
+          latestZipUploadAttempt.upload_status === "completed" &&
+          latestZipUploadAttempt.ingestion_run?.status === "ready"
+        )
+      ? {
+          fileName: latestZipUploadAttempt.file_name,
+          status: latestZipUploadAttempt.upload_status ?? "incomplete",
+          cancelReason: latestZipUploadAttempt.cancel_reason ?? null,
+        }
+      : null
+  const zipUploadReady = Boolean(
+    currentZipUploadJob?.status === "completed" && currentZipUploadJob.result
+  )
+  const zipUploadPendingMetadata = Boolean(
+    zipUploadReady && !currentZipUploadJob?.metadataNavigationHandled
+  )
+  const effectiveZipUploadProgress =
+    currentZipUploadJob?.progress ?? zipUploadProgress
+  const effectiveZipState: ProcessState =
+    currentZipUploadJob &&
+    !["completed", "cancelled", "attention_required"].includes(
+      currentZipUploadJob.status
+    )
+      ? "processing"
+      : zipUploadReady
+        ? "done"
+        : zipState
+  const folderUploadEffectiveCount =
+    currentFolderUploadJob?.summary?.counts.effective ?? 0
+  const folderUploadWasCancelled =
+    currentFolderUploadJob?.summary?.status === "cancelled"
+  const folderUploadReady = Boolean(
+    currentFolderUploadJob?.status === "completed" &&
+    currentFolderUploadJob.summary?.ingestion_run?.status === "ready" &&
+    folderUploadEffectiveCount > 0
+  )
+  const folderUploadInProgress = Boolean(
+    currentFolderUploadJob &&
+    currentFolderUploadJob.files.length > 0 &&
+    ["preparing", "uploading", "sealing", "reconciling", "cancelling"].includes(
+      currentFolderUploadJob.status
+    )
+  )
+  const dataInputHas = zipHas || zipUploadReady || folderUploadReady
+  const hasAnyFile = doc1Has || doc2Has || dataInputHas
   const hasActivePlan = Boolean(activePlanVersionId)
   const hasWorkingPlan = Boolean(workingPlanVersionId)
   const draftMatchesActive =
     Boolean(cache.activePlanSignature) &&
     Boolean(cache.workingPlanSignature) &&
     cache.workingPlanSignature === cache.activePlanSignature
-  const hasActivePlanData =
-    hasActivePlan && activeParsedPlan.groups.length > 0
+  const hasActivePlanData = hasActivePlan && activeParsedPlan.groups.length > 0
   const hasAnalyzedPlan =
     planAnalysisState === "done" &&
     hasWorkingPlan &&
@@ -545,7 +643,7 @@ export function UploadPage() {
   const missingDossierInputs = missingDossierBuildInputs({
     hasArrangementPlan: doc1Has,
     hasRetentionSchedule: doc2Has,
-    hasRawZip: zipHas,
+    hasRawZip: dataInputHas,
     hasActivePlan,
     hasActivePlanData,
   })
@@ -554,14 +652,14 @@ export function UploadPage() {
   const selectedInputLabels = selectedUploadLabels({
     hasArrangementPlan: doc1Has,
     hasRetentionSchedule: doc2Has,
-    hasRawZip: zipHas,
+    hasRawZip: dataInputHas,
   })
   const readyCount = (
     existingSessionMode
       ? planInputsReuploaded
         ? [planInputsReuploaded]
-        : [zipHas]
-      : [doc1Has, doc2Has, zipHas]
+        : [dataInputHas]
+      : [doc1Has, doc2Has, dataInputHas]
   ).filter(Boolean).length
   const requiredFileCount = existingSessionMode ? 1 : 3
   const arrangementPlanAnalyzing =
@@ -578,30 +676,56 @@ export function UploadPage() {
               : "idle",
         },
         { label: "Thời hạn", has: doc2Has, state: doc2State },
-        { label: "Kho lưu trữ", has: zipHas, state: zipState },
+        {
+          label: "Kho lưu trữ",
+          has: dataInputHas,
+          state: folderUploadInProgress
+            ? "processing"
+            : folderUploadReady
+              ? "done"
+              : effectiveZipState,
+        },
       ]
     : [
         { label: "Phương án", has: doc1Has, state: doc1State },
         { label: "Thời hạn", has: doc2Has, state: doc2State },
-        { label: "Kho lưu trữ", has: zipHas, state: zipState },
+        {
+          label: "Kho lưu trữ",
+          has: dataInputHas,
+          state: folderUploadInProgress
+            ? "processing"
+            : folderUploadReady
+              ? "done"
+              : effectiveZipState,
+        },
       ]
   const planAnalyzing = planAnalysisState === "processing"
   const zipUploadInProgress =
-    zipUploadProgress !== null &&
-    zipUploadProgress.phase !== "done" &&
-    zipUploadProgress.phase !== "error"
+    effectiveZipUploadProgress !== null &&
+    effectiveZipUploadProgress.phase !== "done" &&
+    effectiveZipUploadProgress.phase !== "error"
   const zipProcessingBlocksAction =
     zipUploadInProgress || (!existingSessionMode && zipState === "processing")
   const allProcessing =
     planAnalyzing ||
     doc1State === "processing" ||
     doc2State === "processing" ||
-    zipProcessingBlocksAction
+    zipProcessingBlocksAction ||
+    folderUploadInProgress
   const allDone = hasPlanReady && !planInputsReuploaded
   const canOpenPlanAnalysisStep =
     existingSessionMode && planAnalyzing && (doc1Has || doc2Has)
+  const primaryActionAvailable = existingSessionMode
+    ? planInputsReuploaded ||
+      hasPlanReady ||
+      canOpenPlanAnalysisStep ||
+      dataInputHas
+    : hasAnyFile
   const primaryActionDisabled =
-    sessionLoading || (allProcessing && !canOpenPlanAnalysisStep)
+    primaryActionPending ||
+    sessionLoading ||
+    !primaryActionAvailable ||
+    (allProcessing && !canOpenPlanAnalysisStep)
 
   const startMetadataExtractionFromZip = useCallback(async () => {
     const currentSessionId = sessionId ?? routeSessionId ?? cache.sessionId
@@ -611,14 +735,17 @@ export function UploadPage() {
     }
     const folderPath =
       zipFolderPath ||
+      currentZipUploadJob?.result?.folder_path ||
+      currentZipUploadJob?.result?.data_path ||
       cache.zipUpload?.folder_path ||
       cache.zipUpload?.data_path ||
       ""
-    if (!folderPath) {
+    if (!folderPath && !folderUploadReady) {
       toast.error("Chưa có folder_path để bắt đầu lấy metadata.")
       return
     }
-    if (cache.zipUpload && !cache.zipUpload.remote_batch_id) {
+    const zipUploadResult = currentZipUploadJob?.result ?? cache.zipUpload
+    if (zipUploadResult && !zipUploadResult.remote_batch_id) {
       toast.error(
         "File ZIP chưa được upload lên Chỉnh Lý/MinIO. Vui lòng tải lại file ZIP."
       )
@@ -648,8 +775,21 @@ export function UploadPage() {
       existingStatus?.jobs.length ?? 0
     )
     const hasNewZipUpload =
-      cache.rawZipReuploaded && Boolean(cache.zipUpload?.id)
-    if (existingDocumentCount > 0 && !hasNewZipUpload) {
+      (cache.rawZipReuploaded && Boolean(cache.zipUpload?.id)) ||
+      zipUploadPendingMetadata
+    const folderIngestionRunId =
+      currentFolderUploadJob?.summary?.ingestion_run?.id ?? null
+    const existingFolderIngestionRun = (
+      existingStatus?.ingestion_runs ?? []
+    ).find((run) => run.id === folderIngestionRunId)
+    const folderRunAlreadySubmitted = Boolean(
+      existingFolderIngestionRun?.ocr_batch_ids?.length
+    )
+    const hasNewFolderUpload =
+      folderUploadReady &&
+      folderIngestionRunId !== null &&
+      !folderRunAlreadySubmitted
+    if (existingDocumentCount > 0 && !hasNewZipUpload && !hasNewFolderUpload) {
       const readyDocuments =
         existingStatus?.metadata_ready_documents ??
         existingStatus?.jobs.filter((job) => job.metadata_ready).length ??
@@ -700,20 +840,28 @@ export function UploadPage() {
         documentNumberingMode,
         documentNumberingStylePreset,
         documentNumberingStyleOverrides,
-        sessionFileId: cache.zipUpload?.id,
-        remoteFileId: cache.zipUpload?.remote_file_id ?? null,
-        uploadMode: cache.zipUpload ? uploadMode : undefined,
+        sessionFileId: zipUploadResult?.id,
+        remoteFileId: zipUploadResult?.remote_file_id ?? null,
+        uploadMode:
+          currentFolderUploadJob?.mode ??
+          (zipUploadResult ? uploadMode : undefined),
         previousStatus: existingStatus,
       })
       .then(() => {
         if (hasNewZipUpload) {
           cache.rawZipReuploaded = false
           setZipSupplementUploaded(false)
+          if (currentZipUploadJob) {
+            zipUploadManager.markMetadataNavigationHandled(
+              currentZipUploadJob.id
+            )
+          }
         }
         syncZipState("done")
         toast.success("Đã hoàn tất lấy metadata từ remote folder.")
       })
       .catch((err: unknown) => {
+        if (isOcrWaitSupersededError(err)) return
         syncZipState("idle")
         toast.error(
           err instanceof Error ? err.message : "Không thể bắt đầu OCR."
@@ -723,6 +871,9 @@ export function UploadPage() {
     documentNumberingMode,
     documentNumberingStylePreset,
     documentNumberingStyleOverrides,
+    currentFolderUploadJob,
+    currentZipUploadJob,
+    folderUploadReady,
     ocr,
     parseZipMaxFiles,
     routeSessionId,
@@ -730,6 +881,93 @@ export function UploadPage() {
     syncZipState,
     uploadMode,
     zipFolderPath,
+    zipUploadManager,
+    zipUploadPendingMetadata,
+  ])
+
+  useEffect(() => {
+    const viewedUploadSessionId = routeSessionId ?? sessionId
+    if (
+      currentStep !== 1 ||
+      !existingSessionMode ||
+      !viewedUploadSessionId ||
+      !currentZipUploadJob
+    ) {
+      zipAutoNavigationRef.current = null
+      return
+    }
+    const previous = zipAutoNavigationRef.current
+    zipAutoNavigationRef.current = {
+      sessionId: viewedUploadSessionId,
+      jobId: currentZipUploadJob.id,
+      status: currentZipUploadJob.status,
+    }
+    if (
+      currentZipUploadJob.sessionId !== viewedUploadSessionId ||
+      previous?.sessionId !== viewedUploadSessionId ||
+      previous.jobId !== currentZipUploadJob.id ||
+      previous.status === "completed" ||
+      currentZipUploadJob.status !== "completed" ||
+      !currentZipUploadJob.result
+    ) {
+      return
+    }
+
+    toast.success(
+      "Upload ZIP đã hoàn tất. Đang chuyển sang màn hình extract metadata."
+    )
+    navigate(
+      `/sessions/${encodeURIComponent(currentZipUploadJob.sessionId)}/step/3?extract=1`
+    )
+  }, [
+    currentStep,
+    currentZipUploadJob,
+    existingSessionMode,
+    navigate,
+    routeSessionId,
+    sessionId,
+  ])
+
+  useEffect(() => {
+    const viewedUploadSessionId = routeSessionId ?? sessionId
+    if (!viewedUploadSessionId || !currentFolderUploadJob) {
+      folderAutoNavigationRef.current = null
+      return
+    }
+    const previous = folderAutoNavigationRef.current
+    folderAutoNavigationRef.current = {
+      sessionId: viewedUploadSessionId,
+      jobId: currentFolderUploadJob.id,
+      status: currentFolderUploadJob.status,
+    }
+    if (
+      currentFolderUploadJob.sessionId !== viewedUploadSessionId ||
+      previous?.sessionId !== viewedUploadSessionId ||
+      previous.jobId !== currentFolderUploadJob.id ||
+      previous.status === "completed" ||
+      !folderUploadReady ||
+      currentFolderUploadJob.summary?.status !== "sealed" ||
+      currentFolderUploadJob.metadataNavigationHandled
+    ) {
+      return
+    }
+    const ingestionRun = currentFolderUploadJob.summary?.ingestion_run
+    if (!ingestionRun || ingestionRun.status !== "ready") return
+
+    folderUploadManager.markMetadataNavigationHandled(currentFolderUploadJob.id)
+    toast.success(
+      "Upload folder đã hoàn tất. Đang chuyển sang màn hình extract metadata."
+    )
+    navigate(
+      `/sessions/${encodeURIComponent(currentFolderUploadJob.sessionId)}/step/3?extract=1`
+    )
+  }, [
+    currentFolderUploadJob,
+    folderUploadManager,
+    folderUploadReady,
+    navigate,
+    routeSessionId,
+    sessionId,
   ])
 
   useEffect(() => {
@@ -738,7 +976,7 @@ export function UploadPage() {
       metadataAutoStartRef.current = false
       return
     }
-    if (!sessionId || !zipHas) return
+    if (!sessionId || !dataInputHas) return
     if (metadataAutoStartRef.current) return
 
     metadataAutoStartRef.current = true
@@ -752,7 +990,7 @@ export function UploadPage() {
     sessionId,
     setSearchParams,
     startMetadataExtractionFromZip,
-    zipHas,
+    dataInputHas,
   ])
 
   const handleConfirmPlan = createConfirmPlanHandler({
@@ -816,7 +1054,8 @@ export function UploadPage() {
     sessionId,
     routeSessionId,
     existingSessionMode,
-    zipSupplementUploaded,
+    zipSupplementUploaded:
+      zipSupplementUploaded || zipUploadPendingMetadata || folderUploadReady,
     planInputsReuploaded,
     planAnalysisState,
     allDone,
@@ -826,7 +1065,7 @@ export function UploadPage() {
     dossierBuildStrategy,
     doc1Has,
     doc2Has,
-    zipHas,
+    zipHas: dataInputHas,
     doc1Ref,
     doc2Ref,
     navigate,
@@ -849,7 +1088,44 @@ export function UploadPage() {
     setFolderTree,
     setClusterGroups,
     setPlanReuploadState,
+    zipUploadManager,
   })
+  const handleStartAllInputs = useCallback(async () => {
+    if (primaryActionLockRef.current) return
+
+    primaryActionLockRef.current = true
+    setPrimaryActionPending(true)
+    try {
+      if (
+        folderUploadReady &&
+        (existingSessionMode || (!doc1Has && !doc2Has))
+      ) {
+        const currentSessionId = sessionId ?? routeSessionId ?? cache.sessionId
+        if (!currentSessionId) {
+          toast.error("Chưa có session để extract metadata.")
+          return
+        }
+        navigate(
+          `/sessions/${encodeURIComponent(currentSessionId)}/step/3?extract=1`
+        )
+        return
+      }
+
+      await handleStartAll()
+    } finally {
+      primaryActionLockRef.current = false
+      setPrimaryActionPending(false)
+    }
+  }, [
+    doc1Has,
+    doc2Has,
+    existingSessionMode,
+    folderUploadReady,
+    handleStartAll,
+    navigate,
+    routeSessionId,
+    sessionId,
+  ])
 
   return (
     <>
@@ -862,6 +1138,7 @@ export function UploadPage() {
         sessionMetadata={sessionMetadata}
         syncSessionMetadataDraft={syncSessionMetadataDraft}
         saveSessionMetadata={saveSessionMetadata}
+        ensureSession={ensureSession}
         sessionLoading={sessionLoading}
         STEP_LABELS={STEP_LABELS}
         PLAN_PROGRESS_PHASES={PLAN_PROGRESS_PHASES}
@@ -874,18 +1151,20 @@ export function UploadPage() {
         allProcessing={allProcessing}
         allDone={allDone}
         primaryActionDisabled={primaryActionDisabled}
-        handleStartAll={handleStartAll}
+        primaryActionAvailable={primaryActionAvailable}
+        primaryActionPending={primaryActionPending}
+        handleStartAll={handleStartAllInputs}
         doc1Ref={doc1Ref}
         doc2Ref={doc2Ref}
         zipRef={zipRef}
         doc1Has={doc1Has}
         doc2Has={doc2Has}
-        zipHas={zipHas}
+        zipHas={dataInputHas}
         hasActivePlan={hasActivePlan}
         hasPlanReady={hasPlanReady}
         doc1State={doc1State}
         doc2State={doc2State}
-        zipState={zipState}
+        zipState={effectiveZipState}
         planAnalysisState={planAnalysisState}
         planAnalyzing={planAnalyzing}
         planProgressPhase={planProgressPhase}
@@ -907,10 +1186,18 @@ export function UploadPage() {
         syncZipMaxFiles={syncZipMaxFiles}
         uploadMode={uploadMode}
         syncUploadMode={syncUploadMode}
-        zipUploadProgress={zipUploadProgress}
+        zipUploadProgress={effectiveZipUploadProgress}
+        zipUploadFileName={currentZipUploadJob?.fileName}
+        zipInterruptionNotice={zipInterruptionNotice}
         planReuploadState={planReuploadState}
         planInputsReuploaded={planInputsReuploaded}
-        zipSupplementUploaded={zipSupplementUploaded}
+        zipSupplementUploaded={
+          zipSupplementUploaded ||
+          (existingSessionMode && zipUploadPendingMetadata)
+        }
+        folderUploadReady={folderUploadReady}
+        folderUploadWasCancelled={folderUploadWasCancelled}
+        folderUploadEffectiveCount={folderUploadEffectiveCount}
         parsedPlan={parsedPlan}
         folderTree={folderTree}
         activeParsedPlan={activeParsedPlan}
@@ -926,7 +1213,9 @@ export function UploadPage() {
         dossierBuildStrategy={dossierBuildStrategy}
         selectDossierBuildStrategy={selectDossierBuildStrategy}
         documentNumberingMode={documentNumberingMode}
-        applyPersistedDocumentNumberingMode={applyPersistedDocumentNumberingMode}
+        applyPersistedDocumentNumberingMode={
+          applyPersistedDocumentNumberingMode
+        }
         selectDocumentNumberingModeDraft={selectDocumentNumberingModeDraft}
         documentNumberingStylePreset={documentNumberingStylePreset}
         documentNumberingStyleOverrides={documentNumberingStyleOverrides}

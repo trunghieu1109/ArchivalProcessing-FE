@@ -25,6 +25,7 @@ import type {
   SessionInputUploadResponse,
   UploadSessionInputOptions,
 } from "./sessionApi.types"
+import { globalUploadSemaphore } from "@/shared/lib/uploadSemaphore"
 
 export const DIRECT_PRESIGNED_UPLOAD_ENABLED = [
   "1",
@@ -78,7 +79,8 @@ export async function uploadSessionInput(
   return requestJsonWithUploadProgress<SessionInputUploadResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/inputs/upload`,
     form,
-    uploadOptions.onProgress
+    uploadOptions.onProgress,
+    uploadOptions.signal
   )
 }
 
@@ -90,6 +92,7 @@ async function uploadRawZipSessionInputDirect(
   if (file.size > RAW_ZIP_CHUNKED_UPLOAD_THRESHOLD_BYTES) {
     return uploadRawZipSessionInputChunked(sessionId, file, options)
   }
+  const clientUploadId = options.uploadJobId ?? crypto.randomUUID()
   const contentType = file.type || defaultContentType(file.name)
   const presign = await postJson<SessionInputRemoteUploadPresignResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/inputs/remote-upload/presign`,
@@ -99,7 +102,9 @@ async function uploadRawZipSessionInputDirect(
       content_type: contentType,
       size_bytes: file.size,
       created_by: options.createdBy ?? "ui",
-    }
+      client_upload_id: clientUploadId,
+    },
+    options.signal
   )
   if (!presign.remote_file_id) {
     throw new Error("Chỉnh Lý chưa trả về remote_file_id cho file ZIP.")
@@ -115,11 +120,16 @@ async function uploadRawZipSessionInputDirect(
     )
   }
   try {
-    await putPresignedFile(
-      presign.upload_url,
-      file,
-      contentType,
-      options.onProgress
+    await globalUploadSemaphore.use(
+      options.uploadJobId ?? `zip:${sessionId}`,
+      () =>
+        putPresignedFile(
+          presign.upload_url,
+          file,
+          contentType,
+          options.onProgress,
+          options.signal
+        )
     )
   } catch (error) {
     if (!(error instanceof PresignedUploadNetworkError)) throw error
@@ -146,8 +156,10 @@ async function uploadRawZipSessionInputDirect(
       upload_url: presign.upload_url,
       created_by: options.createdBy ?? "ui",
       upload_mode: options.uploadMode ?? "append",
+      client_upload_id: clientUploadId,
       ...(options.maxFiles === undefined ? {} : { max_files: options.maxFiles }),
-    }
+    },
+    options.signal
   )
   options.onProgress?.(uploadProgressSnapshot("done", file.size, file.size))
   return completed
@@ -158,6 +170,7 @@ async function uploadRawZipSessionInputChunked(
   file: File,
   options: UploadSessionInputOptions
 ): Promise<SessionInputUploadResponse> {
+  const clientUploadId = options.uploadJobId ?? crypto.randomUUID()
   const contentType = file.type || defaultContentType(file.name)
   const chunked = await requestJson<SessionInputRemoteChunkedCreateResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/inputs/remote-upload/chunked/create`,
@@ -173,7 +186,9 @@ async function uploadRawZipSessionInputChunked(
           ? {}
           : { chunk_size_bytes: CONFIGURED_CHUNKED_UPLOAD_CHUNK_SIZE_BYTES }),
         created_by: options.createdBy ?? "ui",
+        client_upload_id: clientUploadId,
       }),
+      signal: options.signal,
     }
   )
   if (!chunked.remote_file_id) {
@@ -225,9 +240,12 @@ async function uploadRawZipSessionInputChunked(
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             remote_batch_id: chunked.remote_batch_id,
+            remote_file_id: chunked.remote_file_id,
+            client_upload_id: clientUploadId,
             start_part: startPart,
             part_count: partCount,
           }),
+          signal: options.signal,
         }
       )
     await uploadChunkedParts(
@@ -244,7 +262,8 @@ async function uploadRawZipSessionInputChunked(
           emitProgress()
         },
         onPartProgress: emitProgress,
-      }
+      },
+      options
     )
   }
 
@@ -263,11 +282,13 @@ async function uploadRawZipSessionInputChunked(
         size_bytes: file.size,
         remote_batch_id: chunked.remote_batch_id,
         remote_file_id: chunked.remote_file_id,
+        client_upload_id: clientUploadId,
         delete_parts: true,
         created_by: options.createdBy ?? "ui",
         upload_mode: options.uploadMode ?? "append",
         ...(options.maxFiles === undefined ? {} : { max_files: options.maxFiles }),
       }),
+      signal: options.signal,
     }
   )
   options.onProgress?.(uploadProgressSnapshot("done", file.size, file.size))
@@ -284,7 +305,8 @@ async function uploadChunkedParts(
     activePartBytes: Map<number, number>
     onPartProgress: () => void
     onPartComplete: (part: SessionInputRemoteChunkedPart) => void
-  }
+  },
+  options: UploadSessionInputOptions
 ): Promise<void> {
   let nextIndex = 0
   const workerCount = Math.min(
@@ -302,7 +324,8 @@ async function uploadChunkedParts(
         chunked,
         file,
         part,
-        progress
+        progress,
+        options
       )
       progress.onPartComplete(part)
     }
@@ -319,7 +342,8 @@ async function uploadChunkedPartWithRetry(
   progress: {
     activePartBytes: Map<number, number>
     onPartProgress: () => void
-  }
+  },
+  options: UploadSessionInputOptions
 ): Promise<void> {
   let lastError: unknown = null
   for (
@@ -338,20 +362,26 @@ async function uploadChunkedPartWithRetry(
           chunked,
           file,
           part,
-          blob
+          blob,
+          options.signal
         )
         progress.activePartBytes.set(part.part_number, blob.size)
         progress.onPartProgress()
       } else {
         try {
-          await putPresignedBlob(
-            part.upload_url,
-            blob,
-            part.content_type,
-            (loadedBytes) => {
-              progress.activePartBytes.set(part.part_number, loadedBytes)
-              progress.onPartProgress()
-            }
+          await globalUploadSemaphore.use(
+            options.uploadJobId ?? `zip:${sessionId}`,
+            () =>
+              putPresignedBlob(
+                part.upload_url,
+                blob,
+                part.content_type,
+                (loadedBytes) => {
+                  progress.activePartBytes.set(part.part_number, loadedBytes)
+                  progress.onPartProgress()
+                },
+                options.signal
+              )
           )
         } catch (error) {
           if (!(error instanceof PresignedUploadNetworkError)) throw error
@@ -361,7 +391,8 @@ async function uploadChunkedPartWithRetry(
             chunked,
             file,
             part,
-            blob
+            blob,
+            options.signal
           )
           progress.activePartBytes.set(part.part_number, blob.size)
           progress.onPartProgress()
@@ -373,7 +404,7 @@ async function uploadChunkedPartWithRetry(
       progress.activePartBytes.delete(part.part_number)
       progress.onPartProgress()
       if (attempt < CHUNKED_UPLOAD_PART_MAX_ATTEMPTS) {
-        await delay(500 * attempt)
+        await delay(500 * attempt, options.signal)
       }
     }
   }
@@ -407,7 +438,8 @@ async function proxyChunkedPartUpload(
   chunked: SessionInputRemoteChunkedCreateResponse,
   file: File,
   part: SessionInputRemoteChunkedPart,
-  blob: Blob
+  blob: Blob,
+  signal?: AbortSignal
 ): Promise<void> {
   if (!chunked.remote_file_id) {
     throw new Error("Missing remote_file_id for chunked ZIP upload.")
@@ -417,6 +449,7 @@ async function proxyChunkedPartUpload(
     file_name: file.name,
     remote_batch_id: chunked.remote_batch_id,
     remote_file_id: chunked.remote_file_id,
+    client_upload_id: chunked.client_upload_id ?? "",
     upload_url: part.upload_url,
     size_bytes: String(blob.size),
   })
@@ -432,6 +465,7 @@ async function proxyChunkedPartUpload(
         "Content-Type": "application/octet-stream",
       },
       body: blob,
+      signal,
     })
   )
   if (!response.ok) {
@@ -454,6 +488,8 @@ async function proxyPresignedRawZipUpload(
     created_by: options.createdBy ?? "ui",
     remote_batch_id: presign.remote_batch_id,
     remote_file_id: presign.remote_file_id ?? "",
+    client_upload_id:
+      options.uploadJobId ?? presign.client_upload_id ?? "",
     upload_mode: options.uploadMode ?? "append",
   })
   if (options.maxFiles !== undefined) {
@@ -464,7 +500,8 @@ async function proxyPresignedRawZipUpload(
       `/sessions/${encodeURIComponent(sessionId)}/inputs/remote-upload/proxy?${query.toString()}`,
       file,
       contentType,
-      options.onProgress
+      options.onProgress,
+      options.signal
     )
   return withSessionUploadEventProgress(
     sessionId,
@@ -472,8 +509,45 @@ async function proxyPresignedRawZipUpload(
     file.name,
     presign.remote_file_id ?? null,
     proxyUpload,
-    options.onProgress
+    options.onProgress,
+    options.signal
   )
+}
+
+export interface CancelRawZipUploadResponse {
+  session_id: string
+  client_upload_id: string
+  status: string
+  session_file_id: number | null
+  cancellable: boolean
+}
+
+export function cancelRawZipUpload(
+  sessionId: string,
+  clientUploadId: string,
+  reason: string,
+  options: { keepalive?: boolean } = {}
+): Promise<CancelRawZipUploadResponse> {
+  const path = `/sessions/${encodeURIComponent(sessionId)}/inputs/remote-upload/cancel`
+  const payload = {
+    client_upload_id: clientUploadId,
+    reason,
+  }
+  if (!options.keepalive) {
+    return postJson<CancelRawZipUploadResponse>(path, payload)
+  }
+  return fetch(
+    apiUrl(path),
+    withAuth({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      keepalive: true,
+    })
+  ).then(async (response) => {
+    if (!response.ok) throw new Error(await responseErrorMessage(response))
+    return response.json() as Promise<CancelRawZipUploadResponse>
+  })
 }
 
 export async function registerSessionInput(

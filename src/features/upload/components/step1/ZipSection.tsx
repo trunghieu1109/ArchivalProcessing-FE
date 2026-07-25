@@ -123,6 +123,7 @@ interface ZipSectionProps {
   onMaxFilesChange: (value: string) => void
   onUploadFile: (file: File) => Promise<SessionInputUploadResponse>
   uploadProgress: UploadProgressSnapshot | null
+  managedFileName?: string
   ocr: UseOcrFolderResult
 }
 
@@ -138,6 +139,7 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
       onMaxFilesChange,
       onUploadFile,
       uploadProgress,
+      managedFileName,
       ocr,
     },
     ref
@@ -223,6 +225,8 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
     const dirCount = entries.filter((e) => e.isDir).length
     const isDone = processState === "done"
     const isProcessing = processState === "processing"
+    const displayedFileName = fileName || managedFileName || ""
+    const isManagedUpload = Boolean(managedFileName)
 
     return (
       <motion.div
@@ -277,13 +281,14 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
           </div>
         </div>
 
-        {fileName ? (
+        {displayedFileName ? (
           <FileChip
-            fileName={fileName}
+            fileName={displayedFileName}
             loading={loading}
             processState={processState}
             onClear={clear}
             icon={<FileArchive className="size-4" />}
+            hideClear={isManagedUpload}
           />
         ) : (
           <DropZone
@@ -296,7 +301,7 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
           />
         )}
 
-        {fileName && uploadProgress && (
+        {displayedFileName && uploadProgress && (
           <div className="rounded-xl border border-primary/15 bg-primary/[0.03] p-3">
             <div className="flex items-center justify-between gap-3 text-xs font-semibold text-[#0F172A]">
               <span className="truncate">
@@ -336,7 +341,7 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
           </div>
         )}
 
-        {fileName && (
+        {displayedFileName && (
           <div className="grid gap-2 rounded-xl border border-border bg-muted/30 p-3 sm:grid-cols-[minmax(0,1fr)_9rem] sm:items-center">
             <label
               htmlFor="zip-max-files"

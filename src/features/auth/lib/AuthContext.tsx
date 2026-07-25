@@ -60,6 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const logout = useCallback(() => {
+    window.dispatchEvent(new Event("archival:logout"))
     clearStoredAuthSession()
     setSession(null)
   }, [])

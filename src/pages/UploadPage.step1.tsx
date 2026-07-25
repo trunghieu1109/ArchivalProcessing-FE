@@ -1,5 +1,17 @@
+import { useEffect, useRef, useState } from "react"
 import { motion } from "framer-motion"
-import { Archive, ArrowRight, CheckCircle2, Loader2, Play } from "lucide-react"
+import {
+  Archive,
+  ArrowRight,
+  CheckCircle2,
+  CircleAlert,
+  Loader2,
+  Play,
+} from "lucide-react"
+import {
+  FolderUploadSection,
+  useFolderUploadJobs,
+} from "@/features/folder-upload"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import { DocxSection } from "@/features/upload/components/step1/DocxSection"
 import { ZipSection } from "@/features/upload/components/step1/ZipSection"
@@ -7,6 +19,10 @@ import { cn } from "@/shared/lib/utils"
 import type { UploadMode } from "@/features/upload/api/sessionApi"
 import type { SessionMetadataValues } from "@/features/upload/components/SessionMetadataBar"
 import { easeOut } from "./UploadPage.planUtils"
+
+const FOLDER_UPLOAD_ENABLED =
+  String(import.meta.env.VITE_FOLDER_UPLOAD_ENABLED ?? "true").toLowerCase() !==
+  "false"
 
 export function UploadPageStepOne(props: Record<string, any>) {
   const {
@@ -27,6 +43,8 @@ export function UploadPageStepOne(props: Record<string, any>) {
     uploadInput,
     uploadRetentionInputs,
     zipUploadProgress,
+    zipUploadFileName,
+    zipInterruptionNotice,
     planReuploadState,
     ocr,
     zipHas,
@@ -45,17 +63,111 @@ export function UploadPageStepOne(props: Record<string, any>) {
     statusItems,
     allDone,
     zipSupplementUploaded,
+    folderUploadReady,
+    folderUploadWasCancelled,
+    folderUploadEffectiveCount,
     hasAnyFile,
     hasPlanReady,
     readyCount,
     requiredFileCount,
     selectedInputLabels,
     primaryActionDisabled,
+    primaryActionAvailable,
+    primaryActionPending,
     handleStartAll,
     planInputsReuploaded,
     sessionMetadata,
     syncSessionMetadataDraft,
+    sessionId,
+    ensureSession,
+    openZipUpload,
+    zipUploadFocusKey,
+    openFolderUpload,
+    folderUploadFocusKey,
   } = props
+  const folderUploadJobs = useFolderUploadJobs()
+  const hasRetainedFolderUpload = Boolean(
+    sessionId && folderUploadJobs.some((job) => job.sessionId === sessionId)
+  )
+  const [dataUploadType, setDataUploadType] = useState<"zip" | "folder">(
+    openZipUpload
+      ? "zip"
+      : FOLDER_UPLOAD_ENABLED && (openFolderUpload || hasRetainedFolderUpload)
+        ? "folder"
+        : "zip"
+  )
+  const restoredSessionRef = useRef<string | null>(null)
+  const restoredFolderSessionRef = useRef<string | null>(null)
+  const handledFocusRef = useRef<string | null>(null)
+  const handledZipFocusRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!FOLDER_UPLOAD_ENABLED || !sessionId) return
+    const sessionChanged = restoredSessionRef.current !== sessionId
+    if (sessionChanged) {
+      restoredSessionRef.current = sessionId
+      restoredFolderSessionRef.current = null
+    }
+    const shouldRestoreSession =
+      hasRetainedFolderUpload &&
+      !openZipUpload &&
+      restoredFolderSessionRef.current !== sessionId
+    const shouldOpenRequestedFolder = sessionChanged && openFolderUpload
+    const shouldHandleFocus =
+      Boolean(openFolderUpload && folderUploadFocusKey) &&
+      handledFocusRef.current !== folderUploadFocusKey
+
+    if (sessionChanged && !shouldRestoreSession && !openFolderUpload) {
+      setDataUploadType("zip")
+    }
+    if (
+      !shouldRestoreSession &&
+      !shouldOpenRequestedFolder &&
+      !shouldHandleFocus
+    ) {
+      return
+    }
+
+    if (folderUploadFocusKey) {
+      handledFocusRef.current = folderUploadFocusKey
+    }
+    if (shouldRestoreSession) {
+      restoredFolderSessionRef.current = sessionId
+    }
+    setDataUploadType("folder")
+
+    if (!shouldHandleFocus) return
+    const timer = window.setTimeout(() => {
+      document
+        .getElementById("folder-upload-panel")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" })
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [
+    folderUploadFocusKey,
+    hasRetainedFolderUpload,
+    openFolderUpload,
+    openZipUpload,
+    sessionId,
+  ])
+  useEffect(() => {
+    if (!openZipUpload) return
+    const shouldFocus =
+      Boolean(zipUploadFocusKey) &&
+      handledZipFocusRef.current !== zipUploadFocusKey
+    if (shouldFocus && zipUploadFocusKey) {
+      handledZipFocusRef.current = zipUploadFocusKey
+    }
+    const timer = window.setTimeout(() => {
+      setDataUploadType("zip")
+      if (shouldFocus) {
+        document
+          .getElementById("zip-upload-panel")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" })
+      }
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [openZipUpload, zipUploadFocusKey])
   const zipUploadStatus = zipUploadProgress
     ? zipUploadProgress.phase === "error"
       ? "Upload ZIP thất bại"
@@ -125,7 +237,8 @@ export function UploadPageStepOne(props: Record<string, any>) {
                 Thông tin phông
               </p>
               <p className="mt-1 text-sm text-[#64748B]">
-                Nhập thông tin nền cho session. Khi nhấn Bắt đầu xử lý, hệ thống sẽ tạo session mới và lưu các thông tin này tự động.
+                Nhập thông tin nền cho session. Khi nhấn Bắt đầu xử lý, hệ thống
+                sẽ tạo session mới và lưu các thông tin này tự động.
               </p>
             </div>
           </div>
@@ -198,22 +311,36 @@ export function UploadPageStepOne(props: Record<string, any>) {
         />
       )}
 
-      {/* ZIP */}
-      <ZipSection
-        ref={zipRef}
-        processState={zipState}
-        onProcessStateChange={syncZipState}
-        onHasFileChange={syncZipHas}
-        onEntriesChange={syncZipEntries}
-        onFolderPathChange={syncZipFolderPath}
-        maxFiles={zipMaxFiles}
-        onMaxFilesChange={syncZipMaxFiles}
-        onUploadFile={(file) => uploadInput("raw_zip", file)}
-        uploadProgress={zipUploadProgress}
-        ocr={ocr}
-      />
+      <div className="rounded-2xl border border-[#D8E1EC] bg-white p-2 shadow-sm">
+        <div
+          className={cn(
+            "grid gap-2",
+            FOLDER_UPLOAD_ENABLED ? "grid-cols-2" : "grid-cols-1"
+          )}
+        >
+          {(FOLDER_UPLOAD_ENABLED
+            ? (["zip", "folder"] as const)
+            : (["zip"] as const)
+          ).map((type) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => setDataUploadType(type)}
+              disabled={allProcessing || sessionLoading}
+              className={cn(
+                "rounded-xl px-4 py-3 text-sm font-bold transition",
+                dataUploadType === type
+                  ? "bg-[#0052FF] text-white shadow-sm"
+                  : "bg-[#F8FAFC] text-[#475569] hover:bg-[#EFF6FF]"
+              )}
+            >
+              {type === "zip" ? "Upload file ZIP" : "Upload nguyên folder"}
+            </button>
+          ))}
+        </div>
+      </div>
 
-      {existingSessionMode && zipHas && (
+      {existingSessionMode && (
         <div className="rounded-2xl border border-[#D8E1EC] bg-white p-5 shadow-sm">
           <p className="text-sm font-bold text-[#0F172A]">
             Chế độ upload bổ sung
@@ -243,12 +370,68 @@ export function UploadPageStepOne(props: Record<string, any>) {
                 </span>
                 <span className="mt-1 block text-xs leading-5 text-[#64748B]">
                   {mode === "append"
-                    ? "An toàn hơn, chỉ xử lý tài liệu mới trong ZIP bổ sung."
-                    : "Dùng khi muốn thay nội dung PDF đã có bằng bản mới trong ZIP."}
+                    ? "Chỉ xử lý tài liệu mới trong dữ liệu bổ sung."
+                    : "Ghi đè nội dung PDF trùng path bằng bản mới."}
                 </span>
               </button>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Giữ component ZIP mounted để không làm mất file đã chọn khi đổi tab. */}
+      <div
+        id="zip-upload-panel"
+        className={cn(
+          "scroll-mt-24",
+          dataUploadType === "zip" ? "block" : "hidden"
+        )}
+      >
+        {zipInterruptionNotice && (
+          <div className="mb-4 rounded-xl border border-[#FCD34D] bg-[#FFFBEB] px-4 py-3 text-sm text-[#92400E]">
+            <div className="flex items-start gap-2">
+              <CircleAlert className="mt-0.5 size-4 shrink-0" />
+              <div className="min-w-0">
+                <p className="font-semibold">
+                  Lần upload ZIP gần nhất chưa hoàn thành
+                </p>
+                <p className="mt-1 leading-5 break-words">
+                  File <strong>{zipInterruptionNotice.fileName}</strong> đã bị
+                  hủy hoặc gián đoạn và chưa được đưa vào xử lý.
+                </p>
+                {zipInterruptionNotice.cancelReason && (
+                  <p className="mt-1 text-xs">
+                    {zipCancelReasonLabel(zipInterruptionNotice.cancelReason)}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+        <ZipSection
+          ref={zipRef}
+          processState={zipState}
+          onProcessStateChange={syncZipState}
+          onHasFileChange={syncZipHas}
+          onEntriesChange={syncZipEntries}
+          onFolderPathChange={syncZipFolderPath}
+          maxFiles={zipMaxFiles}
+          onMaxFilesChange={syncZipMaxFiles}
+          onUploadFile={(file) => uploadInput("raw_zip", file)}
+          uploadProgress={zipUploadProgress}
+          managedFileName={zipUploadFileName}
+          ocr={ocr}
+        />
+      </div>
+
+      {dataUploadType === "folder" && (
+        <div id="folder-upload-panel" className="scroll-mt-24">
+          <FolderUploadSection
+            sessionId={sessionId}
+            ensureSession={ensureSession}
+            uploadMode={uploadMode}
+            disabled={allProcessing || sessionLoading}
+          />
         </div>
       )}
 
@@ -378,6 +561,17 @@ export function UploadPageStepOne(props: Record<string, any>) {
                 <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />{" "}
                 Đang xử lý tệp...
               </span>
+            ) : existingSessionMode &&
+              folderUploadReady &&
+              folderUploadWasCancelled ? (
+              <span className="block truncate text-muted-foreground">
+                Lần upload đã hủy nhưng có {folderUploadEffectiveCount} tài liệu
+                sẵn sàng xử lý.
+              </span>
+            ) : existingSessionMode && folderUploadReady ? (
+              <span className="block truncate text-muted-foreground">
+                Folder đã upload xong. Nhấn nút bên phải để extract metadata.
+              </span>
             ) : existingSessionMode && zipSupplementUploaded ? (
               <span className="block truncate text-muted-foreground">
                 ZIP bổ sung đã upload xong. Nhấn nút bên phải để extract
@@ -406,6 +600,7 @@ export function UploadPageStepOne(props: Record<string, any>) {
         </div>
 
         <button
+          type="button"
           disabled={primaryActionDisabled}
           onClick={handleStartAll}
           className={cn(
@@ -423,7 +618,7 @@ export function UploadPageStepOne(props: Record<string, any>) {
               : {}
           }
         >
-          {allProcessing || sessionLoading ? (
+          {primaryActionPending || allProcessing || sessionLoading ? (
             <Loader2 className="size-4 animate-spin" />
           ) : allDone ? (
             <CheckCircle2 className="size-4" />
@@ -433,23 +628,31 @@ export function UploadPageStepOne(props: Record<string, any>) {
           <span className="min-w-0 truncate whitespace-nowrap">
             {sessionLoading
               ? "Đang tải..."
-              : planAnalyzing
-                ? existingSessionMode
-                  ? "Xem trạng thái phân tích"
-                  : "Đang phân tích..."
-                : allProcessing
-                  ? "Đang xử lý..."
-                  : planInputsReuploaded
-                    ? planReanalysisActionLabel
-                    : existingSessionMode && zipSupplementUploaded
-                      ? "Extract metadata ZIP bổ sung"
-                      : existingSessionMode && zipHas && !hasPlanReady
-                        ? "Đi tới extract metadata"
-                        : allDone
-                          ? "Tiếp tục"
-                          : existingSessionMode
-                            ? "Tiếp tục"
-                            : "Bắt đầu xử lý"}
+              : primaryActionPending
+                ? "Đang xử lý..."
+                : !primaryActionAvailable
+                  ? "Chọn dữ liệu để bắt đầu"
+                  : planAnalyzing
+                    ? existingSessionMode
+                      ? "Xem trạng thái phân tích"
+                      : "Đang phân tích..."
+                    : allProcessing
+                      ? "Đang xử lý..."
+                      : planInputsReuploaded
+                        ? planReanalysisActionLabel
+                        : folderUploadReady && folderUploadWasCancelled
+                          ? `Xử lý ${folderUploadEffectiveCount} tài liệu đã tải thành công`
+                          : existingSessionMode && folderUploadReady
+                            ? "Extract metadata folder"
+                            : existingSessionMode && zipSupplementUploaded
+                              ? "Extract metadata ZIP bổ sung"
+                              : existingSessionMode && zipHas && !hasPlanReady
+                                ? "Đi tới extract metadata"
+                                : allDone
+                                  ? "Tiếp tục"
+                                  : existingSessionMode
+                                    ? "Tiếp tục"
+                                    : "Bắt đầu xử lý"}
           </span>
           {!primaryActionDisabled && (
             <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
@@ -475,6 +678,15 @@ export function UploadPageStepOne(props: Record<string, any>) {
       </p>
     </motion.div>
   )
+}
+
+function zipCancelReasonLabel(reason: string): string {
+  if (reason === "page_closed") {
+    return "Upload bị gián đoạn do tab đã đóng hoặc tải lại."
+  }
+  if (reason === "logout") return "Upload bị gián đoạn do người dùng đăng xuất."
+  if (reason === "user_cancelled") return "Upload đã được người dùng hủy."
+  return `Lý do: ${reason}`
 }
 
 function SessionMetadataInput({
@@ -506,9 +718,7 @@ function SessionMetadataInput({
 
 function updateSessionMetadataDraft(
   metadata: SessionMetadataValues | undefined,
-  syncDraft:
-    | ((metadata: SessionMetadataValues) => void)
-    | undefined,
+  syncDraft: ((metadata: SessionMetadataValues) => void) | undefined,
   field: keyof SessionMetadataValues,
   value: string
 ) {

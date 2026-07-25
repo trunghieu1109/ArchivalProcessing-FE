@@ -42,6 +42,30 @@ const OCR_EMPTY_STATUS_RETRY_LIMIT = 12
 const OCR_DOCUMENT_REFRESH_MIN_INTERVAL_MS = 15_000
 const DEFAULT_DOCUMENT_NUMBERING_MODE: DocumentNumberingMode = "page"
 const DEFAULT_METADATA_DOCUMENT_SCOPE: MetadataDocumentScope = { scope: "all" }
+const OCR_WAIT_SUPERSEDED_ERROR_NAME = "OcrWaitSupersededError"
+
+function ocrWaitSupersededError(): Error {
+  const error = new Error(
+    "Quá trình theo dõi OCR trước đó đã được lần xử lý mới tiếp quản."
+  )
+  error.name = OCR_WAIT_SUPERSEDED_ERROR_NAME
+  return error
+}
+
+function ocrWaitInterruptedError(
+  token: number,
+  supersededTokens: ReadonlySet<number>
+): Error {
+  return supersededTokens.has(token)
+    ? ocrWaitSupersededError()
+    : new Error("Đã hủy quá trình chờ kết quả OCR.")
+}
+
+export function isOcrWaitSupersededError(error: unknown): boolean {
+  return (
+    error instanceof Error && error.name === OCR_WAIT_SUPERSEDED_ERROR_NAME
+  )
+}
 
 export interface OcrRefreshOptions {
   includeDocuments?: boolean
@@ -129,8 +153,9 @@ export function useOcrFolder(
   )
   const tokenRef = useRef(0)
   const rejectRef = useRef<((error: Error) => void) | null>(null)
+  const supersededTokensRef = useRef<Set<number>>(new Set())
   const pendingStartRef = useRef<PendingStartContext | null>(null)
-  const manualOperationRef = useRef(false)
+  const manualOperationTokenRef = useRef<number | null>(null)
   const documentPageCacheSessionRef = useRef<string | null>(null)
   const documentPageCacheRef = useRef<DocumentRangeCache>(
     createDocumentRangeCache()
@@ -549,6 +574,8 @@ export function useOcrFolder(
     tokenRef.current += 1
     rejectRef.current?.(new Error("Đã hủy quá trình chờ kết quả OCR."))
     rejectRef.current = null
+    supersededTokensRef.current.clear()
+    manualOperationTokenRef.current = null
     pendingStartRef.current = null
     clearDocumentRangeCache(documentPageCacheRef.current)
     prefetchingDocumentRangesRef.current.clear()
@@ -757,12 +784,14 @@ export function useOcrFolder(
         throw new Error("Chưa có session để chạy lại metadata.")
       }
       stop()
-      rejectRef.current?.(
-        new Error("Quá trình chờ kết quả OCR đã được thay thế.")
-      )
+      if (manualOperationTokenRef.current !== null) {
+        supersededTokensRef.current.add(manualOperationTokenRef.current)
+      }
+      rejectRef.current?.(ocrWaitSupersededError())
       rejectRef.current = null
       const token = tokenRef.current + 1
       tokenRef.current = token
+      manualOperationTokenRef.current = null
       const fallbackFolderPath = status?.folder_path ?? ""
       setState("polling")
       setError("")
@@ -786,11 +815,12 @@ export function useOcrFolder(
 
   useEffect(() => {
     if (!enabled) {
-      if (manualOperationRef.current) return
+      if (manualOperationTokenRef.current !== null) return
       stop()
       tokenRef.current += 1
       pendingStartRef.current = null
       rejectRef.current = null
+      supersededTokensRef.current.clear()
       if (clearOnDisable) {
         const disableToken = tokenRef.current
         clearDocumentRangeCache(documentPageCacheRef.current)
@@ -805,7 +835,7 @@ export function useOcrFolder(
       return
     }
 
-    if (manualOperationRef.current) return
+    if (manualOperationTokenRef.current !== null) return
 
     stop()
     tokenRef.current += 1
@@ -950,9 +980,10 @@ export function useOcrFolder(
         throw new Error("Chưa có session để bắt đầu OCR.")
       }
       stop()
-      rejectRef.current?.(
-        new Error("Quá trình chờ kết quả OCR đã được thay thế.")
-      )
+      if (manualOperationTokenRef.current !== null) {
+        supersededTokensRef.current.add(manualOperationTokenRef.current)
+      }
+      rejectRef.current?.(ocrWaitSupersededError())
       rejectRef.current = null
       const token = tokenRef.current + 1
       tokenRef.current = token
@@ -979,7 +1010,7 @@ export function useOcrFolder(
           : null
       clearDocumentRangeCache(documentPageCacheRef.current)
       prefetchingDocumentRangesRef.current.clear()
-      manualOperationRef.current = true
+      manualOperationTokenRef.current = token
       setState("starting")
       setStatus(
         shouldShowReextractingState && previousStatus
@@ -1012,13 +1043,31 @@ export function useOcrFolder(
             : {}),
         })
       } catch (err) {
+        if (tokenRef.current !== token) {
+          const interruption = ocrWaitInterruptedError(
+            token,
+            supersededTokensRef.current
+          )
+          supersededTokensRef.current.delete(token)
+          throw interruption
+        }
         pendingStartRef.current = null
-        manualOperationRef.current = false
+        if (manualOperationTokenRef.current === token) {
+          manualOperationTokenRef.current = null
+        }
         setState("error")
         setError(
           err instanceof Error ? err.message : "KhÃ´ng thá»ƒ báº¯t Ä‘áº§u OCR."
         )
         throw err
+      }
+      if (tokenRef.current !== token) {
+        const interruption = ocrWaitInterruptedError(
+          token,
+          supersededTokensRef.current
+        )
+        supersededTokensRef.current.delete(token)
+        throw interruption
       }
       setState("polling")
 
@@ -1042,7 +1091,9 @@ export function useOcrFolder(
           }
           const poll = async () => {
             if (tokenRef.current !== token) {
-              rejectPolling(new Error("Đã hủy quá trình chờ kết quả OCR."))
+              rejectPolling(
+                ocrWaitInterruptedError(token, supersededTokensRef.current)
+              )
               return
             }
             if (document.visibilityState === "hidden") {
@@ -1149,7 +1200,10 @@ export function useOcrFolder(
           void poll()
         })
       } finally {
-        manualOperationRef.current = false
+        supersededTokensRef.current.delete(token)
+        if (manualOperationTokenRef.current === token) {
+          manualOperationTokenRef.current = null
+        }
       }
     },
     [

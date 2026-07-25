@@ -5,6 +5,7 @@ import {
   getWorkingPlan,
   getSession,
   type ActiveJobSummary,
+  type SessionInputUploadResponse,
 } from "@/features/upload/api/sessionApi"
 import type { SessionMetadataValues } from "@/features/upload/components/SessionMetadataBar"
 import { uploadPageCache as cache } from "./UploadPage.cache"
@@ -71,6 +72,12 @@ function pendingPlanAnalysisMessage({
   return `Phương án chỉnh lý${waiting}`
 }
 
+function isUsableCompletedZipUpload(file: SessionInputUploadResponse): boolean {
+  return (
+    file.upload_status === "completed" && file.ingestion_run?.status === "ready"
+  )
+}
+
 export function useUploadPageLifecycle(context: Record<string, any>) {
   const {
     currentStep,
@@ -106,6 +113,7 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     setZipFolderPath,
     setZipMaxFiles,
     setZipUploadProgress,
+    setLatestZipUploadAttempt,
     setUploadModeState,
     setPlanReuploadState,
     setZipSupplementUploaded,
@@ -113,6 +121,7 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     setPlanProgressMessage,
     setPlanCompletedPhases,
     setSessionLoading,
+    restoreFolderUploadSummary,
   } = context
 
   useEffect(() => {
@@ -169,6 +178,7 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     cache.doc1Has = false
     cache.doc2Has = false
     cache.zipHas = false
+    setLatestZipUploadAttempt(null)
     cache.zipEntries = []
     cache.folderTree = planToTree(EMPTY_PARSED_PLAN)
     cache.parsedPlan = EMPTY_PARSED_PLAN
@@ -275,6 +285,12 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
           ])
         let workingPlan = initialWorkingPlan
         if (cancelled) return
+        if (
+          sessionDetail.latest_folder_upload &&
+          typeof restoreFolderUploadSummary === "function"
+        ) {
+          restoreFolderUploadSummary(sessionDetail.latest_folder_upload)
+        }
 
         const sessionActivePlanVersionId = String(
           sessionDetail.active_plan_version_id ?? ""
@@ -296,7 +312,8 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
             : null
         const activePlanForDisplay = loadedActivePlan ?? fallbackActivePlan
         const effectiveActivePlanVersionId =
-          sessionActivePlanVersionId || String(loadedActivePlan?.id ?? "").trim()
+          sessionActivePlanVersionId ||
+          String(loadedActivePlan?.id ?? "").trim()
 
         cache.planDraftDirty = false
         cache.planDraftRevision = 0
@@ -359,7 +376,9 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
         )
         const retentionFile = retentionFiles[retentionFiles.length - 1]
         const zipFiles = files.filter((file) => file.file_type === "raw_zip")
-        const zipFile = zipFiles[zipFiles.length - 1]
+        const latestZipAttempt = zipFiles[zipFiles.length - 1] ?? null
+        const zipFile =
+          [...zipFiles].reverse().find(isUsableCompletedZipUpload) ?? null
         const maybeActivePlanAnalysisJob =
           sessionDetail.active_plan_analysis_job
         const activePlanAnalysisJob = isActivePlanAnalysisJob(
@@ -395,6 +414,7 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
         cache.draftRetentionFiles = []
         cache.draftZipFile = null
         cache.zipUploadProgress = null
+        setLatestZipUploadAttempt(latestZipAttempt)
         setDoc1Has(cache.doc1Has)
         setDoc2Has(cache.doc2Has)
         setZipHas(cache.zipHas)
@@ -420,9 +440,8 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
               activePlanDocumentNumberingStyleOverrides(activePlanForDisplay),
           }
           cache.activePlanResponse = loadedActivePlan
-          cache.activePlanSignature = planResponseMaterialSignature(
-            activePlanForDisplay
-          )
+          cache.activePlanSignature =
+            planResponseMaterialSignature(activePlanForDisplay)
           cache.activeParsedPlan = activeParsedPlan
           cache.activeFolderTree = planToTree(activeParsedPlan)
           cache.activePlanSettings = activePlanSettings
@@ -474,7 +493,8 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
           cache.workingPlanVersionId = workingPlan.id ?? ""
           cache.workingPlanStatus = workingPlan.status ?? ""
           cache.workingPlanResponse = workingPlan
-          cache.workingPlanSignature = planResponseMaterialSignature(workingPlan)
+          cache.workingPlanSignature =
+            planResponseMaterialSignature(workingPlan)
           cache.planDraftBaseSignature =
             planDraftPayloadSignature(workingDraftPayload)
           cache.parsedPlan = plan

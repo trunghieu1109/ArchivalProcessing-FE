@@ -45,6 +45,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     setPlanProgressMessage,
     setClusterGroups,
     setPlanReuploadState,
+    zipUploadManager,
   } = context
 
   const resetPlanReuploadState = () => {
@@ -182,6 +183,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
       return
     }
     try {
+      const workflowPath = window.location.pathname
       if (arrangementFile) {
         syncPlanAnalysisState("processing")
         setPlanProgressPhase("upload_inputs")
@@ -233,27 +235,26 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
         const parsedZipMaxFiles = Number(cache.zipMaxFiles)
         syncZipState("processing")
         syncZipUploadProgress(zipUploadProgressForFile(zipFile, "uploading"))
-        zipUploadTask = uploadSessionInput(
-          currentSessionId,
-          "raw_zip",
-          zipFile,
-          {
-            uploadMode: cache.uploadMode,
+        zipUploadTask = zipUploadManager
+          .start({
+            sessionId: currentSessionId,
+            file: zipFile,
+            mode: cache.uploadMode,
             maxFiles:
               Number.isInteger(parsedZipMaxFiles) && parsedZipMaxFiles > 0
                 ? parsedZipMaxFiles
                 : undefined,
-            onProgress: syncZipUploadProgress,
-          }
-        ).then((response) => {
-          cache.zipUpload = response
-          syncZipUploadProgress(
-            zipUploadProgressForFile(zipFile, "done", zipFile.size)
-          )
-          syncZipState("done")
-          syncZipFolderPath(response.folder_path ?? response.data_path ?? "")
-          return response
-        })
+          })
+          .completion.then((response: SessionInputUploadResponse) => {
+            if (window.location.pathname !== workflowPath) return response
+            cache.zipUpload = response
+            syncZipUploadProgress(
+              zipUploadProgressForFile(zipFile, "done", zipFile.size)
+            )
+            syncZipState("done")
+            syncZipFolderPath(response.folder_path ?? response.data_path ?? "")
+            return response
+          })
       }
 
       const [[arrangementPlan, retentionPlan, zipInput]] = await Promise.all([
@@ -264,6 +265,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
         ]),
         Promise.all(documentTasks),
       ])
+      if (window.location.pathname !== workflowPath) return
 
       if (!arrangementFile) {
         const retentionFiles = retentionUploadPaths(retentionPlan)
