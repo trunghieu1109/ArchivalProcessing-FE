@@ -10,11 +10,17 @@ export function FolderUploadSection({
   ensureSession,
   uploadMode,
   disabled = false,
+  embedded = false,
+  showPicker = true,
+  showInterruptionNotice = true,
 }: {
   sessionId: string | null
   ensureSession: () => Promise<string>
   uploadMode: UploadMode
   disabled?: boolean
+  embedded?: boolean
+  showPicker?: boolean
+  showInterruptionNotice?: boolean
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const manager = useFolderUploadManager()
@@ -59,6 +65,17 @@ export function FolderUploadSection({
       ? currentJob.files.filter((file) => file.status === "skipped").length
       : (currentJob.summary?.counts.skipped ?? 0)
     : 0
+  const reviewedFileCount = confirmedCount + skippedCount
+  const uploadPercent = currentJob
+    ? ["sealing", "reconciling", "completed"].includes(currentJob.status)
+      ? 100
+      : Math.min(
+          100,
+          Math.round(
+            (reviewedFileCount / Math.max(1, displayedFileCount)) * 100
+          )
+        )
+    : 0
 
   const handleFiles = async (files: FileList | null) => {
     if (!files?.length) return
@@ -93,42 +110,57 @@ export function FolderUploadSection({
   }
 
   return (
-    <section className="rounded-2xl border border-[#D8E1EC] bg-white p-5 shadow-sm">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-start gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-[#EAF1FF] text-[#0052FF]">
-            <FolderOpen className="size-5" />
+    <section
+      className={cn(
+        embedded
+          ? ""
+          : "rounded-2xl border border-[#D8E1EC] bg-white p-5 shadow-sm"
+      )}
+    >
+      {!embedded && (
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-[#EAF1FF] text-[#0052FF]">
+              <FolderOpen className="size-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-[#0F172A]">
+                Upload trực tiếp một folder PDF
+              </h3>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-[#64748B]">
+                Trình duyệt giữ file trong bộ nhớ của tab và PUT trực tiếp sang
+                Chỉnh Lý. Đóng hoặc tải lại tab sẽ hủy phần chưa hoàn tất; các
+                file đã xác nhận vẫn được giữ.
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-base font-bold text-[#0F172A]">
-              Upload trực tiếp một folder PDF
-            </h3>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-[#64748B]">
-              Trình duyệt giữ file trong bộ nhớ của tab và PUT trực tiếp sang
-              Chỉnh Lý. Đóng hoặc tải lại tab sẽ hủy phần chưa hoàn tất; các
-              file đã xác nhận vẫn được giữ.
-            </p>
-          </div>
-        </div>
-        <button
-          type="button"
-          disabled={
-            disabled || starting || hasActiveJob || interruptedUploadStillOpen
-          }
-          onClick={() => {
-            if (!inputRef.current) return
-            inputRef.current.value = ""
-            inputRef.current.click()
-          }}
-          className="flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#0052FF] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0047DB] disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {starting ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <UploadCloud className="size-4" />
+          {showPicker && (
+            <button
+              type="button"
+              disabled={
+                disabled ||
+                starting ||
+                hasActiveJob ||
+                interruptedUploadStillOpen
+              }
+              onClick={() => {
+                if (!inputRef.current) return
+                inputRef.current.value = ""
+                inputRef.current.click()
+              }}
+              className="flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#0052FF] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0047DB] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {starting ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <UploadCloud className="size-4" />
+              )}
+              Chọn folder
+            </button>
           )}
-          Chọn folder
-        </button>
+        </div>
+      )}
+      {showPicker && (
         <input
           ref={(node) => {
             inputRef.current = node
@@ -141,20 +173,22 @@ export function FolderUploadSection({
           className="hidden"
           onChange={(event) => void handleFiles(event.currentTarget.files)}
         />
-      </div>
+      )}
 
-      <div className="mt-4 rounded-xl border border-[#DBEAFE] bg-[#EFF6FF] px-4 py-3 text-xs leading-5 text-[#1E3A8A]">
-        Mỗi lượt register tối đa 200 file. Toàn ứng dụng dùng tối đa 8 kết nối
-        PUT đồng thời; presigned URL được cấp lại khi retry.
-        {ignoredFileCount > 0 && (
-          <span className="mt-1 block font-semibold">
-            Đã bỏ qua {ignoredFileCount.toLocaleString("vi-VN")} file không phải
-            PDF hoặc file rỗng.
-          </span>
-        )}
-      </div>
+      {showPicker && (
+        <div className="mt-4 rounded-xl border border-[#DBEAFE] bg-[#EFF6FF] px-4 py-3 text-xs leading-5 text-[#1E3A8A]">
+          Mỗi lượt register tối đa 200 file. Toàn ứng dụng dùng tối đa 8 kết nối
+          PUT đồng thời; presigned URL được cấp lại khi retry.
+          {ignoredFileCount > 0 && (
+            <span className="mt-1 block font-semibold">
+              Đã bỏ qua {ignoredFileCount.toLocaleString("vi-VN")} file không
+              phải PDF hoặc file rỗng.
+            </span>
+          )}
+        </div>
+      )}
 
-      {interruptedSummary && (
+      {showInterruptionNotice && interruptedSummary && (
         <div className="mt-4 rounded-xl border border-[#FCD34D] bg-[#FFFBEB] px-4 py-3 text-sm text-[#92400E]">
           <div className="flex items-start gap-2">
             <CircleAlert className="mt-0.5 size-4 shrink-0" />
@@ -194,7 +228,7 @@ export function FolderUploadSection({
       )}
 
       {currentJob && hasActiveJob && (
-        <div className="mt-4">
+        <div>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-semibold text-[#334155]">
               {currentJob.rootName} ·{" "}
@@ -203,6 +237,34 @@ export function FolderUploadSection({
             <p className="text-xs text-[#64748B]">
               {confirmedCount} thành công · {skippedCount} bỏ qua
             </p>
+          </div>
+          <div className="mt-3 rounded-xl border border-primary/15 bg-primary/[0.03] p-3">
+            <div className="flex items-center justify-between gap-3 text-xs font-semibold text-[#0F172A]">
+              <span className="truncate">
+                {folderUploadStatusLabel(currentJob.status)}
+              </span>
+              <span className="shrink-0 font-roboto text-[11px] text-[#0052FF]">
+                {uploadPercent}%
+              </span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#D8E1EC]">
+              <div
+                className={cn(
+                  "h-full rounded-full transition-[width] duration-200",
+                  currentJob.status === "attention_required"
+                    ? "bg-destructive"
+                    : "bg-[#0052FF]"
+                )}
+                style={{ width: `${uploadPercent}%` }}
+              />
+            </div>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 font-roboto text-[11px] text-[#64748B]">
+              <span>
+                {reviewedFileCount.toLocaleString("vi-VN")} /{" "}
+                {displayedFileCount.toLocaleString("vi-VN")} file đã duyệt
+              </span>
+              <span>Tính theo file đã xác nhận hoặc bỏ qua</span>
+            </div>
           </div>
           {currentJob.files.length > 0 ? (
             <div className="mt-2 max-h-52 overflow-auto rounded-xl border border-[#E2E8F0]">
@@ -247,6 +309,20 @@ export function FolderUploadSection({
       )}
     </section>
   )
+}
+
+function folderUploadStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    preparing: "Đang khởi tạo upload folder",
+    uploading: "Đang upload các file PDF",
+    sealing: "Đang chốt danh sách file",
+    reconciling: "Đang đồng bộ tài liệu",
+    completed: "Upload folder hoàn tất",
+    attention_required: "Upload folder cần xử lý",
+    cancelling: "Đang hủy upload folder",
+    cancelled: "Upload folder đã hủy",
+  }
+  return labels[status] ?? status
 }
 
 function fileStatusLabel(status: string): string {

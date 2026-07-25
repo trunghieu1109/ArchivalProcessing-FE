@@ -572,7 +572,7 @@ export function useOcrFolder(
   const reset = useCallback(() => {
     stop()
     tokenRef.current += 1
-    rejectRef.current?.(new Error("Đã hủy quá trình chờ kết quả OCR."))
+    rejectRef.current?.(ocrWaitSupersededError())
     rejectRef.current = null
     supersededTokensRef.current.clear()
     manualOperationTokenRef.current = null

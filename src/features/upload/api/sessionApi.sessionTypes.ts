@@ -104,6 +104,8 @@ export interface SessionInputUploadResponse {
   remote_status?: string | null
   size_bytes?: number | null
   content_type?: string | null
+  created_at?: string | null
+  updated_at?: string | null
   cancelled_at?: string | null
   cancel_reason?: string | null
   ingestion_run?: SessionIngestionRun | null

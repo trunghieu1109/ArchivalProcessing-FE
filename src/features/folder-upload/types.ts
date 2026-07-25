@@ -40,6 +40,7 @@ export interface FolderUploadIngestionRun {
   status: string
   folder_upload_id: string | null
   total_pdf_files: number | null
+  ocr_batch_ids?: number[]
 }
 
 export interface FolderUploadSummary {

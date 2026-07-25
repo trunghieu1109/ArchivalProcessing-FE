@@ -45,6 +45,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     setPlanProgressMessage,
     setClusterGroups,
     setPlanReuploadState,
+    setZipSupplementUploaded,
     zipUploadManager,
   } = context
 
@@ -100,7 +101,9 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
 
       await enqueuePlanAnalysis(currentSessionId, {
         ...(planFile ? { plan_file: planFile } : {}),
-        ...(retentionFiles.length > 0 ? { retention_files: retentionFiles } : {}),
+        ...(retentionFiles.length > 0
+          ? { retention_files: retentionFiles }
+          : {}),
         dossier_build_strategy: dossierBuildStrategy,
       })
       resetPlanReuploadState()
@@ -135,12 +138,60 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     }
   }
 
+  const uploadPendingZipForExistingSession = async () => {
+    const file = cache.draftZipFile
+    const currentSessionId = routeSessionId ?? sessionId ?? cache.sessionId
+    if (!file || !currentSessionId) return
+    const parsedZipMaxFiles = Number(cache.zipMaxFiles)
+    try {
+      syncZipState("processing")
+      syncZipUploadProgress(zipUploadProgressForFile(file, "uploading"))
+      const response = await zipUploadManager.start({
+        sessionId: currentSessionId,
+        file,
+        mode: cache.uploadMode,
+        maxFiles:
+          Number.isInteger(parsedZipMaxFiles) && parsedZipMaxFiles > 0
+            ? parsedZipMaxFiles
+            : undefined,
+      }).completion
+      cache.zipUpload = response
+      cache.draftZipFile = null
+      cache.rawZipReuploaded = true
+      setZipSupplementUploaded(true)
+      syncZipUploadProgress(zipUploadProgressForFile(file, "done", file.size))
+      syncZipState("done")
+      syncZipFolderPath(response.folder_path ?? response.data_path ?? "")
+      toast.success("Upload ZIP đã hoàn tất.")
+    } catch (err) {
+      syncZipState("idle")
+      syncZipUploadProgress(
+        zipUploadProgressForFile(
+          file,
+          "error",
+          cache.zipUploadProgress?.loadedBytes ?? 0
+        )
+      )
+      toast.error(
+        err instanceof Error ? err.message : "Không thể upload file ZIP."
+      )
+    }
+  }
+
   const handleStartAll = async () => {
-    if (allDone && !(existingSessionMode && zipSupplementUploaded)) {
+    if (
+      allDone &&
+      !cache.draftZipFile &&
+      !(existingSessionMode && zipSupplementUploaded)
+    ) {
       goTo(2)
       return
     }
     if (existingSessionMode) {
+      if (cache.draftZipFile) {
+        await uploadPendingZipForExistingSession()
+        return
+      }
       if (planAnalysisState === "processing" && (doc1Has || doc2Has)) {
         goTo(2)
         return
@@ -248,6 +299,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
           .completion.then((response: SessionInputUploadResponse) => {
             if (window.location.pathname !== workflowPath) return response
             cache.zipUpload = response
+            cache.draftZipFile = null
             syncZipUploadProgress(
               zipUploadProgressForFile(zipFile, "done", zipFile.size)
             )
@@ -306,7 +358,10 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
 
       const planFile = arrangementPlan?.local_cached_path
       const retentionFiles = retentionUploadPaths(retentionPlan)
-      if (!planFile || (retentionFileDrafts.length > 0 && retentionFiles.length === 0)) {
+      if (
+        !planFile ||
+        (retentionFileDrafts.length > 0 && retentionFiles.length === 0)
+      ) {
         throw new Error(
           "Backend chưa trả về đường dẫn local cho file phương án hoặc thông tư."
         )
@@ -314,7 +369,9 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
 
       const planJob = enqueuePlanAnalysis(currentSessionId, {
         plan_file: planFile,
-        ...(retentionFiles.length > 0 ? { retention_files: retentionFiles } : {}),
+        ...(retentionFiles.length > 0
+          ? { retention_files: retentionFiles }
+          : {}),
         dossier_build_strategy: dossierBuildStrategy,
       })
       setPlanCompletedPhases((previous: Set<string>) =>

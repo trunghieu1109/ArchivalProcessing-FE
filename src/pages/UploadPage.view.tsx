@@ -42,6 +42,9 @@ export function UploadPageView(props: Record<string, any>) {
     primaryActionAvailable,
     primaryActionPending,
     handleStartAll,
+    dataUploadRef,
+    pendingDataUpload,
+    onPendingDataUploadChange,
     doc1Ref,
     doc2Ref,
     zipRef,
@@ -61,6 +64,8 @@ export function UploadPageView(props: Record<string, any>) {
     syncDoc2Has,
     syncZipHas,
     uploadInput,
+    stageZipInput,
+    discardStagedZipInput,
     uploadRetentionInputs,
     syncDoc1State,
     syncDoc2State,
@@ -74,6 +79,7 @@ export function UploadPageView(props: Record<string, any>) {
     zipUploadProgress,
     zipUploadFileName,
     zipInterruptionNotice,
+    folderInterruptionNotice,
     planReuploadState,
     planInputsReuploaded,
     zipSupplementUploaded,
@@ -251,10 +257,13 @@ export function UploadPageView(props: Record<string, any>) {
               zipMaxFiles={zipMaxFiles}
               syncZipMaxFiles={syncZipMaxFiles}
               uploadInput={uploadInput}
+              stageZipInput={stageZipInput}
+              discardStagedZipInput={discardStagedZipInput}
               uploadRetentionInputs={uploadRetentionInputs}
               zipUploadProgress={zipUploadProgress}
               zipUploadFileName={zipUploadFileName}
               zipInterruptionNotice={zipInterruptionNotice}
+              folderInterruptionNotice={folderInterruptionNotice}
               planReuploadState={planReuploadState}
               ocr={ocr}
               zipHas={zipHas}
@@ -285,6 +294,9 @@ export function UploadPageView(props: Record<string, any>) {
               primaryActionAvailable={primaryActionAvailable}
               primaryActionPending={primaryActionPending}
               handleStartAll={handleStartAll}
+              dataUploadRef={dataUploadRef}
+              pendingDataUpload={pendingDataUpload}
+              onPendingDataUploadChange={onPendingDataUploadChange}
               planInputsReuploaded={planInputsReuploaded}
               sessionMetadata={sessionMetadata}
               syncSessionMetadataDraft={syncSessionMetadataDraft}

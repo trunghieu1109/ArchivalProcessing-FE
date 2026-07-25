@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   ChevronDown,
   ChevronUp,
@@ -11,6 +11,7 @@ import {
 } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
+import { UploadConfirmDialog } from "@/features/upload/components/UploadConfirmDialog"
 import { cn } from "@/shared/lib/utils"
 import {
   useZipUploadJobs,
@@ -23,6 +24,20 @@ import type { FolderUploadJob } from "./types"
 export function GlobalUploadDock() {
   const folderJobs = useFolderUploadJobs()
   const zipJobs = useZipUploadJobs()
+  const hasInterruptibleUpload =
+    folderJobs.some(isInterruptibleFolderJob) ||
+    zipJobs.some(isInterruptibleZipJob)
+  useEffect(() => {
+    if (!hasInterruptibleUpload) return
+    // Trình duyệt không cho ứng dụng thay nội dung cảnh báo đóng tab bằng
+    // modal tùy biến; beforeunload là lớp cảnh báo duy nhất cho thao tác này.
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ""
+    }
+    window.addEventListener("beforeunload", warnBeforeLeaving)
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving)
+  }, [hasInterruptibleUpload])
   const visibleFolderJobs = useMemo(
     () =>
       folderJobs
@@ -63,81 +78,123 @@ function UploadDockContent({
   const folderManager = useFolderUploadManager()
   const zipManager = useZipUploadManager()
   const [expanded, setExpanded] = useState(false)
+  const [pendingCancel, setPendingCancel] = useState<
+    | { kind: "zip"; job: ZipUploadJob }
+    | { kind: "folder"; job: FolderUploadJob }
+    | null
+  >(null)
   const visibleCount = visibleFolderJobs.length + visibleZipJobs.length
   const needsAttention =
     visibleFolderJobs.some((job) => job.status === "attention_required") ||
     visibleZipJobs.some((job) => job.status === "attention_required")
   const displayExpanded = expanded || needsAttention
 
+  const confirmCancel = async () => {
+    if (!pendingCancel) return
+    if (pendingCancel.kind === "zip") {
+      const cancelled = await zipManager.cancel(pendingCancel.job.id)
+      if (cancelled?.status === "cancelled") {
+        toast.info(
+          `Đã hủy upload. File ${cancelled.fileName} chưa hoàn thành và không được đưa vào xử lý.`
+        )
+      }
+    } else {
+      const summary = await folderManager.cancel(pendingCancel.job.id)
+      if (summary?.status === "cancelled") {
+        toast.info(
+          `Đã hủy upload folder. Tạm tính: ${summary.counts.confirmed} thành công, ${summary.counts.skipped} bỏ qua, ${summary.counts.unfinished} chưa hoàn thành.`
+        )
+      }
+    }
+    setPendingCancel(null)
+  }
+
   return (
-    <aside
-      className={cn(
-        "fixed right-4 bottom-4 z-[90] overflow-hidden rounded-2xl border border-[#CBD5E1] bg-white shadow-2xl transition-[width]",
-        displayExpanded
-          ? "w-[min(420px,calc(100vw-2rem))]"
-          : "w-[min(280px,calc(100vw-2rem))]"
-      )}
-    >
-      <button
-        type="button"
-        onClick={() => setExpanded((value) => !value)}
-        className="flex w-full items-center justify-between bg-[#0F172A] px-4 py-3 text-left text-white"
-      >
-        <span className="flex items-center gap-2 text-sm font-bold">
-          <CloudUpload className="size-4" />
-          Đang upload ({visibleCount})
-        </span>
-        {displayExpanded ? (
-          <ChevronDown className="size-4" />
-        ) : (
-          <ChevronUp className="size-4" />
+    <>
+      <aside
+        className={cn(
+          "fixed right-4 bottom-4 z-[90] overflow-hidden rounded-2xl border border-[#CBD5E1] bg-white shadow-2xl transition-[width]",
+          displayExpanded
+            ? "w-[min(420px,calc(100vw-2rem))]"
+            : "w-[min(280px,calc(100vw-2rem))]"
         )}
-      </button>
-      {displayExpanded && (
-        <div className="max-h-[min(65vh,560px)] space-y-3 overflow-y-auto p-3">
-          {visibleZipJobs.map((job) => (
-            <ZipUploadJobCard
-              key={job.id}
-              job={job}
-              onOpen={() =>
-                navigate(
-                  `/sessions/${encodeURIComponent(job.sessionId)}/step/1?upload=zip&zipUpload=${encodeURIComponent(job.id)}&focus=${Date.now()}`
-                )
-              }
-              onRetry={() => void zipManager.retry(job.id)}
-              onCancel={async () => {
-                const cancelled = await zipManager.cancel(job.id)
-                if (cancelled?.status === "cancelled") {
-                  toast.info(
-                    `Đã hủy upload. File ${cancelled.fileName} chưa hoàn thành và không được đưa vào xử lý.`
+      >
+        <button
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          className="flex w-full items-center justify-between bg-[#0F172A] px-4 py-3 text-left text-white"
+        >
+          <span className="flex items-center gap-2 text-sm font-bold">
+            <CloudUpload className="size-4" />
+            Đang upload ({visibleCount})
+          </span>
+          {displayExpanded ? (
+            <ChevronDown className="size-4" />
+          ) : (
+            <ChevronUp className="size-4" />
+          )}
+        </button>
+        {displayExpanded && (
+          <div className="max-h-[min(65vh,560px)] space-y-3 overflow-y-auto p-3">
+            {visibleZipJobs.map((job) => (
+              <ZipUploadJobCard
+                key={job.id}
+                job={job}
+                onOpen={() =>
+                  navigate(
+                    `/sessions/${encodeURIComponent(job.sessionId)}/step/1?upload=zip&zipUpload=${encodeURIComponent(job.id)}&focus=${Date.now()}`
                   )
                 }
-              }}
-            />
-          ))}
-          {visibleFolderJobs.map((job) => (
-            <FolderUploadJobCard
-              key={job.id}
-              job={job}
-              onOpen={() =>
-                navigate(
-                  `/sessions/${encodeURIComponent(job.sessionId)}/step/1?upload=folder&folderUpload=${encodeURIComponent(job.id)}&focus=${Date.now()}`
-                )
-              }
-              onRetry={() => void folderManager.retry(job.id)}
-              onCancel={async () => {
-                const summary = await folderManager.cancel(job.id)
-                if (summary?.status === "cancelled") {
-                  toast.info(
-                    `Đã hủy upload folder. Tạm tính: ${summary.counts.confirmed} thành công, ${summary.counts.skipped} bỏ qua, ${summary.counts.unfinished} chưa hoàn thành.`
+                onRetry={() => void zipManager.retry(job.id)}
+                onCancel={() => setPendingCancel({ kind: "zip", job })}
+              />
+            ))}
+            {visibleFolderJobs.map((job) => (
+              <FolderUploadJobCard
+                key={job.id}
+                job={job}
+                onOpen={() =>
+                  navigate(
+                    `/sessions/${encodeURIComponent(job.sessionId)}/step/1?upload=folder&folderUpload=${encodeURIComponent(job.id)}&focus=${Date.now()}`
                   )
                 }
-              }}
-            />
-          ))}
-        </div>
-      )}
-    </aside>
+                onRetry={() => void folderManager.retry(job.id)}
+                onCancel={() => setPendingCancel({ kind: "folder", job })}
+              />
+            ))}
+          </div>
+        )}
+      </aside>
+      <UploadConfirmDialog
+        open={pendingCancel !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingCancel(null)
+        }}
+        title={
+          pendingCancel?.kind === "folder"
+            ? "Hủy upload folder?"
+            : "Hủy upload ZIP?"
+        }
+        description={
+          pendingCancel?.kind === "folder" ? (
+            <>
+              File đã xác nhận và file được bỏ qua vẫn được giữ. PUT đang chạy,
+              file chưa register và file chưa xác nhận sẽ bị hủy; hệ thống tiếp
+              tục đối soát phần thành công trong nền.
+            </>
+          ) : (
+            <>
+              File <strong>{pendingCancel?.job.fileName}</strong> chưa hoàn
+              thành sẽ không được đưa vào extract-job hoặc pipeline xử lý.
+            </>
+          )
+        }
+        confirmLabel="Hủy upload"
+        busyLabel="Đang hủy..."
+        danger
+        onConfirm={confirmCancel}
+      />
+    </>
   )
 }
 
@@ -153,10 +210,7 @@ function FolderUploadJobCard({
   onCancel: () => void | Promise<void>
 }) {
   const counts = countFileStates(job)
-  const percent =
-    job.totalBytes > 0
-      ? Math.min(100, Math.round((job.uploadedBytes / job.totalBytes) * 100))
-      : 0
+  const percent = folderJobPercent(job)
   const failedFiles = job.files
     .filter((file) => file.status === "failed")
     .slice(0, 3)
@@ -187,11 +241,7 @@ function FolderUploadJobCard({
                 : "bg-[#0052FF]"
           )}
           style={{
-            width: `${
-              ["sealing", "reconciling", "completed"].includes(job.status)
-                ? 100
-                : percent
-            }%`,
+            width: `${percent}%`,
           }}
         />
       </div>
@@ -384,14 +434,25 @@ function countFileStates(job: FolderUploadJob): {
   return { confirmed, skipped }
 }
 
+function folderJobPercent(job: FolderUploadJob): number {
+  if (["sealing", "reconciling", "completed"].includes(job.status)) return 100
+  const counts = countFileStates(job)
+  const totalFiles =
+    job.files.length || job.summary?.expected_file_count || 0
+  return totalFiles > 0
+    ? Math.min(
+        100,
+        Math.round(((counts.confirmed + counts.skipped) / totalFiles) * 100)
+      )
+    : 0
+}
+
 function jobStatusLabel(job: FolderUploadJob): string {
   switch (job.status) {
     case "preparing":
       return "Đang khởi tạo"
     case "uploading":
-      return `Đang tải lên · ${Math.round(
-        (job.uploadedBytes / Math.max(1, job.totalBytes)) * 100
-      )}%`
+      return `Đang tải lên · ${folderJobPercent(job)}%`
     case "sealing":
       return "Đang chốt danh sách file"
     case "reconciling":
@@ -405,4 +466,16 @@ function jobStatusLabel(job: FolderUploadJob): string {
     case "cancelled":
       return "Đã hủy; file thành công được giữ lại"
   }
+}
+
+function isInterruptibleFolderJob(job: FolderUploadJob): boolean {
+  return (
+    !["completed", "cancelled", "sealing", "reconciling"].includes(
+      job.status
+    ) && job.summary?.status !== "sealed"
+  )
+}
+
+function isInterruptibleZipJob(job: ZipUploadJob): boolean {
+  return !["completed", "cancelled", "completing"].includes(job.status)
 }

@@ -73,9 +73,7 @@ function pendingPlanAnalysisMessage({
 }
 
 function isUsableCompletedZipUpload(file: SessionInputUploadResponse): boolean {
-  return (
-    file.upload_status === "completed" && file.ingestion_run?.status === "ready"
-  )
+  return file.upload_status === "completed"
 }
 
 export function useUploadPageLifecycle(context: Record<string, any>) {

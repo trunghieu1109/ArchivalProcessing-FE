@@ -218,6 +218,35 @@ export function createUploadPageActions(context: Record<string, any>) {
     return uploaded
   }
 
+  const stageZipInput = async (
+    file: File
+  ): Promise<SessionInputUploadResponse> => {
+    const staged = stageInput("raw_zip", file)
+    cache.draftZipFile = file
+    cache.rawZipReuploaded = false
+    cache.zipUploadProgress = null
+    cache.zipState = "idle"
+    setZipSupplementUploaded(false)
+    setZipUploadProgress(null)
+    setZipState("idle")
+    return staged
+  }
+
+  const discardStagedZipInput = () => {
+    if (!cache.draftZipFile) return
+    cache.draftZipFile = null
+    cache.zipUploadProgress = null
+    const hasCompletedZip = Boolean(
+      cache.zipUpload?.upload_status === "completed" &&
+      cache.zipUpload.ingestion_run?.status === "ready"
+    )
+    cache.zipHas = hasCompletedZip
+    cache.zipState = hasCompletedZip ? "done" : "idle"
+    setZipHas(hasCompletedZip)
+    setZipState(cache.zipState)
+    setZipUploadProgress(null)
+  }
+
   const uploadRetentionInputs = async (files: File[]) => {
     const retentionFiles = files.filter(Boolean)
     if (retentionFiles.length === 0) return []
@@ -706,6 +735,8 @@ export function createUploadPageActions(context: Record<string, any>) {
     ensureSession,
     saveSessionMetadata,
     uploadInput,
+    stageZipInput,
+    discardStagedZipInput,
     uploadRetentionInputs,
     syncZipFolderPath,
     syncZipMaxFiles,

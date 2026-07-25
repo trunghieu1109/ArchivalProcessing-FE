@@ -125,6 +125,9 @@ interface ZipSectionProps {
   uploadProgress: UploadProgressSnapshot | null
   managedFileName?: string
   ocr: UseOcrFolderResult
+  embedded?: boolean
+  hidePicker?: boolean
+  onClearFile?: () => void
 }
 
 export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
@@ -140,7 +143,9 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
       onUploadFile,
       uploadProgress,
       managedFileName,
-      ocr,
+      embedded = false,
+      hidePicker = false,
+      onClearFile,
     },
     ref
   ) => {
@@ -162,22 +167,11 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
       initialState: { pagination: { pageSize: 10 } },
     })
 
-    useImperativeHandle(ref, () => ({
-      hasFile: () => entries.length > 0,
-      process: async () => {
-        if (!folderPath) {
-          setError("Chưa có folder_path từ file ZIP.")
-          throw new Error("Chưa có folder_path từ file ZIP.")
-        }
-      },
-    }))
-
     const handleFile = async (file: File) => {
       setError("")
       setEntries([])
       setFileName(file.name)
       onProcessStateChange("idle")
-      ocr.reset()
       setLoading(true)
       try {
         const upload = await onUploadFile(file)
@@ -218,8 +212,19 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
       onProcessStateChange("idle")
       onHasFileChange(false)
       onEntriesChange([])
-      ocr.reset()
+      onClearFile?.()
     }
+
+    useImperativeHandle(ref, () => ({
+      hasFile: () => entries.length > 0,
+      process: async () => {
+        if (!folderPath) {
+          setError("Chưa có folder_path từ file ZIP.")
+          throw new Error("Chưa có folder_path từ file ZIP.")
+        }
+      },
+      selectFile: handleFile,
+    }))
 
     const fileCount = entries.filter((e) => !e.isDir).length
     const dirCount = entries.filter((e) => e.isDir).length
@@ -234,52 +239,61 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1], delay: 0.24 }}
         className={cn(
-          "relative flex h-full flex-col gap-4 overflow-hidden rounded-2xl border bg-white p-5 transition-all duration-300",
-          isDone
-            ? "border-primary/20 shadow-[0_4px_24px_rgba(0,82,255,0.08)]"
-            : "border-[#E2E8F0] shadow-sm"
+          "relative flex h-full flex-col gap-4 overflow-hidden transition-all duration-300",
+          embedded
+            ? ""
+            : cn(
+                "rounded-2xl border bg-white p-5",
+                isDone
+                  ? "border-primary/20 shadow-[0_4px_24px_rgba(0,82,255,0.08)]"
+                  : "border-[#E2E8F0] shadow-sm"
+              )
         )}
       >
         {/* Header */}
-        <div className="flex items-start gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-blue-50">
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#0052FF"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-            </svg>
-          </div>
-          <div className="flex-1">
-            <div className="flex items-center justify-between">
-              <p className="text-base font-bold text-[#0F172A]">Kho lưu trữ</p>
-              {isDone && (
-                <span
-                  className="flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold text-white"
-                  style={{
-                    background: "linear-gradient(to right, #0052FF, #4D7CFF)",
-                  }}
-                >
-                  <CheckCircle2 className="size-3" /> Xong
-                </span>
-              )}
-              {isProcessing && (
-                <span className="flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-[11px] font-semibold text-primary">
-                  <Loader2 className="size-3 animate-spin" /> Đang xử lý
-                </span>
-              )}
+        {!embedded && (
+          <div className="flex items-start gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-blue-50">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#0052FF"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+              </svg>
             </div>
-            <p className="mt-0.5 text-sm text-[#64748B]">
-              Tải lên file nén chứa toàn bộ tài liệu cần xử lý.
-            </p>
+            <div className="flex-1">
+              <div className="flex items-center justify-between">
+                <p className="text-base font-bold text-[#0F172A]">
+                  Kho lưu trữ
+                </p>
+                {isDone && (
+                  <span
+                    className="flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold text-white"
+                    style={{
+                      background: "linear-gradient(to right, #0052FF, #4D7CFF)",
+                    }}
+                  >
+                    <CheckCircle2 className="size-3" /> Xong
+                  </span>
+                )}
+                {isProcessing && (
+                  <span className="flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-[11px] font-semibold text-primary">
+                    <Loader2 className="size-3 animate-spin" /> Đang xử lý
+                  </span>
+                )}
+              </div>
+              <p className="mt-0.5 text-sm text-[#64748B]">
+                Tải lên file nén chứa toàn bộ tài liệu cần xử lý.
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
         {displayedFileName ? (
           <FileChip
@@ -290,7 +304,7 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
             icon={<FileArchive className="size-4" />}
             hideClear={isManagedUpload}
           />
-        ) : (
+        ) : !hidePicker ? (
           <DropZone
             accept=".zip"
             onFile={handleFile}
@@ -299,7 +313,7 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
             maxSize="2GB"
             buttonColor="blue"
           />
-        )}
+        ) : null}
 
         {displayedFileName && uploadProgress && (
           <div className="rounded-xl border border-primary/15 bg-primary/[0.03] p-3">

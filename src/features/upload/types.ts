@@ -3,6 +3,7 @@ export type ProcessState = "idle" | "processing" | "done"
 export interface SectionHandle {
   hasFile: () => boolean
   process: () => Promise<void>
+  selectFile?: (file: File) => Promise<void>
 }
 
 export interface ArchiveEntry {
