@@ -58,6 +58,8 @@ export interface UploadPageStepOneProps {
   ocr: UseOcrFolderResult
   zipHas: boolean
   allProcessing: boolean
+  postUploadDiscoveryPending: boolean
+  postUploadDiscoveryMessage: string
   sessionLoading: boolean
   uploadMode: UploadMode
   syncUploadMode: (mode: UploadMode) => void
@@ -73,6 +75,7 @@ export interface UploadPageStepOneProps {
   allDone: boolean
   zipSupplementUploaded: boolean
   folderUploadReady: boolean
+  folderUploadMetadataNavigationReady: boolean
   folderUploadWasCancelled: boolean
   folderUploadEffectiveCount: number
   hasAnyFile: boolean

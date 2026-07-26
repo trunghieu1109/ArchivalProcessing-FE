@@ -572,6 +572,7 @@ export function digitizationToFolderStatus(
     metadata_warning_documents: summary?.warning,
     metadata_batches: response?.metadata_batches ?? [],
     ingestion_runs: ingestionRuns,
+    batches,
     signature_extracted_documents:
       summary?.signature_extracted_documents ??
       documents.filter(

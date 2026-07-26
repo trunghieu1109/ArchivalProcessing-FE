@@ -40,6 +40,8 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
     ocr,
     zipHas,
     allProcessing,
+    postUploadDiscoveryPending,
+    postUploadDiscoveryMessage,
     sessionLoading,
     uploadMode,
     syncUploadMode,
@@ -55,6 +57,7 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
     allDone,
     zipSupplementUploaded,
     folderUploadReady,
+    folderUploadMetadataNavigationReady,
     folderUploadWasCancelled,
     folderUploadEffectiveCount,
     hasAnyFile,
@@ -83,9 +86,9 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
     ? zipUploadProgress.phase === "error"
       ? "Upload ZIP thất bại"
       : zipUploadProgress.phase === "done"
-        ? "Đã tải ZIP lên. Hệ thống đang giải nén trong nền."
+        ? "Đã extract file ZIP xong."
         : zipUploadProgress.phase === "processing"
-          ? "Đang xác nhận upload ZIP..."
+          ? "Đang extract file ZIP..."
           : "Đang upload ZIP..."
     : ""
   const zipUploadDetail = zipUploadProgress
@@ -260,6 +263,11 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
                 <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />{" "}
                 Đang tải lại trạng thái session...
               </span>
+            ) : postUploadDiscoveryPending ? (
+              <span className="flex min-w-0 items-center gap-1.5 truncate text-muted-foreground">
+                <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />
+                {postUploadDiscoveryMessage}
+              </span>
             ) : pendingDataUpload ? (
               <span className="block truncate text-muted-foreground">
                 Đã chọn{" "}
@@ -306,9 +314,10 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
                 Lần upload đã hủy nhưng có {folderUploadEffectiveCount} tài liệu
                 sẵn sàng xử lý.
               </span>
-            ) : existingSessionMode && folderUploadReady ? (
+            ) : folderUploadMetadataNavigationReady ? (
               <span className="block truncate text-muted-foreground">
-                Folder đã upload xong. Nhấn nút bên phải để extract metadata.
+                Folder đã upload xong. Nhấn nút bên phải để chuyển sang màn hình
+                Extract Metadata.
               </span>
             ) : existingSessionMode && zipSupplementUploaded ? (
               <span className="block truncate text-muted-foreground">
@@ -356,7 +365,10 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
               : {}
           }
         >
-          {primaryActionPending || allProcessing || sessionLoading ? (
+          {primaryActionPending ||
+          allProcessing ||
+          postUploadDiscoveryPending ||
+          sessionLoading ? (
             <Loader2 className="size-4 animate-spin" />
           ) : allDone && !pendingDataUpload ? (
             <CheckCircle2 className="size-4" />
@@ -366,37 +378,39 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
           <span className="min-w-0 truncate whitespace-nowrap">
             {sessionLoading
               ? "Đang tải..."
-              : primaryActionPending
-                ? "Đang xử lý..."
-                : !primaryActionAvailable
-                  ? "Chọn dữ liệu để bắt đầu"
-                  : planAnalyzing
-                    ? existingSessionMode
-                      ? "Xem trạng thái phân tích"
-                      : "Đang phân tích..."
-                    : allProcessing
-                      ? "Đang xử lý..."
-                      : pendingDataUpload?.kind === "zip"
-                        ? "Bắt đầu upload ZIP"
-                        : pendingDataUpload?.kind === "folder"
-                          ? `Bắt đầu upload ${pendingDataUpload.fileCount} PDF`
-                          : planInputsReuploaded
-                            ? planReanalysisActionLabel
-                            : folderUploadReady && folderUploadWasCancelled
-                              ? `Xử lý ${folderUploadEffectiveCount} tài liệu đã tải thành công`
-                              : existingSessionMode && folderUploadReady
-                                ? "Extract metadata folder"
-                                : existingSessionMode && zipSupplementUploaded
-                                  ? "Extract metadata ZIP bổ sung"
-                                  : existingSessionMode &&
-                                      zipHas &&
-                                      !hasPlanReady
-                                    ? "Đi tới extract metadata"
-                                    : allDone
-                                      ? "Tiếp tục"
-                                      : existingSessionMode
+              : postUploadDiscoveryPending
+                ? postUploadDiscoveryMessage
+                : primaryActionPending
+                  ? "Đang xử lý..."
+                  : !primaryActionAvailable
+                    ? "Chọn dữ liệu để bắt đầu"
+                    : planAnalyzing
+                      ? existingSessionMode
+                        ? "Xem trạng thái phân tích"
+                        : "Đang phân tích..."
+                      : allProcessing
+                        ? "Đang xử lý..."
+                        : pendingDataUpload?.kind === "zip"
+                          ? "Bắt đầu upload ZIP"
+                          : pendingDataUpload?.kind === "folder"
+                            ? `Bắt đầu upload ${pendingDataUpload.fileCount} PDF`
+                            : planInputsReuploaded
+                              ? planReanalysisActionLabel
+                              : folderUploadReady && folderUploadWasCancelled
+                                ? `Xử lý ${folderUploadEffectiveCount} tài liệu đã tải thành công`
+                                : folderUploadMetadataNavigationReady
+                                  ? "Chuyển sang Extract Metadata"
+                                  : existingSessionMode && zipSupplementUploaded
+                                    ? "Chuyển sang Extract Metadata"
+                                    : existingSessionMode &&
+                                        zipHas &&
+                                        !hasPlanReady
+                                      ? "Chuyển sang Extract Metadata"
+                                      : allDone
                                         ? "Tiếp tục"
-                                        : "Bắt đầu xử lý"}
+                                        : existingSessionMode
+                                          ? "Tiếp tục"
+                                          : "Bắt đầu xử lý"}
           </span>
           {!primaryActionDisabled && (
             <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />

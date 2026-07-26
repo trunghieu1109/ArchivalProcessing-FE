@@ -22,7 +22,10 @@ interface ProcessStepProps {
   metadataReloading?: boolean
   pendingIngestionCount?: number
   pendingIngestionMessage?: string
+  documentDiscoveryPending?: boolean
+  documentDiscoveryMessage?: string
   metadataMessage?: string
+  metadataStartingMessage?: string
   metadataPagination?: MetadataServerPaginationControls
   metadataReadyTotal?: number
   metadataProcessingTotal?: number
@@ -54,6 +57,8 @@ export function ProcessStep({
   metadataReloading = false,
   pendingIngestionCount = 0,
   pendingIngestionMessage = "",
+  documentDiscoveryPending = false,
+  documentDiscoveryMessage = "",
   metadataPagination,
   metadataReadyTotal,
   metadataProcessingTotal,
@@ -64,6 +69,7 @@ export function ProcessStep({
   onMetadataDocumentScopeChange,
   onMetadataDocumentsChanged,
   metadataMessage = "Đang chờ kết quả số hóa từ backend...",
+  metadataStartingMessage = "",
   hasDataInput = true,
   buildBlockedMessage = "",
   signatureStatus = { extracted: 0, pending: 0, failed: 0 },
@@ -117,7 +123,10 @@ export function ProcessStep({
       metadataReloading={metadataReloading}
       pendingIngestionCount={pendingIngestionCount}
       pendingIngestionMessage={pendingIngestionMessage}
+      documentDiscoveryPending={documentDiscoveryPending}
+      documentDiscoveryMessage={documentDiscoveryMessage}
       metadataMessage={metadataMessage}
+      metadataStartingMessage={metadataStartingMessage}
       metadataReadyTotal={metadataReadyTotal}
       metadataProcessingTotal={metadataProcessingTotal}
       metadataFailedTotal={metadataFailedTotal}

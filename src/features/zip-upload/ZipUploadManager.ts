@@ -118,7 +118,13 @@ export class ZipUploadManager {
       job.updatedAt = Date.now()
       this.publish()
       if (job.status === "completing") {
-        void this.pollCompleting(job)
+        void this.pollCompleting(job).catch((error) => {
+          if (job.status !== "completing") return
+          job.status = "attention_required"
+          job.error = errorMessage(error)
+          job.updatedAt = Date.now()
+          this.publish()
+        })
       }
     } catch (error) {
       job.status = "attention_required"
@@ -148,9 +154,8 @@ export class ZipUploadManager {
   dismiss(jobId: string): void {
     const job = this.findJob(jobId)
     if (!job || !isTerminal(job.status)) return
-    this.jobs = this.jobs.filter((item) => item.id !== jobId)
-    this.sources.delete(jobId)
-    this.controllers.delete(jobId)
+    job.dockHidden = true
+    job.updatedAt = Date.now()
     this.publish()
   }
 
@@ -181,13 +186,24 @@ export class ZipUploadManager {
         onProgress: (progress) => this.updateProgress(job, progress),
       })
       job.result = result
-      job.status = "completed"
-      job.progress = uploadProgressSnapshot("done", file.size, file.size)
-      job.error = null
-      job.dockHidden = true
-      job.updatedAt = Date.now()
-      this.sources.delete(job.id)
-      this.publish()
+      if (ingestionRunNeedsPolling(result)) {
+        job.status = "completing"
+        job.progress = uploadProgressSnapshot(
+          "processing",
+          file.size,
+          file.size
+        )
+        job.error = null
+        job.updatedAt = Date.now()
+        this.publish()
+        return await this.pollCompleting(job)
+      }
+      if (result.ingestion_run?.status === "extract_failed") {
+        throw new Error(
+          result.ingestion_run.error || "Không thể extract file ZIP."
+        )
+      }
+      this.finishCompleted(job, result)
       return result
     } catch (error) {
       if (controller.signal.aborted || isAbortError(error)) {
@@ -227,47 +243,60 @@ export class ZipUploadManager {
     this.publish()
   }
 
-  private async pollCompleting(job: ZipUploadJob): Promise<void> {
+  private async pollCompleting(
+    job: ZipUploadJob
+  ): Promise<SessionInputUploadResponse> {
     for (let attempt = 0; attempt < 120; attempt += 1) {
-      if (job.status !== "completing") return
+      if (job.status !== "completing") {
+        if (job.status === "completed" && job.result) return job.result
+        throw new Error("Quá trình extract file ZIP đã bị gián đoạn.")
+      }
       try {
         const session = await getSession(job.sessionId)
         const file = session.files.find(
           (item) => item.client_upload_id === job.id
         )
-        if (file?.upload_status === "completed" && file.ingestion_run) {
-          job.result = file
-          job.status = "completed"
-          job.progress = uploadProgressSnapshot(
-            "done",
-            job.fileSize,
-            job.fileSize
-          )
-          job.error = null
-          job.dockHidden = true
-          job.updatedAt = Date.now()
-          this.sources.delete(job.id)
-          this.publish()
-          return
+        if (
+          file?.upload_status === "completed" &&
+          file.ingestion_run?.status === "ready"
+        ) {
+          this.finishCompleted(job, file)
+          return file
         }
-      } catch {
+        if (file?.ingestion_run?.status === "extract_failed") {
+          throw new ZipExtractionError(
+            file.ingestion_run.error || "Không thể extract file ZIP."
+          )
+        }
+      } catch (error) {
+        if (error instanceof ZipExtractionError) throw error
         // Backend có thể đang hoàn tất request cũ; tiếp tục poll hữu hạn.
       }
       await new Promise((resolve) => window.setTimeout(resolve, 2_000))
     }
-    if (job.status === "completing") {
-      job.status = "attention_required"
-      job.error =
-        "Backend vẫn đang hoàn thiện file ZIP. Hãy tải lại session để kiểm tra."
-      job.updatedAt = Date.now()
-      this.publish()
-    }
+    throw new Error(
+      "Backend vẫn đang extract file ZIP. Hãy tải lại session để kiểm tra."
+    )
+  }
+
+  private finishCompleted(
+    job: ZipUploadJob,
+    result: SessionInputUploadResponse
+  ): void {
+    job.result = result
+    job.status = "completed"
+    job.progress = uploadProgressSnapshot("done", job.fileSize, job.fileSize)
+    job.error = null
+    job.dockHidden = false
+    job.updatedAt = Date.now()
+    this.sources.delete(job.id)
+    this.publish()
   }
 
   private finishCancelled(job: ZipUploadJob, publish = true): void {
     job.status = "cancelled"
     job.error = null
-    job.dockHidden = true
+    job.dockHidden = false
     job.updatedAt = Date.now()
     this.sources.delete(job.id)
     if (publish) this.publish()
@@ -282,6 +311,16 @@ export class ZipUploadManager {
     for (const listener of this.listeners) listener()
   }
 }
+
+function ingestionRunNeedsPolling(result: SessionInputUploadResponse): boolean {
+  const status = result.ingestion_run?.status
+  return Boolean(
+    status &&
+    !["ready", "extract_failed"].includes(String(status).trim().toLowerCase())
+  )
+}
+
+class ZipExtractionError extends Error {}
 
 function isTerminal(status: ZipUploadJob["status"]): boolean {
   return status === "completed" || status === "cancelled"

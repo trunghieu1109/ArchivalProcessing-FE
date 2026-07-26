@@ -23,6 +23,7 @@ import {
 
 const REGISTER_WINDOW_SIZE = 200
 const MAX_UPLOAD_ATTEMPTS = 3
+const FILE_PROGRESS_UI_STEP_PERCENT = 5
 const HEARTBEAT_INTERVAL_MS = 30_000
 const RECONCILE_POLL_INTERVAL_MS = 5_000
 
@@ -45,7 +46,6 @@ export class FolderUploadManager {
   private readonly pendingWindowEnds = new Map<string, number>()
   private readonly aborters = new Map<string, Set<XMLHttpRequest>>()
   private readonly controllers = new Map<string, AbortController>()
-  private readonly progressTicks = new Map<string, number>()
   private readonly completeSemaphore = new UploadSemaphore(4)
   private heartbeatTimer: number | null = null
 
@@ -168,7 +168,7 @@ export class FolderUploadManager {
       }
       this.markUnfinishedCancelled(job)
       job.status = "cancelled"
-      job.dockHidden = true
+      job.dockHidden = false
       job.metadataNavigationHandled = true
       job.files = []
       this.ensureController(job.id)
@@ -203,7 +203,7 @@ export class FolderUploadManager {
       this.abortJobRequests(job.id)
       this.markUnfinishedCancelled(job)
       job.status = "cancelled"
-      job.dockHidden = true
+      job.dockHidden = false
       job.metadataNavigationHandled = true
       job.files = []
       job.updatedAt = Date.now()
@@ -219,14 +219,8 @@ export class FolderUploadManager {
   dismiss(jobId: string): void {
     const job = this.findJob(jobId)
     if (!job || !isTerminal(job.status)) return
-    this.jobs = this.jobs.filter((item) => item.id !== jobId)
-    this.sources.delete(jobId)
-    this.cursors.delete(jobId)
-    this.pendingWindows.delete(jobId)
-    this.pendingWindowEnds.delete(jobId)
-    this.aborters.delete(jobId)
-    this.controllers.delete(jobId)
-    this.publish()
+    job.dockHidden = true
+    this.touch(job)
   }
 
   markMetadataNavigationHandled(jobId: string): void {
@@ -401,6 +395,15 @@ export class FolderUploadManager {
       presignedById = new Map(
         presigned.files.map((file) => [file.file_id, file])
       )
+      for (const file of candidates) {
+        if (
+          file.remoteFileId !== null &&
+          presignedById.has(file.remoteFileId)
+        ) {
+          file.status = "presigned"
+        }
+      }
+      this.touch(job)
     } catch (error) {
       for (const file of candidates) {
         file.status = "failed"
@@ -537,15 +540,18 @@ export class FolderUploadManager {
       }
       xhr.upload.onprogress = (event) => {
         if (!event.lengthComputable) return
-        const key = `${job.id}:${fileState.sourceIndex}`
-        const now = performance.now()
+        const currentPercent = fileProgressPercent(
+          fileState.uploadedBytes,
+          file.size
+        )
+        const nextPercent = fileProgressPercent(event.loaded, file.size)
         if (
           event.loaded < event.total &&
-          now - (this.progressTicks.get(key) ?? 0) < 100
+          Math.floor(currentPercent / FILE_PROGRESS_UI_STEP_PERCENT) ===
+            Math.floor(nextPercent / FILE_PROGRESS_UI_STEP_PERCENT)
         ) {
           return
         }
-        this.progressTicks.set(key, now)
         this.setFileProgress(job, fileState, event.loaded)
       }
       xhr.onerror = () => {
@@ -707,7 +713,6 @@ export class FolderUploadManager {
     job.summary = summary
     job.status = "completed"
     job.error = null
-    job.dockHidden = true
     // Từ đây màn extract chỉ cần summary/ingestion run. Giải phóng
     // manifest chi tiết để không giữ hàng chục nghìn record trong tab.
     job.files = []
@@ -823,11 +828,10 @@ function buildManifest(source: SourceFiles): {
   const seen = new Set<string>()
   const files = candidates.map(({ sourceIndex, file, webkitPath }) => {
     const relativePath = normalizePath(webkitPath)
-    const duplicateKey = relativePath.toLocaleLowerCase("vi")
-    if (seen.has(duplicateKey)) {
+    if (seen.has(relativePath)) {
       throw new Error(`Đường dẫn file bị trùng: ${relativePath}`)
     }
-    seen.add(duplicateKey)
+    seen.add(relativePath)
     return {
       sourceIndex,
       clientFileId: relativePath,
@@ -845,11 +849,24 @@ function buildManifest(source: SourceFiles): {
 }
 
 function normalizePath(path: string): string {
-  return path
-    .replaceAll("\\", "/")
-    .split("/")
-    .filter((part) => part && part !== ".")
-    .join("/")
+  const normalized = path.replaceAll("\\", "/").replace(/^\.\/+/, "")
+  const parts = normalized.split("/")
+  if (
+    normalized.startsWith("/") ||
+    /^[A-Za-z]:\//.test(normalized) ||
+    parts.some((part) => !part || part === "." || part === "..")
+  ) {
+    throw new Error(`Đường dẫn folder không hợp lệ: ${path}`)
+  }
+  return parts.join("/")
+}
+
+function fileProgressPercent(loadedBytes: number, totalBytes: number): number {
+  if (totalBytes <= 0) return 0
+  return Math.min(
+    100,
+    Math.floor((Math.max(0, loadedBytes) / totalBytes) * 100)
+  )
 }
 
 function isTerminal(status: FolderUploadJob["status"]): boolean {

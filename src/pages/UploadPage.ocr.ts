@@ -6,11 +6,12 @@ import type { PdfMetadata } from "@/features/upload/types"
 
 export function useUploadPageOcr(
   sessionId: string | null,
-  options: { enabled?: boolean } = {}
+  options: { enabled?: boolean; externalRefreshKey?: string | null } = {}
 ) {
   const ocr = useOcrFolder(sessionId, {
     enabled: options.enabled ?? true,
     clearOnDisable: true,
+    externalRefreshKey: options.externalRefreshKey,
   })
   const ocrMetadataItems = useMemo<PdfMetadata[]>(
     () =>
@@ -87,22 +88,26 @@ export function useUploadPageOcr(
   )
   const ocrPendingIngestionMessage =
     pendingIngestionRuns > 0
-      ? `Đang giải nén ${pendingIngestionRuns} file ZIP. Tài liệu mới sẽ tự động xuất hiện khi sẵn sàng.`
+      ? pendingIngestionRuns === 1
+        ? "Đang extract file ZIP..."
+        : `Đang extract ${pendingIngestionRuns} file ZIP...`
       : ""
   const ocrMessage =
     ocr.state === "error"
       ? ocr.error || "Không thể lấy kết quả số hóa."
       : extractingIngestionRuns > 0
-        ? `Đang giải nén ${extractingIngestionRuns} file ZIP. Tài liệu mới sẽ tự động xuất hiện khi sẵn sàng.`
-      : ocrIsReextracting
-        ? "Đang trích xuất lại metadata theo cách đánh số mới."
-        : ocr.state === "metadata_ready"
-          ? "Metadata da san sang de review. Chu ky/final metadata dang cap nhat nen."
-          : ocr.state === "done"
-          ? ocrDocumentTotal > 0
-            ? `Đã nhận ${ocrMetadataItems.length} tài liệu từ backend.`
-            : "Backend chưa trả về tài liệu số hóa."
-          : "Đang chờ kết quả số hóa từ remote folder..."
+        ? extractingIngestionRuns === 1
+          ? "Đang extract file ZIP..."
+          : `Đang extract ${extractingIngestionRuns} file ZIP...`
+        : ocrIsReextracting
+          ? "Đang trích xuất lại metadata theo cách đánh số mới."
+          : ocr.state === "metadata_ready"
+            ? "Metadata da san sang de review. Chu ky/final metadata dang cap nhat nen."
+            : ocr.state === "done"
+              ? ocrDocumentTotal > 0
+                ? `Đã nhận ${ocrMetadataItems.length} tài liệu từ backend.`
+                : "Backend chưa trả về tài liệu số hóa."
+              : "Đang chờ kết quả số hóa từ remote folder..."
   const ocrLoading = ocr.state === "starting" || ocr.state === "polling"
 
   return {

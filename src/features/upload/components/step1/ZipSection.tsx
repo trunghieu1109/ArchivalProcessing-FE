@@ -322,9 +322,9 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
                 {uploadProgress.phase === "error"
                   ? "Upload ZIP thất bại"
                   : uploadProgress.phase === "done"
-                    ? "Đã upload ZIP xong"
+                    ? "Đã extract file ZIP xong"
                     : uploadProgress.phase === "processing"
-                      ? "Đang xác nhận upload"
+                      ? "Đang extract file ZIP..."
                       : "Đang upload ZIP"}
               </span>
               <span className="shrink-0 font-roboto text-[11px] text-[#0052FF]">

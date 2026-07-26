@@ -37,7 +37,10 @@ type ProcessStepViewProps = ReturnType<typeof useProcessStepModel> &
     metadataReloading: boolean
     pendingIngestionCount?: number
     pendingIngestionMessage?: string
+    documentDiscoveryPending?: boolean
+    documentDiscoveryMessage?: string
     metadataMessage: string
+    metadataStartingMessage?: string
     metadataReadyTotal?: number
     metadataProcessingTotal?: number
     metadataFailedTotal?: number
@@ -119,9 +122,12 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     metadataFileFilter,
     metadataLoading,
     metadataMessage,
+    metadataStartingMessage,
     metadataReloading,
     pendingIngestionCount = 0,
     pendingIngestionMessage = "",
+    documentDiscoveryPending = false,
+    documentDiscoveryMessage = "",
     metadataReadyTotal,
     metadataProcessingTotal,
     metadataFailedTotal,
@@ -286,19 +292,38 @@ export function ProcessStepView(props: ProcessStepViewProps) {
         failedMetadataItems={failedMetadataItems}
         failedCount={failedDocumentCount}
         metadataMessage={metadataMessage}
+        metadataStartingMessage={metadataStartingMessage}
         signatureStatus={signatureStatus}
         readyPercent={readyPercent}
         reviewedPercent={reviewedPercent}
         metadataStartingWithoutCount={metadataStartingWithoutCount}
       />
 
-      {pendingIngestionCount > 0 && (
+      {documentDiscoveryPending && (
+        <div className="flex items-start gap-3 rounded-2xl border border-[#BFD3FF] bg-[#F8FAFF] px-4 py-3 text-sm text-[#1E3A8A] shadow-sm">
+          <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-[#0052FF]" />
+          <div className="min-w-0">
+            <p className="font-semibold">
+              {documentDiscoveryMessage ||
+                "Đang bổ sung dần các tài liệu mới..."}
+            </p>
+            <p className="mt-1 text-xs leading-5 text-[#475569]">
+              Hệ thống đang đọc lại số lượng tài liệu và cập nhật summary cùng
+              các document card của ingestion run mới.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {pendingIngestionCount > 0 && !documentDiscoveryPending && (
         <div className="flex items-start gap-3 rounded-2xl border border-[#BFD3FF] bg-[#F8FAFF] px-4 py-3 text-sm text-[#1E3A8A] shadow-sm">
           <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-[#0052FF]" />
           <div className="min-w-0">
             <p className="font-semibold">
               {pendingIngestionMessage ||
-                `Đang giải nén ${pendingIngestionCount} file ZIP.`}
+                (pendingIngestionCount === 1
+                  ? "Đang extract file ZIP..."
+                  : `Đang extract ${pendingIngestionCount} file ZIP...`)}
             </p>
             <p className="mt-1 text-xs leading-5 text-[#475569]">
               Các tài liệu đã sẵn sàng vẫn có thể review bình thường. Khi batch
@@ -404,7 +429,9 @@ export function ProcessStepView(props: ProcessStepViewProps) {
               metadataFileFilter={metadataFileFilter}
               reviewMode={reviewMode}
               selectAllDisplayedForBulkReview={selectAllDisplayedForBulkReview}
-              selectAllDisplayedForManualSplit={selectAllDisplayedForManualSplit}
+              selectAllDisplayedForManualSplit={
+                selectAllDisplayedForManualSplit
+              }
               selectedAssigneeId={selectedAssigneeId}
               selectedAutoWorkerIds={selectedAutoWorkerIds}
               selectedManualWorkerIds={selectedManualWorkerIds}
@@ -462,7 +489,8 @@ export function ProcessStepView(props: ProcessStepViewProps) {
                       onSelect={() => setSelectedDocumentId(item.id)}
                       onApply={handleApply}
                       onRetry={
-                        canRestartMetadata && item.metadata_retry_available !== false
+                        canRestartMetadata &&
+                        item.metadata_retry_available !== false
                           ? () => void handleRetryMetadata(item)
                           : undefined
                       }

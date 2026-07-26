@@ -128,6 +128,10 @@ export interface SessionIngestionRun {
   total_pdf_files?: number | null
   extracted_count: number
   skipped_count: number
+  created_count?: number | null
+  overwritten_count?: number | null
+  duplicate_count?: number | null
+  effective_document_count?: number | null
   error?: string | null
   last_polled_at?: string | null
   extract_started_at?: string | null

@@ -4,6 +4,7 @@ export type FolderUploadFileStatus =
   | "queued"
   | "registering"
   | "registered"
+  | "presigned"
   | "skipped"
   | "uploading"
   | "uploaded"
@@ -40,6 +41,8 @@ export interface FolderUploadIngestionRun {
   status: string
   folder_upload_id: string | null
   total_pdf_files: number | null
+  extracted_count?: number
+  effective_document_count?: number | null
   ocr_batch_ids?: number[]
 }
 

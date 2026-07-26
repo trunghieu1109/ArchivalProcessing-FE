@@ -47,6 +47,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     setPlanReuploadState,
     setZipSupplementUploaded,
     zipUploadManager,
+    onZipUploadAccepted,
   } = context
 
   const resetPlanReuploadState = () => {
@@ -146,7 +147,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     try {
       syncZipState("processing")
       syncZipUploadProgress(zipUploadProgressForFile(file, "uploading"))
-      const response = await zipUploadManager.start({
+      const startedUpload = zipUploadManager.start({
         sessionId: currentSessionId,
         file,
         mode: cache.uploadMode,
@@ -154,7 +155,9 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
           Number.isInteger(parsedZipMaxFiles) && parsedZipMaxFiles > 0
             ? parsedZipMaxFiles
             : undefined,
-      }).completion
+      })
+      onZipUploadAccepted?.()
+      const response = await startedUpload.completion
       cache.zipUpload = response
       cache.draftZipFile = null
       cache.rawZipReuploaded = true
@@ -286,17 +289,18 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
         const parsedZipMaxFiles = Number(cache.zipMaxFiles)
         syncZipState("processing")
         syncZipUploadProgress(zipUploadProgressForFile(zipFile, "uploading"))
-        zipUploadTask = zipUploadManager
-          .start({
-            sessionId: currentSessionId,
-            file: zipFile,
-            mode: cache.uploadMode,
-            maxFiles:
-              Number.isInteger(parsedZipMaxFiles) && parsedZipMaxFiles > 0
-                ? parsedZipMaxFiles
-                : undefined,
-          })
-          .completion.then((response: SessionInputUploadResponse) => {
+        const startedUpload = zipUploadManager.start({
+          sessionId: currentSessionId,
+          file: zipFile,
+          mode: cache.uploadMode,
+          maxFiles:
+            Number.isInteger(parsedZipMaxFiles) && parsedZipMaxFiles > 0
+              ? parsedZipMaxFiles
+              : undefined,
+        })
+        onZipUploadAccepted?.()
+        zipUploadTask = startedUpload.completion.then(
+          (response: SessionInputUploadResponse) => {
             if (window.location.pathname !== workflowPath) return response
             cache.zipUpload = response
             cache.draftZipFile = null
@@ -306,7 +310,8 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
             syncZipState("done")
             syncZipFolderPath(response.folder_path ?? response.data_path ?? "")
             return response
-          })
+          }
+        )
       }
 
       const [[arrangementPlan, retentionPlan, zipInput]] = await Promise.all([

@@ -16,6 +16,7 @@ export function ProcessStepSummaryPanel({
   failedMetadataItems = [],
   failedCount,
   metadataMessage,
+  metadataStartingMessage,
   signatureStatus,
   readyPercent,
   reviewedPercent,
@@ -24,8 +25,7 @@ export function ProcessStepSummaryPanel({
   const extractedCount = readyCount ?? readyItems.length
   const reviewedDocumentCount = reviewedCount ?? reviewedItems.length
   const failedDocumentCount = failedCount ?? failedMetadataItems.length
-  const needsReviewDocumentCount =
-    warningCount ?? needsReviewItems.length
+  const needsReviewDocumentCount = warningCount ?? needsReviewItems.length
   const autoVerifiedDocumentCount = Math.max(
     0,
     extractedCount - needsReviewDocumentCount - reviewedDocumentCount
@@ -60,7 +60,8 @@ export function ProcessStepSummaryPanel({
             </p>
             <p className="mt-1 text-sm text-[#0F172A]">
               {metadataStartingWithoutCount
-                ? "Đang chuẩn bị extract metadata. Đang chờ backend trả danh sách tài liệu."
+                ? metadataStartingMessage ||
+                  "Đang chuẩn bị extract metadata. Đang chờ backend trả danh sách tài liệu."
                 : failedDocumentCount > 0
                   ? `Có ${failedDocumentCount} tài liệu lỗi khi extract metadata. Đã extract ${extractedCount}/${expectedCount || "..."} tài liệu; có thể chạy lại từng tài liệu lỗi.`
                   : pendingMetadataCount > 0
@@ -135,8 +136,7 @@ export function ProcessStepFooter({
   onContinue,
 }: Record<string, any>) {
   const pendingCount = pendingReadyCount ?? pendingReadyPageItems.length
-  const readyForDossierCount =
-    dossierReadyCount ?? dossierReadyPageItems.length
+  const readyForDossierCount = dossierReadyCount ?? dossierReadyPageItems.length
   const pendingReadyItems = { length: pendingCount }
   const dossierReadyItems = { length: readyForDossierCount }
 

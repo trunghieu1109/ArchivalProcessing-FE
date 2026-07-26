@@ -81,6 +81,8 @@ export interface DigitizationBatch {
   missing_files: string[]
   status_counts: Record<string, number>
   status: string
+  remote_discovery_complete?: boolean
+  remote_discovery_offset?: number
   document_numbering_mode?: DocumentNumberingMode | null
   document_numbering_style_preset?: DocumentNumberingStylePreset | null
   document_numbering_style_overrides?: {

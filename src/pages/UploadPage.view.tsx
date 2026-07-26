@@ -37,6 +37,8 @@ export function UploadPageView(props: Record<string, any>) {
     selectedInputLabels,
     hasAnyFile,
     allProcessing,
+    postUploadDiscoveryPending,
+    postUploadDiscoveryMessage,
     allDone,
     primaryActionDisabled,
     primaryActionAvailable,
@@ -60,6 +62,8 @@ export function UploadPageView(props: Record<string, any>) {
     planCompletedPhases,
     planProgressMessage,
     ocr,
+    metadataDiscoveryPending,
+    metadataDiscoveryMessage,
     syncDoc1Has,
     syncDoc2Has,
     syncZipHas,
@@ -84,6 +88,7 @@ export function UploadPageView(props: Record<string, any>) {
     planInputsReuploaded,
     zipSupplementUploaded,
     folderUploadReady,
+    folderUploadMetadataNavigationReady,
     folderUploadWasCancelled,
     folderUploadEffectiveCount,
     parsedPlan,
@@ -268,6 +273,8 @@ export function UploadPageView(props: Record<string, any>) {
               ocr={ocr}
               zipHas={zipHas}
               allProcessing={allProcessing}
+              postUploadDiscoveryPending={postUploadDiscoveryPending}
+              postUploadDiscoveryMessage={postUploadDiscoveryMessage}
               sessionLoading={sessionLoading}
               uploadMode={uploadMode}
               syncUploadMode={syncUploadMode}
@@ -283,6 +290,9 @@ export function UploadPageView(props: Record<string, any>) {
               allDone={allDone}
               zipSupplementUploaded={zipSupplementUploaded}
               folderUploadReady={folderUploadReady}
+              folderUploadMetadataNavigationReady={
+                folderUploadMetadataNavigationReady
+              }
               folderUploadWasCancelled={folderUploadWasCancelled}
               folderUploadEffectiveCount={folderUploadEffectiveCount}
               hasAnyFile={hasAnyFile}
@@ -613,11 +623,22 @@ export function UploadPageView(props: Record<string, any>) {
                 }
                 metadataItems={ocrMetadataItems}
                 metadataBatchSummaries={ocr.status?.metadata_batches ?? []}
-                metadataLoading={ocrLoading}
+                metadataLoading={ocrLoading || metadataDiscoveryPending}
                 metadataReloading={ocrIsReextracting}
                 pendingIngestionCount={ocrPendingIngestionCount}
                 pendingIngestionMessage={ocrPendingIngestionMessage}
-                metadataMessage={ocrMessage}
+                documentDiscoveryPending={metadataDiscoveryPending}
+                documentDiscoveryMessage={metadataDiscoveryMessage}
+                metadataMessage={
+                  metadataDiscoveryPending
+                    ? metadataDiscoveryMessage
+                    : ocrMessage
+                }
+                metadataStartingMessage={
+                  metadataDiscoveryPending
+                    ? metadataDiscoveryMessage
+                    : undefined
+                }
                 metadataReadyTotal={ocr.status?.metadata_ready_documents ?? 0}
                 metadataProcessingTotal={
                   ocr.status?.metadata_processing_documents ?? 0

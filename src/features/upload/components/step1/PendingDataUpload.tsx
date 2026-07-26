@@ -7,6 +7,7 @@ export interface PendingDataUploadSummary {
 
 export interface UnifiedDataUploadHandle {
   startPending: () => Promise<"workflow" | "started" | null>
+  acceptPending: () => void
 }
 
 export function PendingDataUploadNotice({

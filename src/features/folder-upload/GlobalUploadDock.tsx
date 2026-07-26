@@ -1,16 +1,27 @@
-import { useEffect, useMemo, useState } from "react"
 import {
+  useEffect,
+  useMemo,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react"
+import {
+  AlertTriangle,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
-  CircleAlert,
+  CircleX,
   CloudUpload,
   FileArchive,
   FolderOpen,
+  Loader2,
   RotateCcw,
   Square,
+  X,
 } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
+import { getSession } from "@/features/upload/api/sessionApi"
 import { UploadConfirmDialog } from "@/features/upload/components/UploadConfirmDialog"
 import { cn } from "@/shared/lib/utils"
 import {
@@ -41,28 +52,80 @@ export function GlobalUploadDock() {
   const visibleFolderJobs = useMemo(
     () =>
       folderJobs
-        .filter(
-          (job) =>
-            !job.dockHidden && !["completed", "cancelled"].includes(job.status)
-        )
+        .filter((job) => !job.dockHidden)
         .sort((left, right) => right.startedAt - left.startedAt),
     [folderJobs]
   )
   const visibleZipJobs = useMemo(
     () =>
       zipJobs
-        .filter(
-          (job) =>
-            !job.dockHidden && !["completed", "cancelled"].includes(job.status)
-        )
+        .filter((job) => !job.dockHidden)
         .sort((left, right) => right.startedAt - left.startedAt),
     [zipJobs]
   )
+  const trackedSessionIdsKey = useMemo(
+    () =>
+      [
+        ...new Set(
+          [...visibleFolderJobs, ...visibleZipJobs].map((job) => job.sessionId)
+        ),
+      ]
+        .sort()
+        .join("\u0000"),
+    [visibleFolderJobs, visibleZipJobs]
+  )
+  const [sessionFondsNames, setSessionFondsNames] = useState<
+    Record<string, string | null>
+  >({})
+  useEffect(() => {
+    const sessionIds = trackedSessionIdsKey
+      ? trackedSessionIdsKey.split("\u0000")
+      : []
+    if (sessionIds.length === 0) return
+    let cancelled = false
+    void Promise.all(
+      sessionIds.map(async (sessionId) => {
+        try {
+          const session = await getSession(sessionId)
+          return [sessionId, session.fonds_name?.trim() || null] as const
+        } catch {
+          return [sessionId, null] as const
+        }
+      })
+    ).then((entries) => {
+      if (cancelled) return
+      setSessionFondsNames((current) => ({
+        ...current,
+        ...Object.fromEntries(entries),
+      }))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [trackedSessionIdsKey])
+  const hasOutstandingUpload =
+    folderJobs.some((job) => !isTerminalFolderJob(job)) ||
+    zipJobs.some((job) => !isTerminalZipJob(job))
+  const visibleJobIdentity = [
+    ...visibleFolderJobs.map((job) => `folder:${job.id}`),
+    ...visibleZipJobs.map((job) => `zip:${job.id}`),
+  ]
+    .sort()
+    .join("|")
+  const [closedDockIdentity, setClosedDockIdentity] = useState<string | null>(
+    null
+  )
   if (!visibleFolderJobs.length && !visibleZipJobs.length) return null
+  if (!hasOutstandingUpload && closedDockIdentity === visibleJobIdentity) {
+    return null
+  }
   return (
     <UploadDockContent
       visibleFolderJobs={visibleFolderJobs}
       visibleZipJobs={visibleZipJobs}
+      sessionFondsNames={sessionFondsNames}
+      hasOutstandingUpload={hasOutstandingUpload}
+      onClose={() => setClosedDockIdentity(visibleJobIdentity)}
     />
   )
 }
@@ -70,9 +133,15 @@ export function GlobalUploadDock() {
 function UploadDockContent({
   visibleFolderJobs,
   visibleZipJobs,
+  sessionFondsNames,
+  hasOutstandingUpload,
+  onClose,
 }: {
   visibleFolderJobs: FolderUploadJob[]
   visibleZipJobs: ZipUploadJob[]
+  sessionFondsNames: Record<string, string | null>
+  hasOutstandingUpload: boolean
+  onClose: () => void
 }) {
   const navigate = useNavigate()
   const folderManager = useFolderUploadManager()
@@ -88,6 +157,11 @@ function UploadDockContent({
     visibleFolderJobs.some((job) => job.status === "attention_required") ||
     visibleZipJobs.some((job) => job.status === "attention_required")
   const displayExpanded = expanded || needsAttention
+  const dockTitle = needsAttention
+    ? "Upload cần xử lý"
+    : hasOutstandingUpload
+      ? "Đang upload"
+      : "Upload đã hoàn tất"
 
   const confirmCancel = async () => {
     if (!pendingCancel) return
@@ -113,33 +187,66 @@ function UploadDockContent({
     <>
       <aside
         className={cn(
-          "fixed right-4 bottom-4 z-[90] overflow-hidden rounded-2xl border border-[#CBD5E1] bg-white shadow-2xl transition-[width]",
+          "fixed right-4 bottom-4 z-[90] overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-[0_20px_60px_-18px_rgba(15,23,42,0.45)] transition-[width] duration-200",
           displayExpanded
-            ? "w-[min(420px,calc(100vw-2rem))]"
-            : "w-[min(280px,calc(100vw-2rem))]"
+            ? "w-[min(27rem,calc(100vw-2rem))]"
+            : "w-[min(18rem,calc(100vw-2rem))]"
         )}
+        aria-label="Tiến trình upload"
       >
-        <button
-          type="button"
-          onClick={() => setExpanded((value) => !value)}
-          className="flex w-full items-center justify-between bg-[#0F172A] px-4 py-3 text-left text-white"
-        >
-          <span className="flex items-center gap-2 text-sm font-bold">
-            <CloudUpload className="size-4" />
-            Đang upload ({visibleCount})
-          </span>
-          {displayExpanded ? (
-            <ChevronDown className="size-4" />
-          ) : (
-            <ChevronUp className="size-4" />
+        <div className="flex items-stretch bg-slate-950 text-white">
+          <button
+            type="button"
+            onClick={() => setExpanded((value) => !value)}
+            aria-expanded={displayExpanded}
+            className="flex min-w-0 flex-1 items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-900"
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="relative flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/10">
+                <CloudUpload className="size-4" />
+                {!needsAttention && (
+                  <span
+                    className={cn(
+                      "absolute -right-0.5 -bottom-0.5 size-2 rounded-full ring-2 ring-slate-950",
+                      hasOutstandingUpload ? "bg-blue-400" : "bg-emerald-400"
+                    )}
+                  />
+                )}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-bold">
+                  {dockTitle}
+                </span>
+                <span className="block text-[11px] text-slate-300">
+                  {visibleCount} tác vụ đang được theo dõi
+                </span>
+              </span>
+            </span>
+            {displayExpanded ? (
+              <ChevronDown className="size-4 shrink-0" />
+            ) : (
+              <ChevronUp className="size-4 shrink-0" />
+            )}
+          </button>
+          {!hasOutstandingUpload && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex w-11 shrink-0 items-center justify-center border-l border-white/10 text-slate-300 transition-colors hover:bg-slate-800 hover:text-white"
+              aria-label="Đóng Upload Dock"
+              title="Đóng Upload Dock"
+            >
+              <X className="size-4" />
+            </button>
           )}
-        </button>
+        </div>
         {displayExpanded && (
-          <div className="max-h-[min(65vh,560px)] space-y-3 overflow-y-auto p-3">
+          <div className="max-h-[min(66vh,35rem)] space-y-3 overflow-y-auto bg-slate-50/80 p-3">
             {visibleZipJobs.map((job) => (
               <ZipUploadJobCard
                 key={job.id}
                 job={job}
+                fondsName={sessionFondsNames[job.sessionId]}
                 onOpen={() =>
                   navigate(
                     `/sessions/${encodeURIComponent(job.sessionId)}/step/1?upload=zip&zipUpload=${encodeURIComponent(job.id)}&focus=${Date.now()}`
@@ -147,12 +254,14 @@ function UploadDockContent({
                 }
                 onRetry={() => void zipManager.retry(job.id)}
                 onCancel={() => setPendingCancel({ kind: "zip", job })}
+                onDismiss={() => zipManager.dismiss(job.id)}
               />
             ))}
             {visibleFolderJobs.map((job) => (
               <FolderUploadJobCard
                 key={job.id}
                 job={job}
+                fondsName={sessionFondsNames[job.sessionId]}
                 onOpen={() =>
                   navigate(
                     `/sessions/${encodeURIComponent(job.sessionId)}/step/1?upload=folder&folderUpload=${encodeURIComponent(job.id)}&focus=${Date.now()}`
@@ -160,6 +269,7 @@ function UploadDockContent({
                 }
                 onRetry={() => void folderManager.retry(job.id)}
                 onCancel={() => setPendingCancel({ kind: "folder", job })}
+                onDismiss={() => folderManager.dismiss(job.id)}
               />
             ))}
           </div>
@@ -200,205 +310,354 @@ function UploadDockContent({
 
 function FolderUploadJobCard({
   job,
+  fondsName,
   onOpen,
   onRetry,
   onCancel,
+  onDismiss,
 }: {
   job: FolderUploadJob
+  fondsName: string | null | undefined
   onOpen: () => void
   onRetry: () => void
   onCancel: () => void | Promise<void>
+  onDismiss: () => void
 }) {
   const counts = countFileStates(job)
   const percent = folderJobPercent(job)
+  const terminal = isTerminalFolderJob(job)
+  const displayStatus = folderDockStatus(job)
   const failedFiles = job.files
     .filter((file) => file.status === "failed")
     .slice(0, 3)
 
   return (
-    <div className="rounded-xl border border-[#D8E1EC] bg-[#F8FAFC] p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-bold text-[#0F172A]">
-            {job.rootName}
-          </p>
-          <p className="mt-0.5 text-xs text-[#64748B]">
-            Session {job.sessionId.slice(0, 8)} ·{" "}
-            {job.mode === "overwrite" ? "Overwrite" : "Append"} ·{" "}
-            {job.files.length.toLocaleString("vi-VN")} PDF
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#E2E8F0]">
-        <div
-          className={cn(
-            "h-full rounded-full transition-[width] duration-200",
-            job.status === "attention_required"
-              ? "bg-[#DC2626]"
-              : job.status === "cancelled"
-                ? "bg-[#94A3B8]"
-                : "bg-[#0052FF]"
-          )}
-          style={{
-            width: `${percent}%`,
-          }}
-        />
-      </div>
-
-      <div className="mt-2 flex items-center justify-between gap-3 text-xs">
-        <span className="font-semibold text-[#334155]">
-          {jobStatusLabel(job)}
-        </span>
-        <span className="shrink-0 text-[#64748B]">
-          {counts.confirmed} xong
-          {counts.skipped ? ` · ${counts.skipped} bỏ qua` : ""}
-        </span>
-      </div>
-
-      {job.error && (
-        <div className="mt-2 flex items-start gap-1.5 text-xs text-[#B91C1C]">
-          <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
-          <span>{job.error}</span>
-        </div>
+    <article
+      className={cn(
+        "rounded-xl border bg-white p-3 shadow-sm",
+        displayStatus === "attention_required"
+          ? "border-amber-300"
+          : displayStatus === "completed"
+            ? "border-emerald-200"
+            : "border-slate-200"
       )}
-      {failedFiles.length > 0 && (
-        <ul className="mt-2 space-y-1 text-[11px] text-[#64748B]">
-          {failedFiles.map((file) => (
-            <li key={file.clientFileId} className="truncate">
-              {file.relativePath}
-            </li>
-          ))}
-        </ul>
-      )}
+    >
+      <div className="flex items-start gap-2.5">
+        <DockJobIcon status={displayStatus} kind="folder" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-bold text-slate-950">
+                {job.rootName}
+              </p>
+              <p className="mt-0.5 text-[11px] text-slate-500">
+                Folder PDF · {job.mode === "overwrite" ? "Ghi đè" : "Bổ sung"}
+              </p>
+              <SessionJobIdentity
+                sessionId={job.sessionId}
+                fondsName={fondsName}
+              />
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              <PercentBadge
+                percent={percent}
+                attention={displayStatus === "attention_required"}
+              />
+              {terminal && <DockDismissButton onClick={onDismiss} />}
+            </div>
+          </div>
 
-      <div className="mt-3 flex flex-wrap justify-end gap-2">
-        <button
-          type="button"
-          onClick={onOpen}
-          className="flex items-center gap-1.5 rounded-lg border border-[#BFDBFE] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#0052FF] hover:bg-[#EFF6FF]"
-        >
-          <FolderOpen className="size-3.5" />
-          Mở màn upload
-        </button>
-        {job.status === "attention_required" && (
-          <button
-            type="button"
-            onClick={onRetry}
-            className="flex items-center gap-1.5 rounded-lg border border-[#93C5FD] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#0052FF]"
-          >
-            <RotateCcw className="size-3.5" />
-            Thử lại
-          </button>
-        )}
-        {!["sealing", "reconciling", "cancelling"].includes(job.status) &&
-          job.summary?.status !== "sealed" && (
-            <button
-              type="button"
-              onClick={onCancel}
-              className="flex items-center gap-1.5 rounded-lg border border-[#FCA5A5] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#B91C1C]"
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
+            <div
+              className={cn(
+                "h-full rounded-full transition-[width] duration-300",
+                displayStatus === "attention_required"
+                  ? "bg-amber-500"
+                  : "bg-blue-600"
+              )}
+              style={{ width: `${percent}%` }}
+            />
+          </div>
+
+          <div className="mt-2 flex items-start justify-between gap-3 text-[11px]">
+            <span
+              className={cn(
+                "font-semibold",
+                job.status === "attention_required"
+                  ? "text-amber-800"
+                  : "text-slate-700"
+              )}
             >
-              <Square className="size-3" />
-              Hủy
-            </button>
+              {jobStatusLabel(job)}
+            </span>
+            <span className="shrink-0 text-slate-500">
+              {counts.confirmed} xong
+              {counts.skipped ? ` · ${counts.skipped} bỏ qua` : ""}
+            </span>
+          </div>
+
+          {job.error && <DockError message={job.error} />}
+          {failedFiles.length > 0 && (
+            <ul className="mt-2 space-y-1 text-[11px] text-slate-500">
+              {failedFiles.map((file) => (
+                <li key={file.clientFileId} className="truncate">
+                  {file.relativePath}
+                </li>
+              ))}
+            </ul>
           )}
+
+          <div className="mt-3 flex flex-wrap justify-end gap-2">
+            <DockActionButton icon={<FolderOpen />} onClick={onOpen}>
+              Mở session
+            </DockActionButton>
+            {job.status === "attention_required" && (
+              <DockActionButton icon={<RotateCcw />} onClick={onRetry}>
+                Thử lại
+              </DockActionButton>
+            )}
+            {isInterruptibleFolderJob(job) && (
+              <DockActionButton icon={<Square />} onClick={onCancel} danger>
+                Hủy
+              </DockActionButton>
+            )}
+          </div>
+        </div>
       </div>
-    </div>
+    </article>
   )
 }
 
 function ZipUploadJobCard({
   job,
+  fondsName,
   onOpen,
   onRetry,
   onCancel,
+  onDismiss,
 }: {
   job: ZipUploadJob
+  fondsName: string | null | undefined
   onOpen: () => void
   onRetry: () => void
   onCancel: () => void | Promise<void>
+  onDismiss: () => void
 }) {
   const percent = Math.max(
     0,
     Math.min(100, Math.round(job.progress?.percent ?? 0))
   )
+  const terminal = isTerminalZipJob(job)
   return (
-    <div className="rounded-xl border border-[#D8E1EC] bg-[#F8FAFC] p-3">
-      <div className="flex min-w-0 items-start gap-2">
-        <FileArchive className="mt-0.5 size-4 shrink-0 text-[#0052FF]" />
-        <div className="min-w-0">
-          <p className="truncate text-sm font-bold text-[#0F172A]">
-            {job.fileName}
-          </p>
-          <p className="mt-0.5 text-xs text-[#64748B]">
-            Session {job.sessionId.slice(0, 8)} ·{" "}
-            {job.mode === "overwrite" ? "Overwrite" : "Append"} · ZIP
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#E2E8F0]">
-        <div
-          className={cn(
-            "h-full rounded-full transition-[width] duration-200",
-            job.status === "attention_required"
-              ? "bg-[#DC2626]"
-              : "bg-[#0052FF]"
-          )}
-          style={{
-            width: `${job.status === "completing" ? 100 : percent}%`,
-          }}
-        />
-      </div>
-
-      <div className="mt-2 flex items-center justify-between gap-3 text-xs">
-        <span className="font-semibold text-[#334155]">
-          {zipJobStatusLabel(job)}
-        </span>
-        <span className="shrink-0 text-[#64748B]">
-          {job.progress?.loadedMb.toFixed(1) ?? "0.0"} /{" "}
-          {(job.fileSize / (1024 * 1024)).toFixed(1)} MB
-        </span>
-      </div>
-
-      {job.error && (
-        <div className="mt-2 flex items-start gap-1.5 text-xs text-[#B91C1C]">
-          <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
-          <span>{job.error}</span>
-        </div>
+    <article
+      className={cn(
+        "rounded-xl border bg-white p-3 shadow-sm",
+        job.status === "attention_required"
+          ? "border-amber-300"
+          : job.status === "completed"
+            ? "border-emerald-200"
+            : "border-slate-200"
       )}
+    >
+      <div className="flex items-start gap-2.5">
+        <DockJobIcon status={job.status} kind="zip" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-bold text-slate-950">
+                {job.fileName}
+              </p>
+              <p className="mt-0.5 text-[11px] text-slate-500">
+                File ZIP · {job.mode === "overwrite" ? "Ghi đè" : "Bổ sung"}
+              </p>
+              <SessionJobIdentity
+                sessionId={job.sessionId}
+                fondsName={fondsName}
+              />
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              <PercentBadge
+                percent={job.status === "completing" ? 100 : percent}
+                attention={job.status === "attention_required"}
+              />
+              {terminal && <DockDismissButton onClick={onDismiss} />}
+            </div>
+          </div>
 
-      <div className="mt-3 flex flex-wrap justify-end gap-2">
-        <button
-          type="button"
-          onClick={onOpen}
-          className="flex items-center gap-1.5 rounded-lg border border-[#BFDBFE] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#0052FF] hover:bg-[#EFF6FF]"
-        >
-          <FolderOpen className="size-3.5" />
-          Mở màn upload
-        </button>
-        {job.status === "attention_required" && (
-          <button
-            type="button"
-            onClick={onRetry}
-            className="flex items-center gap-1.5 rounded-lg border border-[#93C5FD] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#0052FF]"
-          >
-            <RotateCcw className="size-3.5" />
-            Thử lại
-          </button>
-        )}
-        {!["completing", "cancelling"].includes(job.status) && (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="flex items-center gap-1.5 rounded-lg border border-[#FCA5A5] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#B91C1C]"
-          >
-            <Square className="size-3" />
-            Hủy
-          </button>
-        )}
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
+            <div
+              className={cn(
+                "h-full rounded-full transition-[width] duration-300",
+                job.status === "attention_required"
+                  ? "bg-amber-500"
+                  : "bg-blue-600"
+              )}
+              style={{
+                width: `${job.status === "completing" ? 100 : percent}%`,
+              }}
+            />
+          </div>
+
+          <div className="mt-2 flex items-start justify-between gap-3 text-[11px]">
+            <span
+              className={cn(
+                "font-semibold",
+                job.status === "attention_required"
+                  ? "text-amber-800"
+                  : "text-slate-700"
+              )}
+            >
+              {zipJobStatusLabel(job)}
+            </span>
+            <span className="shrink-0 text-slate-500">
+              {job.progress?.loadedMb.toFixed(1) ?? "0.0"} /{" "}
+              {(job.fileSize / (1024 * 1024)).toFixed(1)} MB
+            </span>
+          </div>
+
+          {job.error && <DockError message={job.error} />}
+
+          <div className="mt-3 flex flex-wrap justify-end gap-2">
+            <DockActionButton icon={<FolderOpen />} onClick={onOpen}>
+              Mở session
+            </DockActionButton>
+            {job.status === "attention_required" && (
+              <DockActionButton icon={<RotateCcw />} onClick={onRetry}>
+                Thử lại
+              </DockActionButton>
+            )}
+            {isInterruptibleZipJob(job) && (
+              <DockActionButton icon={<Square />} onClick={onCancel} danger>
+                Hủy
+              </DockActionButton>
+            )}
+          </div>
+        </div>
       </div>
+    </article>
+  )
+}
+
+function SessionJobIdentity({
+  sessionId,
+  fondsName,
+}: {
+  sessionId: string
+  fondsName: string | null | undefined
+}) {
+  const displayFondsName =
+    fondsName === undefined
+      ? "Đang tải tên phông..."
+      : fondsName || "Chưa đặt tên phông"
+  return (
+    <div className="mt-1 space-y-0.5 text-[11px] leading-4 text-slate-500">
+      <p className="truncate" title={displayFondsName}>
+        Phông:{" "}
+        <span className="font-semibold text-slate-700">{displayFondsName}</span>
+      </p>
+      <p className="truncate font-mono text-[10px]" title={sessionId}>
+        Session: {sessionId}
+      </p>
     </div>
+  )
+}
+
+function DockDismissButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex size-7 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+      aria-label="Bỏ tác vụ khỏi Upload Dock"
+      title="Bỏ tác vụ khỏi Upload Dock"
+    >
+      <X className="size-3.5" />
+    </button>
+  )
+}
+
+function DockJobIcon({
+  status,
+  kind,
+}: {
+  status: string
+  kind: "folder" | "zip"
+}) {
+  if (status === "attention_required") {
+    return <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600" />
+  }
+  if (status === "completed") {
+    return <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-emerald-600" />
+  }
+  if (status === "cancelled") {
+    return <CircleX className="mt-0.5 size-5 shrink-0 text-slate-500" />
+  }
+  if (status === "preparing") {
+    return kind === "zip" ? (
+      <FileArchive className="mt-0.5 size-5 shrink-0 text-blue-600" />
+    ) : (
+      <FolderOpen className="mt-0.5 size-5 shrink-0 text-blue-600" />
+    )
+  }
+  return (
+    <Loader2 className="mt-0.5 size-5 shrink-0 animate-spin text-blue-600" />
+  )
+}
+
+function PercentBadge({
+  percent,
+  attention,
+}: {
+  percent: number
+  attention: boolean
+}) {
+  return (
+    <span
+      className={cn(
+        "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold",
+        attention ? "bg-amber-100 text-amber-800" : "bg-blue-50 text-blue-700"
+      )}
+    >
+      {percent}%
+    </span>
+  )
+}
+
+function DockError({ message }: { message: string }) {
+  return (
+    <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-amber-50 px-2.5 py-2 text-xs leading-5 text-amber-800">
+      <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+      <span className="line-clamp-3">{message}</span>
+    </div>
+  )
+}
+
+function DockActionButton({
+  children,
+  icon,
+  onClick,
+  danger = false,
+}: {
+  children: ReactNode
+  icon: ReactElement<{ className?: string }>
+  onClick: () => void | Promise<void>
+  danger?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition",
+        danger
+          ? "border-transparent text-red-600 hover:bg-red-50 hover:text-red-700"
+          : "border-blue-200 bg-white text-blue-700 hover:bg-blue-50 hover:text-blue-800",
+        "[&_svg]:size-3.5 [&_svg]:shrink-0"
+      )}
+    >
+      {icon}
+      {children}
+    </button>
   )
 }
 
@@ -409,7 +668,7 @@ function zipJobStatusLabel(job: ZipUploadJob): string {
     case "uploading":
       return `Đang upload · ${Math.round(job.progress?.percent ?? 0)}%`
     case "completing":
-      return "Đang xác nhận và giải nén ZIP"
+      return "Đang extract file ZIP..."
     case "attention_required":
       return "Cần xử lý"
     case "cancelling":
@@ -425,6 +684,12 @@ function countFileStates(job: FolderUploadJob): {
   confirmed: number
   skipped: number
 } {
+  if (job.files.length === 0 && job.summary) {
+    return {
+      confirmed: job.summary.counts.confirmed,
+      skipped: job.summary.counts.skipped,
+    }
+  }
   let confirmed = 0
   let skipped = 0
   for (const file of job.files) {
@@ -435,10 +700,14 @@ function countFileStates(job: FolderUploadJob): {
 }
 
 function folderJobPercent(job: FolderUploadJob): number {
-  if (["sealing", "reconciling", "completed"].includes(job.status)) return 100
+  if (
+    job.summary?.status !== "cancelled" &&
+    ["sealing", "reconciling", "completed"].includes(job.status)
+  ) {
+    return 100
+  }
   const counts = countFileStates(job)
-  const totalFiles =
-    job.files.length || job.summary?.expected_file_count || 0
+  const totalFiles = job.files.length || job.summary?.expected_file_count || 0
   return totalFiles > 0
     ? Math.min(
         100,
@@ -448,6 +717,9 @@ function folderJobPercent(job: FolderUploadJob): number {
 }
 
 function jobStatusLabel(job: FolderUploadJob): string {
+  if (job.summary?.status === "cancelled") {
+    return "Đã hủy; file thành công được giữ lại"
+  }
   switch (job.status) {
     case "preparing":
       return "Đang khởi tạo"
@@ -470,12 +742,34 @@ function jobStatusLabel(job: FolderUploadJob): string {
 
 function isInterruptibleFolderJob(job: FolderUploadJob): boolean {
   return (
-    !["completed", "cancelled", "sealing", "reconciling"].includes(
-      job.status
-    ) && job.summary?.status !== "sealed"
+    ![
+      "completed",
+      "cancelled",
+      "sealing",
+      "reconciling",
+      "cancelling",
+    ].includes(job.status) &&
+    !["sealed", "cancelled"].includes(job.summary?.status ?? "")
   )
 }
 
 function isInterruptibleZipJob(job: ZipUploadJob): boolean {
-  return !["completed", "cancelled", "completing"].includes(job.status)
+  return !["completed", "cancelled", "completing", "cancelling"].includes(
+    job.status
+  )
+}
+
+function isTerminalFolderJob(job: FolderUploadJob): boolean {
+  return (
+    ["completed", "cancelled"].includes(job.status) ||
+    job.summary?.status === "cancelled"
+  )
+}
+
+function isTerminalZipJob(job: ZipUploadJob): boolean {
+  return ["completed", "cancelled"].includes(job.status)
+}
+
+function folderDockStatus(job: FolderUploadJob): string {
+  return job.summary?.status === "cancelled" ? "cancelled" : job.status
 }

@@ -2,6 +2,7 @@
 
 import type {
   ApiRevisionMetadata,
+  DigitizationBatch,
   MetadataBatchSummary,
   PaginationMeta,
   SessionIngestionRun,
@@ -104,5 +105,6 @@ export interface FolderStatusResponse extends ApiRevisionMetadata {
   metadata_batches?: MetadataBatchSummary[]
   pagination?: PaginationMeta
   ingestion_runs?: SessionIngestionRun[]
+  batches?: DigitizationBatch[]
   jobs: JobSummary[]
 }

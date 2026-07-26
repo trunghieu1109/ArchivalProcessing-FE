@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -54,11 +55,13 @@ type PendingUploadSource =
       kind: "zip"
       file: File
       summary: PendingDataUploadSummary
+      ownerSessionId: string | null
     }
   | {
       kind: "folder"
       files: File[]
       summary: PendingDataUploadSummary
+      ownerSessionId: string | null
     }
 
 interface UnifiedDataUploadSectionProps {
@@ -125,6 +128,7 @@ export const UnifiedDataUploadSection = forwardRef<
   const folderManager = useFolderUploadManager()
   const folderJobs = useFolderUploadJobs()
   const previousSessionRef = useRef(sessionId)
+  const expectedSessionTransitionRef = useRef(false)
   const zipInputRef = useRef<HTMLInputElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
@@ -145,12 +149,22 @@ export const UnifiedDataUploadSection = forwardRef<
     relevantFolderJob &&
     !["completed", "cancelled"].includes(relevantFolderJob.status)
   )
+  const zipJobNeedsProgress = Boolean(
+    zipUploadProgress && !["done", "error"].includes(zipUploadProgress.phase)
+  )
+  const zipPanelShouldOpen = Boolean(
+    pendingSource?.kind === "zip" || zipJobNeedsProgress || zipUploadFileName
+  )
   const [selectedKind, setSelectedKind] = useState<UploadSourceKind | null>(
-    openZipUpload || zipUploadFileName
+    openZipUpload
       ? "zip"
-      : folderUploadEnabled && (openFolderUpload || folderJobNeedsProgress)
+      : folderUploadEnabled && openFolderUpload
         ? "folder"
-        : null
+        : zipUploadFileName || zipJobNeedsProgress
+          ? "zip"
+          : folderUploadEnabled && folderJobNeedsProgress
+            ? "folder"
+            : null
   )
   const folderRemoteStillOpen = Boolean(
     relevantFolderJob?.summary &&
@@ -161,23 +175,41 @@ export const UnifiedDataUploadSection = forwardRef<
   const selectionDisabled =
     disabled || folderRemoteStillOpen || detecting || startingFolder
 
-  const clearPendingSource = () => {
+  const clearPendingSource = useCallback(() => {
+    expectedSessionTransitionRef.current = false
     setPendingSource(null)
     onPendingUploadChange(null)
-  }
+  }, [onPendingUploadChange])
 
   useEffect(() => {
     if (previousSessionRef.current === sessionId) return
     const previousSessionId = previousSessionRef.current
     previousSessionRef.current = sessionId
-    if (previousSessionId === null && sessionId !== null) return
+    if (pendingSource && pendingSource.ownerSessionId !== sessionId) {
+      if (
+        expectedSessionTransitionRef.current &&
+        previousSessionId === null &&
+        sessionId !== null &&
+        pendingSource.ownerSessionId === null
+      ) {
+        expectedSessionTransitionRef.current = false
+        setPendingSource({ ...pendingSource, ownerSessionId: sessionId })
+      } else {
+        if (pendingSource.kind === "zip") discardStagedZip()
+        clearPendingSource()
+      }
+    }
     const timer = window.setTimeout(() => {
       setSelectedKind(
         openZipUpload
           ? "zip"
-          : folderUploadEnabled && (openFolderUpload || folderJobNeedsProgress)
+          : folderUploadEnabled && openFolderUpload
             ? "folder"
-            : null
+            : zipPanelShouldOpen
+              ? "zip"
+              : folderUploadEnabled && folderJobNeedsProgress
+                ? "folder"
+                : null
       )
     }, 0)
     return () => window.clearTimeout(timer)
@@ -186,7 +218,11 @@ export const UnifiedDataUploadSection = forwardRef<
     openFolderUpload,
     openZipUpload,
     folderJobNeedsProgress,
+    zipPanelShouldOpen,
     sessionId,
+    pendingSource,
+    clearPendingSource,
+    discardStagedZip,
   ])
 
   useEffect(() => {
@@ -210,6 +246,18 @@ export const UnifiedDataUploadSection = forwardRef<
     openZipUpload,
     zipUploadFocusKey,
   ])
+
+  useEffect(() => {
+    if (
+      !zipPanelShouldOpen ||
+      openFolderUpload ||
+      pendingSource?.kind === "folder"
+    ) {
+      return
+    }
+    const timer = window.setTimeout(() => setSelectedKind("zip"), 0)
+    return () => window.clearTimeout(timer)
+  }, [openFolderUpload, pendingSource?.kind, zipPanelShouldOpen])
 
   useEffect(() => {
     if (!folderUploadEnabled || !folderJobNeedsProgress || openZipUpload) return
@@ -236,7 +284,12 @@ export const UnifiedDataUploadSection = forwardRef<
     }
     try {
       await handle.selectFile(file)
-      setPendingSource({ kind: "zip", file, summary })
+      setPendingSource({
+        kind: "zip",
+        file,
+        summary,
+        ownerSessionId: sessionId,
+      })
       onPendingUploadChange(summary)
     } catch (error) {
       clearPendingSource()
@@ -265,7 +318,12 @@ export const UnifiedDataUploadSection = forwardRef<
       discardStagedZip()
     }
     setSelectedKind("folder")
-    setPendingSource({ kind: "folder", files, summary })
+    setPendingSource({
+      kind: "folder",
+      files,
+      summary,
+      ownerSessionId: sessionId,
+    })
     onPendingUploadChange(summary)
     const ignoredCount = files.length - pdfFiles.length
     if (ignoredCount > 0) {
@@ -277,12 +335,21 @@ export const UnifiedDataUploadSection = forwardRef<
 
   const startPending = async (): Promise<"workflow" | "started" | null> => {
     if (!pendingSource) return null
-    if (pendingSource.kind === "zip") {
+    if (pendingSource.ownerSessionId !== sessionId) {
+      if (pendingSource.kind === "zip") discardStagedZip()
       clearPendingSource()
+      toast.error(
+        "Dữ liệu đã chọn thuộc session khác. Vui lòng chọn lại trước khi upload."
+      )
+      return null
+    }
+    if (pendingSource.kind === "zip") {
+      expectedSessionTransitionRef.current = sessionId === null
       return "workflow"
     }
     setStartingFolder(true)
     try {
+      expectedSessionTransitionRef.current = sessionId === null
       const targetSessionId = sessionId ?? (await ensureSession())
       folderManager.start({
         sessionId: targetSessionId,
@@ -306,7 +373,11 @@ export const UnifiedDataUploadSection = forwardRef<
     }
   }
 
-  useImperativeHandle(ref, () => ({ startPending }))
+  const acceptPending = () => {
+    clearPendingSource()
+  }
+
+  useImperativeHandle(ref, () => ({ startPending, acceptPending }))
 
   const handleDrop = async (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault()
