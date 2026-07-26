@@ -204,7 +204,7 @@ export function UploadPage() {
     const missingInputs = missingDossierBuildInputs({
       hasArrangementPlan: doc1Has,
       hasRetentionSchedule: doc2Has,
-      hasRawZip: zipHas,
+      hasVerifiedDocuments,
       hasActivePlan: Boolean(activePlanVersionId),
       hasActivePlanData,
     })
@@ -615,6 +615,14 @@ export function UploadPage() {
     ocrMessage,
     ocrLoading,
   } = useUploadPageOcr(activeUploadSessionId, { enabled: currentStep === 3 })
+  const hasVerifiedDocuments =
+    (ocr.status?.metadata_verified_documents ?? 0) > 0 ||
+    (ocr.status?.metadata_reviewed_documents ?? 0) > 0 ||
+    ocrMetadataItems.some(
+      (item) =>
+        item.metadata_ready &&
+        (item.is_reviewed === true || item.review_status === "verified")
+    )
 
   useEffect(() => {
     const planPollingSessionId = routeSessionId ?? sessionId
@@ -894,7 +902,7 @@ export function UploadPage() {
   const missingDossierInputs = missingDossierBuildInputs({
     hasArrangementPlan: doc1Has,
     hasRetentionSchedule: doc2Has,
-    hasRawZip: zipHas,
+    hasVerifiedDocuments,
     hasActivePlan,
     hasActivePlanData: activeParsedPlan.groups.length > 0,
   })
