@@ -166,6 +166,8 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     metadataWarningTotal !== undefined
       ? metadataWarningTotal
       : needsReviewItems.length
+  const documentListPolling =
+    pendingIngestionMessage === "Đang bổ sung dần các tài liệu mới..."
   const rawExpectedCount =
     metadataTotal > 0 ? metadataTotal : Math.max(paths.length, items.length)
   const hasMetadataDocuments =
@@ -278,12 +280,14 @@ export function ProcessStepView(props: ProcessStepViewProps) {
           <div className="min-w-0">
             <p className="font-semibold">
               {pendingIngestionMessage ||
-                `Đang giải nén ${pendingIngestionCount} file ZIP.`}
+                (pendingIngestionCount === 1
+                  ? "Đang extract file ZIP..."
+                  : `Đang extract ${pendingIngestionCount} file ZIP...`)}
             </p>
             <p className="mt-1 text-xs leading-5 text-[#475569]">
-              Tài liệu từ các lần upload trước vẫn được giữ nguyên và tiếp tục
-              cập nhật trạng thái. Tài liệu của lần upload mới sẽ tự động được
-              bổ sung vào danh sách này.
+              {documentListPolling
+                ? "Hệ thống đang đọc lại số lượng tài liệu và cập nhật summary cùng các document card của ingestion run mới."
+                : "Các tài liệu đã sẵn sàng vẫn có thể review bình thường. Khi batch ZIP mới giải nén xong, hệ thống sẽ tự chạy OCR và danh sách tài liệu sẽ được cập nhật."}
             </p>
           </div>
         </div>

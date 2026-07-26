@@ -75,9 +75,9 @@ export function UploadPageStepOne(props: Record<string, any>) {
     ? zipUploadProgress.phase === "error"
       ? "Upload ZIP thất bại"
       : zipUploadProgress.phase === "done"
-        ? "Đã tải ZIP lên. Hệ thống đang giải nén trong nền."
+        ? "Đã extract file ZIP xong."
         : zipUploadProgress.phase === "processing"
-          ? "Đang xác nhận upload ZIP..."
+          ? "Đang extract file ZIP..."
           : "Đang upload ZIP..."
     : ""
   const zipUploadDetail = zipUploadProgress
@@ -410,13 +410,13 @@ export function UploadPageStepOne(props: Record<string, any>) {
               </span>
             ) : existingSessionMode && zipSupplementUploaded ? (
               <span className="block truncate text-muted-foreground">
-                ZIP bổ sung đã upload xong. Nhấn nút bên phải để extract
-                metadata.
+                ZIP bổ sung đã upload xong. Nhấn nút bên phải để chuyển sang màn
+                hình Extract Metadata.
               </span>
             ) : folderRunNeedsMetadataStart ? (
               <span className="block truncate text-muted-foreground">
-                Folder đã upload và ghi nhận xong. Có thể bắt đầu extract
-                metadata.
+                Folder đã upload xong. Nhấn nút bên phải để chuyển sang màn hình
+                Extract Metadata.
               </span>
             ) : hasAnyFile ? (
               <span className="block truncate text-muted-foreground">
@@ -483,11 +483,11 @@ export function UploadPageStepOne(props: Record<string, any>) {
                         : partialFolderCount > 0
                           ? `Xử lý ${partialFolderCount} tài liệu đã tải thành công`
                           : folderRunNeedsMetadataStart
-                            ? "Extract metadata folder"
+                            ? "Chuyển sang Extract Metadata"
                             : existingSessionMode && zipSupplementUploaded
-                              ? "Extract metadata ZIP bổ sung"
+                              ? "Chuyển sang Extract Metadata"
                               : existingSessionMode && zipHas && !hasPlanReady
-                                ? "Đi tới extract metadata"
+                                ? "Chuyển sang Extract Metadata"
                                 : allDone
                                   ? "Tiếp tục"
                                   : existingSessionMode

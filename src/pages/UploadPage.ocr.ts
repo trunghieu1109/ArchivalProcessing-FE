@@ -94,17 +94,21 @@ export function useUploadPageOcr(
     extractingZipIngestionRuns + updatingIngestionRuns
   const ocrPendingIngestionMessage =
     extractingZipIngestionRuns > 0
-      ? `Đang giải nén ${extractingZipIngestionRuns} file ZIP.`
+      ? extractingZipIngestionRuns === 1
+        ? "Đang extract file ZIP..."
+        : `Đang extract ${extractingZipIngestionRuns} file ZIP...`
       : updatingIngestionRuns > 0
-        ? "Đang cập nhật tài liệu mới."
+        ? "Đang bổ sung dần các tài liệu mới..."
         : ""
   const ocrMessage =
     ocr.state === "error"
       ? ocr.error || "Không thể lấy kết quả số hóa."
       : extractingZipIngestionRuns > 0
-        ? `Đang giải nén ${extractingZipIngestionRuns} file ZIP. Tài liệu mới sẽ tự động xuất hiện khi sẵn sàng.`
+        ? extractingZipIngestionRuns === 1
+          ? "Đang extract file ZIP..."
+          : `Đang extract ${extractingZipIngestionRuns} file ZIP...`
         : updatingIngestionRuns > 0
-          ? "Đang cập nhật tài liệu mới từ lần upload gần nhất."
+          ? "Đang bổ sung dần các tài liệu mới..."
           : ocrIsReextracting
             ? "Đang trích xuất lại metadata theo cách đánh số mới."
             : ocr.state === "metadata_ready"

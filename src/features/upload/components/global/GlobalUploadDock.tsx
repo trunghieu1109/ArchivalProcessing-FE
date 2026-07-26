@@ -11,12 +11,12 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  CircleX,
   CloudUpload,
   FileArchive,
-  Folder,
   FolderOpen,
   Loader2,
-  RefreshCw,
+  RotateCcw,
   Square,
   X,
 } from "lucide-react"
@@ -127,7 +127,7 @@ export function GlobalUploadDock() {
         await zipUploadManager.retry(job.id)
       }
       toast.success(
-        `Đã hoàn tất upload ${job.kind === "folder" ? "folder" : "ZIP"}.`
+        `Đã thử lại upload ${job.kind === "folder" ? "folder" : "ZIP"}.`
       )
     } catch (error) {
       toast.error(errorMessage(error))
@@ -144,11 +144,19 @@ export function GlobalUploadDock() {
       } else {
         await zipUploadManager.cancel(job.id)
       }
-      toast.info(
-        job.kind === "folder"
-          ? "Đã hủy phần còn lại; các PDF đã xác nhận vẫn được giữ."
-          : "Đã hủy ZIP chưa hoàn tất."
-      )
+      if (job.kind === "folder") {
+        const unfinished = Math.max(
+          0,
+          job.expectedFileCount - job.confirmedFileCount - job.skippedFileCount
+        )
+        toast.info(
+          `Đã hủy upload folder. Tạm tính: ${job.confirmedFileCount} thành công, ${job.skippedFileCount} bỏ qua, ${unfinished} chưa hoàn thành.`
+        )
+      } else {
+        toast.info(
+          `Đã hủy upload. File ${job.fileName} chưa hoàn thành và không được đưa vào xử lý.`
+        )
+      }
       setCancelTarget(null)
     } catch (error) {
       toast.error(errorMessage(error))
@@ -186,8 +194,13 @@ export function GlobalUploadDock() {
             <span className="flex min-w-0 items-center gap-2">
               <span className="relative flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/10">
                 <CloudUpload className="size-4" />
-                {hasOutstandingUpload && !needsAttention && (
-                  <span className="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-blue-400 ring-2 ring-slate-950" />
+                {!needsAttention && (
+                  <span
+                    className={cn(
+                      "absolute -right-0.5 -bottom-0.5 size-2 rounded-full ring-2 ring-slate-950",
+                      hasOutstandingUpload ? "bg-blue-400" : "bg-emerald-400"
+                    )}
+                  />
                 )}
               </span>
               <span className="min-w-0">
@@ -196,7 +209,7 @@ export function GlobalUploadDock() {
                     ? "Upload cần xử lý"
                     : hasOutstandingUpload
                       ? "Đang upload"
-                      : "Lịch sử upload"}
+                      : "Upload đã hoàn tất"}
                 </span>
                 <span className="block text-[11px] text-slate-300">
                   {jobs.length} tác vụ đang được theo dõi
@@ -212,9 +225,9 @@ export function GlobalUploadDock() {
           {!hasOutstandingUpload && (
             <button
               type="button"
-              className="flex w-11 shrink-0 items-center justify-center border-l border-white/10 text-slate-300 transition-colors hover:bg-slate-900 hover:text-white"
-              aria-label="Đóng lịch sử upload"
-              title="Đóng lịch sử upload"
+              className="flex w-11 shrink-0 items-center justify-center border-l border-white/10 text-slate-300 transition-colors hover:bg-slate-800 hover:text-white"
+              aria-label="Đóng Upload Dock"
+              title="Đóng Upload Dock"
               onClick={() => setClosedJobIdentity(visibleJobIdentity)}
             >
               <X className="size-4" />
@@ -258,31 +271,53 @@ export function GlobalUploadDock() {
             aria-modal="true"
             aria-labelledby="cancel-upload-title"
             aria-describedby="cancel-upload-description"
-            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+            className="w-full max-w-lg overflow-hidden rounded-2xl border border-[#CBD5E1] bg-white shadow-2xl"
           >
-            <div className="flex items-start gap-3">
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600">
-                <AlertTriangle className="size-5" />
-              </span>
-              <div>
-                <h2
-                  id="cancel-upload-title"
-                  className="text-lg font-bold text-slate-950"
-                >
-                  Hủy upload {cancelTarget.kind === "folder" ? "folder" : "ZIP"}
-                  ?
-                </h2>
-                <p
-                  id="cancel-upload-description"
-                  className="mt-1.5 text-sm leading-6 text-slate-600"
-                >
-                  {cancelTarget.kind === "folder"
-                    ? "Các PDF đã xác nhận hoặc được bỏ qua vẫn được giữ. File đang PUT và phần chưa hoàn tất sẽ bị hủy; hệ thống tiếp tục đối soát phần thành công."
-                    : `File ${cancelTarget.fileName} chưa hoàn tất sẽ không được đưa vào xử lý metadata.`}
-                </p>
+            <div className="flex items-start justify-between gap-4 border-b border-[#E2E8F0] px-6 py-5">
+              <div className="flex items-start gap-3">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600">
+                  <AlertTriangle className="size-5" />
+                </span>
+                <div>
+                  <h2
+                    id="cancel-upload-title"
+                    className="text-lg font-bold text-slate-950"
+                  >
+                    Hủy upload{" "}
+                    {cancelTarget.kind === "folder" ? "folder" : "ZIP"}?
+                  </h2>
+                  <p
+                    id="cancel-upload-description"
+                    className="mt-1.5 text-sm leading-6 text-slate-600"
+                  >
+                    {cancelTarget.kind === "folder" ? (
+                      <>
+                        File đã xác nhận và file được bỏ qua vẫn được giữ. PUT
+                        đang chạy, file chưa register và file chưa xác nhận sẽ
+                        bị hủy; hệ thống tiếp tục đối soát phần thành công trong
+                        nền.
+                      </>
+                    ) : (
+                      <>
+                        File <strong>{cancelTarget.fileName}</strong> chưa hoàn
+                        thành sẽ không được đưa vào extract-job hoặc pipeline xử
+                        lý.
+                      </>
+                    )}
+                  </p>
+                </div>
               </div>
+              <button
+                type="button"
+                className="flex size-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                aria-label="Đóng"
+                disabled={cancelBusy}
+                onClick={() => setCancelTarget(null)}
+              >
+                <X className="size-4" />
+              </button>
             </div>
-            <div className="mt-6 flex justify-end gap-2">
+            <div className="flex justify-end gap-2 bg-[#F8FAFC] px-6 py-4">
               <Button
                 type="button"
                 variant="outline"
@@ -343,10 +378,6 @@ function UploadJobCard({
             skipped: job.summary?.counts.skipped ?? job.skippedFileCount,
           }
       : null
-  const fondsLabel = fondsNameLoaded
-    ? (fondsName ?? "Chưa đặt tên phông")
-    : "Đang tải tên phông..."
-
   return (
     <article
       className={cn(
@@ -366,32 +397,22 @@ function UploadJobCard({
               <p className="truncate text-sm font-bold text-slate-950">
                 {job.kind === "folder" ? job.rootName : job.fileName}
               </p>
-              <p
-                className="mt-0.5 truncate text-[11px] font-medium text-slate-600"
-                title={fondsLabel}
-              >
-                Phông: {fondsLabel}
-              </p>
-              <p
-                className="mt-0.5 truncate text-[11px] text-slate-500"
-                title={`Session ${job.sessionId}`}
-              >
+              <p className="mt-0.5 text-[11px] text-slate-500">
                 {job.kind === "folder" ? "Folder PDF" : "File ZIP"} ·{" "}
-                {job.mode === "overwrite" ? "Ghi đè" : "Bổ sung"} · Session{" "}
-                {job.sessionId}
+                {job.mode === "overwrite" ? "Ghi đè" : "Bổ sung"}
               </p>
+              <SessionJobIdentity
+                sessionId={job.sessionId}
+                fondsName={fondsNameLoaded ? fondsName : undefined}
+              />
             </div>
             <div className="flex shrink-0 items-center gap-1">
               <span
                 className={cn(
-                  "rounded-full px-2 py-0.5 text-[10px] font-bold",
+                  "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold",
                   attention
                     ? "bg-amber-100 text-amber-800"
-                    : completed
-                      ? "bg-emerald-100 text-emerald-800"
-                      : cancelled
-                        ? "bg-slate-200 text-slate-700"
-                        : "bg-blue-50 text-blue-700"
+                    : "bg-blue-50 text-blue-700"
                 )}
               >
                 {progress}%
@@ -399,9 +420,9 @@ function UploadJobCard({
               {terminal && (
                 <button
                   type="button"
-                  className="flex size-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-                  aria-label={`Bỏ ${job.kind === "folder" ? job.rootName : job.fileName} khỏi lịch sử upload`}
-                  title="Bỏ khỏi Upload Dock"
+                  className="flex size-7 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                  aria-label="Bỏ tác vụ khỏi Upload Dock"
+                  title="Bỏ tác vụ khỏi Upload Dock"
                   onClick={onDismiss}
                 >
                   <X className="size-3.5" />
@@ -414,13 +435,7 @@ function UploadJobCard({
             <div
               className={cn(
                 "h-full rounded-full transition-[width] duration-300",
-                attention
-                  ? "bg-amber-500"
-                  : completed
-                    ? "bg-emerald-600"
-                    : cancelled
-                      ? "bg-slate-500"
-                      : "bg-blue-600"
+                attention ? "bg-amber-500" : "bg-blue-600"
               )}
               style={{ width: `${progress}%` }}
             />
@@ -430,11 +445,7 @@ function UploadJobCard({
             <span
               className={cn(
                 "font-semibold",
-                attention
-                  ? "text-amber-800"
-                  : completed
-                    ? "text-emerald-700"
-                    : "text-slate-700"
+                attention ? "text-amber-800" : "text-slate-700"
               )}
             >
               {jobStatusLabel(job)}
@@ -444,14 +455,15 @@ function UploadJobCard({
                 {formatBytes(job.loadedBytes)}/{formatBytes(job.totalBytes)}
               </span>
             )}
+            {folderCounts && (
+              <span className="shrink-0 text-slate-500">
+                {folderCounts.confirmed} xong
+                {folderCounts.skipped
+                  ? ` · ${folderCounts.skipped} bỏ qua`
+                  : ""}
+              </span>
+            )}
           </div>
-
-          {folderCounts && (
-            <p className="mt-1.5 text-[11px] text-slate-500">
-              Đã xác nhận {folderCounts.confirmed} · Bỏ qua{" "}
-              {folderCounts.skipped}
-            </p>
-          )}
 
           {job.error && (
             <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-amber-50 px-2.5 py-2 text-xs leading-5 text-amber-800">
@@ -465,7 +477,7 @@ function UploadJobCard({
               type="button"
               variant="outline"
               size="sm"
-              className="h-8 border-blue-200 text-blue-700 hover:bg-blue-50 hover:text-blue-800"
+              className="h-8 border-blue-200 bg-white text-blue-700 hover:bg-blue-50 hover:text-blue-800"
               onClick={onOpen}
             >
               <FolderOpen className="size-3.5" /> Mở session
@@ -475,10 +487,10 @@ function UploadJobCard({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-8"
+                className="h-8 border-blue-200 bg-white text-blue-700 hover:bg-blue-50 hover:text-blue-800"
                 onClick={onRetry}
               >
-                <RefreshCw className="size-3.5" /> Thử lại
+                <RotateCcw className="size-3.5" /> Thử lại
               </Button>
             )}
             {canCancel(job) && (
@@ -499,36 +511,53 @@ function UploadJobCard({
   )
 }
 
+function SessionJobIdentity({
+  sessionId,
+  fondsName,
+}: {
+  sessionId: string
+  fondsName: string | null | undefined
+}) {
+  const displayFondsName =
+    fondsName === undefined
+      ? "Đang tải tên phông..."
+      : fondsName || "Chưa đặt tên phông"
+  return (
+    <div className="mt-1 space-y-0.5 text-[11px] leading-4 text-slate-500">
+      <p className="truncate" title={displayFondsName}>
+        Phông:{" "}
+        <span className="font-semibold text-slate-700">{displayFondsName}</span>
+      </p>
+      <p className="truncate font-mono text-[10px]" title={sessionId}>
+        Session: {sessionId}
+      </p>
+    </div>
+  )
+}
+
 function JobIcon({ job }: { job: GlobalUploadJob }) {
-  const SourceIcon = job.kind === "folder" ? Folder : FileArchive
   const completed = job.status === "completed"
   const cancelled = isCancelledPresentation(job)
   const attention =
     !cancelled && ["attention_required", "failed"].includes(job.status)
+  if (attention) {
+    return <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600" />
+  }
+  if (completed) {
+    return <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-emerald-600" />
+  }
+  if (cancelled) {
+    return <CircleX className="mt-0.5 size-5 shrink-0 text-slate-500" />
+  }
+  if (job.status === "creating") {
+    return job.kind === "zip" ? (
+      <FileArchive className="mt-0.5 size-5 shrink-0 text-blue-600" />
+    ) : (
+      <FolderOpen className="mt-0.5 size-5 shrink-0 text-blue-600" />
+    )
+  }
   return (
-    <span
-      className={cn(
-        "relative mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg",
-        completed
-          ? "bg-emerald-50 text-emerald-700"
-          : attention
-            ? "bg-amber-50 text-amber-700"
-            : cancelled
-              ? "bg-slate-100 text-slate-600"
-              : "bg-blue-50 text-blue-700"
-      )}
-    >
-      <SourceIcon className="size-4" />
-      {completed && (
-        <CheckCircle2 className="absolute -right-1 -bottom-1 size-3.5 rounded-full bg-white text-emerald-600" />
-      )}
-      {attention && (
-        <AlertTriangle className="absolute -right-1 -bottom-1 size-3.5 rounded-full bg-white text-amber-600" />
-      )}
-      {cancelled && (
-        <X className="absolute -right-1 -bottom-1 size-3.5 rounded-full bg-white text-slate-500" />
-      )}
-    </span>
+    <Loader2 className="mt-0.5 size-5 shrink-0 animate-spin text-blue-600" />
   )
 }
 
@@ -540,19 +569,19 @@ function jobStatusLabel(job: GlobalUploadJob): string {
   }
   switch (job.status) {
     case "creating":
-      return "Đang khởi tạo"
+      return "Đang chuẩn bị upload"
     case "uploading":
       return job.kind === "folder"
-        ? "Đang ghi nhận tài liệu"
-        : `Đang tải lên · ${Math.round(job.percent)}%`
+        ? `Đang tải lên · ${Math.round(job.percent)}%`
+        : `Đang upload · ${Math.round(job.percent)}%`
     case "attention_required":
       return "Cần xử lý"
     case "sealing":
       return "Đang chốt danh sách file"
     case "syncing":
-      return "Đang đồng bộ tài liệu"
+      return "Đã tải xong, đang đồng bộ tài liệu"
     case "completing":
-      return "Đang xác nhận và giải nén ZIP"
+      return "Đang extract file ZIP..."
     case "completed":
       return "Hoàn tất"
     case "cancelling":
