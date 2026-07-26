@@ -15,6 +15,7 @@ import {
 import { motion } from "framer-motion"
 import {
   type ColumnDef,
+  type PaginationState,
   type SortingState,
   flexRender,
   getCoreRowModel,
@@ -54,6 +55,7 @@ import type {
 } from "@/features/upload/types"
 
 const MAX_FILES_ERROR = "Số lượng tài liệu cần số hóa phải là số nguyên dương."
+const FOLDER_UPLOAD_FILE_PAGE_SIZE = 10
 const FOLDER_UPLOAD_ENABLED = ["1", "true", "yes", "on"].includes(
   String(import.meta.env.VITE_FOLDER_UPLOAD_ENABLED ?? "false")
     .trim()
@@ -69,6 +71,7 @@ function formatBytes(bytes: number) {
 }
 
 interface UploadArchiveEntry extends ArchiveEntry {
+  clientFileId: string
   uploadRecord?: FolderUploadFileProgress
 }
 
@@ -184,6 +187,10 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
     const [error, setError] = useState("")
     const [loading, setLoading] = useState(false)
     const [sorting, setSorting] = React.useState<SortingState>([])
+    const [pagination, setPagination] = React.useState<PaginationState>({
+      pageIndex: 0,
+      pageSize: FOLDER_UPLOAD_FILE_PAGE_SIZE,
+    })
     const [selectionKind, setSelectionKind] = useState<"zip" | "folder" | null>(
       null
     )
@@ -200,21 +207,34 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
       zipUploadManager.getSnapshot
     )
     const liveFolderJob = folderJobs
-      .filter((job) => job.sessionId === sessionId && job.records.length > 0)
+      .filter(
+        (job) =>
+          job.sessionId === sessionId &&
+          job.records.length > 0 &&
+          !["completed", "cancelled"].includes(job.status)
+      )
       .sort((left, right) => right.createdAt - left.createdAt)[0]
     const liveZipJob = zipJobs
-      .filter((job) => job.sessionId === sessionId)
+      .filter(
+        (job) =>
+          job.sessionId === sessionId &&
+          !["completed", "cancelled"].includes(job.status)
+      )
       .sort((left, right) => right.createdAt - left.createdAt)[0]
     const displayEntries = React.useMemo<UploadArchiveEntry[]>(
       () =>
         liveFolderJob
           ? liveFolderJob.records.map((record) => ({
+              clientFileId: record.relativePath,
               name: record.relativePath,
               size: record.sizeBytes,
               isDir: false,
               uploadRecord: record,
             }))
-          : entries,
+          : entries.map((entry) => ({
+              ...entry,
+              clientFileId: `${entry.isDir ? "directory" : "file"}:${entry.name}`,
+            })),
       [entries, liveFolderJob]
     )
     const displayFileName =
@@ -224,6 +244,26 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
       : liveZipJob
         ? "zip"
         : selectionKind
+    const datasetIdentity = `${sessionId ?? "none"}:${liveFolderJob?.id ?? "none"}`
+
+    React.useEffect(() => {
+      setPagination((current) =>
+        current.pageIndex === 0 ? current : { ...current, pageIndex: 0 }
+      )
+    }, [datasetIdentity])
+
+    React.useEffect(() => {
+      const maxPageIndex = Math.max(
+        0,
+        Math.ceil(displayEntries.length / FOLDER_UPLOAD_FILE_PAGE_SIZE) - 1
+      )
+      setPagination((current) => {
+        const nextPageIndex = Math.min(current.pageIndex, maxPageIndex)
+        return nextPageIndex === current.pageIndex
+          ? current
+          : { ...current, pageIndex: nextPageIndex }
+      })
+    }, [displayEntries.length])
 
     const table = useReactTable({
       data: displayEntries,
@@ -232,9 +272,10 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
       getPaginationRowModel: getPaginationRowModel(),
       getSortedRowModel: getSortedRowModel(),
       onSortingChange: setSorting,
-      state: { sorting },
-      initialState: { pagination: { pageSize: 50 } },
+      onPaginationChange: setPagination,
+      state: { sorting, pagination },
       autoResetPageIndex: false,
+      getRowId: (row) => row.clientFileId,
     })
 
     useImperativeHandle(ref, () => ({
@@ -662,7 +703,8 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="font-roboto text-[11px] text-muted-foreground">
                 Trang {table.getState().pagination.pageIndex + 1} /{" "}
-                {table.getPageCount()} · Tối đa 50 file mỗi trang
+                {Math.max(1, table.getPageCount())} · Tối đa{" "}
+                {FOLDER_UPLOAD_FILE_PAGE_SIZE} file mỗi trang
               </span>
               <div className="flex items-center gap-1">
                 <Button

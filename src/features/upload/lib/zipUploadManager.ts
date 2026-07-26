@@ -8,8 +8,6 @@ import {
 } from "@/features/upload/api/sessionApi"
 import { globalUploadPutSemaphore } from "@/shared/lib/uploadSemaphore"
 
-const TERMINAL_VISIBLE_MS = 8_000
-
 export type ZipUploadJobStatus =
   | "creating"
   | "uploading"
@@ -34,6 +32,7 @@ export interface ZipUploadJob {
   error: string | null
   createdAt: number
   completedAt: number | null
+  dockHidden: boolean
 }
 
 interface ZipStartOptions {
@@ -58,7 +57,6 @@ class ZipUploadManager {
     Promise<SessionInputUploadResponse>
   >()
   private readonly cancellationTasks = new Map<string, Promise<void>>()
-  private readonly removalTimers = new Map<string, number>()
   private snapshot: ZipUploadJob[] = []
   private lifecycleUsers = 0
 
@@ -92,6 +90,7 @@ class ZipUploadManager {
       error: null,
       createdAt: Date.now(),
       completedAt: null,
+      dockHidden: false,
     }
     this.jobs.set(id, job)
     this.files.set(id, file)
@@ -140,6 +139,12 @@ class ZipUploadManager {
       return
     }
     await this.finishCancellation(job, reason)
+  }
+
+  dismiss(jobId: string): void {
+    const job = this.jobs.get(jobId)
+    if (!job || !isTerminal(job.status)) return
+    this.patch(jobId, { dockHidden: true })
   }
 
   attachPageLifecycle(): () => void {
@@ -201,6 +206,7 @@ class ZipUploadManager {
         response,
         error: null,
         completedAt: Date.now(),
+        dockHidden: false,
       })
       options.onCompleted?.(response)
       this.releaseTerminalJob(job.id)
@@ -236,6 +242,8 @@ class ZipUploadManager {
           status: "cancelled",
           error: null,
           response,
+          completedAt: Date.now(),
+          dockHidden: false,
         })
         this.options.get(job.id)?.onCancelled?.()
         this.releaseTerminalJob(job.id)
@@ -257,13 +265,11 @@ class ZipUploadManager {
     const current = this.jobs.get(jobId)
     if (!current || current.status === "cancelling") return
     const status: ZipUploadJobStatus =
-      progress.phase === "processing"
+      progress.phase === "processing" || progress.phase === "done"
         ? "completing"
-        : progress.phase === "done"
-          ? "completed"
-          : progress.phase === "error"
-            ? "attention_required"
-            : "uploading"
+        : progress.phase === "error"
+          ? "attention_required"
+          : "uploading"
     this.patch(jobId, {
       status,
       loadedBytes: progress.loadedBytes,
@@ -296,13 +302,6 @@ class ZipUploadManager {
     this.options.delete(jobId)
     this.controllers.delete(jobId)
     globalUploadPutSemaphore.cancelQueued(jobId)
-    if (this.removalTimers.has(jobId)) return
-    const timerId = window.setTimeout(() => {
-      this.removalTimers.delete(jobId)
-      this.jobs.delete(jobId)
-      this.emit()
-    }, TERMINAL_VISIBLE_MS)
-    this.removalTimers.set(jobId, timerId)
   }
 
   private beforeUnload = (event: BeforeUnloadEvent): void => {
@@ -341,6 +340,12 @@ function randomId(prefix: string): string {
 
 function isTerminal(status: ZipUploadJobStatus | undefined): boolean {
   return Boolean(status && ["completed", "cancelled"].includes(status))
+}
+
+export function isTerminalZipUploadJob(
+  job: Pick<ZipUploadJob, "status">
+): boolean {
+  return isTerminal(job.status)
 }
 
 function errorMessage(error: unknown): string {

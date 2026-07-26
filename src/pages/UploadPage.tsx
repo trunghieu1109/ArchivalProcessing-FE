@@ -155,6 +155,12 @@ export function UploadPage() {
     Math.max(parseInt(step ?? "1", 10), 1),
     7
   ) as AppStep
+  const focusedFolderUploadJobId =
+    searchParams.get("upload") === "folder"
+      ? searchParams.get("folderUpload")
+      : null
+  const focusedZipUploadJobId =
+    searchParams.get("upload") === "zip" ? searchParams.get("zipUpload") : null
   const visitedStepStorageKey = `archival-processing:highest-visited-step:${routeSessionId ?? "new"}`
   const storedVisitedStep = Number(
     window.sessionStorage.getItem(visitedStepStorageKey)
@@ -434,6 +440,7 @@ export function UploadPage() {
       !existingSessionMode ||
       currentStep !== 1 ||
       routeSessionId !== job.sessionId ||
+      focusedFolderUploadJobId === job.id ||
       !observedActiveFolderJobIdsRef.current.has(job.id) ||
       handledFolderCompletionIdsRef.current.has(job.id)
     ) {
@@ -446,6 +453,7 @@ export function UploadPage() {
     currentFolderUploadJob,
     currentStep,
     existingSessionMode,
+    focusedFolderUploadJobId,
     navigate,
     routeSessionId,
   ])
@@ -578,6 +586,7 @@ export function UploadPage() {
       !existingSessionMode ||
       currentStep !== 1 ||
       routeSessionId !== job.sessionId ||
+      focusedZipUploadJobId === job.id ||
       !completionHappenedInCurrentView ||
       handledZipCompletionIdsRef.current.has(job.id)
     ) {
@@ -590,6 +599,7 @@ export function UploadPage() {
     currentStep,
     currentZipUploadJob,
     existingSessionMode,
+    focusedZipUploadJobId,
     navigate,
     routeSessionId,
   ])

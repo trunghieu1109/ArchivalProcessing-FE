@@ -1,4 +1,10 @@
-import { useMemo, useState, useSyncExternalStore } from "react"
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react"
 import { useNavigate } from "react-router-dom"
 import {
   AlertTriangle,
@@ -16,11 +22,14 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
+import { getSession } from "@/features/upload/api/sessionApi"
 import {
   folderUploadManager,
+  isTerminalFolderUploadJob,
   type FolderUploadJob,
 } from "@/features/upload/lib/folderUploadManager"
 import {
+  isTerminalZipUploadJob,
   zipUploadManager,
   type ZipUploadJob,
 } from "@/features/upload/lib/zipUploadManager"
@@ -43,19 +52,72 @@ export function GlobalUploadDock() {
   const jobs = useMemo(
     () =>
       [...folderJobs, ...zipJobs]
-        .filter((job) => !["completed", "cancelled"].includes(job.status))
+        .filter((job) => !job.dockHidden)
         .sort((left, right) => right.createdAt - left.createdAt),
     [folderJobs, zipJobs]
   )
+  const hasOutstandingUpload =
+    folderJobs.some((job) => !isTerminalFolderUploadJob(job)) ||
+    zipJobs.some((job) => !isTerminalZipUploadJob(job))
   const needsAttention = jobs.some((job) =>
     ["attention_required", "failed"].includes(job.status)
   )
   const [expanded, setExpanded] = useState(false)
+  const [closedJobIdentity, setClosedJobIdentity] = useState<string | null>(
+    null
+  )
   const [cancelTarget, setCancelTarget] = useState<GlobalUploadJob | null>(null)
   const [cancelBusy, setCancelBusy] = useState(false)
+  const [fondsNames, setFondsNames] = useState<Record<string, string | null>>(
+    {}
+  )
+  const requestedSessionIds = useRef(new Set<string>())
+  const visibleJobIdentity = useMemo(
+    () =>
+      jobs
+        .map((job) => `${job.kind}:${job.id}`)
+        .sort()
+        .join("|"),
+    [jobs]
+  )
+  const visibleSessionIds = useMemo(
+    () => [...new Set(jobs.map((job) => job.sessionId))].sort(),
+    [jobs]
+  )
   const displayExpanded = expanded || needsAttention
 
-  if (jobs.length === 0) return null
+  useEffect(() => {
+    for (const sessionId of visibleSessionIds) {
+      if (
+        requestedSessionIds.current.has(sessionId) ||
+        Object.prototype.hasOwnProperty.call(fondsNames, sessionId)
+      ) {
+        continue
+      }
+      requestedSessionIds.current.add(sessionId)
+      void getSession(sessionId)
+        .then((session) => {
+          const fondsName = session.fonds_name?.trim() || null
+          setFondsNames((current) => ({
+            ...current,
+            [sessionId]: fondsName,
+          }))
+        })
+        .catch(() => {
+          setFondsNames((current) => ({
+            ...current,
+            [sessionId]: null,
+          }))
+        })
+    }
+  }, [fondsNames, visibleSessionIds])
+
+  if (
+    jobs.length === 0 ||
+    (closedJobIdentity !== null && closedJobIdentity === visibleJobIdentity)
+  ) {
+    return null
+  }
 
   const retry = async (job: GlobalUploadJob) => {
     try {
@@ -95,6 +157,14 @@ export function GlobalUploadDock() {
     }
   }
 
+  const dismiss = (job: GlobalUploadJob) => {
+    if (job.kind === "folder") {
+      folderUploadManager.dismiss(job.id)
+    } else {
+      zipUploadManager.dismiss(job.id)
+    }
+  }
+
   return (
     <>
       <aside
@@ -106,34 +176,51 @@ export function GlobalUploadDock() {
         )}
         aria-label="Tiến trình upload"
       >
-        <button
-          type="button"
-          className="flex w-full items-center justify-between gap-3 bg-slate-950 px-4 py-3 text-left text-white transition-colors hover:bg-slate-900"
-          aria-expanded={displayExpanded}
-          onClick={() => setExpanded((value) => !value)}
-        >
-          <span className="flex min-w-0 items-center gap-2">
-            <span className="relative flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/10">
-              <CloudUpload className="size-4" />
-              {!needsAttention && (
-                <span className="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-blue-400 ring-2 ring-slate-950" />
-              )}
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-bold">
-                {needsAttention ? "Upload cần xử lý" : "Đang upload"}
+        <div className="flex items-stretch bg-slate-950 text-white">
+          <button
+            type="button"
+            className="flex min-w-0 flex-1 items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-900"
+            aria-expanded={displayExpanded}
+            onClick={() => setExpanded((value) => !value)}
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="relative flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/10">
+                <CloudUpload className="size-4" />
+                {hasOutstandingUpload && !needsAttention && (
+                  <span className="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-blue-400 ring-2 ring-slate-950" />
+                )}
               </span>
-              <span className="block text-[11px] text-slate-300">
-                {jobs.length} tác vụ đang được theo dõi
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-bold">
+                  {needsAttention
+                    ? "Upload cần xử lý"
+                    : hasOutstandingUpload
+                      ? "Đang upload"
+                      : "Lịch sử upload"}
+                </span>
+                <span className="block text-[11px] text-slate-300">
+                  {jobs.length} tác vụ đang được theo dõi
+                </span>
               </span>
             </span>
-          </span>
-          {displayExpanded ? (
-            <ChevronDown className="size-4 shrink-0" />
-          ) : (
-            <ChevronUp className="size-4 shrink-0" />
+            {displayExpanded ? (
+              <ChevronDown className="size-4 shrink-0" />
+            ) : (
+              <ChevronUp className="size-4 shrink-0" />
+            )}
+          </button>
+          {!hasOutstandingUpload && (
+            <button
+              type="button"
+              className="flex w-11 shrink-0 items-center justify-center border-l border-white/10 text-slate-300 transition-colors hover:bg-slate-900 hover:text-white"
+              aria-label="Đóng lịch sử upload"
+              title="Đóng lịch sử upload"
+              onClick={() => setClosedJobIdentity(visibleJobIdentity)}
+            >
+              <X className="size-4" />
+            </button>
           )}
-        </button>
+        </div>
 
         {displayExpanded && (
           <div className="max-h-[min(66vh,35rem)] space-y-3 overflow-y-auto bg-slate-50/80 p-3">
@@ -141,13 +228,15 @@ export function GlobalUploadDock() {
               <UploadJobCard
                 key={job.id}
                 job={job}
-                onOpen={() =>
-                  navigate(
-                    `/sessions/${encodeURIComponent(job.sessionId)}/step/1`
-                  )
-                }
+                onOpen={() => navigate(uploadJobPath(job))}
                 onRetry={() => void retry(job)}
                 onCancel={() => setCancelTarget(job)}
+                onDismiss={() => dismiss(job)}
+                fondsName={fondsNames[job.sessionId]}
+                fondsNameLoaded={Object.prototype.hasOwnProperty.call(
+                  fondsNames,
+                  job.sessionId
+                )}
               />
             ))}
           </div>
@@ -224,20 +313,49 @@ function UploadJobCard({
   onOpen,
   onRetry,
   onCancel,
+  onDismiss,
+  fondsName,
+  fondsNameLoaded,
 }: {
   job: GlobalUploadJob
   onOpen: () => void
   onRetry: () => void
   onCancel: () => void
+  onDismiss: () => void
+  fondsName: string | null | undefined
+  fondsNameLoaded: boolean
 }) {
-  const attention = ["attention_required", "failed"].includes(job.status)
+  const cancelled = isCancelledPresentation(job)
+  const completed = job.status === "completed"
+  const terminal = isTerminalUploadJob(job)
+  const attention =
+    !cancelled && ["attention_required", "failed"].includes(job.status)
   const progress = Math.max(0, Math.min(100, Math.round(job.percent)))
+  const folderCounts =
+    job.kind === "folder"
+      ? job.records.length > 0
+        ? {
+            confirmed: job.confirmedFileCount,
+            skipped: job.skippedFileCount,
+          }
+        : {
+            confirmed: job.summary?.counts.confirmed ?? job.confirmedFileCount,
+            skipped: job.summary?.counts.skipped ?? job.skippedFileCount,
+          }
+      : null
+  const fondsLabel = fondsNameLoaded
+    ? (fondsName ?? "Chưa đặt tên phông")
+    : "Đang tải tên phông..."
 
   return (
     <article
       className={cn(
         "rounded-xl border bg-white p-3 shadow-sm",
-        attention ? "border-amber-300" : "border-slate-200"
+        attention
+          ? "border-amber-300"
+          : completed
+            ? "border-emerald-200"
+            : "border-slate-200"
       )}
     >
       <div className="flex items-start gap-2.5">
@@ -248,29 +366,61 @@ function UploadJobCard({
               <p className="truncate text-sm font-bold text-slate-950">
                 {job.kind === "folder" ? job.rootName : job.fileName}
               </p>
-              <p className="mt-0.5 text-[11px] text-slate-500">
+              <p
+                className="mt-0.5 truncate text-[11px] font-medium text-slate-600"
+                title={fondsLabel}
+              >
+                Phông: {fondsLabel}
+              </p>
+              <p
+                className="mt-0.5 truncate text-[11px] text-slate-500"
+                title={`Session ${job.sessionId}`}
+              >
                 {job.kind === "folder" ? "Folder PDF" : "File ZIP"} ·{" "}
                 {job.mode === "overwrite" ? "Ghi đè" : "Bổ sung"} · Session{" "}
-                {job.sessionId.slice(0, 8)}
+                {job.sessionId}
               </p>
             </div>
-            <span
-              className={cn(
-                "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold",
-                attention
-                  ? "bg-amber-100 text-amber-800"
-                  : "bg-blue-50 text-blue-700"
+            <div className="flex shrink-0 items-center gap-1">
+              <span
+                className={cn(
+                  "rounded-full px-2 py-0.5 text-[10px] font-bold",
+                  attention
+                    ? "bg-amber-100 text-amber-800"
+                    : completed
+                      ? "bg-emerald-100 text-emerald-800"
+                      : cancelled
+                        ? "bg-slate-200 text-slate-700"
+                        : "bg-blue-50 text-blue-700"
+                )}
+              >
+                {progress}%
+              </span>
+              {terminal && (
+                <button
+                  type="button"
+                  className="flex size-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                  aria-label={`Bỏ ${job.kind === "folder" ? job.rootName : job.fileName} khỏi lịch sử upload`}
+                  title="Bỏ khỏi Upload Dock"
+                  onClick={onDismiss}
+                >
+                  <X className="size-3.5" />
+                </button>
               )}
-            >
-              {progress}%
-            </span>
+            </div>
           </div>
 
           <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
             <div
               className={cn(
                 "h-full rounded-full transition-[width] duration-300",
-                attention ? "bg-amber-500" : "bg-blue-600"
+                attention
+                  ? "bg-amber-500"
+                  : completed
+                    ? "bg-emerald-600"
+                    : cancelled
+                      ? "bg-slate-500"
+                      : "bg-blue-600"
               )}
               style={{ width: `${progress}%` }}
             />
@@ -280,7 +430,11 @@ function UploadJobCard({
             <span
               className={cn(
                 "font-semibold",
-                attention ? "text-amber-800" : "text-slate-700"
+                attention
+                  ? "text-amber-800"
+                  : completed
+                    ? "text-emerald-700"
+                    : "text-slate-700"
               )}
             >
               {jobStatusLabel(job)}
@@ -291,6 +445,13 @@ function UploadJobCard({
               </span>
             )}
           </div>
+
+          {folderCounts && (
+            <p className="mt-1.5 text-[11px] text-slate-500">
+              Đã xác nhận {folderCounts.confirmed} · Bỏ qua{" "}
+              {folderCounts.skipped}
+            </p>
+          )}
 
           {job.error && (
             <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-amber-50 px-2.5 py-2 text-xs leading-5 text-amber-800">
@@ -307,7 +468,7 @@ function UploadJobCard({
               className="h-8 border-blue-200 text-blue-700 hover:bg-blue-50 hover:text-blue-800"
               onClick={onOpen}
             >
-              <FolderOpen className="size-3.5" /> Mở màn upload
+              <FolderOpen className="size-3.5" /> Mở session
             </Button>
             {canRetry(job) && (
               <Button
@@ -339,27 +500,44 @@ function UploadJobCard({
 }
 
 function JobIcon({ job }: { job: GlobalUploadJob }) {
-  if (job.status === "completed") {
-    return <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-emerald-600" />
-  }
-  if (["attention_required", "failed"].includes(job.status)) {
-    return <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600" />
-  }
-  if (job.status === "cancelled") {
-    return <X className="mt-0.5 size-5 shrink-0 text-slate-500" />
-  }
-  if (job.kind === "folder" && job.status === "creating") {
-    return <Folder className="mt-0.5 size-5 shrink-0 text-blue-600" />
-  }
-  if (job.kind === "zip" && job.status === "creating") {
-    return <FileArchive className="mt-0.5 size-5 shrink-0 text-blue-600" />
-  }
+  const SourceIcon = job.kind === "folder" ? Folder : FileArchive
+  const completed = job.status === "completed"
+  const cancelled = isCancelledPresentation(job)
+  const attention =
+    !cancelled && ["attention_required", "failed"].includes(job.status)
   return (
-    <Loader2 className="mt-0.5 size-5 shrink-0 animate-spin text-blue-600" />
+    <span
+      className={cn(
+        "relative mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg",
+        completed
+          ? "bg-emerald-50 text-emerald-700"
+          : attention
+            ? "bg-amber-50 text-amber-700"
+            : cancelled
+              ? "bg-slate-100 text-slate-600"
+              : "bg-blue-50 text-blue-700"
+      )}
+    >
+      <SourceIcon className="size-4" />
+      {completed && (
+        <CheckCircle2 className="absolute -right-1 -bottom-1 size-3.5 rounded-full bg-white text-emerald-600" />
+      )}
+      {attention && (
+        <AlertTriangle className="absolute -right-1 -bottom-1 size-3.5 rounded-full bg-white text-amber-600" />
+      )}
+      {cancelled && (
+        <X className="absolute -right-1 -bottom-1 size-3.5 rounded-full bg-white text-slate-500" />
+      )}
+    </span>
   )
 }
 
 function jobStatusLabel(job: GlobalUploadJob): string {
+  if (isCancelledPresentation(job)) {
+    return job.kind === "folder"
+      ? "Đã hủy; file thành công được giữ lại"
+      : "Đã hủy"
+  }
   switch (job.status) {
     case "creating":
       return "Đang khởi tạo"
@@ -387,12 +565,39 @@ function jobStatusLabel(job: GlobalUploadJob): string {
 }
 
 function canRetry(job: GlobalUploadJob): boolean {
-  if (job.status !== "attention_required") return false
+  if (job.status !== "attention_required" || isCancelledPresentation(job)) {
+    return false
+  }
   return true
 }
 
 function canCancel(job: GlobalUploadJob): boolean {
-  return ["creating", "uploading", "attention_required"].includes(job.status)
+  return (
+    !isCancelledPresentation(job) &&
+    ["creating", "uploading", "attention_required"].includes(job.status)
+  )
+}
+
+function isTerminalUploadJob(job: GlobalUploadJob): boolean {
+  return job.kind === "folder"
+    ? isTerminalFolderUploadJob(job)
+    : isTerminalZipUploadJob(job)
+}
+
+function isCancelledPresentation(job: GlobalUploadJob): boolean {
+  return (
+    job.status === "cancelled" ||
+    (job.kind === "folder" && job.summary?.status === "cancelled")
+  )
+}
+
+function uploadJobPath(job: GlobalUploadJob): string {
+  const params = new URLSearchParams({
+    upload: job.kind,
+    [job.kind === "folder" ? "folderUpload" : "zipUpload"]: job.id,
+    focus: `${job.kind}:${job.id}`,
+  })
+  return `/sessions/${encodeURIComponent(job.sessionId)}/step/1?${params.toString()}`
 }
 
 function formatBytes(bytes: number): string {

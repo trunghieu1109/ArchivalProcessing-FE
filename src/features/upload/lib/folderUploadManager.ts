@@ -93,6 +93,7 @@ export interface FolderUploadJob {
   summary: FolderUploadSummary | null
   error: string | null
   createdAt: number
+  dockHidden: boolean
 }
 
 type Listener = () => void
@@ -107,7 +108,6 @@ class FolderUploadManager {
     string,
     Promise<FolderUploadSummary | null>
   >()
-  private readonly removalTimers = new Map<string, number>()
   private readonly listeners = new Set<Listener>()
   private readonly sessionLocks = new Map<
     string,
@@ -167,6 +167,7 @@ class FolderUploadManager {
       summary,
       error: summary.error ?? null,
       createdAt: Date.parse(summary.created_at) || Date.now(),
+      dockHidden: false,
     }
     this.jobs.set(id, job)
     this.emit()
@@ -234,6 +235,7 @@ class FolderUploadManager {
       summary: null,
       error: null,
       createdAt: Date.now(),
+      dockHidden: false,
     }
     this.jobs.set(id, job)
     this.sources.set(id, normalized)
@@ -274,6 +276,12 @@ class FolderUploadManager {
       return
     }
     await this.finishCancellation(job, reason)
+  }
+
+  dismiss(jobId: string): void {
+    const job = this.jobs.get(jobId)
+    if (!job || !isTerminal(job.status)) return
+    this.patch(jobId, { dockHidden: true })
   }
 
   retry(jobId: string): Promise<FolderUploadSummary> {
@@ -648,7 +656,11 @@ class FolderUploadManager {
     if (existing) return existing
     const task = (async () => {
       if (!job.folderUploadId) {
-        this.patch(job.id, { status: "cancelled", error: null })
+        this.patch(job.id, {
+          status: "cancelled",
+          error: null,
+          dockHidden: false,
+        })
         this.releaseTerminalJob(job.id)
         return null
       }
@@ -971,6 +983,7 @@ class FolderUploadManager {
       folderUploadId: summary.folder_upload_id,
       summary,
       status,
+      ...(isTerminal(status) ? { dockHidden: false } : {}),
       error: summary.error ?? null,
       completedFileCount: summary.counts.confirmed + summary.counts.skipped,
       confirmedFileCount: summary.counts.confirmed,
@@ -1020,13 +1033,6 @@ class FolderUploadManager {
     this.summaryListeners.delete(jobId)
     globalUploadPutSemaphore.cancelQueued(jobId)
     globalUploadCompleteSemaphore.cancelQueued(jobId)
-    if (this.removalTimers.has(jobId)) return
-    const timerId = window.setTimeout(() => {
-      this.removalTimers.delete(jobId)
-      this.jobs.delete(jobId)
-      this.emit()
-    }, 8_000)
-    this.removalTimers.set(jobId, timerId)
   }
 
   private beforeUnload = (event: BeforeUnloadEvent): void => {
@@ -1162,6 +1168,12 @@ function isTerminal(status: FolderUploadJobStatus | undefined): boolean {
   return Boolean(
     status && ["completed", "cancelled", "failed"].includes(status)
   )
+}
+
+export function isTerminalFolderUploadJob(
+  job: Pick<FolderUploadJob, "status">
+): boolean {
+  return isTerminal(job.status)
 }
 
 function throwIfAborted(signal: AbortSignal): void {
