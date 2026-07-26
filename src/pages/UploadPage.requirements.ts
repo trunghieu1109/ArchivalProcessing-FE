@@ -1,14 +1,14 @@
 export type DossierBuildInputKey =
   | "arrangement_plan"
   | "retention_schedule"
-  | "raw_zip"
+  | "verified_documents"
   | "active_plan"
   | "active_plan_data"
 
 const INPUT_LABELS: Record<DossierBuildInputKey, string> = {
   arrangement_plan: "phương án chỉnh lý",
   retention_schedule: "thông tư thời hạn bảo quản",
-  raw_zip: "file data ZIP",
+  verified_documents: "tài liệu đã xác thực",
   active_plan: "phương án chỉnh lý đã được duyệt",
   active_plan_data: "dữ liệu cây của phương án đã duyệt",
 }
@@ -16,13 +16,13 @@ const INPUT_LABELS: Record<DossierBuildInputKey, string> = {
 export function missingDossierBuildInputs({
   hasArrangementPlan,
   hasRetentionSchedule,
-  hasRawZip,
+  hasVerifiedDocuments,
   hasActivePlan,
   hasActivePlanData,
 }: {
   hasArrangementPlan: boolean
   hasRetentionSchedule: boolean
-  hasRawZip: boolean
+  hasVerifiedDocuments: boolean
   hasActivePlan: boolean
   hasActivePlanData: boolean
 }): DossierBuildInputKey[] {
@@ -31,7 +31,7 @@ export function missingDossierBuildInputs({
   else if (!hasActivePlan) missing.push("active_plan")
   else if (!hasActivePlanData) missing.push("active_plan_data")
   if (!hasRetentionSchedule) missing.push("retention_schedule")
-  if (!hasRawZip) missing.push("raw_zip")
+  if (!hasVerifiedDocuments) missing.push("verified_documents")
   return missing
 }
 

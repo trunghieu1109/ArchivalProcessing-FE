@@ -133,7 +133,7 @@ export function UploadPage() {
     const missingInputs = missingDossierBuildInputs({
       hasArrangementPlan: doc1Has,
       hasRetentionSchedule: doc2Has,
-      hasRawZip: dataInputHas,
+      hasVerifiedDocuments,
       hasActivePlan: hasActivePlanForBuild,
       hasActivePlanData: hasActivePlanDataForBuild,
     })
@@ -487,12 +487,31 @@ export function UploadPage() {
         if (cancelled) return
         const currentPlanVersionId = cache.workingPlanVersionId
         const nextPlanVersionId = planResponse?.id ?? ""
+        const nextParsedPlan = planResponse
+          ? activePlanToParsedPlan(planResponse)
+          : null
+        const cachedPlanHasDisplayData =
+          cache.parsedPlan.groups.length > 0 ||
+          cache.parsedPlan.retention_appendices.length > 0 ||
+          cache.parsedPlan.retention_sources.length > 0
+        const nextPlanHasDisplayData = Boolean(
+          nextParsedPlan &&
+          (nextParsedPlan.groups.length > 0 ||
+            nextParsedPlan.retention_appendices.length > 0 ||
+            nextParsedPlan.retention_sources.length > 0)
+        )
+        const sameVersionNeedsHydration =
+          Boolean(nextPlanVersionId) &&
+          nextPlanVersionId === currentPlanVersionId &&
+          !cachedPlanHasDisplayData &&
+          nextPlanHasDisplayData
         const shouldApplyPlan =
           Boolean(planResponse) &&
           (!currentPlanVersionId ||
-            (nextPlanVersionId && nextPlanVersionId !== currentPlanVersionId))
-        if (planResponse && shouldApplyPlan) {
-          const plan = activePlanToParsedPlan(planResponse)
+            (nextPlanVersionId && nextPlanVersionId !== currentPlanVersionId) ||
+            sameVersionNeedsHydration)
+        if (planResponse && nextParsedPlan && shouldApplyPlan) {
+          const plan = nextParsedPlan
           const draftPayload = planResponseToDraftPayload(planResponse)
           const buildStrategy = activePlanBuildStrategy(planResponse)
           const numberingMode = activePlanDocumentNumberingMode(planResponse)
@@ -500,6 +519,7 @@ export function UploadPage() {
             activePlanDocumentNumberingStylePreset(planResponse)
           const numberingStyleOverrides =
             activePlanDocumentNumberingStyleOverrides(planResponse)
+          const planIsActive = planResponse.status === "active"
 
           cache.workingPlanVersionId = planResponse.id ?? ""
           cache.workingPlanStatus = planResponse.status ?? ""
@@ -511,7 +531,7 @@ export function UploadPage() {
           cache.planDraftRevision = 0
           cache.parsedPlan = plan
           cache.folderTree = planToTree(plan)
-          cache.planViewTab = "draft"
+          cache.planViewTab = planIsActive ? "active" : "draft"
           cache.planAnalysisState = "done"
           const { doc1Has: currentDoc1Has, doc2Has: currentDoc2Has } =
             planInputStateRef.current
@@ -526,6 +546,20 @@ export function UploadPage() {
           cache.documentNumberingStyleOverrides = numberingStyleOverrides
           cache.persistedDocumentNumberingStyleOverrides =
             numberingStyleOverrides
+          if (planIsActive) {
+            const activePlan = activePlanToParsedPlan(planResponse)
+            cache.activePlanVersionId = cache.workingPlanVersionId
+            cache.activePlanResponse = planResponse
+            cache.activePlanSignature = cache.workingPlanSignature
+            cache.activeParsedPlan = activePlan
+            cache.activeFolderTree = planToTree(activePlan)
+            cache.activePlanSettings = {
+              dossierBuildStrategy: buildStrategy,
+              documentNumberingMode: numberingMode,
+              documentNumberingStylePreset: numberingStylePreset,
+              documentNumberingStyleOverrides: numberingStyleOverrides,
+            }
+          }
 
           setParsedPlan(plan)
           setFolderTree(cache.folderTree)
@@ -540,6 +574,12 @@ export function UploadPage() {
           setDocumentNumberingMode(numberingMode)
           setDocumentNumberingStylePreset(numberingStylePreset)
           setDocumentNumberingStyleOverrides(numberingStyleOverrides)
+          if (planIsActive) {
+            setActivePlanVersionId(cache.activePlanVersionId)
+            setActiveParsedPlan(cache.activeParsedPlan)
+            setActiveFolderTree(cache.activeFolderTree)
+            setActivePlanSettings(cache.activePlanSettings)
+          }
           setPlanProgressPhase(null)
           setPlanCompletedPhases(
             new Set(PLAN_PROGRESS_PHASES.map((phase) => phase.id))
@@ -881,6 +921,15 @@ export function UploadPage() {
     : ocrPendingIngestionMessage
   const hasPendingDataUpload = pendingDataUpload !== null
   const dataInputHas = zipHas || zipUploadReady || folderUploadReady
+  const hasVerifiedDocuments =
+    (ocr.status?.metadata_verified_documents ?? 0) > 0 ||
+    (ocr.status?.metadata_reviewed_documents ?? 0) > 0 ||
+    ocrMetadataItems.some(
+      (document) =>
+        document.metadata_ready &&
+        (document.review_status === "verified" ||
+          document.is_reviewed === true)
+    )
   const hasAnyFile = doc1Has || doc2Has || dataInputHas || hasPendingDataUpload
   const hasActivePlan = Boolean(activePlanVersionId)
   const hasWorkingPlan = Boolean(workingPlanVersionId)
@@ -898,7 +947,7 @@ export function UploadPage() {
   const missingDossierInputs = missingDossierBuildInputs({
     hasArrangementPlan: doc1Has,
     hasRetentionSchedule: doc2Has,
-    hasRawZip: dataInputHas,
+    hasVerifiedDocuments,
     hasActivePlan,
     hasActivePlanData,
   })

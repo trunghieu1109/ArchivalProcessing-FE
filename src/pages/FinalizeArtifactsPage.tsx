@@ -176,7 +176,9 @@ export function FinalizeArtifactsStep({
     [sessionId]
   )
 
-  const startFinalize = useCallback(async () => {
+  const startFinalize = useCallback(async (
+    options: { force?: boolean } = { force: true }
+  ) => {
     if (!sessionId) {
       const message = "Chưa có session để tạo mục lục."
       setError(message)
@@ -193,10 +195,25 @@ export function FinalizeArtifactsStep({
       const currentArtifacts = await refreshArtifacts({ silent: true })
       setLoading(false)
       setPollAfterArtifactId(maxArtifactId(currentArtifacts))
-      await enqueueFinalizeArtifacts(sessionId, {
+      const dispatch = await enqueueFinalizeArtifacts(sessionId, {
         created_by: "ui",
         metadata_export_mode: metadataExportMode,
+        force: options.force ?? true,
       })
+      if (dispatch.status === "not_needed") {
+        setFinalizing(false)
+        setProgressPhase(null)
+        setCompletedPhases(
+          new Set(FINALIZE_PROGRESS_PHASES.map((phase) => phase.id))
+        )
+        setProgressMessage("Tệp mục lục hiện tại đã được cập nhật.")
+        setStatusMessage(
+          `Đang dùng ${currentArtifacts.length} tệp mục lục mới nhất.`
+        )
+        toast.success("Tệp mục lục đã ở trạng thái mới nhất.")
+        onAutoStartHandled?.()
+        return
+      }
       setProgressPhase("loading_data")
       setProgressMessage("Đã gửi yêu cầu tạo mục lục. Đang chờ worker xử lý.")
       setCompletedPhases(new Set())
@@ -222,7 +239,7 @@ export function FinalizeArtifactsStep({
   useEffect(() => {
     if (!autoStart || autoStartHandled.current) return
     autoStartHandled.current = true
-    void startFinalize()
+    void startFinalize({ force: false })
   }, [autoStart, startFinalize])
 
   useEffect(() => {

@@ -174,6 +174,7 @@ src/pages/UploadPage.progress.ts      # labels, progress phases, constants
 src/pages/UploadPage.planUtils.ts     # tree conversion, active plan helpers
 src/pages/UploadPage.planParsing.ts   # normalize response plan backend
 src/pages/UploadPage.requirements.ts  # validate input để lập hồ sơ
+src/features/folder-upload/            # manager, dock và manifest upload folder
 ```
 
 ### Step 1: Tạo Session Và Upload Đầu Vào
@@ -193,6 +194,7 @@ src/features/upload/components/step1/FileChip.tsx
 - `arrangement_plan`: phương án chỉnh lý.
 - `retention_schedule`: thông tư/thời hạn bảo quản.
 - `raw_zip`: kho tài liệu PDF dạng ZIP.
+- Folder tài liệu PDF: upload theo manifest, không tạo `raw_zip` giả.
 
 Luồng mới:
 
@@ -202,8 +204,12 @@ Luồng mới:
 4. ZIP upload theo remote upload flow:
    - ZIP nhỏ: presign rồi direct PUT hoặc proxy.
    - ZIP lớn hơn `RAW_ZIP_CHUNKED_UPLOAD_THRESHOLD_BYTES`: chunked create, presign parts, upload part song song, complete.
-5. Nếu có phương án hoặc retention, FE enqueue `/sessions/{id}/plan/analyze`.
-6. Nếu chỉ có ZIP, FE chuyển sang Step 3 và auto start extract metadata bằng query `?extract=1`.
+5. Folder upload dùng `FolderUploadManager`, remote folder-upload lifecycle và manifest file;
+   trạng thái được hiển thị qua upload dock.
+6. Nếu có phương án hoặc retention, FE enqueue `/sessions/{id}/plan/analyze`.
+7. Nếu có nguồn tài liệu, FE chuyển sang Step 3 và theo dõi ingestion/extract metadata.
+
+ZIP/folder là trạng thái của bước nhập dữ liệu, không phải điều kiện trực tiếp để gửi task lập hồ sơ.
 
 ### Step 2: Xem Và Chỉnh Phương Án/Cây Phân Loại
 
@@ -260,7 +266,11 @@ Luồng:
 3. `digitizationToFolderStatus()` map response backend thành shape UI cũ gồm `jobs`.
 4. UI phân trang document, filter theo metadata batch hoặc scope.
 5. Worker/coordinator review metadata trong `MetadataCard`.
-6. Khi đủ tài liệu verified/ready, `handleContinueToResults()` gọi `ensureClusterBuild()` rồi chuyển Step 4.
+6. `hasVerifiedDocuments` đúng khi summary có `metadata_verified_documents > 0`,
+   `metadata_reviewed_documents > 0`, hoặc danh sách hiện tại có document
+   `metadata_ready` và `verified`/`is_reviewed`.
+7. Khi có tài liệu hợp lệ cùng phương án/THBQ đã duyệt, `handleContinueToResults()` gọi
+   `ensureClusterBuild()` rồi chuyển Step 4. Không kiểm tra `raw_zip` ở gate này.
 
 ### Step 4: Lập Hồ Sơ Và Review Cụm
 
@@ -291,12 +301,17 @@ API chính:
 
 Luồng:
 
-1. FE đảm bảo có cluster build job.
-2. `useFinalResultPolling()` poll active cluster/version/build status.
-3. `FinalResult.treeUtils.ts` build cây kết quả theo fonds, thời hạn, năm/kỳ và hồ sơ.
-4. User review hồ sơ, metadata dossier, warnings, retention candidates.
-5. Manual move/promote tạo feedback hoặc draft, sau đó backend có thể rebuild classification/cluster.
-6. Khi hoàn tất, user chuyển sang Step 5.
+1. FE pre-check bằng `UploadPage.requirements.ts`: phương án, THBQ, active plan/cây và tài liệu
+   đã xác thực. Backend vẫn là nguồn quyết định cuối cùng.
+2. FE đảm bảo có cluster build job.
+3. `useFinalResultPolling()` poll active cluster/version/build status.
+4. `FinalResult.treeUtils.ts` build cây kết quả theo fonds, thời hạn, năm/kỳ và hồ sơ.
+5. User review hồ sơ, metadata dossier, warnings, retention candidates.
+6. Manual move/promote tạo feedback hoặc draft, sau đó backend có thể rebuild classification/cluster.
+7. Khi hoàn tất, user chuyển sang Step 5.
+
+Quy tắc backend và các mã `missing_inputs` được mô tả tại
+[`dossier-build-readiness.md`](../../ArchivalProcessing/docs/dossier-build-readiness.md).
 
 ### Step 5: Đánh Số Trang/Tài Liệu
 

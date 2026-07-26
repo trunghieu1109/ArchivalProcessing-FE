@@ -143,6 +143,12 @@ export function UploadPageView(props: Record<string, any>) {
   } = props
   const hasActivePlanData =
     Boolean(activePlanVersionId) && activeParsedPlan.groups.length > 0
+  const hasWorkingPlanVersion = Boolean(workingPlanVersionId)
+  const hasDraftPlanData =
+    parsedPlan.groups.length > 0 ||
+    parsedPlan.retention_appendices.length > 0 ||
+    parsedPlan.retention_sources.length > 0
+  const hasPersistedPlanVersion = hasActivePlan || hasWorkingPlanVersion
   const showActivePlanTab = planViewTab === "active"
   const draftIsActiveFallback =
     Boolean(activePlanVersionId) &&
@@ -333,8 +339,17 @@ export function UploadPageView(props: Record<string, any>) {
               exit={{ opacity: 0, y: -16 }}
               transition={{ duration: 0.4, ease: easeOut }}
             >
-              {hasPlanReady ? (
+              {hasPlanReady || hasPersistedPlanVersion ? (
                 <div className="flex flex-col gap-4">
+                  {planAnalyzing && (
+                    <ProgressTimeline
+                      phases={PLAN_PROGRESS_PHASES}
+                      activePhase={planProgressPhase}
+                      completedPhases={planCompletedPhases}
+                      title={planProcessingTitle}
+                      message={planProcessingMessage}
+                    />
+                  )}
                   <div className="rounded-2xl border border-[#D8E1EC] bg-white p-3 shadow-sm sm:flex sm:items-center sm:justify-between sm:gap-5">
                     <div className="px-1 pb-2 sm:pb-0">
                       <p className="text-[11px] font-semibold text-[#64748B] uppercase">
@@ -462,7 +477,7 @@ export function UploadPageView(props: Record<string, any>) {
                         </p>
                       </div>
                     )
-                  ) : (
+                  ) : hasDraftPlanData ? (
                     <>
                       {planDraftDirty && (
                         <div className="rounded-xl border border-[#FBBF24] bg-[#FFFBEB] px-4 py-3 text-sm font-medium text-[#92400E]">
@@ -537,6 +552,19 @@ export function UploadPageView(props: Record<string, any>) {
                         draftDiffersActive={hasPersistedDraft}
                       />
                     </>
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-[#FBBF24] bg-[#FFFBEB] px-6 py-8 text-center shadow-sm">
+                      <FileText className="mx-auto size-9 text-[#D97706]" />
+                      <h2 className="mt-3 text-xl font-semibold text-[#78350F]">
+                        Đã có phiên bản phân tích nhưng chưa tải được nội dung
+                      </h2>
+                      <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[#92400E]">
+                        Backend đã ghi nhận phương án của session, nhưng giao
+                        diện chưa nhận được cây phân loại hoặc phụ lục thời hạn
+                        bảo quản. Hãy tải lại trang; nếu vẫn còn lỗi, cần kiểm
+                        tra response của phiên bản phương án hiện tại.
+                      </p>
+                    </div>
                   )}
                 </div>
               ) : planAnalyzing ? (

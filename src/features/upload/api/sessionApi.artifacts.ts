@@ -11,11 +11,15 @@ import type {
   DocumentArchiveDownload,
   DocumentNumberingMode,
   EnqueueNumberingResponse,
+  FinalizeArtifactDispatchResponse,
   MetadataExportMode,
   MetadataSnapshotGroup,
   MetadataBoxNumberImportResponse,
   MetadataSnapshotResponse,
   NumberedDocumentPreviewUrlResponse,
+  NumberingDocumentPreviewUrlsResponse,
+  NumberingDocumentStatusPageResponse,
+  NumberingDossierPreviewUrlsResponse,
   NumberingStatusResponse,
   NumberingStylesResponse,
   RemoteArtifactSignedUrlResponse,
@@ -26,9 +30,10 @@ export async function enqueueFinalizeArtifacts(
   payload: {
     created_by?: string
     metadata_export_mode?: MetadataExportMode
+    force?: boolean
   } = {}
-): Promise<Record<string, unknown>> {
-  return requestJson<Record<string, unknown>>(
+): Promise<FinalizeArtifactDispatchResponse> {
+  return requestJson<FinalizeArtifactDispatchResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/artifacts/finalize`,
     {
       method: "POST",
@@ -143,6 +148,45 @@ export async function getDocumentNumberingStatus(
   )
 }
 
+export async function getNumberingDocumentStatuses(
+  sessionId: string,
+  options: {
+    limit?: number
+    offset?: number
+  } = {}
+): Promise<NumberingDocumentStatusPageResponse> {
+  const query = numberingPaginationQuery(options)
+  return requestJson<NumberingDocumentStatusPageResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/numbering/documents/status${query}`
+  )
+}
+
+export async function getNumberingDocumentPreviewUrls(
+  sessionId: string,
+  options: {
+    limit?: number
+    offset?: number
+  } = {}
+): Promise<NumberingDocumentPreviewUrlsResponse> {
+  const query = numberingPaginationQuery(options)
+  return requestJson<NumberingDocumentPreviewUrlsResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/numbering/documents/preview-urls${query}`
+  )
+}
+
+export async function getNumberingDossierPreviewUrls(
+  sessionId: string,
+  options: {
+    limit?: number
+    offset?: number
+  } = {}
+): Promise<NumberingDossierPreviewUrlsResponse> {
+  const query = numberingPaginationQuery(options)
+  return requestJson<NumberingDossierPreviewUrlsResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/numbering/preview-urls${query}`
+  )
+}
+
 export async function getNumberedDocumentPreviewUrl(
   sessionId: string,
   sessionDocumentId: number
@@ -150,6 +194,21 @@ export async function getNumberedDocumentPreviewUrl(
   return requestJson<NumberedDocumentPreviewUrlResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/numbering/documents/${encodeURIComponent(String(sessionDocumentId))}/preview-url`
   )
+}
+
+function numberingPaginationQuery(options: {
+  limit?: number
+  offset?: number
+}): string {
+  const searchParams = new URLSearchParams()
+  if (options.limit !== undefined) {
+    searchParams.set("limit", String(options.limit))
+  }
+  if (options.offset !== undefined) {
+    searchParams.set("offset", String(options.offset))
+  }
+  const query = searchParams.toString()
+  return query ? `?${query}` : ""
 }
 
 export async function exportMetadataSnapshot(

@@ -302,6 +302,46 @@ export interface NumberedDocumentPreviewUrlResponse {
   expires_at?: string | number | null
 }
 
+export interface NumberingPreviewSummary {
+  total: number
+  available: number
+  unavailable: number
+}
+
+export interface NumberingPreviewDocument extends NumberingDocumentStatus {
+  preview_available: boolean
+  preview_error?: string | null
+  version_type?: string | null
+  object_name?: string | null
+  expires_in?: number | null
+}
+
+export interface NumberingDocumentStatusPageResponse
+  extends Omit<NumberingStatusResponse, "dossiers" | "pagination"> {
+  pagination_scope: "documents"
+  pagination: PaginationMeta
+}
+
+export interface NumberingDocumentPreviewUrlsResponse
+  extends Omit<NumberingDocumentStatusPageResponse, "documents"> {
+  documents: NumberingPreviewDocument[]
+  preview_summary: NumberingPreviewSummary
+}
+
+export interface NumberingPreviewDossier extends NumberingDossierStatus {
+  documents: NumberingPreviewDocument[]
+  preview_summary: NumberingPreviewSummary
+}
+
+export interface NumberingDossierPreviewUrlsResponse
+  extends Omit<NumberingStatusResponse, "documents" | "dossiers" | "pagination"> {
+  documents: NumberingPreviewDocument[]
+  dossiers: NumberingPreviewDossier[]
+  preview_summary: NumberingPreviewSummary
+  pagination_scope: "dossiers"
+  pagination: PaginationMeta
+}
+
 export interface NumberingStyleOption {
   style_preset: DocumentNumberingStylePreset
   name?: string
@@ -332,6 +372,21 @@ export interface EnqueueNumberingResponse {
   payload: Record<string, unknown>
   worker_required: boolean
   result?: NumberingStatusResponse
+}
+
+export interface FinalizeArtifactDispatchResponse {
+  session_id: string
+  job_id: number | null
+  job_type: "finalize_artifacts"
+  status: "queued" | "already_queued_or_running" | "not_needed"
+  job_status?: string
+  created: boolean
+  payload: Record<string, unknown>
+  worker_required: boolean
+  artifact_run_id?: string | null
+  source_fingerprint?: string
+  component_fingerprints?: Record<string, string>
+  freshness_reason?: string
 }
 
 export interface ArtifactListResponse extends ApiRevisionMetadata {
