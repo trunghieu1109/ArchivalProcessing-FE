@@ -10,7 +10,9 @@ export function useUploadPageOcr(
 ) {
   const ocr = useOcrFolder(sessionId, {
     enabled: options.enabled ?? true,
-    clearOnDisable: true,
+    // Keep the current session's document snapshot while the user returns to
+    // the upload step. useOcrFolder clears it when the session id changes.
+    clearOnDisable: false,
   })
   const ocrMetadataItems = useMemo<PdfMetadata[]>(
     () =>
@@ -75,32 +77,43 @@ export function useUploadPageOcr(
     ocr.status?.pagination?.total ?? 0,
     ocrMetadataItems.length
   )
-  const extractingIngestionRuns =
-    ocr.status?.ingestion_runs?.filter((run) =>
-      ["extract_starting", "extracting", "legacy_unknown"].includes(run.status)
+  const extractingZipIngestionRuns = Math.max(
+    ocr.status?.extracting_zip_ingestion_runs ?? 0,
+    ocr.status?.ingestion_runs?.filter(
+      (run) =>
+        String(run.ingestion_source || "zip")
+          .trim()
+          .toLowerCase() !== "folder" &&
+        ["extract_starting", "extracting", "legacy_unknown"].includes(
+          run.status
+        )
     ).length ?? 0
-  const pendingIngestionRuns = Math.max(
-    extractingIngestionRuns,
-    ocr.status?.extracting_ingestion_runs ?? 0
   )
+  const updatingIngestionRuns = ocr.status?.updating_ingestion_runs ?? 0
+  const pendingIngestionRuns =
+    extractingZipIngestionRuns + updatingIngestionRuns
   const ocrPendingIngestionMessage =
-    pendingIngestionRuns > 0
-      ? `Đang giải nén ${pendingIngestionRuns} file ZIP. Tài liệu mới sẽ tự động xuất hiện khi sẵn sàng.`
-      : ""
+    extractingZipIngestionRuns > 0
+      ? `Đang giải nén ${extractingZipIngestionRuns} file ZIP.`
+      : updatingIngestionRuns > 0
+        ? "Đang cập nhật tài liệu mới."
+        : ""
   const ocrMessage =
     ocr.state === "error"
       ? ocr.error || "Không thể lấy kết quả số hóa."
-      : extractingIngestionRuns > 0
-        ? `Đang giải nén ${extractingIngestionRuns} file ZIP. Tài liệu mới sẽ tự động xuất hiện khi sẵn sàng.`
-      : ocrIsReextracting
-        ? "Đang trích xuất lại metadata theo cách đánh số mới."
-        : ocr.state === "metadata_ready"
-          ? "Metadata da san sang de review. Chu ky/final metadata dang cap nhat nen."
-          : ocr.state === "done"
-          ? ocrDocumentTotal > 0
-            ? `Đã nhận ${ocrMetadataItems.length} tài liệu từ backend.`
-            : "Backend chưa trả về tài liệu số hóa."
-          : "Đang chờ kết quả số hóa từ remote folder..."
+      : extractingZipIngestionRuns > 0
+        ? `Đang giải nén ${extractingZipIngestionRuns} file ZIP. Tài liệu mới sẽ tự động xuất hiện khi sẵn sàng.`
+        : updatingIngestionRuns > 0
+          ? "Đang cập nhật tài liệu mới từ lần upload gần nhất."
+          : ocrIsReextracting
+            ? "Đang trích xuất lại metadata theo cách đánh số mới."
+            : ocr.state === "metadata_ready"
+              ? "Metadata da san sang de review. Chu ky/final metadata dang cap nhat nen."
+              : ocr.state === "done"
+                ? ocrDocumentTotal > 0
+                  ? `Đã nhận ${ocrMetadataItems.length} tài liệu từ backend.`
+                  : "Backend chưa trả về tài liệu số hóa."
+                : "Đang chờ kết quả số hóa từ remote folder..."
   const ocrLoading = ocr.state === "starting" || ocr.state === "polling"
 
   return {

@@ -116,13 +116,18 @@ function uploadProgressFromEvent(
 export function requestJsonWithUploadProgress<T>(
   path: string,
   body: FormData,
-  onProgress?: (progress: UploadProgressSnapshot) => void
+  onProgress?: (progress: UploadProgressSnapshot) => void,
+  signal?: AbortSignal
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     let lastProgress: UploadProgressSnapshot | null = null
     xhr.open("POST", apiUrl(path), true)
     setXhrAuthHeader(xhr)
+    const abort = () => xhr.abort()
+    xhr.addEventListener("loadend", () =>
+      signal?.removeEventListener("abort", abort)
+    )
 
     xhr.upload.onprogress = (event) => {
       const totalBytes = event.lengthComputable ? event.total : 0
@@ -204,6 +209,11 @@ export function requestJsonWithUploadProgress<T>(
       }
       reject(new Error("Upload đã bị hủy."))
     }
+    if (signal?.aborted) {
+      reject(new DOMException("Upload đã bị hủy.", "AbortError"))
+      return
+    }
+    signal?.addEventListener("abort", abort, { once: true })
     xhr.send(body)
   })
 }
@@ -212,7 +222,8 @@ export function requestJsonWithBinaryUploadProgress<T>(
   path: string,
   file: File,
   contentType: string,
-  onProgress?: (progress: UploadProgressSnapshot) => void
+  onProgress?: (progress: UploadProgressSnapshot) => void,
+  signal?: AbortSignal
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
@@ -225,6 +236,10 @@ export function requestJsonWithBinaryUploadProgress<T>(
     setXhrAuthHeader(xhr)
     xhr.setRequestHeader("Accept", "application/json")
     if (contentType) xhr.setRequestHeader("Content-Type", contentType)
+    const abort = () => xhr.abort()
+    xhr.addEventListener("loadend", () =>
+      signal?.removeEventListener("abort", abort)
+    )
 
     xhr.upload.onprogress = (event) => {
       const totalBytes = event.lengthComputable ? event.total : file.size
@@ -284,6 +299,11 @@ export function requestJsonWithBinaryUploadProgress<T>(
       )
       reject(new Error("Upload ZIP đã bị hủy."))
     }
+    if (signal?.aborted) {
+      reject(new DOMException("Upload ZIP đã bị hủy.", "AbortError"))
+      return
+    }
+    signal?.addEventListener("abort", abort, { once: true })
     xhr.send(file)
   })
 }
@@ -294,7 +314,8 @@ export function putPresignedFile(
   uploadUrl: string,
   file: File,
   contentType: string,
-  onProgress?: (progress: UploadProgressSnapshot) => void
+  onProgress?: (progress: UploadProgressSnapshot) => void,
+  signal?: AbortSignal
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
@@ -340,6 +361,10 @@ export function putPresignedFile(
     }
     xhr.open("PUT", uploadUrl, true)
     if (contentType) xhr.setRequestHeader("Content-Type", contentType)
+    const abort = () => xhr.abort()
+    xhr.addEventListener("loadend", () =>
+      signal?.removeEventListener("abort", abort)
+    )
 
     xhr.upload.onprogress = (event) => {
       armStallTimer()
@@ -401,9 +426,18 @@ export function putPresignedFile(
           lastProgress?.totalBytes ?? file.size
         )
       )
-      reject(new Error("Upload ZIP lên Chỉnh Lý đã bị hủy."))
+      finish(() =>
+        reject(new DOMException("Upload ZIP đã bị hủy.", "AbortError"))
+      )
     }
     armStallTimer()
+    if (signal?.aborted) {
+      finish(() =>
+        reject(new DOMException("Upload ZIP đã bị hủy.", "AbortError"))
+      )
+      return
+    }
+    signal?.addEventListener("abort", abort, { once: true })
     xhr.send(file)
   })
 }
@@ -412,12 +446,17 @@ export function putPresignedBlob(
   uploadUrl: string,
   blob: Blob,
   contentType?: string | null,
-  onProgress?: (loadedBytes: number) => void
+  onProgress?: (loadedBytes: number) => void,
+  signal?: AbortSignal
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open("PUT", uploadUrl, true)
     if (contentType) xhr.setRequestHeader("Content-Type", contentType)
+    const abort = () => xhr.abort()
+    xhr.addEventListener("loadend", () =>
+      signal?.removeEventListener("abort", abort)
+    )
 
     xhr.upload.onprogress = (event) => {
       onProgress?.(event.loaded)
@@ -443,7 +482,7 @@ export function putPresignedBlob(
     }
 
     xhr.onabort = () => {
-      reject(new Error("Upload chunk lên Chỉnh Lý đã bị hủy."))
+      reject(new DOMException("Upload ZIP đã bị hủy.", "AbortError"))
     }
     xhr.onerror = () => {
       reject(
@@ -452,6 +491,11 @@ export function putPresignedBlob(
         )
       )
     }
+    if (signal?.aborted) {
+      reject(new DOMException("Upload ZIP đã bị hủy.", "AbortError"))
+      return
+    }
+    signal?.addEventListener("abort", abort, { once: true })
     xhr.send(blob)
   })
 }

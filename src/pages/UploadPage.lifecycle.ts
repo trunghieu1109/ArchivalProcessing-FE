@@ -1,11 +1,24 @@
 import { useEffect } from "react"
 import { toast } from "sonner"
 import {
+  cancelFolderUpload,
+  cancelRawZipUpload,
   getActivePlan,
   getWorkingPlan,
   getSession,
   type ActiveJobSummary,
+  type FolderUploadSummary,
+  type SessionInputUploadResponse,
 } from "@/features/upload/api/sessionApi"
+import { folderUploadManager } from "@/features/upload/lib/folderUploadManager"
+import {
+  zipUploadManager,
+  zipUploadProgressFromJob,
+} from "@/features/upload/lib/zipUploadManager"
+import {
+  resolveLatestUploadInterruption,
+  uploadAttemptTime,
+} from "@/features/upload/lib/uploadInterruption"
 import type { SessionMetadataValues } from "@/features/upload/components/SessionMetadataBar"
 import { uploadPageCache as cache } from "./UploadPage.cache"
 import { LAST_SESSION_KEY } from "./UploadPage.progress"
@@ -106,6 +119,8 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     setZipFolderPath,
     setZipMaxFiles,
     setZipUploadProgress,
+    setLatestUploadInterruption,
+    setLatestUploadWarning,
     setUploadModeState,
     setPlanReuploadState,
     setZipSupplementUploaded,
@@ -152,6 +167,8 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     setZipFolderPath(cache.zipFolderPath)
     setZipMaxFiles(cache.zipMaxFiles)
     setZipUploadProgress(cache.zipUploadProgress)
+    setLatestUploadInterruption(cache.latestUploadInterruption)
+    setLatestUploadWarning(cache.latestUploadWarning)
     setUploadModeState(cache.uploadMode)
     setPlanReuploadState({
       arrangement: cache.arrangementPlanReuploaded,
@@ -231,6 +248,12 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     cache.draftRetentionFile = null
     cache.draftRetentionFiles = []
     cache.draftZipFile = null
+    cache.draftFolderSources = []
+    cache.draftFolderRootName = ""
+    cache.latestZipAttempt = null
+    cache.latestFolderUpload = null
+    cache.latestUploadInterruption = null
+    cache.latestUploadWarning = null
     cache.zipUploadProgress = null
     cache.arrangementPlanReuploaded = false
     cache.retentionReuploaded = false
@@ -341,8 +364,81 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
           (file) => file.file_type === "retention_schedule"
         )
         const retentionFile = retentionFiles[retentionFiles.length - 1]
-        const zipFiles = files.filter((file) => file.file_type === "raw_zip")
-        const zipFile = zipFiles[zipFiles.length - 1]
+        const zipFiles = files
+          .filter(
+            (file) =>
+              file.file_type === "raw_zip" &&
+              (file.upload_status == null || file.upload_status === "completed")
+          )
+          .sort(
+            (left, right) =>
+              uploadAttemptTime(right.created_at, right.updated_at) -
+              uploadAttemptTime(left.created_at, left.updated_at)
+          )
+        const zipFile = zipFiles[0]
+        const preserveRawZipReuploaded = Boolean(
+          cache.rawZipReuploaded &&
+          cache.zipUpload &&
+          zipFile &&
+          sameUploadAttempt(cache.zipUpload, zipFile)
+        )
+        let latestFolderUpload = sessionDetail.latest_folder_upload ?? null
+        let latestZipAttempt = files
+          .filter((file) => file.file_type === "raw_zip")
+          .sort(
+            (left, right) =>
+              uploadAttemptTime(right.created_at, right.updated_at) -
+              uploadAttemptTime(left.created_at, left.updated_at)
+          )[0]
+        const liveZipJob = latestLiveJobForSession(
+          zipUploadManager.getSnapshot(),
+          routeSessionId
+        )
+        const liveFolderJob = latestLiveJobForSession(
+          folderUploadManager.getSnapshot(),
+          routeSessionId
+        )
+        const hasLiveDataUpload = Boolean(liveZipJob || liveFolderJob)
+        const hasLiveZipAttempt = matchesLiveZipAttempt(
+          liveZipJob,
+          latestZipAttempt
+        )
+        const hasLiveFolderAttempt = matchesLiveFolderAttempt(
+          liveFolderJob,
+          latestFolderUpload
+        )
+        const interruptedAttemptClosure = closeInterruptedAttempts({
+          sessionId: routeSessionId,
+          zipAttempt: latestZipAttempt,
+          folderAttempt: latestFolderUpload,
+          hasLiveZipAttempt,
+          hasLiveFolderAttempt,
+        })
+        // Route changes do not terminate an upload. The manager snapshot is
+        // checked before restoring server-only reconciliation so a live
+        // binary upload is never mistaken for a reload interruption.
+        if (latestFolderUpload) {
+          folderUploadManager.restoreFromSummary(latestFolderUpload)
+        }
+        const latestUploadInterruption = resolveLatestUploadInterruption(
+          latestZipAttempt,
+          latestFolderUpload,
+          { hasLiveZipAttempt, hasLiveFolderAttempt }
+        )
+        const latestUploadWarning = latestUploadInterruption?.message ?? null
+        const folderInputReady = Boolean(
+          latestFolderUpload &&
+          ["sealed", "cancelled"].includes(latestFolderUpload.status) &&
+          latestFolderUpload.document_sync_status === "ready" &&
+          latestFolderUpload.counts.effective > 0
+        )
+        const useFolderInput =
+          folderInputReady &&
+          (!zipFile ||
+            uploadAttemptTime(
+              latestFolderUpload?.created_at,
+              latestFolderUpload?.updated_at
+            ) >= uploadAttemptTime(zipFile.created_at, zipFile.updated_at))
         const maybeActivePlanAnalysisJob =
           sessionDetail.active_plan_analysis_job
         const activePlanAnalysisJob = isActivePlanAnalysisJob(
@@ -361,23 +457,37 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
           activeJobHasArrangementFile || activeJobHasRetentionFile
         cache.doc1Has = Boolean(arrangementPlanFile)
         cache.doc2Has = Boolean(retentionFile)
-        cache.zipHas = Boolean(zipFile)
+        cache.zipHas = Boolean(zipFile) || folderInputReady
         cache.doc1State = arrangementPlanFile ? "done" : "idle"
         cache.doc2State = retentionFile ? "done" : "idle"
-        cache.zipState = zipFile ? "done" : "idle"
+        cache.zipState = hasLiveDataUpload
+          ? "processing"
+          : zipFile || folderInputReady
+            ? "done"
+            : "idle"
         cache.arrangementPlanUpload = arrangementPlanFile ?? null
         cache.retentionUpload = retentionFile ?? null
         cache.retentionUploads = retentionFiles
         cache.arrangementPlanReuploaded = false
         cache.retentionReuploaded = false
-        cache.rawZipReuploaded = false
+        cache.rawZipReuploaded = preserveRawZipReuploaded
         cache.zipUpload = zipFile ?? null
-        cache.zipFolderPath = zipFile?.folder_path ?? zipFile?.data_path ?? ""
+        cache.latestZipAttempt = latestZipAttempt ?? null
+        cache.latestFolderUpload = latestFolderUpload
+        cache.latestUploadInterruption = latestUploadInterruption
+        cache.latestUploadWarning = latestUploadWarning
+        cache.zipFolderPath = useFolderInput
+          ? (latestFolderUpload?.root_name ?? "")
+          : (zipFile?.folder_path ?? zipFile?.data_path ?? "")
         cache.draftArrangementPlanFile = null
         cache.draftRetentionFile = null
         cache.draftRetentionFiles = []
         cache.draftZipFile = null
-        cache.zipUploadProgress = null
+        cache.draftFolderSources = []
+        cache.draftFolderRootName = ""
+        cache.zipUploadProgress = liveZipJob
+          ? zipUploadProgressFromJob(liveZipJob)
+          : null
         setDoc1Has(cache.doc1Has)
         setDoc2Has(cache.doc2Has)
         setZipHas(cache.zipHas)
@@ -385,9 +495,96 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
         setDoc2State(cache.doc2State)
         setZipState(cache.zipState)
         setPlanReuploadState({ arrangement: false, retention: false })
-        setZipSupplementUploaded(false)
+        setZipSupplementUploaded(preserveRawZipReuploaded)
         setZipFolderPath(cache.zipFolderPath)
-        setZipUploadProgress(null)
+        setZipUploadProgress(cache.zipUploadProgress)
+        setLatestUploadInterruption(latestUploadInterruption)
+        setLatestUploadWarning(latestUploadWarning)
+
+        if (interruptedAttemptClosure) {
+          void interruptedAttemptClosure.then((closed) => {
+            if (cancelled) return
+            latestZipAttempt = closed.zipAttempt ?? latestZipAttempt
+            latestFolderUpload = closed.folderAttempt ?? latestFolderUpload
+            const currentLiveZipJob = latestLiveJobForSession(
+              zipUploadManager.getSnapshot(),
+              routeSessionId
+            )
+            const currentLiveFolderJob = latestLiveJobForSession(
+              folderUploadManager.getSnapshot(),
+              routeSessionId
+            )
+            const currentInterruption = resolveLatestUploadInterruption(
+              latestZipAttempt,
+              latestFolderUpload,
+              {
+                hasLiveZipAttempt: matchesLiveZipAttempt(
+                  currentLiveZipJob,
+                  latestZipAttempt
+                ),
+                hasLiveFolderAttempt: matchesLiveFolderAttempt(
+                  currentLiveFolderJob,
+                  latestFolderUpload
+                ),
+              }
+            )
+            cache.latestZipAttempt = latestZipAttempt ?? null
+            cache.latestFolderUpload = latestFolderUpload
+            cache.latestUploadInterruption = currentInterruption
+            cache.latestUploadWarning = currentInterruption?.message ?? null
+            setLatestUploadInterruption(currentInterruption)
+            setLatestUploadWarning(currentInterruption?.message ?? null)
+
+            const zipIsLatest =
+              Boolean(latestZipAttempt) &&
+              uploadAttemptTime(
+                latestZipAttempt?.created_at,
+                latestZipAttempt?.updated_at
+              ) >
+                uploadAttemptTime(
+                  latestFolderUpload?.created_at,
+                  latestFolderUpload?.updated_at
+                )
+            if (
+              zipIsLatest &&
+              latestZipAttempt?.upload_status === "completed"
+            ) {
+              cache.zipUpload = latestZipAttempt
+              cache.zipHas = true
+              cache.zipState = "done"
+              cache.zipFolderPath =
+                latestZipAttempt.folder_path ?? latestZipAttempt.data_path ?? ""
+              setZipHas(true)
+              setZipState("done")
+              setZipFolderPath(cache.zipFolderPath)
+            }
+
+            if (latestFolderUpload) {
+              folderUploadManager.restoreFromSummary(latestFolderUpload)
+              const folderIsLatest =
+                uploadAttemptTime(
+                  latestFolderUpload.created_at,
+                  latestFolderUpload.updated_at
+                ) >=
+                uploadAttemptTime(
+                  latestZipAttempt?.created_at,
+                  latestZipAttempt?.updated_at
+                )
+              const folderInputReady =
+                ["sealed", "cancelled"].includes(latestFolderUpload.status) &&
+                latestFolderUpload.document_sync_status === "ready" &&
+                latestFolderUpload.counts.effective > 0
+              if (folderIsLatest && folderInputReady) {
+                cache.zipHas = true
+                cache.zipState = "done"
+                cache.zipFolderPath = latestFolderUpload.root_name
+                setZipHas(true)
+                setZipState("done")
+                setZipFolderPath(latestFolderUpload.root_name)
+              }
+            }
+          })
+        }
 
         if (activePlan) {
           const activeParsedPlan = activePlanToParsedPlan(activePlan)
@@ -568,7 +765,187 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     return () => {
       cancelled = true
     }
-  }, [routeSessionId])
+  }, [currentStep, routeSessionId])
 
   return { syncSessionMetadata }
+}
+
+function latestLiveJobForSession<
+  T extends { sessionId: string; status: string; createdAt: number },
+>(jobs: T[], sessionId: string): T | null {
+  return (
+    jobs
+      .filter(
+        (job) =>
+          job.sessionId === sessionId &&
+          !["completed", "cancelled"].includes(job.status)
+      )
+      .sort((left, right) => right.createdAt - left.createdAt)[0] ?? null
+  )
+}
+
+function matchesLiveZipAttempt(
+  job: {
+    clientUploadId: string
+    sessionId: string
+  } | null,
+  attempt: SessionInputUploadResponse | null | undefined
+): boolean {
+  if (!job || !attempt || job.sessionId !== attempt.session_id) return false
+  const clientUploadId = String(attempt.client_upload_id ?? "").trim()
+  return !clientUploadId || clientUploadId === job.clientUploadId
+}
+
+function matchesLiveFolderAttempt(
+  job: {
+    clientUploadId: string
+    folderUploadId: string | null
+    sessionId: string
+  } | null,
+  attempt: FolderUploadSummary | null | undefined
+): boolean {
+  if (!job || !attempt || job.sessionId !== attempt.session_id) return false
+  return (
+    job.folderUploadId === attempt.folder_upload_id ||
+    job.clientUploadId === attempt.client_upload_id
+  )
+}
+
+interface CloseInterruptedAttemptsOptions {
+  sessionId: string
+  zipAttempt: SessionInputUploadResponse | null | undefined
+  folderAttempt: FolderUploadSummary | null
+  hasLiveZipAttempt: boolean
+  hasLiveFolderAttempt: boolean
+}
+
+interface ClosedInterruptedAttempts {
+  zipAttempt: SessionInputUploadResponse | null
+  folderAttempt: FolderUploadSummary | null
+}
+
+const interruptedAttemptClosures = new Map<
+  string,
+  Promise<SessionInputUploadResponse | FolderUploadSummary | null>
+>()
+
+function closeInterruptedAttempts({
+  sessionId,
+  zipAttempt,
+  folderAttempt,
+  hasLiveZipAttempt,
+  hasLiveFolderAttempt,
+}: CloseInterruptedAttemptsOptions): Promise<ClosedInterruptedAttempts> | null {
+  const folderStatus = String(folderAttempt?.status ?? "").toLowerCase()
+  const shouldCloseFolder =
+    Boolean(folderAttempt) &&
+    !hasLiveFolderAttempt &&
+    ["open", "uploading", "attention_required", "cancelling"].includes(
+      folderStatus
+    )
+  const zipStatus = String(zipAttempt?.upload_status ?? "").toLowerCase()
+  const shouldCloseZip =
+    Boolean(zipAttempt?.client_upload_id) &&
+    !hasLiveZipAttempt &&
+    Boolean(zipStatus) &&
+    !["completed", "completing", "cancelled"].includes(zipStatus)
+
+  if (!shouldCloseFolder && !shouldCloseZip) return null
+
+  const folderTask =
+    shouldCloseFolder && folderAttempt
+      ? closeInterruptedAttemptOnce(
+          `folder:${folderAttempt.folder_upload_id}`,
+          () =>
+            cancelFolderUpload(
+              sessionId,
+              folderAttempt.folder_upload_id,
+              "page_closed"
+            )
+        ).then((result) => result as FolderUploadSummary | null)
+      : Promise.resolve(folderAttempt)
+  const zipTask =
+    shouldCloseZip && zipAttempt?.client_upload_id
+      ? closeInterruptedAttemptOnce(`zip:${zipAttempt.client_upload_id}`, () =>
+          cancelRawZipUpload(
+            sessionId,
+            zipAttempt.client_upload_id!,
+            "page_closed"
+          )
+        ).then((result) => result as SessionInputUploadResponse | null)
+      : Promise.resolve(zipAttempt ?? null)
+
+  return Promise.allSettled([zipTask, folderTask]).then(
+    async ([zipResult, folderResult]) => {
+      if (
+        zipResult.status === "rejected" ||
+        folderResult.status === "rejected"
+      ) {
+        try {
+          const refreshed = await getSession(sessionId)
+          const refreshedZipAttempt =
+            (refreshed.files ?? [])
+              .filter((file) => file.file_type === "raw_zip")
+              .sort(
+                (left, right) =>
+                  uploadAttemptTime(right.created_at, right.updated_at) -
+                  uploadAttemptTime(left.created_at, left.updated_at)
+              )[0] ?? null
+          return {
+            zipAttempt: refreshedZipAttempt,
+            folderAttempt: refreshed.latest_folder_upload ?? null,
+          }
+        } catch {
+          // Keep the original server snapshot. A later session refresh retries
+          // cancellation; Folder additionally has the lease watchdog fallback.
+        }
+      }
+      return {
+        zipAttempt:
+          zipResult.status === "fulfilled"
+            ? zipResult.value
+            : (zipAttempt ?? null),
+        folderAttempt:
+          folderResult.status === "fulfilled"
+            ? folderResult.value
+            : folderAttempt,
+      }
+    }
+  )
+}
+
+function closeInterruptedAttemptOnce<
+  T extends SessionInputUploadResponse | FolderUploadSummary,
+>(key: string, taskFactory: () => Promise<T>): Promise<T> {
+  const existing = interruptedAttemptClosures.get(key)
+  if (existing) return existing as Promise<T>
+  const task = taskFactory().finally(() => {
+    interruptedAttemptClosures.delete(key)
+  })
+  interruptedAttemptClosures.set(key, task)
+  return task
+}
+
+function sameUploadAttempt(
+  left: {
+    id?: string | number | null
+    client_upload_id?: string | null
+    remote_file_id?: string | number | null
+  },
+  right: {
+    id?: string | number | null
+    client_upload_id?: string | null
+    remote_file_id?: string | number | null
+  }
+): boolean {
+  const identifiers: Array<keyof typeof left> = [
+    "id",
+    "client_upload_id",
+    "remote_file_id",
+  ]
+  return identifiers.some((key) => {
+    const leftValue = String(left[key] ?? "").trim()
+    const rightValue = String(right[key] ?? "").trim()
+    return Boolean(leftValue && rightValue && leftValue === rightValue)
+  })
 }

@@ -1,6 +1,7 @@
 export * from "./sessionApi.types"
 export * from "./sessionApi.core"
 export * from "./sessionApi.upload"
+export * from "./sessionApi.folderUpload"
 export * from "./sessionApi.digitization"
 export * from "./sessionApi.clusters"
 export * from "./sessionApi.artifacts"

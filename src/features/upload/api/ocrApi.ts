@@ -90,6 +90,8 @@ export interface FolderStatusResponse extends ApiRevisionMetadata {
   signature_pending_documents: number
   signature_failed_documents: number
   extracting_ingestion_runs?: number
+  extracting_zip_ingestion_runs?: number
+  updating_ingestion_runs?: number
   ready_ingestion_runs?: number
   failed_ingestion_runs?: number
   metadata_batches?: MetadataBatchSummary[]

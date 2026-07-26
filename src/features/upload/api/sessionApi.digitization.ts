@@ -50,6 +50,7 @@ export async function startDigitization(
     remove_blank_pages_before_ocr?: boolean
     session_file_id?: number
     remote_file_id?: string | number | null
+    ingestion_run_ids?: number[]
     upload_mode?: UploadMode
     overwrite?: boolean
   }
@@ -316,6 +317,32 @@ export function digitizationToFolderStatus(
   const ingestionRuns = response?.ingestion_runs ?? []
   const documents = response?.documents ?? []
   const summary = response?.summary
+  const extractingZipIngestionRuns = ingestionRuns.filter(
+    (run) =>
+      String(run.ingestion_source || "zip")
+        .trim()
+        .toLowerCase() !== "folder" &&
+      ["extract_starting", "extracting", "legacy_unknown"].includes(
+        normalizeStatus(run.status)
+      )
+  ).length
+  const updatingIngestionRuns = ingestionRuns.filter((run) => {
+    if (normalizeStatus(run.status) !== "ready") return false
+    const linkedBatches = batches.filter(
+      (candidate) => candidate.ingestion_run_id === run.id
+    )
+    if (linkedBatches.length === 0) return true
+    return linkedBatches.some((candidate) => {
+      if (isTerminalBatch(candidate)) return false
+      const discoveredCount = statusCountTotal(candidate.status_counts)
+      const expectedCount = Math.max(
+        0,
+        candidate.total_jobs ?? 0,
+        candidate.total_files ?? 0
+      )
+      return expectedCount === 0 || discoveredCount < expectedCount
+    })
+  }).length
   const responseDocumentTotal = summary?.total_documents ?? documents.length
   const pendingBatchCounts = batches
     .filter((candidate) => !isTerminalBatch(candidate))
@@ -454,6 +481,8 @@ export function digitizationToFolderStatus(
             .toLowerCase()
         )
       ).length,
+    extracting_zip_ingestion_runs: extractingZipIngestionRuns,
+    updating_ingestion_runs: updatingIngestionRuns,
     ready_ingestion_runs:
       summary?.ready_ingestion_runs ??
       ingestionRuns.filter((run) => run.status === "ready").length,

@@ -69,6 +69,7 @@ export function UploadPageView(props: Record<string, any>) {
     uploadMode,
     syncUploadMode,
     zipUploadProgress,
+    latestUploadInterruption,
     planReuploadState,
     planInputsReuploaded,
     zipSupplementUploaded,
@@ -123,8 +124,7 @@ export function UploadPageView(props: Record<string, any>) {
     navigate,
   } = props
   const hasAnalyzedPlan = Boolean(hasAnalyzedArrangementPlan)
-  const hasApprovedPlan =
-    Boolean(hasActivePlan) && Boolean(activePlanVersionId)
+  const hasApprovedPlan = Boolean(hasActivePlan) && Boolean(activePlanVersionId)
   const hasActivePlanVersion =
     hasApprovedPlan && activeParsedPlan.groups.length > 0
   const hasPlanReady = hasAnalyzedPlan || hasApprovedPlan
@@ -232,6 +232,7 @@ export function UploadPageView(props: Record<string, any>) {
           {/* Bước 1: Tải lên */}
           {!isWorkerUser && currentStep === 1 && (
             <UploadPageStepOne
+              currentSessionId={routeSessionId ?? sessionId ?? null}
               existingSessionMode={existingSessionMode}
               planAnalyzing={planAnalyzing}
               planProgressMessage={planProgressMessage}
@@ -247,8 +248,12 @@ export function UploadPageView(props: Record<string, any>) {
               zipMaxFiles={zipMaxFiles}
               syncZipMaxFiles={syncZipMaxFiles}
               uploadInput={uploadInput}
+              syncFolderSelection={props.syncFolderSelection}
+              pendingFolderCount={props.pendingFolderCount}
+              hasPendingZip={props.hasPendingZip}
               uploadRetentionInputs={uploadRetentionInputs}
               zipUploadProgress={zipUploadProgress}
+              latestUploadInterruption={latestUploadInterruption}
               planReuploadState={planReuploadState}
               ocr={ocr}
               zipHas={zipHas}
@@ -273,6 +278,9 @@ export function UploadPageView(props: Record<string, any>) {
               requiredFileCount={requiredFileCount}
               selectedInputLabels={selectedInputLabels}
               primaryActionDisabled={primaryActionDisabled}
+              latestUploadWarning={props.latestUploadWarning}
+              partialFolderCount={props.partialFolderCount}
+              folderRunNeedsMetadataStart={props.folderRunNeedsMetadataStart}
               handleStartAll={handleStartAll}
               planInputsReuploaded={planInputsReuploaded}
               sessionMetadata={sessionMetadata}

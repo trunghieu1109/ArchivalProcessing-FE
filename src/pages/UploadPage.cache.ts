@@ -16,6 +16,8 @@ import type {
   ProcessState,
 } from "@/features/upload/types"
 import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
+import type { FolderUploadSource } from "@/features/upload/lib/folderUploadManager"
+import type { UploadInterruptionSnapshot } from "@/features/upload/lib/uploadInterruption"
 import {
   DEFAULT_DOCUMENT_NUMBERING_MODE,
   DEFAULT_DOCUMENT_NUMBERING_STYLE_PRESET,
@@ -80,6 +82,14 @@ interface UploadPageCache {
   draftRetentionFile: File | null
   draftRetentionFiles: File[]
   draftZipFile: File | null
+  draftFolderSources: FolderUploadSource[]
+  draftFolderRootName: string
+  latestZipAttempt: SessionInputUploadResponse | null
+  latestFolderUpload:
+    | import("@/features/upload/api/sessionApi").FolderUploadSummary
+    | null
+  latestUploadInterruption: UploadInterruptionSnapshot | null
+  latestUploadWarning: string | null
   zipUploadProgress: UploadProgressSnapshot | null
   arrangementPlanReuploaded: boolean
   retentionReuploaded: boolean
@@ -113,9 +123,12 @@ export const uploadPageCache: UploadPageCache = {
   documentNumberingMode: DEFAULT_DOCUMENT_NUMBERING_MODE,
   persistedDocumentNumberingMode: DEFAULT_DOCUMENT_NUMBERING_MODE,
   documentNumberingStylePreset: DEFAULT_DOCUMENT_NUMBERING_STYLE_PRESET,
-  persistedDocumentNumberingStylePreset: DEFAULT_DOCUMENT_NUMBERING_STYLE_PRESET,
+  persistedDocumentNumberingStylePreset:
+    DEFAULT_DOCUMENT_NUMBERING_STYLE_PRESET,
   documentNumberingStyleOverrides: { ...DEFAULT_NUMBERING_STYLE_OVERRIDES },
-  persistedDocumentNumberingStyleOverrides: { ...DEFAULT_NUMBERING_STYLE_OVERRIDES },
+  persistedDocumentNumberingStyleOverrides: {
+    ...DEFAULT_NUMBERING_STYLE_OVERRIDES,
+  },
   workingPlanSavePromise: null,
   planDraftDirty: false,
   planDraftRevision: 0,
@@ -147,6 +160,12 @@ export const uploadPageCache: UploadPageCache = {
   draftRetentionFile: null,
   draftRetentionFiles: [],
   draftZipFile: null,
+  draftFolderSources: [],
+  draftFolderRootName: "",
+  latestZipAttempt: null,
+  latestFolderUpload: null,
+  latestUploadInterruption: null,
+  latestUploadWarning: null,
   zipUploadProgress: null,
   arrangementPlanReuploaded: false,
   retentionReuploaded: false,

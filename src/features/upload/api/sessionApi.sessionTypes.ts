@@ -81,6 +81,7 @@ export interface DeleteSessionResponse {
 export interface SessionDetailResponse extends SessionSummary {
   files: SessionInputUploadResponse[]
   active_plan_analysis_job?: ActiveJobSummary | null
+  latest_folder_upload?: FolderUploadSummary | null
 }
 
 export interface SessionInputUploadResponse {
@@ -100,12 +101,22 @@ export interface SessionInputUploadResponse {
   size_bytes?: number | null
   content_type?: string | null
   ingestion_run?: SessionIngestionRun | null
+  client_upload_id?: string | null
+  upload_status?: string | null
+  remote_upload_id?: string | null
+  cancel_reason?: string | null
+  cancelled_at?: string | null
+  created_at?: string
+  updated_at?: string
 }
 
 export interface SessionIngestionRun {
   id: number
   session_id: string
   session_file_id?: number | null
+  folder_upload_id?: string | null
+  ingestion_source?: "zip" | "folder" | string
+  ocr_batch_ids?: number[]
   file_name?: string | null
   remote_ingestion_batch_id?: string | null
   remote_file_id?: string | null
@@ -136,6 +147,7 @@ export interface SessionInputRemoteUploadPresignResponse {
   remote_kind: string
   content_type: string
   size_bytes?: number | null
+  client_upload_id?: string | null
 }
 
 export interface SessionInputRemoteChunkedCreateResponse {
@@ -155,6 +167,106 @@ export interface SessionInputRemoteChunkedCreateResponse {
   part_count?: number | null
   remote_object_name?: string | null
   remote_status?: string | null
+  client_upload_id?: string | null
+}
+
+export type FolderUploadMode = "append" | "overwrite"
+export type FolderUploadFileStatus =
+  | "registered"
+  | "presigned"
+  | "confirmed"
+  | "skipped"
+  | "failed"
+  | "cancelled"
+
+export interface FolderUploadCounts {
+  registered: number
+  confirmed: number
+  skipped: number
+  failed: number
+  cancelled: number
+  effective: number
+  mapped_documents: number
+  unregistered: number
+  unfinished: number
+}
+
+export interface FolderUploadIngestionRun {
+  id: number
+  session_id: string
+  ingestion_source: string
+  folder_upload_id: string
+  status: string
+  ocr_batch_ids: number[]
+}
+
+export interface FolderUploadSummary {
+  folder_upload_id: string
+  session_id: string
+  client_upload_id: string
+  mode: FolderUploadMode
+  root_name: string
+  status: string
+  document_sync_status: string
+  expected_file_count: number
+  expected_total_bytes: number
+  counts: FolderUploadCounts
+  lease_expires_at?: string | null
+  cancel_reason?: string | null
+  cancelled_at?: string | null
+  sealed_at?: string | null
+  ingestion_run?: FolderUploadIngestionRun | null
+  error?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface FolderUploadFile {
+  file_id: number
+  client_file_id: string
+  relative_path: string
+  normalized_relative_path: string
+  size_bytes: number
+  content_type: string
+  status: FolderUploadFileStatus
+  action?: "created" | "overwritten" | "skipped" | string | null
+  remote_document_id?: string | null
+  attempt_count: number
+  etag?: string | null
+  error?: unknown
+  created_at: string
+  updated_at: string
+}
+
+export interface FolderUploadRegisterResponse {
+  folder_upload_id: string
+  files: FolderUploadFile[]
+  counts: FolderUploadCounts
+}
+
+export interface FolderUploadPresignFile {
+  file_id: number
+  method: "PUT" | string
+  upload_url: string
+  upload_headers: Record<string, string>
+  expires_at?: string | null
+}
+
+export interface FolderUploadPresignResponse {
+  folder_upload_id: string
+  files: FolderUploadPresignFile[]
+}
+
+export interface FolderUploadCompleteResponse {
+  folder_upload_id: string
+  files: FolderUploadFile[]
+  counts: FolderUploadCounts
+}
+
+export interface FolderUploadFileListResponse {
+  items: FolderUploadFile[]
+  next_after_id?: number | null
+  has_more: boolean
 }
 
 export interface SessionInputRemoteChunkedPart {
@@ -252,6 +364,9 @@ export interface UploadSessionInputOptions {
   createdBy?: string
   uploadMode?: UploadMode
   maxFiles?: number
+  clientUploadId?: string
+  jobId?: string
+  signal?: AbortSignal
   onProgress?: (progress: UploadProgressSnapshot) => void
 }
 

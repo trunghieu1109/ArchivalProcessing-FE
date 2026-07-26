@@ -1,5 +1,12 @@
 import { motion } from "framer-motion"
-import { Archive, ArrowRight, CheckCircle2, Loader2, Play } from "lucide-react"
+import {
+  AlertTriangle,
+  Archive,
+  ArrowRight,
+  CheckCircle2,
+  Loader2,
+  Play,
+} from "lucide-react"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import { DocxSection } from "@/features/upload/components/step1/DocxSection"
 import { ZipSection } from "@/features/upload/components/step1/ZipSection"
@@ -10,6 +17,7 @@ import { easeOut } from "./UploadPage.planUtils"
 
 export function UploadPageStepOne(props: Record<string, any>) {
   const {
+    currentSessionId,
     existingSessionMode,
     planAnalyzing,
     planProgressMessage,
@@ -25,8 +33,10 @@ export function UploadPageStepOne(props: Record<string, any>) {
     zipMaxFiles,
     syncZipMaxFiles,
     uploadInput,
+    syncFolderSelection,
     uploadRetentionInputs,
     zipUploadProgress,
+    latestUploadInterruption,
     planReuploadState,
     ocr,
     zipHas,
@@ -55,6 +65,11 @@ export function UploadPageStepOne(props: Record<string, any>) {
     planInputsReuploaded,
     sessionMetadata,
     syncSessionMetadataDraft,
+    pendingFolderCount,
+    hasPendingZip,
+    latestUploadWarning,
+    partialFolderCount,
+    folderRunNeedsMetadataStart,
   } = props
   const zipUploadStatus = zipUploadProgress
     ? zipUploadProgress.phase === "error"
@@ -101,6 +116,17 @@ export function UploadPageStepOne(props: Record<string, any>) {
       transition={{ duration: 0.4, ease: easeOut }}
       className="flex flex-col gap-4"
     >
+      {latestUploadWarning && (
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 text-amber-900">
+          <AlertTriangle className="mt-0.5 size-5 shrink-0" />
+          <div>
+            <p className="text-sm font-bold">
+              Lần upload gần nhất bị gián đoạn
+            </p>
+            <p className="mt-1 text-sm leading-6">{latestUploadWarning}</p>
+          </div>
+        </div>
+      )}
       <div className="rounded-2xl border border-[#D8E1EC] bg-white px-5 py-4 shadow-sm">
         <p className="text-sm font-semibold text-[#0F172A]">
           {existingSessionMode
@@ -202,6 +228,7 @@ export function UploadPageStepOne(props: Record<string, any>) {
       {/* ZIP */}
       <ZipSection
         ref={zipRef}
+        sessionId={currentSessionId}
         processState={zipState}
         onProcessStateChange={syncZipState}
         onHasFileChange={syncZipHas}
@@ -211,7 +238,9 @@ export function UploadPageStepOne(props: Record<string, any>) {
         onMaxFilesChange={syncZipMaxFiles}
         onUploadFile={(file) => uploadInput("raw_zip", file)}
         uploadProgress={zipUploadProgress}
+        uploadInterruption={latestUploadInterruption}
         ocr={ocr}
+        onFolderSelection={syncFolderSelection}
       />
 
       {existingSessionMode && zipHas && (
@@ -384,6 +413,11 @@ export function UploadPageStepOne(props: Record<string, any>) {
                 ZIP bổ sung đã upload xong. Nhấn nút bên phải để extract
                 metadata.
               </span>
+            ) : folderRunNeedsMetadataStart ? (
+              <span className="block truncate text-muted-foreground">
+                Folder đã upload và ghi nhận xong. Có thể bắt đầu extract
+                metadata.
+              </span>
             ) : hasAnyFile ? (
               <span className="block truncate text-muted-foreground">
                 Đã chọn:{" "}
@@ -440,17 +474,25 @@ export function UploadPageStepOne(props: Record<string, any>) {
                   : "Đang phân tích..."
                 : allProcessing
                   ? "Đang xử lý..."
-                  : planInputsReuploaded
-                    ? planReanalysisActionLabel
-                    : existingSessionMode && zipSupplementUploaded
-                      ? "Extract metadata ZIP bổ sung"
-                      : existingSessionMode && zipHas && !hasPlanReady
-                        ? "Đi tới extract metadata"
-                        : allDone
-                          ? "Tiếp tục"
-                          : existingSessionMode
-                            ? "Tiếp tục"
-                            : "Bắt đầu xử lý"}
+                  : pendingFolderCount > 0
+                    ? `Bắt đầu upload ${pendingFolderCount} PDF`
+                    : hasPendingZip
+                      ? "Bắt đầu upload ZIP"
+                      : planInputsReuploaded
+                        ? planReanalysisActionLabel
+                        : partialFolderCount > 0
+                          ? `Xử lý ${partialFolderCount} tài liệu đã tải thành công`
+                          : folderRunNeedsMetadataStart
+                            ? "Extract metadata folder"
+                            : existingSessionMode && zipSupplementUploaded
+                              ? "Extract metadata ZIP bổ sung"
+                              : existingSessionMode && zipHas && !hasPlanReady
+                                ? "Đi tới extract metadata"
+                                : allDone
+                                  ? "Tiếp tục"
+                                  : existingSessionMode
+                                    ? "Tiếp tục"
+                                    : "Bắt đầu xử lý"}
           </span>
           {!primaryActionDisabled && (
             <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />

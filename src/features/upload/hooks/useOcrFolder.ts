@@ -1,5 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from "react"
-import type { FolderStatusResponse, JobSummary } from "@/features/upload/api/ocrApi"
+import type {
+  FolderStatusResponse,
+  JobSummary,
+} from "@/features/upload/api/ocrApi"
 import { hasMetadataWarning } from "@/features/upload/lib/metadata"
 import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import {
@@ -50,6 +53,20 @@ export interface OcrRefreshOptions {
   offset?: number
 }
 
+class OcrPollingReplacedError extends Error {
+  constructor() {
+    super("Quá trình chờ kết quả OCR đã được thay thế.")
+    this.name = "OcrPollingReplacedError"
+  }
+}
+
+export function isOcrPollingReplacedError(error: unknown): boolean {
+  return (
+    error instanceof OcrPollingReplacedError ||
+    (error instanceof Error && error.name === "OcrPollingReplacedError")
+  )
+}
+
 export interface UseOcrFolderResult {
   state: OcrFolderState
   status: FolderStatusResponse | null
@@ -68,6 +85,7 @@ export interface UseOcrFolderResult {
       }
       sessionFileId?: number
       remoteFileId?: string | number | null
+      ingestionRunIds?: number[]
       uploadMode?: UploadMode
       force?: boolean
       reextract?: boolean
@@ -228,8 +246,21 @@ export function useOcrFolder(
   )
 
   useEffect(() => {
-    if (documentPageCacheSessionRef.current === sessionId) return
+    const previousSessionId = documentPageCacheSessionRef.current
+    if (previousSessionId === sessionId) return
     documentPageCacheSessionRef.current = sessionId
+    if (previousSessionId !== null) {
+      stop()
+      tokenRef.current += 1
+      rejectRef.current?.(new OcrPollingReplacedError())
+      rejectRef.current = null
+      pendingStartRef.current = null
+      manualOperationRef.current = false
+      statusRef.current = null
+      setState("idle")
+      setStatus(null)
+      setError("")
+    }
     clearDocumentRangeCache(documentPageCacheRef.current)
     prefetchingDocumentRangesRef.current.clear()
     lastDocumentRefreshSignatureRef.current = ""
@@ -240,7 +271,7 @@ export function useOcrFolder(
     documentPageIndexRef.current = 0
     setDocumentPageIndexState(0)
     setMetadataDocumentScopeState(DEFAULT_METADATA_DOCUMENT_SCOPE)
-  }, [sessionId])
+  }, [sessionId, stop])
 
   const applyStatusResult = useCallback(
     (
@@ -418,7 +449,11 @@ export function useOcrFolder(
         }
       })
       setError("")
-      const nextPageIndex = nextPrefetchPageIndex(pageIndex, pageSize, nextStatus)
+      const nextPageIndex = nextPrefetchPageIndex(
+        pageIndex,
+        pageSize,
+        nextStatus
+      )
       if (nextPageIndex !== null) {
         void prefetchDocumentPage(nextPageIndex)
       }
@@ -547,7 +582,7 @@ export function useOcrFolder(
   const reset = useCallback(() => {
     stop()
     tokenRef.current += 1
-    rejectRef.current?.(new Error("Đã hủy quá trình chờ kết quả OCR."))
+    rejectRef.current?.(new OcrPollingReplacedError())
     rejectRef.current = null
     pendingStartRef.current = null
     clearDocumentRangeCache(documentPageCacheRef.current)
@@ -565,90 +600,93 @@ export function useOcrFolder(
     setMetadataDocumentScopeState(DEFAULT_METADATA_DOCUMENT_SCOPE)
   }, [stop])
 
-  const refresh = useCallback(async (options: OcrRefreshOptions = {}) => {
-    if (!sessionId) {
-      pendingStartRef.current = null
-      clearDocumentRangeCache(documentPageCacheRef.current)
-      prefetchingDocumentRangesRef.current.clear()
-      setState("idle")
-      setStatus(null)
-      setError("")
-      metadataDocumentScopeRequestKeyRef.current = "all"
-      metadataDocumentScopeStateKeyRef.current = "all"
-      metadataDocumentScopeRef.current = DEFAULT_METADATA_DOCUMENT_SCOPE
-      setMetadataDocumentScopeState(DEFAULT_METADATA_DOCUMENT_SCOPE)
-      return null
-    }
+  const refresh = useCallback(
+    async (options: OcrRefreshOptions = {}) => {
+      if (!sessionId) {
+        pendingStartRef.current = null
+        clearDocumentRangeCache(documentPageCacheRef.current)
+        prefetchingDocumentRangesRef.current.clear()
+        setState("idle")
+        setStatus(null)
+        setError("")
+        metadataDocumentScopeRequestKeyRef.current = "all"
+        metadataDocumentScopeStateKeyRef.current = "all"
+        metadataDocumentScopeRef.current = DEFAULT_METADATA_DOCUMENT_SCOPE
+        setMetadataDocumentScopeState(DEFAULT_METADATA_DOCUMENT_SCOPE)
+        return null
+      }
 
-    const includeDocuments = options.includeDocuments ?? false
-    const pageSize = documentPageSizeRef.current
-    const pageLimit =
-      includeDocuments && options.limit === undefined
-        ? pageSize
-        : options.limit
-    const pageOffset =
-      includeDocuments && options.offset === undefined
-        ? documentPageIndexRef.current * pageSize
-        : options.offset
-    const requestScope = metadataDocumentScopeRef.current
-    const requestScopeKey = metadataDocumentScopeKey(requestScope)
-    const result = await getDigitizationStatus(sessionId, {
-      includeDocuments,
-      summaryOnly: options.summaryOnly ?? !includeDocuments,
-      limit: pageLimit,
-      offset: pageOffset,
-      metadataDocumentScope: requestScope,
-    })
-    if (metadataDocumentScopeStateKeyRef.current !== requestScopeKey) {
-      return null
-    }
-    const fallbackFolderPath = result?.batches[0]?.folder_path ?? ""
-    if (!hasDigitizationWork(result)) {
-      stop()
-      tokenRef.current += 1
-      pendingStartRef.current = null
-      clearDocumentRangeCache(documentPageCacheRef.current)
-      prefetchingDocumentRangesRef.current.clear()
-      setState("idle")
-      setStatus(null)
-      setError("")
-      metadataDocumentScopeRequestKeyRef.current = "all"
-      metadataDocumentScopeStateKeyRef.current = "all"
-      metadataDocumentScopeRef.current = DEFAULT_METADATA_DOCUMENT_SCOPE
-      setMetadataDocumentScopeState(DEFAULT_METADATA_DOCUMENT_SCOPE)
-      return null
-    }
+      const includeDocuments = options.includeDocuments ?? false
+      const pageSize = documentPageSizeRef.current
+      const pageLimit =
+        includeDocuments && options.limit === undefined
+          ? pageSize
+          : options.limit
+      const pageOffset =
+        includeDocuments && options.offset === undefined
+          ? documentPageIndexRef.current * pageSize
+          : options.offset
+      const requestScope = metadataDocumentScopeRef.current
+      const requestScopeKey = metadataDocumentScopeKey(requestScope)
+      const result = await getDigitizationStatus(sessionId, {
+        includeDocuments,
+        summaryOnly: options.summaryOnly ?? !includeDocuments,
+        limit: pageLimit,
+        offset: pageOffset,
+        metadataDocumentScope: requestScope,
+      })
+      if (metadataDocumentScopeStateKeyRef.current !== requestScopeKey) {
+        return null
+      }
+      const fallbackFolderPath = result?.batches[0]?.folder_path ?? ""
+      if (!hasDigitizationWork(result)) {
+        stop()
+        tokenRef.current += 1
+        pendingStartRef.current = null
+        clearDocumentRangeCache(documentPageCacheRef.current)
+        prefetchingDocumentRangesRef.current.clear()
+        setState("idle")
+        setStatus(null)
+        setError("")
+        metadataDocumentScopeRequestKeyRef.current = "all"
+        metadataDocumentScopeStateKeyRef.current = "all"
+        metadataDocumentScopeRef.current = DEFAULT_METADATA_DOCUMENT_SCOPE
+        setMetadataDocumentScopeState(DEFAULT_METADATA_DOCUMENT_SCOPE)
+        return null
+      }
 
-    const nextStatus = applyStatusResult(result, fallbackFolderPath, {
-      preserveDocuments: !includeDocuments,
-    })
-    if (includeDocuments) {
-      cacheDocumentRange(documentPageCacheRef.current, nextStatus)
-    }
-    setError("")
-    const complete = isDigitizationComplete(result)
-    refreshDocumentsForStatus(result, { force: includeDocuments || complete })
-    if (complete) {
-      stop()
-      tokenRef.current += 1
-      setState("done")
-    } else {
-      stop()
-      const token = tokenRef.current + 1
-      tokenRef.current = token
-      setState(
-        isMetadataExtractionComplete(result) ? "metadata_ready" : "polling"
-      )
-      pollUntilComplete(token, fallbackFolderPath)
-    }
-    return nextStatus
-  }, [
-    applyStatusResult,
-    pollUntilComplete,
-    refreshDocumentsForStatus,
-    sessionId,
-    stop,
-  ])
+      const nextStatus = applyStatusResult(result, fallbackFolderPath, {
+        preserveDocuments: !includeDocuments,
+      })
+      if (includeDocuments) {
+        cacheDocumentRange(documentPageCacheRef.current, nextStatus)
+      }
+      setError("")
+      const complete = isDigitizationComplete(result)
+      refreshDocumentsForStatus(result, { force: includeDocuments || complete })
+      if (complete) {
+        stop()
+        tokenRef.current += 1
+        setState("done")
+      } else {
+        stop()
+        const token = tokenRef.current + 1
+        tokenRef.current = token
+        setState(
+          isMetadataExtractionComplete(result) ? "metadata_ready" : "polling"
+        )
+        pollUntilComplete(token, fallbackFolderPath)
+      }
+      return nextStatus
+    },
+    [
+      applyStatusResult,
+      pollUntilComplete,
+      refreshDocumentsForStatus,
+      sessionId,
+      stop,
+    ]
+  )
 
   const mergeVerifiedDocuments = useCallback(
     (documents: SessionDocumentResponse[]) => {
@@ -679,8 +717,10 @@ export function useOcrFolder(
           if (!nextJob) return job
           seenIds.add(nextJob.id)
           changed = true
-          readyDelta += Number(nextJob.metadata_ready) - Number(job.metadata_ready)
-          finalDelta += Number(nextJob.metadata_final) - Number(job.metadata_final)
+          readyDelta +=
+            Number(nextJob.metadata_ready) - Number(job.metadata_ready)
+          finalDelta +=
+            Number(nextJob.metadata_final) - Number(job.metadata_final)
           failedDelta +=
             Number(isFailedMetadataJob(nextJob)) -
             Number(isFailedMetadataJob(job))
@@ -757,9 +797,7 @@ export function useOcrFolder(
         throw new Error("Chưa có session để chạy lại metadata.")
       }
       stop()
-      rejectRef.current?.(
-        new Error("Quá trình chờ kết quả OCR đã được thay thế.")
-      )
+      rejectRef.current?.(new OcrPollingReplacedError())
       rejectRef.current = null
       const token = tokenRef.current + 1
       tokenRef.current = token
@@ -837,9 +875,11 @@ export function useOcrFolder(
         const requestScope = metadataDocumentScopeRef.current
         const requestScopeKey = metadataDocumentScopeKey(requestScope)
         const pageSize = documentPageSizeRef.current
+        const shouldHydrateDocuments =
+          (statusRef.current?.jobs.length ?? 0) === 0
         const result = await getDigitizationStatus(sessionId, {
-          includeDocuments: false,
-          summaryOnly: true,
+          includeDocuments: shouldHydrateDocuments,
+          summaryOnly: !shouldHydrateDocuments,
           limit: pageSize,
           offset: documentPageIndexRef.current * pageSize,
           metadataDocumentScope: requestScope,
@@ -874,12 +914,17 @@ export function useOcrFolder(
         }
         emptyStatusRetries = 0
 
-        applyStatusResult(result, fallbackFolderPath, {
+        const nextStatus = applyStatusResult(result, fallbackFolderPath, {
           preserveDocuments: true,
         })
+        if (shouldHydrateDocuments) {
+          cacheDocumentRange(documentPageCacheRef.current, nextStatus)
+        }
         setError("")
         const complete = isDigitizationComplete(result)
-        refreshDocumentsForStatus(result, { force: complete })
+        refreshDocumentsForStatus(result, {
+          force: complete && !shouldHydrateDocuments,
+        })
         if (complete) {
           setState("done")
           return
@@ -940,6 +985,7 @@ export function useOcrFolder(
         }
         sessionFileId?: number
         remoteFileId?: string | number | null
+        ingestionRunIds?: number[]
         uploadMode?: UploadMode
         force?: boolean
         reextract?: boolean
@@ -950,9 +996,7 @@ export function useOcrFolder(
         throw new Error("Chưa có session để bắt đầu OCR.")
       }
       stop()
-      rejectRef.current?.(
-        new Error("Quá trình chờ kết quả OCR đã được thay thế.")
-      )
+      rejectRef.current?.(new OcrPollingReplacedError())
       rejectRef.current = null
       const token = tokenRef.current + 1
       tokenRef.current = token
@@ -970,11 +1014,22 @@ export function useOcrFolder(
         ) > 0
       const shouldResetExistingDocuments =
         options.reextract === true && !options.uploadMode
+      const ingestionRunIds = [
+        ...new Set(
+          (options.ingestionRunIds ?? []).filter(
+            (value) => Number.isInteger(value) && value > 0
+          )
+        ),
+      ]
       pendingStartRef.current =
-        shouldShowReextractingState && previousStatus
+        (shouldShowReextractingState && previousStatus) ||
+        ingestionRunIds.length > 0
           ? {
-              previousBatchId: previousStatus.batch_id ?? null,
+              previousBatchId: previousStatus?.batch_id ?? null,
               expectedMode,
+              ...(ingestionRunIds.length > 0
+                ? { expectedIngestionRunIds: ingestionRunIds }
+                : {}),
             }
           : null
       clearDocumentRangeCache(documentPageCacheRef.current)
@@ -987,7 +1042,9 @@ export function useOcrFolder(
               resetExistingDocuments: shouldResetExistingDocuments,
               uploadMode: options.uploadMode,
             })
-          : null
+          : ingestionRunIds.length > 0 && previousStatus
+            ? previousStatus
+            : null
       )
       setError("")
 
@@ -1004,6 +1061,9 @@ export function useOcrFolder(
             options.documentNumberingStyleOverrides ?? null,
           session_file_id: options.sessionFileId,
           remote_file_id: options.remoteFileId,
+          ...(ingestionRunIds.length > 0
+            ? { ingestion_run_ids: ingestionRunIds }
+            : {}),
           ...(options.uploadMode
             ? {
                 upload_mode: options.uploadMode,
@@ -1042,7 +1102,7 @@ export function useOcrFolder(
           }
           const poll = async () => {
             if (tokenRef.current !== token) {
-              rejectPolling(new Error("Đã hủy quá trình chờ kết quả OCR."))
+              rejectPolling(new OcrPollingReplacedError())
               return
             }
             if (document.visibilityState === "hidden") {
@@ -1149,16 +1209,12 @@ export function useOcrFolder(
           void poll()
         })
       } finally {
-        manualOperationRef.current = false
+        if (tokenRef.current === token) {
+          manualOperationRef.current = false
+        }
       }
     },
-    [
-      refreshDocumentsForStatus,
-      schedulePollRetry,
-      sessionId,
-      status,
-      stop,
-    ]
+    [refreshDocumentsForStatus, schedulePollRetry, sessionId, status, stop]
   )
 
   return {
@@ -1185,10 +1241,10 @@ function hasDigitizationWork(
 ): boolean {
   return Boolean(
     result &&
-      (result.batches.length > 0 ||
-        result.ingestion_runs.length > 0 ||
-        result.documents.length > 0 ||
-        (result.summary?.total_documents ?? 0) > 0)
+    (result.batches.length > 0 ||
+      result.ingestion_runs.length > 0 ||
+      result.documents.length > 0 ||
+      (result.summary?.total_documents ?? 0) > 0)
   )
 }
 
@@ -1353,7 +1409,8 @@ function missingDocumentRanges(
 ): CachedDocumentRange[] {
   const offset = Math.max(0, Math.floor(Number(range.offset) || 0))
   const limit = Math.max(1, Math.floor(Number(range.limit) || 1))
-  const total = cache.total ?? (cache.status ? documentRangeTotal(cache.status) : null)
+  const total =
+    cache.total ?? (cache.status ? documentRangeTotal(cache.status) : null)
   const end = total === null ? offset + limit : Math.min(offset + limit, total)
   const ranges: CachedDocumentRange[] = []
   let missingStart: number | null = null
@@ -1430,7 +1487,8 @@ function documentRangePagination(
     total: number | null
   }
 ): FolderStatusResponse["pagination"] {
-  const paginationTotal = total ?? Math.max(offset + returned, status.jobs.length)
+  const paginationTotal =
+    total ?? Math.max(offset + returned, status.jobs.length)
   const nextOffset = offset + returned
   const hasMore = nextOffset < paginationTotal
   return {
@@ -1622,7 +1680,8 @@ function isProcessingMetadataJob(
   job: Pick<JobSummary, "status" | "remote_metadata_status" | "metadata_ready">
 ) {
   return (
-    !job.metadata_ready && METADATA_RUNNING_JOB_STATUSES.has(metadataJobStatus(job))
+    !job.metadata_ready &&
+    METADATA_RUNNING_JOB_STATUSES.has(metadataJobStatus(job))
   )
 }
 

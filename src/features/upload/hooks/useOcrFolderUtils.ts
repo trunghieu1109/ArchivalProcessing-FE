@@ -14,6 +14,7 @@ import { buildDisplayMetadata } from "@/features/upload/lib/metadata"
 export interface PendingStartContext {
   previousBatchId: number | null
   expectedMode: DocumentNumberingMode
+  expectedIngestionRunIds?: number[]
 }
 
 export function sessionDocumentToJobSummary(
@@ -175,10 +176,25 @@ export function mergeReextractingStatus(
 
 export function hasExpectedStartedBatch(
   result: {
-    batches: Array<{ id: number; document_numbering_mode?: string | null }>
+    batches: Array<{
+      id: number
+      ingestion_run_id?: number | null
+      document_numbering_mode?: string | null
+    }>
   } | null,
   pendingStart: PendingStartContext
 ): boolean {
+  const expectedRunIds = pendingStart.expectedIngestionRunIds ?? []
+  if (expectedRunIds.length > 0) {
+    return expectedRunIds.every((runId) =>
+      result?.batches.some(
+        (batch) =>
+          batch.ingestion_run_id === runId &&
+          normalizeDocumentNumberingMode(batch.document_numbering_mode) ===
+            pendingStart.expectedMode
+      )
+    )
+  }
   return Boolean(
     result?.batches.some((batch) => {
       if (

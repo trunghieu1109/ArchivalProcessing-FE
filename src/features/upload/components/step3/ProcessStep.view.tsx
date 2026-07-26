@@ -281,9 +281,9 @@ export function ProcessStepView(props: ProcessStepViewProps) {
                 `Đang giải nén ${pendingIngestionCount} file ZIP.`}
             </p>
             <p className="mt-1 text-xs leading-5 text-[#475569]">
-              Các tài liệu đã sẵn sàng vẫn có thể review bình thường. Khi batch
-              ZIP mới giải nén xong, hệ thống sẽ tự chạy OCR và danh sách tài
-              liệu sẽ được cập nhật.
+              Tài liệu từ các lần upload trước vẫn được giữ nguyên và tiếp tục
+              cập nhật trạng thái. Tài liệu của lần upload mới sẽ tự động được
+              bổ sung vào danh sách này.
             </p>
           </div>
         </div>

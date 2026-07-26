@@ -27,6 +27,7 @@ import {
 
 const LAST_SESSION_KEY = "archival-processing:last-session-id"
 const SESSION_PAGE_SIZE = 12
+const SESSION_DETAIL_LOAD_CONCURRENCY = 2
 
 async function loadAnalysisStatuses(
   sessions: SessionSummary[]
@@ -38,21 +39,25 @@ async function loadAnalysisStatuses(
     ])
   ) as Record<string, SessionAnalysisStatuses>
 
-  const results = await Promise.allSettled(
-    sessions.map(async (session) => {
-      const detail = await getSession(session.session_id)
-      return [
-        session.session_id,
-        analysisStatusesFromSessionDetail(detail),
-      ] as const
-    })
-  )
-
-  for (const result of results) {
-    if (result.status !== "fulfilled") continue
-    const [sessionId, statuses] = result.value
-    fallbackStatuses[sessionId] = statuses
+  let nextIndex = 0
+  const loadNext = async () => {
+    while (nextIndex < sessions.length) {
+      const session = sessions[nextIndex]
+      nextIndex += 1
+      try {
+        const detail = await getSession(session.session_id)
+        fallbackStatuses[session.session_id] =
+          analysisStatusesFromSessionDetail(detail)
+      } catch {
+        // The summary fallback remains usable while a detail request is unavailable.
+      }
+    }
   }
+  const workerCount = Math.min(
+    SESSION_DETAIL_LOAD_CONCURRENCY,
+    sessions.length
+  )
+  await Promise.all(Array.from({ length: workerCount }, () => loadNext()))
 
   return fallbackStatuses
 }
@@ -103,15 +108,10 @@ export function SessionsPage() {
     setLoading(true)
     setError("")
     try {
-      const [response, coordinatorUsers] = await Promise.all([
-        listSessions({
-          limit: sessionPageSize,
-          offset: sessionOffset,
-        }),
-        isAdmin
-          ? listChinhlyUsers({ role: "coordinator", active: true, limit: 500 })
-          : Promise.resolve([]),
-      ])
+      const response = await listSessions({
+        limit: sessionPageSize,
+        offset: sessionOffset,
+      })
       if (loadRequestIdRef.current !== requestId) return
       const total = response.pagination?.total ?? response.sessions.length
       const pageCount = Math.max(1, Math.ceil(total / sessionPageSize))
@@ -120,20 +120,38 @@ export function SessionsPage() {
         total > 0 &&
         sessionPageIndex >= pageCount
       ) {
+        setSessions([])
         setSessionTotal(total)
-        setCoordinators(coordinatorUsers)
         setAnalysisStatusesBySessionId({})
         setSessionPageIndex(pageCount - 1)
         return
       }
-      const nextAnalysisStatuses = await loadAnalysisStatuses(
-        response.sessions
-      )
-      if (loadRequestIdRef.current !== requestId) return
+
       setSessions(response.sessions)
       setSessionTotal(total)
-      setCoordinators(coordinatorUsers)
-      setAnalysisStatusesBySessionId(nextAnalysisStatuses)
+      setAnalysisStatusesBySessionId(
+        Object.fromEntries(
+          response.sessions.map((session) => [
+            session.session_id,
+            fallbackAnalysisStatuses(session),
+          ])
+        )
+      )
+      setLoading(false)
+
+      const [analysisResult, coordinatorResult] = await Promise.allSettled([
+        loadAnalysisStatuses(response.sessions),
+        isAdmin
+          ? listChinhlyUsers({ role: "coordinator", active: true, limit: 500 })
+          : Promise.resolve([]),
+      ])
+      if (loadRequestIdRef.current !== requestId) return
+      if (analysisResult.status === "fulfilled") {
+        setAnalysisStatusesBySessionId(analysisResult.value)
+      }
+      if (coordinatorResult.status === "fulfilled") {
+        setCoordinators(coordinatorResult.value)
+      }
     } catch (err) {
       if (loadRequestIdRef.current !== requestId) return
       const message =

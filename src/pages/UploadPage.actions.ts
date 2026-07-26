@@ -44,6 +44,10 @@ export function createUploadPageActions(context: Record<string, any>) {
   const {
     routeSessionId,
     sessionId,
+    sessionViewScope,
+    isSessionViewActive,
+    claimSessionView,
+    resolveSessionViewId,
     existingSessionMode,
     zipMaxFiles,
     syncSessionMetadata,
@@ -82,12 +86,29 @@ export function createUploadPageActions(context: Record<string, any>) {
     setPlanCompletedPhases,
   } = context
 
+  const scopedSessionId = (): string | null =>
+    routeSessionId ??
+    (typeof resolveSessionViewId === "function"
+      ? resolveSessionViewId(sessionViewScope)
+      : null) ??
+    (sessionViewScope ? null : (sessionId ?? cache.sessionId))
+  const sessionIsActive = (candidateSessionId: string): boolean =>
+    typeof isSessionViewActive !== "function" ||
+    isSessionViewActive(sessionViewScope, candidateSessionId)
+
   const ensureSession = async () => {
-    if (cache.sessionId) return cache.sessionId
+    const currentSessionId = scopedSessionId()
+    if (currentSessionId) return currentSessionId
     const created = await createSession(
       "ui",
       normalizeSessionMetadataPayload(cache.sessionMetadata)
     )
+    if (
+      typeof claimSessionView === "function" &&
+      !claimSessionView(sessionViewScope, created.session_id)
+    ) {
+      return created.session_id
+    }
     cache.sessionId = created.session_id
     cache.activeClusterVersionId = null
     setSessionId(created.session_id)
@@ -97,16 +118,20 @@ export function createUploadPageActions(context: Record<string, any>) {
   }
 
   const saveSessionMetadata = async (metadata: SessionMetadataValues) => {
-    const currentSessionId = sessionId ?? routeSessionId ?? cache.sessionId
+    const currentSessionId = scopedSessionId()
     if (!currentSessionId) {
       throw new Error("Chưa có session để lưu thông tin kho/phông.")
     }
     const updated = await patchSessionMetadata(currentSessionId, metadata)
+    if (!sessionIsActive(currentSessionId)) return
     syncSessionMetadata(updated)
   }
 
   const uploadInput = async (fileType: SessionInputFileType, file: File) => {
-    if (!cache.sessionId) {
+    const currentSessionId = scopedSessionId()
+    // Data selection is staging only. The primary CTA owns the transition from
+    // a selected ZIP to a network upload in both new and existing sessions.
+    if (!currentSessionId || fileType === "raw_zip") {
       const staged = stageInput(fileType, file)
       if (fileType === "arrangement_plan") cache.draftArrangementPlanFile = file
       if (fileType === "retention_schedule") {
@@ -114,7 +139,11 @@ export function createUploadPageActions(context: Record<string, any>) {
         cache.draftRetentionFiles = [file]
         cache.retentionUploads = [staged]
       }
-      if (fileType === "raw_zip") cache.draftZipFile = file
+      if (fileType === "raw_zip") {
+        cache.draftZipFile = file
+        cache.draftFolderSources = []
+        cache.draftFolderRootName = ""
+      }
       if (
         fileType === "arrangement_plan" ||
         fileType === "retention_schedule"
@@ -124,48 +153,12 @@ export function createUploadPageActions(context: Record<string, any>) {
       }
       return staged
     }
-    const currentSessionId = cache.sessionId
-    if (fileType === "raw_zip") {
-      syncZipUploadProgress(zipUploadProgressForFile(file, "uploading"))
-    }
-    let uploaded: SessionInputUploadResponse
-    try {
-      uploaded = await uploadSessionInput(currentSessionId, fileType, file, {
-        ...(fileType === "raw_zip"
-          ? {
-              uploadMode: cache.uploadMode,
-              maxFiles: parseZipMaxFiles(),
-            }
-          : {}),
-        onProgress: fileType === "raw_zip" ? syncZipUploadProgress : undefined,
-      })
-    } catch (err) {
-      if (fileType === "raw_zip") {
-        syncZipUploadProgress(
-          zipUploadProgressForFile(
-            file,
-            "error",
-            cache.zipUploadProgress?.loadedBytes ?? 0
-          )
-        )
-      }
-      throw err
-    }
-    if (fileType === "raw_zip") {
-      syncZipUploadProgress(zipUploadProgressForFile(file, "done", file.size))
-    }
-    if (fileType === "raw_zip") {
-      cache.zipUpload = uploaded
-      cache.zipHas = true
-      cache.zipState = "done"
-      setZipHas(true)
-      setZipState("done")
-      syncZipFolderPath(uploaded.folder_path ?? uploaded.data_path ?? "")
-      if (existingSessionMode) {
-        cache.rawZipReuploaded = true
-        setZipSupplementUploaded(true)
-      }
-    }
+    const uploaded: SessionInputUploadResponse = await uploadSessionInput(
+      currentSessionId,
+      fileType,
+      file
+    )
+    if (!sessionIsActive(currentSessionId)) return uploaded
     if (fileType === "arrangement_plan" || fileType === "retention_schedule") {
       if (fileType === "arrangement_plan") {
         cache.arrangementPlanUpload = uploaded
@@ -208,7 +201,8 @@ export function createUploadPageActions(context: Record<string, any>) {
   const uploadRetentionInputs = async (files: File[]) => {
     const retentionFiles = files.filter(Boolean)
     if (retentionFiles.length === 0) return []
-    if (!cache.sessionId) {
+    const currentSessionId = scopedSessionId()
+    if (!currentSessionId) {
       const staged = retentionFiles.map((file) =>
         stageInput("retention_schedule", file)
       )
@@ -227,13 +221,10 @@ export function createUploadPageActions(context: Record<string, any>) {
 
     const uploaded = await Promise.all(
       retentionFiles.map((file) =>
-        uploadSessionInput(
-          cache.sessionId as string,
-          "retention_schedule",
-          file
-        )
+        uploadSessionInput(currentSessionId, "retention_schedule", file)
       )
     )
+    if (!sessionIsActive(currentSessionId)) return uploaded
     cache.retentionUploads = [...cache.retentionUploads, ...uploaded]
     cache.retentionUpload =
       cache.retentionUploads[cache.retentionUploads.length - 1] ?? null
@@ -551,17 +542,38 @@ export function createUploadPageActions(context: Record<string, any>) {
     setDoc2Has(v)
   }
   const syncZipHas = (v: boolean) => {
-    cache.zipHas = v
     if (!v) {
-      cache.zipUpload = null
       cache.draftZipFile = null
+      cache.draftFolderSources = []
+      cache.draftFolderRootName = ""
       cache.rawZipReuploaded = false
       setZipSupplementUploaded(false)
       syncZipUploadProgress(null)
-      syncZipFolderPath("")
       syncZipMaxFiles("")
       syncUploadMode("append")
+      const persistedFolderReady = Boolean(
+        cache.latestFolderUpload &&
+        cache.latestFolderUpload.document_sync_status === "ready" &&
+        cache.latestFolderUpload.counts.effective > 0
+      )
+      const persistedZipReady = Boolean(
+        cache.zipUpload &&
+        (cache.zipUpload.upload_status == null ||
+          cache.zipUpload.upload_status === "completed")
+      )
+      const persisted = persistedFolderReady || persistedZipReady
+      cache.zipHas = persisted
+      syncZipFolderPath(
+        persistedFolderReady
+          ? (cache.latestFolderUpload?.root_name ?? "")
+          : persistedZipReady
+            ? (cache.zipUpload?.folder_path ?? cache.zipUpload?.data_path ?? "")
+            : ""
+      )
+      setZipHas(persisted)
+      return
     }
+    cache.zipHas = true
     setZipHas(v)
   }
   const syncZipEntries = (e: ArchiveEntry[]) => {
