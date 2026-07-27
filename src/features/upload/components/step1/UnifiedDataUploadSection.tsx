@@ -15,6 +15,7 @@ import {
   type FolderUploadSummary,
   useFolderUploadJobs,
   useFolderUploadManager,
+  waitForFolderUploadCompletion,
 } from "@/features/folder-upload"
 import type {
   SessionInputUploadResponse,
@@ -24,6 +25,7 @@ import type {
 import { UploadInterruptionNotice } from "@/features/upload/components/step1/UploadInterruptionNotice"
 import {
   PendingDataUploadNotice,
+  type PendingDataUploadStartResult,
   type PendingDataUploadSummary,
   type UnifiedDataUploadHandle,
 } from "@/features/upload/components/step1/PendingDataUpload"
@@ -333,45 +335,50 @@ export const UnifiedDataUploadSection = forwardRef<
     }
   }
 
-  const startPending = async (): Promise<"workflow" | "started" | null> => {
-    if (!pendingSource) return null
-    if (pendingSource.ownerSessionId !== sessionId) {
-      if (pendingSource.kind === "zip") discardStagedZip()
-      clearPendingSource()
-      toast.error(
-        "Dữ liệu đã chọn thuộc session khác. Vui lòng chọn lại trước khi upload."
-      )
-      return null
+  const startPending =
+    async (): Promise<PendingDataUploadStartResult | null> => {
+      if (!pendingSource) return null
+      if (pendingSource.ownerSessionId !== sessionId) {
+        if (pendingSource.kind === "zip") discardStagedZip()
+        clearPendingSource()
+        toast.error(
+          "Dữ liệu đã chọn thuộc session khác. Vui lòng chọn lại trước khi upload."
+        )
+        return null
+      }
+      if (pendingSource.kind === "zip") {
+        expectedSessionTransitionRef.current = sessionId === null
+        return { kind: "zip" }
+      }
+      setStartingFolder(true)
+      try {
+        expectedSessionTransitionRef.current = sessionId === null
+        const targetSessionId = sessionId ?? (await ensureSession())
+        const jobId = folderManager.start({
+          sessionId: targetSessionId,
+          files: pendingSource.files,
+          mode: uploadMode,
+        })
+        const completion = waitForFolderUploadCompletion(
+          folderManager,
+          jobId
+        ).then(() => undefined)
+        clearPendingSource()
+        toast.success(
+          "Đã bắt đầu upload folder. Bạn có thể chuyển sang màn hình khác."
+        )
+        return { kind: "folder", completion }
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Không thể bắt đầu upload folder."
+        )
+        return null
+      } finally {
+        setStartingFolder(false)
+      }
     }
-    if (pendingSource.kind === "zip") {
-      expectedSessionTransitionRef.current = sessionId === null
-      return "workflow"
-    }
-    setStartingFolder(true)
-    try {
-      expectedSessionTransitionRef.current = sessionId === null
-      const targetSessionId = sessionId ?? (await ensureSession())
-      folderManager.start({
-        sessionId: targetSessionId,
-        files: pendingSource.files,
-        mode: uploadMode,
-      })
-      clearPendingSource()
-      toast.success(
-        "Đã bắt đầu upload folder. Bạn có thể chuyển sang màn hình khác."
-      )
-      return "started"
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Không thể bắt đầu upload folder."
-      )
-      return null
-    } finally {
-      setStartingFolder(false)
-    }
-  }
 
   const acceptPending = () => {
     clearPendingSource()

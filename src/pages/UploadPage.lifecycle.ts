@@ -94,6 +94,7 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     setDoc2State,
     setZipState,
     setPlanAnalysisState,
+    setPlanAnalysisJobId,
     setDossierBuildStrategy,
     setDocumentNumberingMode,
     setDocumentNumberingStylePreset,
@@ -142,6 +143,7 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     setDoc2State(cache.doc2State)
     setZipState(cache.zipState)
     setPlanAnalysisState(cache.planAnalysisState)
+    setPlanAnalysisJobId(cache.planAnalysisJobId)
     setDossierBuildStrategy(cache.dossierBuildStrategy)
     setDocumentNumberingMode(cache.documentNumberingMode)
     setDocumentNumberingStylePreset(cache.documentNumberingStylePreset)
@@ -202,6 +204,7 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     cache.doc2State = "idle"
     cache.zipState = "idle"
     cache.planAnalysisState = "idle"
+    cache.planAnalysisJobId = null
     cache.dossierBuildStrategy = DEFAULT_DOSSIER_BUILD_STRATEGY
     cache.persistedDossierBuildStrategy = DEFAULT_DOSSIER_BUILD_STRATEGY
     cache.documentNumberingMode = DEFAULT_DOCUMENT_NUMBERING_MODE
@@ -479,7 +482,7 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
             documentNumberingStyleOverrides:
               activePlanDocumentNumberingStyleOverrides(activePlanForDisplay),
           }
-          cache.activePlanResponse = loadedActivePlan
+          cache.activePlanResponse = activePlanForDisplay
           cache.activePlanSignature =
             planResponseMaterialSignature(activePlanForDisplay)
           cache.activeParsedPlan = activeParsedPlan
@@ -521,6 +524,18 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
           )
         }
 
+        const hasPendingPlanAnalysis =
+          activePlanAnalysisJob !== null &&
+          (Boolean(arrangementPlanFile) || Boolean(retentionFile))
+        const processingArrangement =
+          hasPendingPlanAnalysis &&
+          Boolean(arrangementPlanFile) &&
+          (activeJobHasArrangementFile || !activeJobHasKnownPlanInput)
+        const processingRetention =
+          hasPendingPlanAnalysis &&
+          Boolean(retentionFile) &&
+          (activeJobHasRetentionFile || !activeJobHasKnownPlanInput)
+
         if (workingPlan) {
           const plan = activePlanToParsedPlan(workingPlan)
           const workingDraftPayload = planResponseToDraftPayload(workingPlan)
@@ -539,7 +554,23 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
             planDraftPayloadSignature(workingDraftPayload)
           cache.parsedPlan = plan
           cache.folderTree = planToTree(plan)
-          cache.planAnalysisState = "done"
+          cache.doc1State = arrangementPlanFile
+            ? processingArrangement
+              ? "processing"
+              : "done"
+            : "idle"
+          cache.doc2State = retentionFile
+            ? processingRetention
+              ? "processing"
+              : "done"
+            : "idle"
+          cache.planAnalysisState = hasPendingPlanAnalysis
+            ? "processing"
+            : "done"
+          cache.planAnalysisJobId =
+            hasPendingPlanAnalysis && activePlanAnalysisJob
+              ? activePlanAnalysisJob.id
+              : null
           cache.planViewTab =
             effectiveActivePlanVersionId &&
             String(workingPlan.id ?? "").trim() ===
@@ -561,27 +592,31 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
           setPlanDraftDirty(cache.planDraftDirty)
           setParsedPlan(plan)
           setFolderTree(cache.folderTree)
-          setPlanAnalysisState("done")
+          setDoc1State(cache.doc1State)
+          setDoc2State(cache.doc2State)
+          setPlanAnalysisState(cache.planAnalysisState)
+          setPlanAnalysisJobId(cache.planAnalysisJobId)
           setPlanViewTab(cache.planViewTab)
           setDossierBuildStrategy(buildStrategy)
           setDocumentNumberingMode(numberingMode)
           setDocumentNumberingStylePreset(numberingStylePreset)
           setDocumentNumberingStyleOverrides(numberingStyleOverrides)
-          setPlanProgressPhase(null)
-          setPlanProgressMessage("")
-          setPlanCompletedPhases(new Set())
+          if (hasPendingPlanAnalysis && activePlanAnalysisJob) {
+            setPlanCompletedPhases(new Set(["upload_inputs"]))
+            setPlanProgressPhase("preparing_plan_file")
+            setPlanProgressMessage(
+              pendingPlanAnalysisMessage({
+                job: activePlanAnalysisJob,
+                processingArrangement,
+                processingRetention,
+              })
+            )
+          } else {
+            setPlanProgressPhase(null)
+            setPlanProgressMessage("")
+            setPlanCompletedPhases(new Set())
+          }
         } else {
-          const hasPendingPlanAnalysis =
-            activePlanAnalysisJob !== null &&
-            (Boolean(arrangementPlanFile) || Boolean(retentionFile))
-          const processingArrangement =
-            hasPendingPlanAnalysis &&
-            Boolean(arrangementPlanFile) &&
-            (activeJobHasArrangementFile || !activeJobHasKnownPlanInput)
-          const processingRetention =
-            hasPendingPlanAnalysis &&
-            Boolean(retentionFile) &&
-            (activeJobHasRetentionFile || !activeJobHasKnownPlanInput)
           cache.workingPlanVersionId = ""
           cache.workingPlanStatus = ""
           cache.workingPlanResponse = null
@@ -607,6 +642,10 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
           cache.planAnalysisState = hasPendingPlanAnalysis
             ? "processing"
             : "idle"
+          cache.planAnalysisJobId =
+            hasPendingPlanAnalysis && activePlanAnalysisJob
+              ? activePlanAnalysisJob.id
+              : null
           setParsedPlan(cache.parsedPlan)
           setFolderTree(cache.folderTree)
           setWorkingPlanVersionId(cache.workingPlanVersionId)
@@ -616,15 +655,12 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
           setDoc1State(cache.doc1State)
           setDoc2State(cache.doc2State)
           setPlanAnalysisState(cache.planAnalysisState)
+          setPlanAnalysisJobId(cache.planAnalysisJobId)
           setDossierBuildStrategy(cache.dossierBuildStrategy)
           setDocumentNumberingMode(cache.documentNumberingMode)
           if (hasPendingPlanAnalysis && activePlanAnalysisJob) {
             setPlanCompletedPhases(new Set(["upload_inputs"]))
-            setPlanProgressPhase(
-              processingRetention && !processingArrangement
-                ? "retention_schedule"
-                : "preparing_plan_file"
-            )
+            setPlanProgressPhase("preparing_plan_file")
             setPlanProgressMessage(
               pendingPlanAnalysisMessage({
                 job: activePlanAnalysisJob,

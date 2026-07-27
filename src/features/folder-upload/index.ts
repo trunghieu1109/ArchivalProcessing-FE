@@ -1,6 +1,7 @@
 export * from "./types"
 export * from "./folderUploadApi"
 export * from "./FolderUploadManager"
+export * from "./folderUploadCompletion"
 export * from "./FolderUploadProvider"
 export * from "./useFolderUpload"
 export * from "./GlobalUploadDock"

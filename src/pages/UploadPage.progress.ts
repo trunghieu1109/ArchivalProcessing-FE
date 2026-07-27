@@ -43,10 +43,24 @@ export function normalizePlanProgressPhase(value: unknown): string {
   }
   if (phase === "file_register_analysis") return "file_register_analysis"
   if (phase === "group_definitions") return "group_definitions"
-  if (phase === "persisting_plan" || phase === "validating_result") {
+  if (
+    phase === "persisting_plan" ||
+    phase === "validating_result" ||
+    phase === "retention_indexing" ||
+    phase === "retention_candidate_versions"
+  ) {
     return "retention_period"
   }
   return ""
+}
+
+export function planAnalysisEventBelongsToJob(
+  payload: Record<string, unknown> | undefined,
+  jobId: number | null
+): boolean {
+  if (jobId === null || !Number.isFinite(jobId)) return false
+  const eventJobId = Number(payload?.job_id)
+  return Number.isFinite(eventJobId) && eventJobId === jobId
 }
 
 export function planProgressMessageForPhase(phase: string): string {

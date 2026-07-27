@@ -71,6 +71,8 @@ export interface UploadPageStepOneProps {
   syncDoc2State: (state: ProcessState) => void
   syncDoc1Has: (hasFile: boolean) => void
   syncDoc2Has: (hasFile: boolean) => void
+  doc1Has: boolean
+  doc2Has: boolean
   statusItems: Array<{ label: string; has: boolean; state: string }>
   allDone: boolean
   zipSupplementUploaded: boolean

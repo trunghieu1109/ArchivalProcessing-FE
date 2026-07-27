@@ -50,6 +50,7 @@ export function UploadPageView(props: Record<string, any>) {
     doc1Ref,
     doc2Ref,
     zipRef,
+    doc1Has,
     doc2Has,
     zipHas,
     hasActivePlan,
@@ -292,6 +293,8 @@ export function UploadPageView(props: Record<string, any>) {
               syncDoc2State={syncDoc2State}
               syncDoc1Has={syncDoc1Has}
               syncDoc2Has={syncDoc2Has}
+              doc1Has={doc1Has}
+              doc2Has={doc2Has}
               statusItems={statusItems}
               allDone={allDone}
               zipSupplementUploaded={zipSupplementUploaded}

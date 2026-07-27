@@ -230,6 +230,14 @@ export interface ActiveJobSummary {
   updated_at?: string
 }
 
+export interface EnqueuePlanAnalysisResponse {
+  session_id: string
+  job_id: number
+  job_type: "analyze_plan"
+  status: string
+  payload: Record<string, unknown>
+}
+
 export interface ClusterBuildStatusResponse extends ApiRevisionMetadata {
   session_id: string
   job_type: "build_clusters"

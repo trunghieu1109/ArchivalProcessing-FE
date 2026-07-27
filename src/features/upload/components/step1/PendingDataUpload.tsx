@@ -5,8 +5,13 @@ export interface PendingDataUploadSummary {
   totalBytes: number
 }
 
+export interface PendingDataUploadStartResult {
+  kind: "zip" | "folder"
+  completion?: Promise<void>
+}
+
 export interface UnifiedDataUploadHandle {
-  startPending: () => Promise<"workflow" | "started" | null>
+  startPending: () => Promise<PendingDataUploadStartResult | null>
   acceptPending: () => void
 }
 

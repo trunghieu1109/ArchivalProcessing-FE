@@ -7,6 +7,7 @@ import { UploadSessionSetupPanel } from "@/features/upload/components/step1/Uplo
 import { cn } from "@/shared/lib/utils"
 import { easeOut } from "./UploadPage.planUtils"
 import type { UploadPageStepOneProps } from "./UploadPage.step1.types"
+import { canNavigateDirectlyToMetadata } from "./UploadPage.workflowPolicy"
 
 const FOLDER_UPLOAD_ENABLED =
   String(import.meta.env.VITE_FOLDER_UPLOAD_ENABLED ?? "true").toLowerCase() !==
@@ -53,6 +54,8 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
     syncDoc2State,
     syncDoc1Has,
     syncDoc2Has,
+    doc1Has,
+    doc2Has,
     statusItems,
     allDone,
     zipSupplementUploaded,
@@ -108,6 +111,15 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
     (planReuploadState?.retention && !planReuploadState?.arrangement)
       ? "Phân tích thời hạn bảo quản"
       : "Phân tích phương án"
+  const hasPlanInputs = doc1Has || doc2Has
+  const metadataIsNextStep = canNavigateDirectlyToMetadata(doc1Has, doc2Has)
+  const planStepActionLabel = hasPlanReady
+    ? "Xem phương án phân loại"
+    : doc1Has && doc2Has
+      ? "Phân tích phương án và thời hạn"
+      : doc1Has
+        ? "Phân tích phương án phân loại"
+        : "Phân tích thời hạn bảo quản"
   return (
     <motion.div
       key="step1"
@@ -319,7 +331,9 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
                 Folder đã upload xong. Nhấn nút bên phải để chuyển sang màn hình
                 Extract Metadata.
               </span>
-            ) : existingSessionMode && zipSupplementUploaded ? (
+            ) : existingSessionMode &&
+              metadataIsNextStep &&
+              zipSupplementUploaded ? (
               <span className="block truncate text-muted-foreground">
                 ZIP bổ sung đã upload xong. Nhấn nút bên phải để extract
                 metadata.
@@ -396,21 +410,28 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
                             ? `Bắt đầu upload ${pendingDataUpload.fileCount} PDF`
                             : planInputsReuploaded
                               ? planReanalysisActionLabel
-                              : folderUploadReady && folderUploadWasCancelled
+                              : metadataIsNextStep &&
+                                  folderUploadReady &&
+                                  folderUploadWasCancelled
                                 ? `Xử lý ${folderUploadEffectiveCount} tài liệu đã tải thành công`
                                 : folderUploadMetadataNavigationReady
                                   ? "Chuyển sang Extract Metadata"
-                                  : existingSessionMode && zipSupplementUploaded
+                                  : existingSessionMode &&
+                                      metadataIsNextStep &&
+                                      zipSupplementUploaded
                                     ? "Chuyển sang Extract Metadata"
                                     : existingSessionMode &&
+                                        metadataIsNextStep &&
                                         zipHas &&
                                         !hasPlanReady
                                       ? "Chuyển sang Extract Metadata"
-                                      : allDone
-                                        ? "Tiếp tục"
-                                        : existingSessionMode
+                                      : existingSessionMode && hasPlanInputs
+                                        ? planStepActionLabel
+                                        : allDone
                                           ? "Tiếp tục"
-                                          : "Bắt đầu xử lý"}
+                                          : existingSessionMode
+                                            ? "Tiếp tục"
+                                            : "Bắt đầu xử lý"}
           </span>
           {!primaryActionDisabled && (
             <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />

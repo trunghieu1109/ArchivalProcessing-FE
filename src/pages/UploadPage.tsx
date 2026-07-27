@@ -16,6 +16,7 @@ import type {
 } from "@/features/upload/components/step1/PendingDataUpload"
 import {
   ensureClusterBuild,
+  getActivePlan,
   getSession,
   getWorkingPlan,
   listSessionEvents,
@@ -42,7 +43,9 @@ import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
 import { UploadPageView } from "./UploadPage.view"
 import { createConfirmPlanHandler } from "./UploadPage.confirmPlan"
 import { createUploadPageWorkflowActions } from "./UploadPage.workflow"
+import { canNavigateDirectlyToMetadata } from "./UploadPage.workflowPolicy"
 import { createUploadPageActions } from "./UploadPage.actions"
+import { isMetadataDiscoveryPending } from "./UploadPage.metadataDiscovery"
 import { useUploadPageOcr } from "./UploadPage.ocr"
 import { useUploadPageLifecycle } from "./UploadPage.lifecycle"
 import { uploadPageCache as cache } from "./UploadPage.cache"
@@ -51,6 +54,7 @@ import {
   PLAN_ANALYSIS_POLL_INTERVAL_MS,
   STEP_LABELS,
   normalizePlanProgressPhase,
+  planAnalysisEventBelongsToJob,
   planProgressMessageForPhase,
 } from "./UploadPage.progress"
 import {
@@ -128,14 +132,11 @@ export function UploadPage() {
       return
     }
     const hasActivePlanForBuild = Boolean(activePlanVersionId)
-    const hasActivePlanDataForBuild =
-      hasActivePlanForBuild && activeParsedPlan.groups.length > 0
     const missingInputs = missingDossierBuildInputs({
       hasArrangementPlan: doc1Has,
       hasRetentionSchedule: doc2Has,
       hasVerifiedDocuments,
       hasActivePlan: hasActivePlanForBuild,
-      hasActivePlanData: hasActivePlanDataForBuild,
     })
     if (missingInputs.length > 0) {
       toast.error(dossierBuildMissingMessage(missingInputs))
@@ -143,9 +144,22 @@ export function UploadPage() {
     }
 
     try {
+      let buildStrategy = activePlanSettings.dossierBuildStrategy
+      if (hasActivePlanForBuild && activeParsedPlan.groups.length === 0) {
+        try {
+          const hydratedActivePlan = await getActivePlan(currentSessionId)
+          if (hydratedActivePlan) {
+            applyActivePlanResponse(hydratedActivePlan)
+            buildStrategy = activePlanBuildStrategy(hydratedActivePlan)
+          }
+        } catch {
+          // UI hydration is best-effort. The backend remains authoritative for
+          // active-plan validation when ensureClusterBuild is called below.
+        }
+      }
       const response = await ensureClusterBuild(currentSessionId, {
         source: "user_view_results",
-        dossier_build_strategy: activePlanSettings.dossierBuildStrategy,
+        dossier_build_strategy: buildStrategy,
       })
       if (response.status === "queued") {
         toast.success("Đã gửi task lập hồ sơ từ tài liệu đã xác nhận.")
@@ -195,6 +209,9 @@ export function UploadPage() {
   const [zipState, setZipState] = useState<ProcessState>(cache.zipState)
   const [planAnalysisState, setPlanAnalysisState] = useState<ProcessState>(
     cache.planAnalysisState
+  )
+  const [planAnalysisJobId, setPlanAnalysisJobId] = useState<number | null>(
+    cache.planAnalysisJobId
   )
   const [dossierBuildStrategy, setDossierBuildStrategy] =
     useState<DossierBuildStrategy>(cache.dossierBuildStrategy)
@@ -296,6 +313,7 @@ export function UploadPage() {
     setDoc2State,
     setZipState,
     setPlanAnalysisState,
+    setPlanAnalysisJobId,
     setDossierBuildStrategy,
     setDocumentNumberingMode,
     setDocumentNumberingStylePreset,
@@ -426,10 +444,16 @@ export function UploadPage() {
   })
 
   useEffect(() => {
-    if (!sessionId || planAnalysisState !== "processing") return
+    if (
+      !sessionId ||
+      planAnalysisState !== "processing" ||
+      planAnalysisJobId === null
+    )
+      return
 
     let cancelled = false
     let afterId = 0
+    let jobCompleted = false
     let timeoutId: number | undefined
     const schedule = () => {
       if (!cancelled) {
@@ -448,11 +472,16 @@ export function UploadPage() {
       try {
         const response = await listSessionEvents(sessionId, {
           afterId,
-          limit: 50,
+          limit: 500,
         })
         if (cancelled) return
         for (const event of response.events) {
           afterId = Math.max(afterId, event.id)
+          if (
+            !planAnalysisEventBelongsToJob(event.payload, planAnalysisJobId)
+          ) {
+            continue
+          }
           if (event.event_type === "plan.analysis.progress") {
             const phase = normalizePlanProgressPhase(event.payload?.phase)
             if (phase) {
@@ -468,15 +497,26 @@ export function UploadPage() {
                 return next
               })
             }
-            if (phase)
-              setPlanProgressMessage(planProgressMessageForPhase(phase))
+            if (phase) {
+              const eventMessage = String(event.message ?? "").trim()
+              setPlanProgressMessage(
+                eventMessage || planProgressMessageForPhase(phase)
+              )
+            }
           }
           if (event.event_type === "plan.analysis.completed") {
-            setPlanProgressPhase(null)
+            jobCompleted = true
+            const finalPhase =
+              PLAN_PROGRESS_PHASES[PLAN_PROGRESS_PHASES.length - 1]?.id ?? null
+            setPlanProgressPhase(finalPhase)
             setPlanCompletedPhases(
-              new Set(PLAN_PROGRESS_PHASES.map((phase) => phase.id))
+              new Set(
+                PLAN_PROGRESS_PHASES.slice(0, -1).map((phase) => phase.id)
+              )
             )
-            setPlanProgressMessage("Đã phân tích xong phương án chỉnh lý.")
+            setPlanProgressMessage(
+              "Phân tích đã hoàn tất. Đang tải kết quả mới nhất."
+            )
           }
         }
       } catch {
@@ -487,6 +527,9 @@ export function UploadPage() {
         if (cancelled) return
         const currentPlanVersionId = cache.workingPlanVersionId
         const nextPlanVersionId = planResponse?.id ?? ""
+        const nextPlanSignature = planResponse
+          ? planResponseMaterialSignature(planResponse)
+          : ""
         const nextParsedPlan = planResponse
           ? activePlanToParsedPlan(planResponse)
           : null
@@ -505,11 +548,16 @@ export function UploadPage() {
           nextPlanVersionId === currentPlanVersionId &&
           !cachedPlanHasDisplayData &&
           nextPlanHasDisplayData
+        const planMaterialChanged =
+          Boolean(nextPlanSignature) &&
+          nextPlanSignature !== cache.workingPlanSignature
         const shouldApplyPlan =
           Boolean(planResponse) &&
-          (!currentPlanVersionId ||
+          (jobCompleted ||
+            !currentPlanVersionId ||
             (nextPlanVersionId && nextPlanVersionId !== currentPlanVersionId) ||
-            sameVersionNeedsHydration)
+            sameVersionNeedsHydration ||
+            planMaterialChanged)
         if (planResponse && nextParsedPlan && shouldApplyPlan) {
           const plan = nextParsedPlan
           const draftPayload = planResponseToDraftPayload(planResponse)
@@ -533,6 +581,7 @@ export function UploadPage() {
           cache.folderTree = planToTree(plan)
           cache.planViewTab = planIsActive ? "active" : "draft"
           cache.planAnalysisState = "done"
+          cache.planAnalysisJobId = null
           const { doc1Has: currentDoc1Has, doc2Has: currentDoc2Has } =
             planInputStateRef.current
           cache.doc1State = currentDoc1Has ? "done" : "idle"
@@ -568,6 +617,7 @@ export function UploadPage() {
           setPlanDraftDirty(false)
           setPlanViewTab(cache.planViewTab)
           setPlanAnalysisState("done")
+          setPlanAnalysisJobId(null)
           setDoc1State(cache.doc1State)
           setDoc2State(cache.doc2State)
           setDossierBuildStrategy(buildStrategy)
@@ -609,7 +659,7 @@ export function UploadPage() {
         window.clearTimeout(timeoutId)
       }
     }
-  }, [planAnalysisState, sessionId])
+  }, [planAnalysisJobId, planAnalysisState, sessionId])
 
   const {
     ensureSession,
@@ -813,8 +863,10 @@ export function UploadPage() {
     !currentFolderUploadJob?.summary?.ingestion_run?.ocr_batch_ids?.length &&
     !handledFolderIngestionRuns.has(folderIngestionRunKey)
   )
-  const folderUploadCanNavigateDirectly =
-    existingSessionMode || (!doc1Has && !doc2Has)
+  const folderUploadCanNavigateDirectly = canNavigateDirectlyToMetadata(
+    doc1Has,
+    doc2Has
+  )
   const folderUploadMetadataNavigationReady =
     folderUploadActionReady && folderUploadCanNavigateDirectly
   const folderUploadInProgress = Boolean(
@@ -894,23 +946,12 @@ export function UploadPage() {
         metadataTargetDiscoveredDocumentCount >=
           metadataTargetExpectedDocumentCount))
   )
-  const metadataDocumentPageMatchesSummary = Boolean(
-    metadataTargetExpectedDocumentCount === 0 ||
-    ocr.status?.documents_revision === undefined ||
-    ocr.documentsPageRevision === String(ocr.status.documents_revision)
-  )
-  const metadataTargetDocumentListReady = Boolean(
-    metadataTargetRunStatus === "ready" &&
-    metadataTargetBatchDiscoveryComplete &&
-    ocr.status?.pagination !== undefined &&
-    metadataDocumentPageMatchesSummary
-  )
-  const metadataDiscoveryPending = Boolean(
-    currentStep === 3 &&
-    metadataTargetIngestionRunId !== null &&
-    metadataTargetRunStatus === "ready" &&
-    !metadataTargetDocumentListReady
-  )
+  const metadataDiscoveryPending = isMetadataDiscoveryPending({
+    currentStep,
+    targetIngestionRunId: metadataTargetIngestionRunId,
+    targetIngestionRunStatus: metadataTargetRunStatus,
+    batchDiscoveryComplete: metadataTargetBatchDiscoveryComplete,
+  })
   const metadataDiscoveryMessage = "Đang bổ sung dần các tài liệu mới..."
   const displayedPendingIngestionCount = Math.max(
     ocrPendingIngestionCount,
@@ -927,8 +968,7 @@ export function UploadPage() {
     ocrMetadataItems.some(
       (document) =>
         document.metadata_ready &&
-        (document.review_status === "verified" ||
-          document.is_reviewed === true)
+        (document.review_status === "verified" || document.is_reviewed === true)
     )
   const hasAnyFile = doc1Has || doc2Has || dataInputHas || hasPendingDataUpload
   const hasActivePlan = Boolean(activePlanVersionId)
@@ -937,7 +977,6 @@ export function UploadPage() {
     Boolean(cache.activePlanSignature) &&
     Boolean(cache.workingPlanSignature) &&
     cache.workingPlanSignature === cache.activePlanSignature
-  const hasActivePlanData = hasActivePlan && activeParsedPlan.groups.length > 0
   const hasAnalyzedPlan =
     planAnalysisState === "done" &&
     hasWorkingPlan &&
@@ -949,7 +988,6 @@ export function UploadPage() {
     hasRetentionSchedule: doc2Has,
     hasVerifiedDocuments,
     hasActivePlan,
-    hasActivePlanData,
   })
   const missingDossierInputLabels =
     dossierBuildMissingLabels(missingDossierInputs)
@@ -1034,6 +1072,8 @@ export function UploadPage() {
     existingSessionMode && planAnalyzing && (doc1Has || doc2Has)
   const primaryActionAvailable = existingSessionMode
     ? planInputsReuploaded ||
+      doc1Has ||
+      doc2Has ||
       hasPlanReady ||
       canOpenPlanAnalysisStep ||
       dataInputHas ||
@@ -1218,6 +1258,7 @@ export function UploadPage() {
     const viewedUploadSessionId = routeSessionId ?? sessionId
     if (
       !existingSessionMode ||
+      !canNavigateDirectlyToMetadata(doc1Has, doc2Has) ||
       !viewedUploadSessionId ||
       !isViewingUploadStepForSession({
         jobSessionId: currentZipUploadJob?.sessionId,
@@ -1264,6 +1305,8 @@ export function UploadPage() {
   }, [
     currentStep,
     currentZipUploadJob,
+    doc1Has,
+    doc2Has,
     existingSessionMode,
     navigate,
     routeSessionId,
@@ -1466,6 +1509,7 @@ export function UploadPage() {
     planAnalysisState,
     allDone,
     hasPlanReady,
+    hasWorkingPlan,
     planReanalysisReady,
     planReuploadState,
     dossierBuildStrategy,
@@ -1478,6 +1522,7 @@ export function UploadPage() {
     ensureSession,
     syncSessionMetadata,
     syncPlanAnalysisState,
+    setPlanAnalysisJobId,
     syncDoc1State,
     syncDoc2State,
     syncZipState,
@@ -1506,8 +1551,8 @@ export function UploadPage() {
     try {
       if (pendingDataUpload) {
         const result = await dataUploadRef.current?.startPending()
-        if (result === "workflow") {
-          await handleStartAll()
+        if (result) {
+          await handleStartAll({ pendingDataUpload: result })
         }
         return
       }
