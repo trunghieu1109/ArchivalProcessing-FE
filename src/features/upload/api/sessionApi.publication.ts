@@ -133,12 +133,68 @@ export async function updatePublicationName(
     name: string
   }
 ): Promise<PublicationManifest> {
+  if (payload.target_type === "box") {
+    return updatePublicationBoxStandardName(
+      sessionId,
+      String(payload.target_id),
+      payload.name
+    )
+  }
+  if (payload.target_type === "dossier") {
+    return updatePublicationDossierStandardName(
+      sessionId,
+      Number(payload.target_id),
+      payload.name
+    )
+  }
+  return updatePublicationDocumentStandardName(
+    sessionId,
+    Number(payload.target_id),
+    payload.name
+  )
+}
+
+export async function updatePublicationBoxStandardName(
+  sessionId: string,
+  boxNumber: string,
+  standardName: string
+): Promise<PublicationManifest> {
   return requestJson<PublicationManifest>(
-    `/sessions/${encodeURIComponent(sessionId)}/publication/names`,
+    `/sessions/${encodeURIComponent(sessionId)}/publication/boxes/${encodeURIComponent(boxNumber)}/standard-name`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ standard_name: standardName }),
+    }
+  )
+}
+
+export async function updatePublicationDossierStandardName(
+  sessionId: string,
+  sessionDossierId: number,
+  standardName: string
+): Promise<PublicationManifest> {
+  return requestJson<PublicationManifest>(
+    `/sessions/${encodeURIComponent(sessionId)}/publication/dossiers/${sessionDossierId}/standard-name`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ standard_name: standardName }),
+    }
+  )
+}
+
+export async function updatePublicationDocumentStandardName(
+  sessionId: string,
+  sessionDocumentId: number,
+  standardName: string
+): Promise<PublicationManifest> {
+  return requestJson<PublicationManifest>(
+    `/sessions/${encodeURIComponent(sessionId)}/publication/documents/${sessionDocumentId}/standard-name`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ standard_name: standardName }),
     }
   )
 }
