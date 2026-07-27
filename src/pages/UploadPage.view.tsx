@@ -496,6 +496,7 @@ export function UploadPageView(props: Record<string, any>) {
             >
               <FinalizeArtifactsStep
                 sessionId={sessionId ?? routeSessionId ?? null}
+                sessionMetadata={sessionMetadata}
                 autoStart={searchParams.get("start") === "1"}
                 onAutoStartHandled={handleFinalizeAutoStartHandled}
                 embedded

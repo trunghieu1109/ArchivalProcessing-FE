@@ -1,14 +1,20 @@
 import type { PointerEvent as ReactPointerEvent } from "react"
 import { toast } from "sonner"
 import {
+  acquireDocumentEditLock,
   bulkVerifyDocumentMetadata,
   closeMetadataBatch,
   createMetadataBatch,
   downloadSessionMetadataReviewXlsx,
   getDigitizationStatus,
+  releaseDocumentEditLock,
   verifyDocumentMetadata,
   type SessionDocumentResponse,
 } from "@/features/upload/api/sessionApi"
+import {
+  DOCUMENT_EDIT_LOCKED_MESSAGE,
+  isDocumentEditLockedError,
+} from "@/features/upload/lib/documentEditLockErrors"
 import type { PdfMetadata } from "@/features/upload/types"
 import type {
   MetadataBatchGroup,
@@ -154,7 +160,8 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
 
   const handleApply = async (
     dataPath: string,
-    meta?: Record<string, unknown>
+    meta: Record<string, unknown> | undefined,
+    lockToken: string
   ) => {
     const item =
       items.find((candidate) => candidate.data_path === dataPath) ??
@@ -177,7 +184,9 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
 
     setVerifyingIds((previous) => addId(previous, item.id))
     try {
-      const verified = await verifyDocumentMetadata(sessionId, item.id, meta)
+      const verified = await verifyDocumentMetadata(sessionId, item.id, meta, {
+        lockToken,
+      })
       const nextItems = replaceVerifiedDocument(items, verified)
       const nextDisplayedItems = replaceVerifiedDocument(
         displayedItems,
@@ -214,11 +223,30 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
       const requestGroups = chunkItems(bulkVerifyItems, BULK_ACTION_BATCH_SIZE)
       const results = await runSettledWithConcurrency(
         requestGroups,
-        (group) =>
-          bulkVerifyDocumentMetadata(
-            sessionId,
-            group.map((item) => item.id)
-          ),
+        async (group) => {
+          const lockTokens: Record<number, string> = {}
+          for (const item of group) {
+            const lock = await acquireDocumentEditLock(sessionId, item.id)
+            const token = String(lock.lock_token ?? "").trim()
+            if (!token) {
+              throw new Error("Backend không trả lock token.")
+            }
+            lockTokens[item.id] = token
+          }
+          try {
+            return await bulkVerifyDocumentMetadata(
+              sessionId,
+              group.map((item) => item.id),
+              lockTokens
+            )
+          } finally {
+            await Promise.allSettled(
+              Object.entries(lockTokens).map(([documentId, token]) =>
+                releaseDocumentEditLock(sessionId, Number(documentId), token)
+              )
+            )
+          }
+        },
         BULK_ACTION_CONCURRENCY
       )
       const verified = results
@@ -1109,9 +1137,11 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     } catch (err) {
       setItems((previous) => replaceMetadataItem(previous, item))
       toast.error(
-        err instanceof Error
-          ? err.message
-          : "Không thể chạy lại metadata cho tài liệu."
+        isDocumentEditLockedError(err)
+          ? DOCUMENT_EDIT_LOCKED_MESSAGE
+          : err instanceof Error
+            ? err.message
+            : "Không thể chạy lại metadata cho tài liệu."
       )
     } finally {
       setRetryingIds((previous) => removeId(previous, item.id))
@@ -1153,6 +1183,11 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
 
       const failedCount = results.length - restarted.length
       if (failedCount > 0) {
+        const hasLockedDocument = results.some(
+          (result) =>
+            result.status === "rejected" &&
+            isDocumentEditLockedError(result.reason)
+        )
         setItems((previous) => {
           let next = previous
           results.forEach((result, index) => {
@@ -1164,7 +1199,9 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
           return next
         })
         toast.error(
-          `${failedCount} tài liệu chưa gửi extract lại được. Vui lòng kiểm tra lại.`
+          hasLockedDocument
+            ? DOCUMENT_EDIT_LOCKED_MESSAGE
+            : `${failedCount} tài liệu chưa gửi extract lại được. Vui lòng kiểm tra lại.`
         )
       }
       if (restarted.length > 0) {

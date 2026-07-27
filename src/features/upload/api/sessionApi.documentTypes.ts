@@ -35,6 +35,7 @@ export interface DigitizationDocument {
   metadata_verified_by_name?: string | null
   metadata_verified_at?: string | null
   metadata_review_note?: string | null
+  edit_lock?: DocumentEditLock | null
   remote_metadata_status?: string | null
   signature_status?: string | null
   ocr_status: string
@@ -50,6 +51,23 @@ export interface DigitizationDocument {
   normalized_metadata?: Record<string, unknown>
   pdf_preprocessing?: Record<string, unknown> | null
   error?: string | null
+}
+
+export interface DocumentEditLock {
+  locked: boolean
+  locked_by?: {
+    user_id?: string | number | null
+    email?: string | null
+    name?: string | null
+  } | null
+  locked_at?: string | null
+  lock_expires_at?: string | null
+}
+
+export interface DocumentEditLockResponse extends DocumentEditLock {
+  session_id: string
+  document_id: number
+  lock_token?: string | null
 }
 
 export interface DigitizationBatch {
@@ -386,6 +404,7 @@ export interface SessionDocumentResponse {
   metadata_verified_by_name?: string | null
   metadata_verified_at?: string | null
   metadata_review_note?: string | null
+  edit_lock?: DocumentEditLock | null
   remote_metadata_status?: string | null
   signature_status?: string | null
   ocr_status: string

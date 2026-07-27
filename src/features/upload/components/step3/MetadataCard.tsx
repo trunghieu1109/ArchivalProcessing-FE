@@ -16,10 +16,20 @@ import { toast } from "sonner"
 import { cn } from "@/shared/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
+  acquireDocumentEditLock,
+  heartbeatDocumentEditLock,
+  releaseDocumentEditLock,
+  releaseDocumentEditLockOnPageUnload,
+} from "@/features/upload/api/sessionApi"
+import {
   getWarningEntries,
   getWarningFields,
   hasMetadataWarning,
 } from "@/features/upload/lib/metadata"
+import {
+  DOCUMENT_EDIT_LOCKED_MESSAGE,
+  isDocumentEditLockedError,
+} from "@/features/upload/lib/documentEditLockErrors"
 import { signatureTagInfo } from "@/features/upload/lib/signatureStatus"
 import type { PdfMetadata } from "@/features/upload/types"
 
@@ -40,8 +50,11 @@ import {
 } from "./metadataCardUtils"
 import { isMetadataExtractionPending } from "./ProcessStep.metadataUtils"
 
+const DOCUMENT_EDIT_LOCK_HEARTBEAT_INTERVAL_MS = 4 * 60 * 1_000
+
 interface MetadataCardProps {
   item: PdfMetadata
+  sessionId: string | null
   submitting?: boolean
   retrying?: boolean
   selected?: boolean
@@ -54,12 +67,14 @@ interface MetadataCardProps {
   onRetry?: () => void
   onApply: (
     dataPath: string,
-    meta?: Record<string, unknown>
+    meta: Record<string, unknown> | undefined,
+    lockToken: string
   ) => Promise<void> | void
 }
 
 export function MetadataCard({
   item,
+  sessionId,
   submitting = false,
   retrying = false,
   selected = false,
@@ -74,6 +89,8 @@ export function MetadataCard({
 }: MetadataCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [locking, setLocking] = useState(false)
+  const [editLockToken, setEditLockToken] = useState<string | null>(null)
   const [draft, setDraft] = useState<Record<string, string>>({})
   const warningFields = getWarningFields(item.light_metadata)
   const warningEntries = getWarningEntries(item.light_metadata)
@@ -87,6 +104,13 @@ export function MetadataCard({
   const metadataFailed = isMetadataFailed(item.status)
   const metadataUnavailable = metadataFailed && !item.metadata_ready
   const hasMetadataEdits = item.metadata_user_edited === true
+  const editLocked = item.edit_lock?.locked === true
+  const editLockedBy = String(
+    item.edit_lock?.locked_by?.name ||
+      item.edit_lock?.locked_by?.email ||
+      item.edit_lock?.locked_by?.user_id ||
+      ""
+  ).trim()
   const signatureTag = signatureTagInfo(item)
   const canRetryMetadata = Boolean(!readOnly && onRetry && !metadataPending)
   const blankPageWarningPages = blankPageWarningOriginalPages(item)
@@ -98,18 +122,85 @@ export function MetadataCard({
     }
   }, [editing, readOnly])
 
-  const startEdit = () => {
-    if (readOnly) return
-    const nextDraft: Record<string, string> = {}
-    METADATA_FIELDS.forEach((field) => {
-      nextDraft[field.key] = metadataFieldText(
-        item.light_metadata,
-        field.aliases
+  useEffect(() => {
+    if (!sessionId || !editing || !editLockToken) return
+    const interval = window.setInterval(() => {
+      void heartbeatDocumentEditLock(sessionId, item.id, editLockToken).catch(
+        () => {
+          setEditing(false)
+          setEditLockToken(null)
+          toast.error("Phiên chỉnh sửa đã hết hạn. Vui lòng bấm Sửa lại.")
+        }
       )
-    })
-    setDraft(nextDraft)
-    setEditing(true)
-    setExpanded(true)
+    }, DOCUMENT_EDIT_LOCK_HEARTBEAT_INTERVAL_MS)
+    return () => window.clearInterval(interval)
+  }, [editLockToken, editing, item.id, sessionId])
+
+  useEffect(() => {
+    if (!sessionId || !editLockToken) return
+
+    let releasedForUnload = false
+    const releaseForUnload = () => {
+      if (releasedForUnload) return
+      releasedForUnload = true
+      releaseDocumentEditLockOnPageUnload(sessionId, item.id, editLockToken)
+    }
+
+    window.addEventListener("pagehide", releaseForUnload)
+    window.addEventListener("beforeunload", releaseForUnload)
+
+    return () => {
+      window.removeEventListener("pagehide", releaseForUnload)
+      window.removeEventListener("beforeunload", releaseForUnload)
+      if (releasedForUnload) return
+      void releaseDocumentEditLock(sessionId, item.id, editLockToken).catch(
+        () => undefined
+      )
+    }
+  }, [editLockToken, item.id, sessionId])
+
+  const acquireLock = async (): Promise<string> => {
+    if (!sessionId) throw new Error("Chưa có session để sửa metadata.")
+    if (editLockToken) return editLockToken
+    const response = await acquireDocumentEditLock(sessionId, item.id)
+    const token = String(response.lock_token ?? "").trim()
+    if (!token) throw new Error("Backend không trả lock token.")
+    setEditLockToken(token)
+    return token
+  }
+
+  const releaseLock = async (token: string | null = editLockToken) => {
+    if (!sessionId || !token) return
+    setEditLockToken(null)
+    await releaseDocumentEditLock(sessionId, item.id, token).catch(() => undefined)
+  }
+
+  const startEdit = async () => {
+    if (readOnly) return
+    setLocking(true)
+    try {
+      await acquireLock()
+      const nextDraft: Record<string, string> = {}
+      METADATA_FIELDS.forEach((field) => {
+        nextDraft[field.key] = metadataFieldText(
+          item.light_metadata,
+          field.aliases
+        )
+      })
+      setDraft(nextDraft)
+      setEditing(true)
+      setExpanded(true)
+    } catch (err) {
+      toast.error(
+        isDocumentEditLockedError(err)
+          ? DOCUMENT_EDIT_LOCKED_MESSAGE
+          : err instanceof Error
+          ? err.message
+          : DOCUMENT_EDIT_LOCKED_MESSAGE
+      )
+    } finally {
+      setLocking(false)
+    }
   }
 
   const commitEdit = async () => {
@@ -123,19 +214,45 @@ export function MetadataCard({
     })
     updated["_warnings"] = {}
     await applyMetadata(updated)
-    setEditing(false)
   }
 
   const applyMetadata = async (metadata?: Record<string, unknown>) => {
     if (readOnly) return
+    let token = editLockToken
+    let acquiredForThisAction = false
     try {
-      await onApply(item.data_path, metadata)
+      if (!token) {
+        setLocking(true)
+        token = await acquireLock()
+        acquiredForThisAction = true
+      }
+      await onApply(item.data_path, metadata, token)
       toast.success("Metadata đã được xác nhận.")
+      setEditing(false)
+      await releaseLock(token)
     } catch (err) {
-      toast.error(
+      if (acquiredForThisAction) {
+        await releaseLock(token).catch(() => undefined)
+      }
+      const message =
         err instanceof Error ? err.message : "Không thể xác nhận metadata."
-      )
+      if (
+        message.includes("lock") ||
+        message.includes("409") ||
+        message.includes("423")
+      ) {
+        setEditing(false)
+        setEditLockToken(null)
+      }
+      toast.error(message)
+    } finally {
+      setLocking(false)
     }
+  }
+
+  const cancelEdit = () => {
+    setEditing(false)
+    void releaseLock()
   }
 
   const toggleMetadata = () => {
@@ -143,10 +260,9 @@ export function MetadataCard({
     setExpanded(next)
     onSelect?.(next)
     if (!next) {
-      setEditing(false)
+      cancelEdit()
     }
   }
-
   return (
     <div
       className={cn(
@@ -232,6 +348,14 @@ export function MetadataCard({
               )}
             >
               <Signature className="size-2.5" /> {signatureTag.label}
+            </span>
+          )}
+          {editLocked && (
+            <span
+              title={editLockedBy ? `Đang sửa bởi: ${editLockedBy}` : "Đang sửa"}
+              className="flex h-6 shrink-0 items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 text-[10px] font-semibold text-sky-700"
+            >
+              <Edit2 className="size-2.5" /> Đang sửa
             </span>
           )}
           {hasMetadataEdits && (
@@ -356,17 +480,17 @@ export function MetadataCard({
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => setEditing(false)}
-                        disabled={submitting || retrying}
+                        onClick={cancelEdit}
+                        disabled={submitting || retrying || locking}
                       >
                         Hủy
                       </Button>
                       <Button
                         size="sm"
                         onClick={() => void commitEdit()}
-                        disabled={submitting}
+                        disabled={submitting || locking || !editLockToken}
                       >
-                        {submitting && (
+                        {(submitting || locking) && (
                           <Loader2
                             data-icon="inline-start"
                             className="animate-spin"
@@ -462,10 +586,18 @@ export function MetadataCard({
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={startEdit}
-                        disabled={submitting || retrying}
+                        onClick={() => void startEdit()}
+                        disabled={submitting || retrying || locking}
                       >
-                        <Edit2 data-icon="inline-start" /> Sửa
+                        {locking ? (
+                          <Loader2
+                            data-icon="inline-start"
+                            className="animate-spin"
+                          />
+                        ) : (
+                          <Edit2 data-icon="inline-start" />
+                        )}
+                        Sửa
                       </Button>
                       {canRetryMetadata && (
                         <Button
@@ -491,12 +623,13 @@ export function MetadataCard({
                           disabled={
                             submitting ||
                             retrying ||
+                            locking ||
                             !item.metadata_ready ||
                             metadataUnavailable
                           }
                           onClick={() => void applyMetadata()}
                         >
-                          {submitting ? (
+                          {submitting || locking ? (
                             <Loader2
                               data-icon="inline-start"
                               className="animate-spin"

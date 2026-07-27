@@ -1,4 +1,9 @@
-import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react"
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Loader2,
+  TriangleAlert,
+} from "lucide-react"
 import { motion } from "framer-motion"
 import { cn } from "@/shared/lib/utils"
 import { ProgressMetric } from "./ProcessStep.parts"
@@ -128,6 +133,7 @@ export function ProcessStepFooter({
   pendingReadyCount,
   dossierReadyItems: dossierReadyPageItems,
   dossierReadyCount,
+  warningCount = 0,
   readyItems,
   metadataMessage,
   canAttemptContinue,
@@ -151,10 +157,7 @@ export function ProcessStepFooter({
         ) : pendingReadyItems.length > 0 ? (
           <span className="flex items-center gap-2 text-[#475569]">
             <CheckCircle2 className="size-4 text-emerald-600" />
-            Có thể lập hồ sơ với {dossierReadyItems.length} tài liệu đủ điều
-            kiện;
-            {` ${pendingReadyItems.length}`} tài liệu còn lại có thể cập nhật hồ
-            sơ sau.
+            Có thể lập hồ sơ với {dossierReadyItems.length} tài liệu đủ điều kiện.
           </span>
         ) : buildBlockedMessage ? (
           <span className="flex items-center gap-2 text-amber-700">
@@ -171,6 +174,16 @@ export function ProcessStepFooter({
             {metadataMessage}
           </span>
         )}
+        {warningCount > 0 ? (
+          <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <div className="flex items-center gap-2 font-semibold">
+              <TriangleAlert className="size-4" />
+              Còn {warningCount} tài liệu chưa xác minh metadata có thể cập nhật
+              hồ sơ sau. Tuy nhiên, bạn nên hoàn tất xác minh trước để hồ sơ đầy
+              đủ hơn.
+            </div>
+          </div>
+        ) : null}
       </div>
       <button
         disabled={!canAttemptContinue}

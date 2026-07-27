@@ -8,6 +8,7 @@ import {
   Loader2,
   RefreshCw,
   Search,
+  TriangleAlert,
   X,
 } from "lucide-react"
 import { motion } from "framer-motion"
@@ -73,6 +74,7 @@ export function FinalResultView(props: Record<string, any>) {
     loading,
     loadingClusterVersionId,
     movingSelectedDocumentsTargetId,
+    numberingInProgress,
     nextDisplayVersion,
     openNodeIds,
     pendingClusterDocumentCount,
@@ -133,6 +135,23 @@ export function FinalResultView(props: Record<string, any>) {
       transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
       className="flex flex-col gap-4"
     >
+      {numberingInProgress ? (
+        <div className="sticky top-3 z-40">
+          <div
+            role="alert"
+            className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm"
+          >
+            <div className="flex items-center gap-2 font-semibold">
+              <TriangleAlert className="size-4 shrink-0" />
+              <p>
+                Bước đánh số trang vẫn đang được thực hiện. Nếu bạn cập nhật hồ
+                sơ theo feedback mới, quá trình đánh số trang đang chạy có thể
+                bị ảnh hưởng. Hãy cân nhắc trước khi thực hiện.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <h2 className="font-sans text-2xl font-semibold tracking-normal text-[#0F172A]">

@@ -130,6 +130,16 @@ export interface PdfMetadata {
   metadata_verified_by_name?: string | null
   metadata_verified_at?: string | null
   metadata_review_note?: string | null
+  edit_lock?: {
+    locked: boolean
+    locked_by?: {
+      user_id?: string | number | null
+      email?: string | null
+      name?: string | null
+    } | null
+    locked_at?: string | null
+    lock_expires_at?: string | null
+  } | null
   status: string
   remote_metadata_status?: string | null
   signature_status?: string | null

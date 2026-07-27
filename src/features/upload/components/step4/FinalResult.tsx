@@ -3,6 +3,7 @@ import type { DocumentPreviewTarget } from "@/features/upload/components/Documen
 import {
   cancelPendingClusterFeedback,
   getClusterGroupInformationTable,
+  getDocumentNumberingStatus,
   listClusterFeedback,
   patchSessionDossier,
   type ClusterGroupInformationTableResponse,
@@ -108,6 +109,7 @@ export function FinalResult({
   const [pendingFeedbackRefreshKey, setPendingFeedbackRefreshKey] = useState(0)
   const [cancelingPendingFeedback, setCancelingPendingFeedback] =
     useState(false)
+  const [numberingInProgress, setNumberingInProgress] = useState(false)
   const [selectedSessionDocumentIds, setSelectedSessionDocumentIds] = useState<
     Set<number>
   >(() => new Set())
@@ -278,6 +280,45 @@ export function FinalResult({
     activeClusterVersionId &&
     displayedClusterVersionId !== activeClusterVersionId
   )
+
+  useEffect(() => {
+    let cancelled = false
+    let timeoutId: number | undefined
+
+    const refreshNumberingStatus = async () => {
+      if (!sessionId) {
+        setNumberingInProgress(false)
+        return
+      }
+
+      try {
+        const response = await getDocumentNumberingStatus(sessionId, {
+          includeDocuments: false,
+          summaryOnly: true,
+        })
+        if (cancelled) return
+        const jobStatus = String(response.job?.status ?? "").toLowerCase()
+        const inProgress =
+          response.active === true &&
+          (jobStatus === "queued" ||
+            jobStatus === "running" ||
+            response.summary.pending > 0 ||
+            response.summary.running > 0)
+        setNumberingInProgress(inProgress)
+        if (inProgress) {
+          timeoutId = window.setTimeout(refreshNumberingStatus, 3000)
+        }
+      } catch {
+        if (!cancelled) setNumberingInProgress(false)
+      }
+    }
+
+    void refreshNumberingStatus()
+    return () => {
+      cancelled = true
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId)
+    }
+  }, [sessionId])
 
   useEffect(() => {
     displayedClusterVersionRef.current = displayedClusterVersion
@@ -941,6 +982,7 @@ export function FinalResult({
       loading={loading}
       loadingClusterVersionId={loadingClusterVersionId}
       movingSelectedDocumentsTargetId={movingSelectedDocumentsTargetId}
+      numberingInProgress={numberingInProgress}
       nextDisplayVersion={nextDisplayVersion}
       openNodeIds={openNodeIds}
       pendingClusterDocumentCount={pendingClusterDocumentCount}

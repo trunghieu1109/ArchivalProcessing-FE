@@ -5,7 +5,7 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom"
-import { AlertCircle, ArrowRight } from "lucide-react"
+import { AlertCircle, ArrowRight, TriangleAlert } from "lucide-react"
 import { toast } from "sonner"
 import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import { Badge } from "@/components/ui/badge"
@@ -34,6 +34,7 @@ import {
   saveBlob,
 } from "./FinalizeArtifactsPage.utils"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
+import type { SessionMetadataValues } from "@/features/upload/components/SessionMetadataBar"
 import {
   downloadAllArtifacts,
   downloadArtifact,
@@ -48,6 +49,7 @@ const FINALIZE_EVENT_POLL_INTERVAL_MS = 5_000
 
 interface FinalizeArtifactsStepProps {
   sessionId?: string | null
+  sessionMetadata?: SessionMetadataValues | null
   autoStart?: boolean
   onAutoStartHandled?: () => void
   embedded?: boolean
@@ -69,6 +71,7 @@ export function FinalizeArtifactsPage() {
 
 export function FinalizeArtifactsStep({
   sessionId,
+  sessionMetadata,
   autoStart = false,
   onAutoStartHandled,
   embedded = false,
@@ -129,6 +132,29 @@ export function FinalizeArtifactsStep({
       ).size,
     [visibleArtifacts]
   )
+  const missingPublishMetadataFields = useMemo(() => {
+    const fields: string[] = []
+    if (!textOrNull(sessionMetadata?.fonds_name)) fields.push("Tên phông")
+    if (!textOrNull(sessionMetadata?.fonds_creator_code)) {
+      fields.push("Mã đơn vị hình thành phông")
+    }
+    if (!textOrNull(sessionMetadata?.archive_name)) {
+      fields.push("Tên đơn vị lưu trữ")
+    }
+    if (!textOrNull(sessionMetadata?.archive_code)) {
+      fields.push("Mã đơn vị lưu trữ")
+    }
+    return fields
+  }, [
+    sessionMetadata?.archive_code,
+    sessionMetadata?.archive_name,
+    sessionMetadata?.fonds_creator_code,
+    sessionMetadata?.fonds_name,
+  ])
+  const publishMetadataWarning =
+    missingPublishMetadataFields.length > 0
+      ? `Trước khi xuất bản, hãy nhập các trường còn thiếu sau: ${missingPublishMetadataFields.join(", ")}.`
+      : ""
 
   const refreshArtifacts = useCallback(
     async (options: { silent?: boolean } = {}) => {
@@ -572,14 +598,31 @@ export function FinalizeArtifactsStep({
           />
         )}
         {embedded && visibleArtifacts.length > 0 && !finalizing && onContinue ? (
-          <div className="sticky bottom-0 z-20 flex justify-end border-t border-[#CBD5E1] bg-white/95 px-4 py-3 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur">
-            <Button type="button" onClick={onContinue}>
-              Xuất bản
-              <ArrowRight data-icon="inline-end" />
-            </Button>
+          <div className="sticky bottom-0 z-20 border-t border-[#CBD5E1] bg-white/95 px-4 py-3 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur">
+            <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+              {publishMetadataWarning ? (
+                <div className="w-full min-w-0 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:w-auto sm:flex-1">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <TriangleAlert className="size-4 shrink-0" />
+                    <span className="min-w-0 break-words">
+                      {publishMetadataWarning}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
+              <Button type="button" onClick={onContinue}>
+                Xuất bản
+                <ArrowRight data-icon="inline-end" />
+              </Button>
+            </div>
           </div>
         ) : null}
       </main>
     </div>
   )
+}
+
+function textOrNull(value: unknown): string | null {
+  const text = String(value ?? "").trim()
+  return text || null
 }

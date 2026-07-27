@@ -1,12 +1,14 @@
 import { useEffect, type DragEvent as ReactDragEvent } from "react"
 import { toast } from "sonner"
 import {
+  acquireDocumentEditLock,
   addMetadataEditKeepClusterFeedback,
   moveDocumentBetweenClusters,
   moveSelectedDocumentsToCluster,
   patchSessionDossier,
   patchSessionDossierDraft,
   patchDocumentMetadata,
+  releaseDocumentEditLock,
   promoteSelectedDocumentsToDossier,
   promoteTemporaryFolderDocuments,
   suggestSessionDossierRetention,
@@ -381,11 +383,18 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
     }
 
     let updatedDocument: SessionDocumentResponse | null = null
+    let lockToken: string | null = null
     try {
+      const lock = await acquireDocumentEditLock(sessionId, sessionDocumentId)
+      lockToken = String(lock.lock_token ?? "").trim()
+      if (!lockToken) {
+        throw new Error("Backend không trả lock token.")
+      }
       const patchedDocument = await patchDocumentMetadata(
         sessionId,
         sessionDocumentId,
-        metadata
+        metadata,
+        { lockToken }
       )
       updatedDocument = patchedDocument
       const feedback = await addMetadataEditKeepClusterFeedback(sessionId, {
@@ -447,6 +456,14 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
         )
       }
       throw err
+    } finally {
+      if (lockToken) {
+        await releaseDocumentEditLock(
+          sessionId,
+          sessionDocumentId,
+          lockToken
+        ).catch(() => undefined)
+      }
     }
   }
 

@@ -32,6 +32,7 @@ import {
   statusBadge,
   textOrNull,
 } from "./NumberingStep.utils"
+import { toast } from "sonner"
 
 export function NumberingStepHeader({
   modeLabel,
@@ -471,6 +472,7 @@ export function NumberingStepFooter({
   active,
   metadataBusy,
   canContinue,
+  blockedReason,
   doneCount,
   totalDocuments,
   failedCount,
@@ -480,6 +482,7 @@ export function NumberingStepFooter({
   active: boolean
   metadataBusy: boolean
   canContinue: boolean
+  blockedReason: string | null
   doneCount: number
   totalDocuments: number
   failedCount: number
@@ -508,15 +511,30 @@ export function NumberingStepFooter({
             .
           </p>
         </div>
-        <Button
-          type="button"
-          onClick={onContinue}
-          disabled={!canContinue || metadataBusy}
-          className="w-full bg-[#0052FF] text-white hover:bg-[#0047D6] sm:w-auto"
-        >
-          Tạo mục lục
-          <ArrowRight data-icon="inline-end" />
-        </Button>
+        <div className="relative w-full sm:w-auto">
+          <Button
+            type="button"
+            onClick={onContinue}
+            disabled={!canContinue || metadataBusy}
+            className="w-full sm:w-auto"
+          >
+            Tạo mục lục
+            <ArrowRight data-icon="inline-end" />
+          </Button>
+          {!canContinue || metadataBusy ? (
+            <button
+              type="button"
+              aria-label="Xem lý do không thể tạo mục lục"
+              onClick={() => {
+                toast.error(
+                  blockedReason ??
+                    "Hiện chưa thể chuyển sang tạo mục lục. Vui lòng kiểm tra lại trạng thái đánh số và số hộp."
+                )
+              }}
+              className="absolute inset-0 h-full w-full rounded-lg cursor-not-allowed bg-transparent"
+            />
+          ) : null}
+        </div>
       </div>
     </div>
   )

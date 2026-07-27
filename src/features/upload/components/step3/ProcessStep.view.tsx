@@ -21,6 +21,7 @@ import {
 import { canUserEditMetadataItem } from "./ProcessStep.batchUtils"
 import type { SessionDocumentResponse } from "@/features/upload/api/sessionApi"
 import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
+import type { PdfMetadata } from "@/features/upload/types"
 import type { createProcessStepActions } from "./ProcessStep.actions"
 import type { useProcessStepModel } from "./useProcessStepModel"
 
@@ -408,16 +409,22 @@ export function ProcessStepView(props: ProcessStepViewProps) {
                     item,
                     currentUserIdentity
                   )
+                  const lockedByOther = isDocumentLockedByOther(
+                    item,
+                    currentUserIdentity
+                  )
                   const bulkSelectionDisabled =
                     bulkReviewSelectionActive &&
                     ((!isMetadataConfirmable(item) &&
                       !isMetadataFailedItem(item)) ||
                       (isMetadataFailedItem(item) && !canRestartMetadata) ||
-                      !canEditItem)
+                      !canEditItem ||
+                      lockedByOther)
                   return (
                     <MetadataCard
                       key={item.id}
                       item={item}
+                      sessionId={sessionId}
                       selected={item.id === selectedDocumentId}
                       selectionMode={
                         manualSplitActive || bulkReviewSelectionActive
@@ -428,7 +435,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
                           : bulkSelectedIds.has(item.id)
                       }
                       selectionDisabled={bulkSelectionDisabled}
-                      readOnly={!canEditItem}
+                      readOnly={!canEditItem || lockedByOther}
                       onSelectionChange={(checked, shiftKey) =>
                         manualSplitActive
                           ? toggleManualSelection(item, checked, shiftKey)
@@ -516,6 +523,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
         pendingReadyCount={pendingReadyDocumentCount}
         dossierReadyItems={dossierReadyItems}
         dossierReadyCount={dossierReadyDocumentCount}
+        warningCount={warningCount}
         readyItems={readyItems}
         metadataMessage={metadataMessage}
         canContinue={canContinue}
@@ -525,4 +533,27 @@ export function ProcessStepView(props: ProcessStepViewProps) {
       />
     </motion.div>
   )
+}
+
+function isDocumentLockedByOther(
+  item: { edit_lock?: PdfMetadata["edit_lock"] },
+  currentUserIdentity: {
+    id?: string | number | null
+    email?: string | null
+    name?: string | null
+  }
+): boolean {
+  const lock = item.edit_lock
+  if (lock?.locked !== true) return false
+  const lockedBy = lock.locked_by
+  const currentId = String(currentUserIdentity.id ?? "").trim()
+  const lockedId = String(lockedBy?.user_id ?? "").trim()
+  if (currentId && lockedId && currentId === lockedId) return false
+  const currentEmail = String(currentUserIdentity.email ?? "").trim().toLowerCase()
+  const lockedEmail = String(lockedBy?.email ?? "").trim().toLowerCase()
+  if (currentEmail && lockedEmail && currentEmail === lockedEmail) return false
+  const currentName = String(currentUserIdentity.name ?? "").trim()
+  const lockedName = String(lockedBy?.name ?? "").trim()
+  if (currentName && lockedName && currentName === lockedName) return false
+  return true
 }

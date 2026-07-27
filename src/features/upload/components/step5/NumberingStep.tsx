@@ -33,6 +33,7 @@ import {
   isNumberingComplete,
   numberingEntries,
   saveBlob,
+  textOrNull,
 } from "./NumberingStep.utils"
 
 const NUMBERING_POLL_INTERVAL_MS = 5_000
@@ -762,6 +763,11 @@ export function NumberingStep({
     () => groupDocumentsByDossier(status?.documents ?? []),
     [status?.documents]
   )
+  const dossiersWithoutBoxCount = useMemo(
+    () =>
+      documentsByDossier.filter((group) => !textOrNull(group.boxNumber)).length,
+    [documentsByDossier]
+  )
   const normalizedNumberingFilter = useMemo(
     () => normalizeSearchText(numberingFilter),
     [numberingFilter]
@@ -864,7 +870,31 @@ export function NumberingStep({
   const activeWorkerId =
     status?.job?.status === "running" ? status.job.locked_by : null
   const metadataBusy = metadataExporting || metadataImporting
-  const canContinue = complete && failedCount === 0 && unresolvedCount === 0
+  const blockedReason = useMemo(() => {
+    const reasons: string[] = []
+    if (metadataBusy) {
+      reasons.push("Đang cập nhật metadata. Hãy chờ xong rồi tạo mục lục.")
+    }
+    if (failedCount > 0) {
+      reasons.push(`Còn ${failedCount} tài liệu lỗi.`)
+    }
+    if (unresolvedCount > 0) {
+      reasons.push(
+        `Còn ${unresolvedCount} tài liệu chưa hoàn tất hoặc vừa được cập nhật số đánh.`
+      )
+    }
+    if (dossiersWithoutBoxCount > 0) {
+      reasons.push(
+        `Chưa nhập số hộp cho ${dossiersWithoutBoxCount} hồ sơ.`
+      )
+    }
+    return reasons.join(" ")
+  }, [dossiersWithoutBoxCount, failedCount, metadataBusy, unresolvedCount])
+  const canContinue =
+    complete &&
+    failedCount === 0 &&
+    unresolvedCount === 0 &&
+    dossiersWithoutBoxCount === 0
   const canRestartNumbering = hasNumberingOutput
   const changeNumberingMode = async (mode: DocumentNumberingMode) => {
     if (active || changingMode || mode === documentNumberingMode) return
@@ -1179,6 +1209,7 @@ export function NumberingStep({
         active={active}
         metadataBusy={metadataBusy}
         canContinue={canContinue}
+        blockedReason={blockedReason}
         doneCount={doneCount}
         totalDocuments={totalDocuments}
         failedCount={failedCount}

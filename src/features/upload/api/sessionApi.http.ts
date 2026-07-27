@@ -7,6 +7,16 @@ const API_BASE = (import.meta.env.VITE_ARCHIVAL_API_BASE_URL ?? "/api").replace(
 )
 const inFlightGetJsonRequests = new Map<string, Promise<unknown>>()
 
+export class ApiRequestError extends Error {
+  declare readonly status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = "ApiRequestError"
+    this.status = status
+  }
+}
+
 export async function requestJson<T>(
   path: string,
   init?: RequestInit
@@ -61,7 +71,7 @@ async function fetchJson<T>(
   const response = await fetch(apiUrl(path), init)
   if (allowNotFound && response.status === 404) return null
   if (!response.ok) {
-    throw new Error(await responseErrorMessage(response))
+    throw new ApiRequestError(await responseErrorMessage(response), response.status)
   }
   return response.json() as Promise<T>
 }
