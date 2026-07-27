@@ -3,10 +3,15 @@ import { normalizeDocumentReviewStatus } from "@/features/upload/api/sessionApi"
 import { useOcrFolder } from "@/features/upload/hooks/useOcrFolder"
 import { buildDisplayMetadata } from "@/features/upload/lib/metadata"
 import type { PdfMetadata } from "@/features/upload/types"
+import { isMetadataDiscoveryPending } from "./UploadPage.metadataDiscovery"
 
 export function useUploadPageOcr(
   sessionId: string | null,
-  options: { enabled?: boolean } = {}
+  options: {
+    enabled?: boolean
+    currentStep?: number
+    targetIngestionRunId?: number | null
+  } = {}
 ) {
   const ocr = useOcrFolder(sessionId, {
     enabled: options.enabled ?? true,
@@ -90,14 +95,20 @@ export function useUploadPageOcr(
     ).length ?? 0
   )
   const updatingIngestionRuns = ocr.status?.updating_ingestion_runs ?? 0
+  const metadataDiscoveryPending = isMetadataDiscoveryPending({
+    currentStep: options.currentStep ?? 0,
+    targetIngestionRunId: options.targetIngestionRunId ?? null,
+    status: ocr.status,
+  })
   const pendingIngestionRuns =
-    extractingZipIngestionRuns + updatingIngestionRuns
+    extractingZipIngestionRuns +
+    (metadataDiscoveryPending ? Math.max(1, updatingIngestionRuns) : 0)
   const ocrPendingIngestionMessage =
     extractingZipIngestionRuns > 0
       ? extractingZipIngestionRuns === 1
         ? "Đang extract file ZIP..."
         : `Đang extract ${extractingZipIngestionRuns} file ZIP...`
-      : updatingIngestionRuns > 0
+      : metadataDiscoveryPending
         ? "Đang bổ sung dần các tài liệu mới..."
         : ""
   const ocrMessage =
@@ -107,7 +118,7 @@ export function useUploadPageOcr(
         ? extractingZipIngestionRuns === 1
           ? "Đang extract file ZIP..."
           : `Đang extract ${extractingZipIngestionRuns} file ZIP...`
-        : updatingIngestionRuns > 0
+        : metadataDiscoveryPending
           ? "Đang bổ sung dần các tài liệu mới..."
           : ocrIsReextracting
             ? "Đang trích xuất lại metadata theo cách đánh số mới."

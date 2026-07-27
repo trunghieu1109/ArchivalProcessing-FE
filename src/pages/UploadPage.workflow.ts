@@ -14,6 +14,7 @@ import {
   planProgressMessageForPhase,
   wait,
 } from "./UploadPage.progress"
+import { canNavigateDirectlyToMetadata } from "./UploadPage.workflowPolicy"
 
 export function createUploadPageWorkflowActions(context: Record<string, any>) {
   const {
@@ -39,6 +40,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     navigate,
     ensureSession,
     syncPlanAnalysisState,
+    syncPlanAnalysisJobId,
     syncDoc1State,
     syncDoc2State,
     syncZipState,
@@ -73,24 +75,30 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
       toast.error("Chưa có session để phân tích lại phương án.")
       return
     }
-    if (!planReanalysisReady) {
+    const analyzeStoredInputs = !hasPlanReady && Boolean(doc1Has || doc2Has)
+    if (!planReanalysisReady && !analyzeStoredInputs) {
       toast.error("Vui lòng tải lại phương án chỉnh lý hoặc thời hạn bảo quản.")
       return
     }
 
-    const planFile = planReuploadState.arrangement
+    const analyzeArrangement =
+      planReuploadState.arrangement || (analyzeStoredInputs && doc1Has)
+    const analyzeRetention =
+      planReuploadState.retention || (analyzeStoredInputs && doc2Has)
+    const retentionOnly = analyzeRetention && !analyzeArrangement
+    const planFile = analyzeArrangement
       ? cache.arrangementPlanUpload?.local_cached_path
       : undefined
-    const retentionFiles = planReuploadState.retention
+    const retentionFiles = analyzeRetention
       ? retentionUploadPaths(cache.retentionUploads)
       : []
-    if (planReuploadState.arrangement && !planFile) {
+    if (analyzeArrangement && !planFile) {
       toast.error(
         "Backend chưa trả về đường dẫn local cho file phương án vừa tải lại."
       )
       return
     }
-    if (planReuploadState.retention && retentionFiles.length === 0) {
+    if (analyzeRetention && retentionFiles.length === 0) {
       toast.error(
         "Backend chưa trả về đường dẫn local cho file thời hạn bảo quản vừa tải lại."
       )
@@ -104,14 +112,21 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     }
 
     try {
+      syncPlanAnalysisJobId(null)
       syncPlanAnalysisState("processing")
-      if (planReuploadState.arrangement) syncDoc1State("processing")
-      if (planReuploadState.retention) syncDoc2State("processing")
+      if (analyzeArrangement) syncDoc1State("processing")
+      if (analyzeRetention) syncDoc2State("processing")
       setPlanCompletedPhases(new Set(["upload_inputs"]))
-      setPlanProgressPhase("preparing_plan_file")
-      setPlanProgressMessage(planProgressMessageForPhase("preparing_plan_file"))
+      setPlanProgressPhase(
+        retentionOnly ? "retention_period" : "preparing_plan_file"
+      )
+      setPlanProgressMessage(
+        planProgressMessageForPhase(
+          retentionOnly ? "retention_period" : "preparing_plan_file"
+        )
+      )
 
-      await enqueuePlanAnalysis(currentSessionId, {
+      const analysisJob = await enqueuePlanAnalysis(currentSessionId, {
         ...(planFile ? { plan_file: planFile } : {}),
         ...(retentionFiles.length > 0
           ? { retention_files: retentionFiles }
@@ -119,10 +134,9 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
         dossier_build_strategy: dossierBuildStrategy,
       })
       if (!sessionIsActive(currentSessionId)) return
+      syncPlanAnalysisJobId(analysisJob.job_id)
       resetPlanReuploadState()
 
-      const retentionOnly =
-        planReuploadState.retention && !planReuploadState.arrangement
       setPlanProgressMessage(
         retentionOnly
           ? "Đang chờ backend phân tích thông tư thời hạn bảo quản."
@@ -138,6 +152,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
       goTo(2, currentSessionId)
     } catch (err) {
       if (!sessionIsActive(currentSessionId)) return
+      syncPlanAnalysisJobId(null)
       syncPlanAnalysisState("idle")
       syncDoc1State(doc1Has ? "done" : "idle")
       syncDoc2State(doc2Has ? "done" : "idle")
@@ -267,6 +282,10 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
   }
 
   const handleStartAllImpl = async () => {
+    const canGoDirectlyToMetadata = canNavigateDirectlyToMetadata(
+      Boolean(doc1Has),
+      Boolean(doc2Has)
+    )
     const hasPendingData =
       Boolean(cache.draftZipFile) || cache.draftFolderSources.length > 0
     const partialFolderReady =
@@ -300,7 +319,11 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
       }
       return
     }
-    if (partialFolderReady && !planInputsReuploaded) {
+    if (
+      partialFolderReady &&
+      !planInputsReuploaded &&
+      canGoDirectlyToMetadata
+    ) {
       const currentSessionId = routeSessionId ?? sessionId ?? cache.sessionId
       if (currentSessionId) {
         navigate(
@@ -314,7 +337,8 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     if (
       existingSessionMode &&
       folderRunNeedsMetadataStart &&
-      !planInputsReuploaded
+      !planInputsReuploaded &&
+      canGoDirectlyToMetadata
     ) {
       const currentSessionId = routeSessionId ?? sessionId ?? cache.sessionId
       if (currentSessionId) {
@@ -339,7 +363,11 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
         await handleReanalyzeExistingSessionPlan()
         return
       }
-      if (zipSupplementUploaded) {
+      if (!hasPlanReady && (doc1Has || doc2Has)) {
+        await handleReanalyzeExistingSessionPlan()
+        return
+      }
+      if (zipSupplementUploaded && canGoDirectlyToMetadata) {
         const currentSessionId = routeSessionId ?? sessionId ?? cache.sessionId
         if (currentSessionId) {
           navigate(
@@ -350,7 +378,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
         }
         return
       }
-      if (zipHas && !hasPlanReady) {
+      if (zipHas && !hasPlanReady && canGoDirectlyToMetadata) {
         const currentSessionId = routeSessionId ?? sessionId ?? cache.sessionId
         if (currentSessionId) {
           navigate(
@@ -379,6 +407,9 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
       return
     }
     try {
+      if (arrangementFile || retentionFileDrafts.length > 0) {
+        syncPlanAnalysisJobId(null)
+      }
       if (arrangementFile) {
         syncPlanAnalysisState("processing")
         setPlanProgressPhase("upload_inputs")
@@ -455,15 +486,15 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
         if (retentionFiles.length > 0) {
           if (sessionIsActive(currentSessionId)) {
             syncPlanAnalysisState("processing")
-            setPlanProgressPhase("retention_schedule")
+            setPlanProgressPhase("retention_period")
             setPlanProgressMessage("Đang phân tích thông tư thời hạn bảo quản.")
           }
-          const retentionJob = enqueuePlanAnalysis(currentSessionId, {
+          const retentionJob = await enqueuePlanAnalysis(currentSessionId, {
             retention_files: retentionFiles,
             dossier_build_strategy: dossierBuildStrategy,
           })
-          await retentionJob
           if (sessionIsActive(currentSessionId)) {
+            syncPlanAnalysisJobId(retentionJob.job_id)
             setPlanProgressMessage(
               "Đang chờ backend phân tích thông tư thời hạn bảo quản."
             )
@@ -519,8 +550,9 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
           planProgressMessageForPhase("preparing_plan_file")
         )
       }
-      await planJob
+      const planJobResponse = await planJob
       if (sessionIsActive(currentSessionId)) {
+        syncPlanAnalysisJobId(planJobResponse.job_id)
         setPlanProgressMessage("Đang chờ backend phân tích phương án chỉnh lý.")
         toast.success(
           "Đã tạo session và gửi task phân tích phương án chỉnh lý."
@@ -530,6 +562,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     } catch (err) {
       const currentSessionId = routeSessionId ?? sessionId ?? cache.sessionId
       if (currentSessionId && !sessionIsActive(currentSessionId)) return
+      syncPlanAnalysisJobId(null)
       syncPlanAnalysisState("idle")
       setPlanProgressPhase(null)
       setPlanProgressMessage("")

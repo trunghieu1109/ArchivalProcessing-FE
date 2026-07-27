@@ -78,6 +78,14 @@ export interface DeleteSessionResponse {
   }>
 }
 
+export interface EnqueuePlanAnalysisResponse {
+  session_id: string
+  job_id: number
+  job_type: "analyze_plan"
+  status: string
+  payload: Record<string, unknown>
+}
+
 export interface SessionDetailResponse extends SessionSummary {
   files: SessionInputUploadResponse[]
   active_plan_analysis_job?: ActiveJobSummary | null

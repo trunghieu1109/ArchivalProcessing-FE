@@ -48,6 +48,7 @@ interface UploadPageCache {
   doc2State: ProcessState
   zipState: ProcessState
   planAnalysisState: ProcessState
+  planAnalysisJobId: number | null
   dossierBuildStrategy: DossierBuildStrategy
   persistedDossierBuildStrategy: DossierBuildStrategy
   documentNumberingMode: DocumentNumberingMode
@@ -118,6 +119,7 @@ export const uploadPageCache: UploadPageCache = {
   doc2State: "idle",
   zipState: "idle",
   planAnalysisState: "idle",
+  planAnalysisJobId: null,
   dossierBuildStrategy: DEFAULT_DOSSIER_BUILD_STRATEGY,
   persistedDossierBuildStrategy: DEFAULT_DOSSIER_BUILD_STRATEGY,
   documentNumberingMode: DEFAULT_DOCUMENT_NUMBERING_MODE,

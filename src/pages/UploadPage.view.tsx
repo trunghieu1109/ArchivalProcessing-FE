@@ -42,6 +42,7 @@ export function UploadPageView(props: Record<string, any>) {
     doc1Ref,
     doc2Ref,
     zipRef,
+    doc1Has,
     doc2Has,
     zipHas,
     hasActivePlan,
@@ -127,7 +128,10 @@ export function UploadPageView(props: Record<string, any>) {
   const hasApprovedPlan = Boolean(hasActivePlan) && Boolean(activePlanVersionId)
   const hasActivePlanVersion =
     hasApprovedPlan && activeParsedPlan.groups.length > 0
-  const hasPlanReady = hasAnalyzedPlan || hasApprovedPlan
+  const hasPlanReady =
+    hasAnalyzedPlan ||
+    hasApprovedPlan ||
+    (Boolean(planAnalyzing) && Boolean(workingPlanVersionId))
   const showActivePlanTab = planViewTab === "active"
   const draftIsActiveFallback =
     Boolean(activePlanVersionId) &&
@@ -256,6 +260,8 @@ export function UploadPageView(props: Record<string, any>) {
               latestUploadInterruption={latestUploadInterruption}
               planReuploadState={planReuploadState}
               ocr={ocr}
+              doc1Has={doc1Has}
+              doc2Has={doc2Has}
               zipHas={zipHas}
               allProcessing={allProcessing}
               sessionLoading={sessionLoading}
@@ -300,6 +306,15 @@ export function UploadPageView(props: Record<string, any>) {
             >
               {hasPlanReady ? (
                 <div className="flex flex-col gap-4">
+                  {planAnalyzing && (
+                    <ProgressTimeline
+                      phases={PLAN_PROGRESS_PHASES}
+                      activePhase={planProgressPhase}
+                      completedPhases={planCompletedPhases}
+                      title={planProcessingTitle}
+                      message={planProcessingMessage}
+                    />
+                  )}
                   <div className="rounded-2xl border border-[#D8E1EC] bg-white p-3 shadow-sm sm:flex sm:items-center sm:justify-between sm:gap-5">
                     <div className="px-1 pb-2 sm:pb-0">
                       <p className="text-[11px] font-semibold text-[#64748B] uppercase">

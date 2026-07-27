@@ -9,6 +9,7 @@ export const STEP_LABELS = [
 ]
 export const PLAN_ANALYSIS_TIMEOUT_MS = 10 * 60 * 1000
 export const PLAN_ANALYSIS_POLL_INTERVAL_MS = 5_000
+export const PLAN_ANALYSIS_EVENT_PAGE_SIZE = 500
 export const LAST_SESSION_KEY = "archival-processing:last-session-id"
 export const PLAN_PROGRESS_PHASES = [
   { id: "upload_inputs", label: "Nạp dữ liệu đầu vào" },
@@ -43,10 +44,53 @@ export function normalizePlanProgressPhase(value: unknown): string {
   }
   if (phase === "file_register_analysis") return "file_register_analysis"
   if (phase === "group_definitions") return "group_definitions"
-  if (phase === "persisting_plan" || phase === "validating_result") {
+  if (
+    phase === "persisting_plan" ||
+    phase === "validating_result" ||
+    phase === "retention_indexing" ||
+    phase === "retention_candidate_versions"
+  ) {
     return "retention_period"
   }
   return ""
+}
+
+export function isPlanAnalysisEventForJob(
+  payload: Record<string, unknown> | null | undefined,
+  jobId: number | null
+): boolean {
+  if (jobId === null) return false
+  const eventJobId = payload?.job_id
+  if (typeof eventJobId === "number") return eventJobId === jobId
+  if (typeof eventJobId !== "string" || !eventJobId.trim()) return false
+  return eventJobId.trim() === String(jobId)
+}
+
+export function planAnalysisResultVersionId(
+  payload: Record<string, unknown> | null | undefined
+): string {
+  const value = payload?.plan_version_id
+  if (typeof value !== "string" && typeof value !== "number") return ""
+  return String(value).trim()
+}
+
+export function shouldApplyPlanAnalysisResult({
+  currentPlanVersionId,
+  nextPlanVersionId,
+  completedPlanVersionId,
+}: {
+  currentPlanVersionId: string
+  nextPlanVersionId: string
+  completedPlanVersionId: string
+}): boolean {
+  if (!nextPlanVersionId) return false
+  if (!currentPlanVersionId || nextPlanVersionId !== currentPlanVersionId) {
+    return true
+  }
+  return (
+    Boolean(completedPlanVersionId) &&
+    nextPlanVersionId === completedPlanVersionId
+  )
 }
 
 export function planProgressMessageForPhase(phase: string): string {

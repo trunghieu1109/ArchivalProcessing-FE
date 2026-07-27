@@ -7,6 +7,7 @@ import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import type { SessionMetadataValues } from "@/features/upload/components/SessionMetadataBar"
 import {
   ensureClusterBuild,
+  getActivePlan,
   getWorkingPlan,
   listSessionEvents,
   type DossierBuildStrategy,
@@ -45,10 +46,14 @@ import { useUploadPageLifecycle } from "./UploadPage.lifecycle"
 import { uploadPageCache as cache } from "./UploadPage.cache"
 import {
   PLAN_PROGRESS_PHASES,
+  PLAN_ANALYSIS_EVENT_PAGE_SIZE,
   PLAN_ANALYSIS_POLL_INTERVAL_MS,
   STEP_LABELS,
+  isPlanAnalysisEventForJob,
   normalizePlanProgressPhase,
+  planAnalysisResultVersionId,
   planProgressMessageForPhase,
+  shouldApplyPlanAnalysisResult,
 } from "./UploadPage.progress"
 import {
   activePlanBuildStrategy,
@@ -200,13 +205,11 @@ export function UploadPage() {
       toast.error("Chưa có session để lập hồ sơ.")
       return
     }
-    const hasActivePlanData = activeParsedPlan.groups.length > 0
     const missingInputs = missingDossierBuildInputs({
       hasArrangementPlan: doc1Has,
       hasRetentionSchedule: doc2Has,
       hasVerifiedDocuments,
       hasActivePlan: Boolean(activePlanVersionId),
-      hasActivePlanData,
     })
     if (missingInputs.length > 0) {
       toast.error(dossierBuildMissingMessage(missingInputs))
@@ -214,9 +217,25 @@ export function UploadPage() {
     }
 
     try {
+      let buildStrategy = activePlanSettings.dossierBuildStrategy
+      if (activePlanVersionId && activeParsedPlan.groups.length === 0) {
+        try {
+          const activePlan = await getActivePlan(currentSessionId)
+          if (
+            activePlan &&
+            isSessionViewActive(currentSessionViewScope, currentSessionId)
+          ) {
+            applyActivePlanResponse(activePlan)
+            buildStrategy = activePlanBuildStrategy(activePlan)
+          }
+        } catch {
+          // Hydration is best-effort. The backend remains authoritative for
+          // validating the active plan when ensureClusterBuild is requested.
+        }
+      }
       const response = await ensureClusterBuild(currentSessionId, {
         source: "user_view_results",
-        dossier_build_strategy: activePlanSettings.dossierBuildStrategy,
+        dossier_build_strategy: buildStrategy,
       })
       if (!isSessionViewActive(currentSessionViewScope, currentSessionId)) {
         return
@@ -261,6 +280,13 @@ export function UploadPage() {
   const [planAnalysisState, setPlanAnalysisState] = useState<ProcessState>(
     cache.planAnalysisState
   )
+  const [planAnalysisJobId, setPlanAnalysisJobId] = useState<number | null>(
+    cache.planAnalysisJobId
+  )
+  const syncPlanAnalysisJobId = useCallback((jobId: number | null) => {
+    cache.planAnalysisJobId = jobId
+    setPlanAnalysisJobId(jobId)
+  }, [])
   const [dossierBuildStrategy, setDossierBuildStrategy] =
     useState<DossierBuildStrategy>(cache.dossierBuildStrategy)
   const [documentNumberingMode, setDocumentNumberingMode] =
@@ -469,6 +495,7 @@ export function UploadPage() {
     setDoc2State,
     setZipState,
     setPlanAnalysisState,
+    setPlanAnalysisJobId,
     setDossierBuildStrategy,
     setDocumentNumberingMode,
     setDocumentNumberingStylePreset,
@@ -604,6 +631,14 @@ export function UploadPage() {
     routeSessionId,
   ])
 
+  const zipInputPreferredForMetadata = Boolean(
+    cache.zipUpload &&
+    (cache.rawZipReuploaded ||
+      zipInputIsLatest(cache.zipUpload, currentFolderSummary))
+  )
+  const metadataTargetIngestionRunId = zipInputPreferredForMetadata
+    ? (cache.zipUpload?.ingestion_run?.id ?? null)
+    : (currentFolderSummary?.ingestion_run?.id ?? null)
   const {
     ocr,
     ocrMetadataItems,
@@ -614,7 +649,11 @@ export function UploadPage() {
     ocrPendingIngestionMessage,
     ocrMessage,
     ocrLoading,
-  } = useUploadPageOcr(activeUploadSessionId, { enabled: currentStep === 3 })
+  } = useUploadPageOcr(activeUploadSessionId, {
+    enabled: currentStep === 3,
+    currentStep,
+    targetIngestionRunId: metadataTargetIngestionRunId,
+  })
   const hasVerifiedDocuments =
     (ocr.status?.metadata_verified_documents ?? 0) > 0 ||
     (ocr.status?.metadata_reviewed_documents ?? 0) > 0 ||
@@ -626,11 +665,18 @@ export function UploadPage() {
 
   useEffect(() => {
     const planPollingSessionId = routeSessionId ?? sessionId
-    if (!planPollingSessionId || planAnalysisState !== "processing") return
+    if (
+      !planPollingSessionId ||
+      planAnalysisState !== "processing" ||
+      planAnalysisJobId === null
+    ) {
+      return
+    }
 
     const actionScope = currentSessionViewScope
     let cancelled = false
     let afterId = 0
+    let completedPlanVersionId = ""
     let timeoutId: number | undefined
     const schedule = () => {
       if (!cancelled) {
@@ -649,7 +695,7 @@ export function UploadPage() {
       try {
         const response = await listSessionEvents(planPollingSessionId, {
           afterId,
-          limit: 50,
+          limit: PLAN_ANALYSIS_EVENT_PAGE_SIZE,
         })
         if (
           cancelled ||
@@ -659,6 +705,9 @@ export function UploadPage() {
         }
         for (const event of response.events) {
           afterId = Math.max(afterId, event.id)
+          if (!isPlanAnalysisEventForJob(event.payload, planAnalysisJobId)) {
+            continue
+          }
           if (event.event_type === "plan.analysis.progress") {
             const phase = normalizePlanProgressPhase(event.payload?.phase)
             if (phase) {
@@ -674,15 +723,26 @@ export function UploadPage() {
                 return next
               })
             }
-            if (phase)
+            const eventMessage = event.message?.trim()
+            if (eventMessage) setPlanProgressMessage(eventMessage)
+            else if (phase) {
               setPlanProgressMessage(planProgressMessageForPhase(phase))
+            }
           }
           if (event.event_type === "plan.analysis.completed") {
-            setPlanProgressPhase(null)
+            completedPlanVersionId =
+              planAnalysisResultVersionId(event.payload) ||
+              completedPlanVersionId
+            setPlanProgressPhase(
+              PLAN_PROGRESS_PHASES[PLAN_PROGRESS_PHASES.length - 1]?.id ??
+                "retention_period"
+            )
             setPlanCompletedPhases(
               new Set(PLAN_PROGRESS_PHASES.map((phase) => phase.id))
             )
-            setPlanProgressMessage("Đã phân tích xong phương án chỉnh lý.")
+            setPlanProgressMessage(
+              "Phân tích đã hoàn tất. Đang tải kết quả mới nhất."
+            )
           }
         }
       } catch {
@@ -700,8 +760,11 @@ export function UploadPage() {
         const nextPlanVersionId = planResponse?.id ?? ""
         const shouldApplyPlan =
           Boolean(planResponse) &&
-          (!currentPlanVersionId ||
-            (nextPlanVersionId && nextPlanVersionId !== currentPlanVersionId))
+          shouldApplyPlanAnalysisResult({
+            currentPlanVersionId,
+            nextPlanVersionId,
+            completedPlanVersionId,
+          })
         if (planResponse && shouldApplyPlan) {
           const plan = activePlanToParsedPlan(planResponse)
           const draftPayload = planResponseToDraftPayload(planResponse)
@@ -724,6 +787,7 @@ export function UploadPage() {
           cache.folderTree = planToTree(plan)
           cache.planViewTab = "draft"
           cache.planAnalysisState = "done"
+          cache.planAnalysisJobId = null
           const { doc1Has: currentDoc1Has, doc2Has: currentDoc2Has } =
             planInputStateRef.current
           cache.doc1State = currentDoc1Has ? "done" : "idle"
@@ -745,6 +809,7 @@ export function UploadPage() {
           setPlanDraftDirty(false)
           setPlanViewTab(cache.planViewTab)
           setPlanAnalysisState("done")
+          setPlanAnalysisJobId(null)
           setDoc1State(cache.doc1State)
           setDoc2State(cache.doc2State)
           setDossierBuildStrategy(buildStrategy)
@@ -780,7 +845,13 @@ export function UploadPage() {
         window.clearTimeout(timeoutId)
       }
     }
-  }, [currentSessionViewScope, planAnalysisState, routeSessionId, sessionId])
+  }, [
+    currentSessionViewScope,
+    planAnalysisJobId,
+    planAnalysisState,
+    routeSessionId,
+    sessionId,
+  ])
 
   const {
     ensureSession,
@@ -904,7 +975,6 @@ export function UploadPage() {
     hasRetentionSchedule: doc2Has,
     hasVerifiedDocuments,
     hasActivePlan,
-    hasActivePlanData: activeParsedPlan.groups.length > 0,
   })
   const missingDossierInputLabels =
     dossierBuildMissingLabels(missingDossierInputs)
@@ -974,11 +1044,6 @@ export function UploadPage() {
     (currentFolderSummary.ingestion_run?.ocr_batch_ids.length ?? 0) === 0
       ? currentFolderSummary.counts.effective
       : 0
-  const zipInputPreferredForMetadata = Boolean(
-    cache.zipUpload &&
-    (cache.rawZipReuploaded ||
-      zipInputIsLatest(cache.zipUpload, currentFolderSummary))
-  )
   const folderRunNeedsMetadataStart = Boolean(
     !zipInputPreferredForMetadata &&
     currentFolderSummary?.document_sync_status === "ready" &&
@@ -1313,6 +1378,7 @@ export function UploadPage() {
       ensureSession,
       syncSessionMetadata,
       syncPlanAnalysisState,
+      syncPlanAnalysisJobId,
       syncDoc1State,
       syncDoc2State,
       syncZipState,

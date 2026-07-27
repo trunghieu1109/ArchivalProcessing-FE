@@ -5,6 +5,7 @@ import type {
   DeleteSessionResponse,
   DossierBuildStrategy,
   DocumentNumberingMode,
+  EnqueuePlanAnalysisResponse,
   SessionDetailResponse,
   SessionListResponse,
   SessionProgressEvent,
@@ -121,8 +122,8 @@ export async function enqueuePlanAnalysis(
     dossier_build_strategy?: DossierBuildStrategy
     document_numbering_mode?: DocumentNumberingMode
   }
-): Promise<void> {
-  await requestJson<unknown>(
+): Promise<EnqueuePlanAnalysisResponse> {
+  return requestJson<EnqueuePlanAnalysisResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/plan/analyze`,
     {
       method: "POST",

@@ -326,23 +326,25 @@ export function digitizationToFolderStatus(
         normalizeStatus(run.status)
       )
   ).length
-  const updatingIngestionRuns = ingestionRuns.filter((run) => {
-    if (normalizeStatus(run.status) !== "ready") return false
-    const linkedBatches = batches.filter(
-      (candidate) => candidate.ingestion_run_id === run.id
-    )
-    if (linkedBatches.length === 0) return true
-    return linkedBatches.some((candidate) => {
-      if (isTerminalBatch(candidate)) return false
-      const discoveredCount = statusCountTotal(candidate.status_counts)
-      const expectedCount = Math.max(
-        0,
-        candidate.total_jobs ?? 0,
-        candidate.total_files ?? 0
+  const updatingIngestionRunIds = ingestionRuns
+    .filter((run) => {
+      if (normalizeStatus(run.status) !== "ready") return false
+      const linkedBatches = batches.filter(
+        (candidate) => candidate.ingestion_run_id === run.id
       )
-      return expectedCount === 0 || discoveredCount < expectedCount
+      if (linkedBatches.length === 0) return true
+      return linkedBatches.some((candidate) => {
+        if (isTerminalBatch(candidate)) return false
+        const discoveredCount = statusCountTotal(candidate.status_counts)
+        const expectedCount = Math.max(
+          0,
+          candidate.total_jobs ?? 0,
+          candidate.total_files ?? 0
+        )
+        return expectedCount === 0 || discoveredCount < expectedCount
+      })
     })
-  }).length
+    .map((run) => run.id)
   const responseDocumentTotal = summary?.total_documents ?? documents.length
   const pendingBatchCounts = batches
     .filter((candidate) => !isTerminalBatch(candidate))
@@ -482,7 +484,8 @@ export function digitizationToFolderStatus(
         )
       ).length,
     extracting_zip_ingestion_runs: extractingZipIngestionRuns,
-    updating_ingestion_runs: updatingIngestionRuns,
+    updating_ingestion_runs: updatingIngestionRunIds.length,
+    updating_ingestion_run_ids: updatingIngestionRunIds,
     ready_ingestion_runs:
       summary?.ready_ingestion_runs ??
       ingestionRuns.filter((run) => run.status === "ready").length,

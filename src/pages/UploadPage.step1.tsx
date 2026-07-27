@@ -14,6 +14,10 @@ import { cn } from "@/shared/lib/utils"
 import type { UploadMode } from "@/features/upload/api/sessionApi"
 import type { SessionMetadataValues } from "@/features/upload/components/SessionMetadataBar"
 import { easeOut } from "./UploadPage.planUtils"
+import {
+  canNavigateDirectlyToMetadata,
+  planWorkflowActionLabel,
+} from "./UploadPage.workflowPolicy"
 
 export function UploadPageStepOne(props: Record<string, any>) {
   const {
@@ -39,6 +43,8 @@ export function UploadPageStepOne(props: Record<string, any>) {
     latestUploadInterruption,
     planReuploadState,
     ocr,
+    doc1Has,
+    doc2Has,
     zipHas,
     allProcessing,
     sessionLoading,
@@ -90,6 +96,15 @@ export function UploadPageStepOne(props: Record<string, any>) {
       ? "Phân tích lại phương án và thời hạn"
       : "Phân tích thời hạn bảo quản"
     : "Phân tích lại phương án"
+  const workflowActionLabel = planWorkflowActionLabel({
+    hasPlanReady: Boolean(hasPlanReady),
+    hasArrangementPlan: Boolean(doc1Has),
+    hasRetentionSchedule: Boolean(doc2Has),
+  })
+  const canGoDirectlyToMetadata = canNavigateDirectlyToMetadata(
+    Boolean(doc1Has),
+    Boolean(doc2Has)
+  )
   const retentionOnlyProcessing =
     planAnalyzing && doc2State === "processing" && doc1State !== "processing"
   const progressTitle =
@@ -483,15 +498,19 @@ export function UploadPageStepOne(props: Record<string, any>) {
                         : partialFolderCount > 0
                           ? `Xử lý ${partialFolderCount} tài liệu đã tải thành công`
                           : folderRunNeedsMetadataStart
-                            ? "Chuyển sang Extract Metadata"
-                            : existingSessionMode && zipSupplementUploaded
+                            ? canGoDirectlyToMetadata
                               ? "Chuyển sang Extract Metadata"
-                              : existingSessionMode && zipHas && !hasPlanReady
+                              : workflowActionLabel
+                            : existingSessionMode && zipSupplementUploaded
+                              ? canGoDirectlyToMetadata
                                 ? "Chuyển sang Extract Metadata"
+                                : workflowActionLabel
+                              : existingSessionMode && zipHas && !hasPlanReady
+                                ? workflowActionLabel
                                 : allDone
-                                  ? "Tiếp tục"
+                                  ? workflowActionLabel
                                   : existingSessionMode
-                                    ? "Tiếp tục"
+                                    ? workflowActionLabel
                                     : "Bắt đầu xử lý"}
           </span>
           {!primaryActionDisabled && (
