@@ -1,3 +1,5 @@
+import type { DocumentEditLock } from "./api/sessionApi"
+
 export type ProcessState = "idle" | "processing" | "done"
 
 export interface SectionHandle {
@@ -140,6 +142,7 @@ export interface PdfMetadata {
   metadata_verified_by_name?: string | null
   metadata_verified_at?: string | null
   metadata_review_note?: string | null
+  edit_lock?: DocumentEditLock | null
   status: string
   remote_metadata_status?: string | null
   signature_status?: string | null

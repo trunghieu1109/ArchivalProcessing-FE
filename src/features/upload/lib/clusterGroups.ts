@@ -1,5 +1,6 @@
 import type {
   ClusterVersionResponse,
+  DocumentEditLock,
   DocumentNumberingMode,
   SessionDossierSuggestion,
   SessionClusterSummary,
@@ -81,6 +82,7 @@ export interface ClusterDocument {
   dossierSuggestions?: SessionDossierSuggestion[] | null
   clusterWarning: ClusterDocumentWarning | null
   pendingFeedback?: PendingClusterFeedbackMarker | null
+  editLock?: DocumentEditLock | null
   lifecycleStatus?: "active" | "delete_pending" | "deleted" | string
   deletedAt?: string | null
   deletedByName?: string | null
@@ -422,6 +424,7 @@ function clusterToGroup(
           Boolean(placement.requires_review) || Boolean(clusterWarning),
         metadata,
         clusterWarning,
+        editLock: item?.edit_lock ?? null,
         lifecycleStatus:
           placement.lifecycle_status ?? item?.lifecycle_status ?? "active",
         deletedAt: placement.deleted_at ?? item?.deleted_at ?? null,
@@ -489,6 +492,7 @@ function clusterToGroup(
         requiresReview: Boolean(clusterWarning),
         metadata,
         clusterWarning,
+        editLock: item?.edit_lock ?? null,
         lifecycleStatus: item?.lifecycle_status ?? "active",
         deletedAt: item?.deleted_at ?? null,
         deletedByName: item?.deleted_by_name ?? null,

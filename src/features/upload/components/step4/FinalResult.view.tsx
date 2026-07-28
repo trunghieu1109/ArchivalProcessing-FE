@@ -8,6 +8,7 @@ import {
   Loader2,
   RefreshCw,
   Search,
+  TriangleAlert,
   X,
 } from "lucide-react"
 import { motion } from "framer-motion"
@@ -88,6 +89,7 @@ export function FinalResultView(props: Record<string, any>) {
     loading,
     loadingClusterVersionId,
     movingSelectedDocumentsTargetId,
+    numberingInProgress,
     nextDisplayVersion,
     openNodeIds,
     pendingClusterDocumentCount,
@@ -159,6 +161,22 @@ export function FinalResultView(props: Record<string, any>) {
       transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
       className="flex flex-col gap-4"
     >
+      {numberingInProgress ? (
+        <div className="sticky top-3 z-40">
+          <div
+            role="alert"
+            className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm"
+          >
+            <div className="flex items-center gap-2 font-semibold">
+              <TriangleAlert className="size-4 shrink-0" />
+              <p>
+                Bước đánh số trang vẫn đang chạy. Nếu bạn cập nhật hồ sơ theo
+                feedback mới, kết quả đánh số hiện tại có thể bị ảnh hưởng.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <h2 className="font-sans text-2xl font-semibold tracking-normal text-[#0F172A]">
@@ -439,6 +457,7 @@ export function FinalResultView(props: Record<string, any>) {
                 <ResultNode
                   key={node.id}
                   node={node}
+                  sessionId={sessionId}
                   depth={0}
                   openNodeIds={openNodeIds}
                   draggedDocument={draggedDocument}
@@ -551,29 +570,30 @@ export function FinalResultView(props: Record<string, any>) {
           </div>
         )}
       </div>
-      {SHOW_DOSSIER_SUGGESTIONS && selectedDossierSuggestionsDocuments.length > 0 && (
-        <DossierSuggestionsModal
-          key={selectedDossierSuggestionsDocuments
-            .map(
-              (document: { sessionDocumentId: string | number }) =>
-                document.sessionDocumentId
-            )
-            .join(":")}
-          documents={selectedDossierSuggestionsDocuments}
-          suggestions={selectedDossierSuggestionCandidates}
-          dossiers={dossierSuggestionDossiers}
-          representativeDocuments={dossierSuggestionRepresentativeDocuments}
-          loading={dossierSuggestionsLoading}
-          refreshing={dossierSuggestionsRefreshing}
-          creatingDossier={promotingSelectedDocuments}
-          moveDisabled={temporaryFolderUpdateDisabled}
-          error={dossierSuggestionsError}
-          onClose={handleCloseDossierSuggestions}
-          onRefresh={handleRefreshDossierSuggestions}
-          onCreateDossier={handleCreateDossierFromSuggestions}
-          onMoveToDossier={handleMoveDossierSuggestion}
-        />
-      )}
+      {SHOW_DOSSIER_SUGGESTIONS &&
+        selectedDossierSuggestionsDocuments.length > 0 && (
+          <DossierSuggestionsModal
+            key={selectedDossierSuggestionsDocuments
+              .map(
+                (document: { sessionDocumentId: string | number }) =>
+                  document.sessionDocumentId
+              )
+              .join(":")}
+            documents={selectedDossierSuggestionsDocuments}
+            suggestions={selectedDossierSuggestionCandidates}
+            dossiers={dossierSuggestionDossiers}
+            representativeDocuments={dossierSuggestionRepresentativeDocuments}
+            loading={dossierSuggestionsLoading}
+            refreshing={dossierSuggestionsRefreshing}
+            creatingDossier={promotingSelectedDocuments}
+            moveDisabled={temporaryFolderUpdateDisabled}
+            error={dossierSuggestionsError}
+            onClose={handleCloseDossierSuggestions}
+            onRefresh={handleRefreshDossierSuggestions}
+            onCreateDossier={handleCreateDossierFromSuggestions}
+            onMoveToDossier={handleMoveDossierSuggestion}
+          />
+        )}
       <FinalResultFeedbackPanel
         canDeleteDocuments={canDeleteDocuments}
         canTransferDocuments={canTransferDocuments}

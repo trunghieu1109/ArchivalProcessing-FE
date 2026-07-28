@@ -1,12 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { Dialog } from "radix-ui"
-import {
-  AlertTriangle,
-  Loader2,
-  RefreshCw,
-  Trash2,
-  X,
-} from "lucide-react"
+import { AlertTriangle, Loader2, RefreshCw, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -15,6 +9,7 @@ import {
   previewSessionDocumentDeletion,
   retrySessionDocumentDeletion,
   type DocumentDeletionOperationResponse,
+  type DocumentDeletionBlocker,
   type DocumentDeletionPreviewResponse,
 } from "@/features/upload/api/sessionApi"
 
@@ -179,8 +174,8 @@ export function DocumentDeletionDialog({
                 Xóa tài liệu khỏi toàn session
               </Dialog.Title>
               <Dialog.Description className="mt-1 text-sm text-[#64748B]">
-                Tài liệu sẽ không còn tham gia OCR, lập hồ sơ, đánh số, tạo
-                mục lục hay xuất bản. Dữ liệu lịch sử vẫn được giữ lại.
+                Tài liệu sẽ không còn tham gia OCR, lập hồ sơ, đánh số, tạo mục
+                lục hay xuất bản. Dữ liệu lịch sử vẫn được giữ lại.
               </Dialog.Description>
             </div>
             <Dialog.Close asChild>
@@ -216,17 +211,20 @@ export function DocumentDeletionDialog({
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
                 <p className="flex items-center gap-2 font-semibold">
                   <AlertTriangle className="size-4" />
-                  Chưa thể xóa vì task đang chạy
+                  Chưa thể xóa tài liệu
                 </p>
                 <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
                   {blockers.map((blocker, index) => (
-                    <li key={`${blocker.job_id ?? blocker.operation_id ?? index}`}>
-                      {jobTypeLabel(blocker.job_type)} · {blocker.status}
+                    <li
+                      key={`${blocker.job_id ?? blocker.operation_id ?? index}`}
+                    >
+                      {deletionBlockerLabel(blocker)}
                     </li>
                   ))}
                 </ul>
                 <p className="mt-2 text-xs">
-                  Vui lòng đợi task hoàn thành rồi kiểm tra lại.
+                  Vui lòng đợi tài liệu được mở khóa hoặc task hoàn thành rồi
+                  kiểm tra lại.
                 </p>
               </div>
             ) : null}
@@ -240,7 +238,7 @@ export function DocumentDeletionDialog({
                 <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
                   {jobsToCancel.map((job, index) => (
                     <li key={`${job.job_id ?? index}`}>
-                      {jobTypeLabel(job.job_type)} · {job.status}
+                      {jobTypeLabel(job.job_type ?? "task")} · {job.status}
                     </li>
                   ))}
                 </ul>
@@ -260,7 +258,7 @@ export function DocumentDeletionDialog({
                 <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
                   {continuingJobs.map((job, index) => (
                     <li key={`${job.job_id ?? index}`}>
-                      {jobTypeLabel(job.job_type)} · {job.status}
+                      {jobTypeLabel(job.job_type ?? "task")} · {job.status}
                     </li>
                   ))}
                 </ul>
@@ -375,8 +373,11 @@ export function DocumentDeletionDialog({
                 variant="destructive"
                 onClick={() => void submitDelete()}
                 disabled={
-                  submitting || loadingPreview || !preview?.allowed || !sessionId
-                  || !confirmed
+                  submitting ||
+                  loadingPreview ||
+                  !preview?.allowed ||
+                  !sessionId ||
+                  !confirmed
                 }
               >
                 {submitting ? (
@@ -411,6 +412,22 @@ function jobTypeLabel(jobType: string): string {
       document_mutation: "Thay đổi tập tài liệu",
     }[jobType] ?? jobType
   )
+}
+
+function deletionBlockerLabel(blocker: DocumentDeletionBlocker): string {
+  if (blocker.type === "document_edit_lock") {
+    const owner =
+      blocker.owner?.name || blocker.owner?.email || blocker.owner?.user_id
+    const documentId = blocker.document_id ?? blocker.session_document_id
+    return [
+      documentId ? `Tài liệu #${documentId}` : "Tài liệu",
+      owner ? `đang được ${owner} chỉnh sửa` : "đang được chỉnh sửa",
+      blocker.expires_at ? `đến ${blocker.expires_at}` : "",
+    ]
+      .filter(Boolean)
+      .join(" ")
+  }
+  return `${jobTypeLabel(blocker.job_type ?? "task")} · ${blocker.status ?? "active"}`
 }
 
 function deletionErrorMessage(caught: unknown, fallback: string): string {

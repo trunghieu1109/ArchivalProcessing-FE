@@ -10,9 +10,18 @@ import type {
 } from "@/features/upload/lib/clusterGroups"
 import { clusterDocumentTotals } from "@/features/upload/lib/clusterGroups"
 import type { SignatureTagKind } from "@/features/upload/lib/signatureStatus"
+import type { PdfMetadata } from "@/features/upload/types"
 import { SHOW_DOSSIER_CODE } from "./temporaryFeatureVisibility"
 
 export const UNKNOWN_YEAR_LABEL = "Không rõ năm"
+const EMPTY_FINAL_RESULT_METADATA_ITEMS: PdfMetadata[] = []
+
+export function stableFinalResultMetadataItems(
+  items: PdfMetadata[] | undefined
+): PdfMetadata[] {
+  return items ?? EMPTY_FINAL_RESULT_METADATA_ITEMS
+}
+
 export interface DossierMetadataDraft {
   dossierStorageId: string
   dossierNumber: string

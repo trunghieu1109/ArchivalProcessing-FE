@@ -5,7 +5,7 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom"
-import { AlertCircle, ArrowRight } from "lucide-react"
+import { AlertCircle, ArrowRight, TriangleAlert } from "lucide-react"
 import { toast } from "sonner"
 import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import { Badge } from "@/components/ui/badge"
@@ -34,6 +34,7 @@ import {
   saveBlob,
 } from "./FinalizeArtifactsPage.utils"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
+import type { SessionMetadataValues } from "@/features/upload/components/SessionMetadataBar"
 import {
   downloadAllArtifacts,
   downloadArtifact,
@@ -50,6 +51,7 @@ const FINALIZE_EVENT_POLL_INTERVAL_MS = 5_000
 
 interface FinalizeArtifactsStepProps {
   sessionId?: string | null
+  sessionMetadata?: SessionMetadataValues | null
   autoStart?: boolean
   onAutoStartHandled?: () => void
   embedded?: boolean
@@ -71,6 +73,7 @@ export function FinalizeArtifactsPage() {
 
 export function FinalizeArtifactsStep({
   sessionId,
+  sessionMetadata,
   autoStart = false,
   onAutoStartHandled,
   embedded = false,
@@ -135,6 +138,27 @@ export function FinalizeArtifactsStep({
       ).size,
     [visibleArtifacts]
   )
+  const missingPublishMetadataFields = useMemo(() => {
+    const fields: string[] = []
+    if (!textOrNull(sessionMetadata?.fonds_name)) fields.push("Tên phông")
+    if (!textOrNull(sessionMetadata?.fonds_creator_code)) {
+      fields.push("Mã đơn vị hình thành phông")
+    }
+    if (!textOrNull(sessionMetadata?.archive_name)) {
+      fields.push("Tên đơn vị lưu trữ")
+    }
+    if (!textOrNull(sessionMetadata?.archive_code)) {
+      fields.push("Mã đơn vị lưu trữ")
+    }
+    return fields
+  }, [
+    sessionMetadata?.archive_code,
+    sessionMetadata?.archive_name,
+    sessionMetadata?.fonds_creator_code,
+    sessionMetadata?.fonds_name,
+  ])
+  const missingPublishMetadataSummary =
+    missingPublishMetadataFields.join(" · ")
 
   const refreshArtifacts = useCallback(
     async (options: { silent?: boolean } = {}) => {
@@ -643,15 +667,50 @@ export function FinalizeArtifactsStep({
             onStartFinalize={startFinalize}
           />
         )}
-        {embedded && visibleArtifacts.length > 0 && !finalizing && onContinue ? (
-          <div className="sticky bottom-0 z-20 flex justify-end border-t border-[#CBD5E1] bg-white/95 px-4 py-3 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur">
-            <Button type="button" onClick={onContinue}>
-              Xuất bản
-              <ArrowRight data-icon="inline-end" />
-            </Button>
+        {embedded &&
+        visibleArtifacts.length > 0 &&
+        !finalizing &&
+        onContinue ? (
+          <div className="sticky bottom-0 z-20 border-t border-[#CBD5E1] bg-white/95 px-4 py-3 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur">
+            <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:gap-5">
+              {missingPublishMetadataFields.length > 0 ? (
+                <div
+                  role="alert"
+                  className="min-w-0 flex-1"
+                >
+                  <div className="flex items-start gap-2.5">
+                    <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-[#78350F]">
+                        Còn thiếu thông tin xuất bản
+                      </p>
+                      <p
+                        className="mt-0.5 break-words text-xs leading-5 text-[#A16207]"
+                        title={missingPublishMetadataSummary}
+                      >
+                        {missingPublishMetadataSummary}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+              <Button
+                type="button"
+                onClick={onContinue}
+                className="w-full shrink-0 sm:ml-auto sm:w-auto"
+              >
+                Xuất bản
+                <ArrowRight data-icon="inline-end" />
+              </Button>
+            </div>
           </div>
         ) : null}
       </main>
     </div>
   )
+}
+
+function textOrNull(value: unknown): string | null {
+  const text = String(value ?? "").trim()
+  return text || null
 }

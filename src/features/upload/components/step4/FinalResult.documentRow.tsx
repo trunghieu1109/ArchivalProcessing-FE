@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { motion } from "framer-motion"
+import { toast } from "sonner"
 import {
   AlertTriangle,
   CalendarDays,
@@ -17,6 +18,8 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/shared/lib/utils"
+import { useDocumentEditLock } from "@/features/upload/hooks/useDocumentEditLock"
+import { documentEditLockErrorMessage } from "@/features/upload/lib/documentEditLockErrors"
 import type { ClusterDocument } from "@/features/upload/lib/clusterGroups"
 import { signatureTagInfo } from "@/features/upload/lib/signatureStatus"
 import {
@@ -42,6 +45,7 @@ import { SHOW_DOSSIER_SUGGESTIONS } from "./temporaryFeatureVisibility"
 
 export function DocumentRow({
   document,
+  sessionId,
   clusterId,
   metadataFeedbackClusterId,
   depth,
@@ -58,6 +62,7 @@ export function DocumentRow({
   onSaveMetadata,
 }: {
   document: ClusterDocument
+  sessionId: string | null
   clusterId: string
   metadataFeedbackClusterId: string
   depth: number
@@ -74,7 +79,8 @@ export function DocumentRow({
   onSaveMetadata: (
     document: ClusterDocument,
     clusterId: string,
-    metadata: Record<string, unknown>
+    metadata: Record<string, unknown>,
+    lockToken: string
   ) => Promise<void>
 }) {
   const [expanded, setExpanded] = useState(false)
@@ -83,6 +89,15 @@ export function DocumentRow({
   const [editingMetadata, setEditingMetadata] = useState(false)
   const [savingMetadata, setSavingMetadata] = useState(false)
   const [metadataDraft, setMetadataDraft] = useState<Record<string, string>>({})
+  const documentLock = useDocumentEditLock({
+    sessionId,
+    documentId: document.sessionDocumentId ?? -1,
+    onLockLost: (error) => {
+      setEditingMetadata(false)
+      setMetadataDraft({})
+      toast.error(documentEditLockErrorMessage(error))
+    },
+  })
   const clusterWarning = document.clusterWarning
   const documentDeleted = document.lifecycleStatus === "deleted"
   const documentDeletePending = document.lifecycleStatus === "delete_pending"
@@ -137,10 +152,19 @@ export function DocumentRow({
     const nextExpanded = !expanded
     setExpanded(nextExpanded)
     setShowWarningDetails(nextExpanded)
-    if (!nextExpanded) setEditingMetadata(false)
+    if (!nextExpanded) {
+      setEditingMetadata(false)
+      void documentLock.release().catch(() => undefined)
+    }
   }
 
-  const startMetadataEdit = () => {
+  const startMetadataEdit = async () => {
+    try {
+      await documentLock.acquire()
+    } catch (error) {
+      toast.error(documentEditLockErrorMessage(error))
+      return
+    }
     const nextDraft: Record<string, string> = {}
     METADATA_FIELDS.forEach((field) => {
       nextDraft[field.key] = metadataFieldText(document.metadata, field.aliases)
@@ -154,6 +178,7 @@ export function DocumentRow({
   const cancelMetadataEdit = () => {
     setEditingMetadata(false)
     setMetadataDraft({})
+    void documentLock.release().catch(() => undefined)
   }
 
   const saveMetadataEdit = async () => {
@@ -168,11 +193,21 @@ export function DocumentRow({
     updated["_warnings"] = {}
     setSavingMetadata(true)
     try {
-      await onSaveMetadata(document, metadataFeedbackClusterId, updated)
+      const lockToken = await documentLock.acquire()
+      await onSaveMetadata(
+        document,
+        metadataFeedbackClusterId,
+        updated,
+        lockToken
+      )
       setEditingMetadata(false)
-    } catch {
+    } catch (error) {
+      if (!documentLock.held) {
+        toast.error(documentEditLockErrorMessage(error))
+      }
       // The parent action reports the failure and keeps the editor open for retry.
     } finally {
+      await documentLock.release().catch(() => undefined)
       setSavingMetadata(false)
     }
   }
@@ -248,6 +283,18 @@ export function DocumentRow({
                   : documentDeleted
                     ? "Đã xóa khỏi session"
                     : "Đang xóa"}
+              </span>
+            ) : null}
+            {document.editLock?.locked || documentLock.held ? (
+              <span
+                title={
+                  document.editLock?.locked_by?.name ||
+                  document.editLock?.locked_by?.email ||
+                  "Tài liệu đang được chỉnh sửa"
+                }
+                className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800"
+              >
+                {documentLock.held ? "Bạn đang sửa" : "Đang chỉnh sửa"}
               </span>
             ) : null}
             {docType && (
@@ -416,7 +463,7 @@ export function DocumentRow({
                     variant="ghost"
                     size="icon-sm"
                     title="Hủy sửa metadata"
-                    disabled={savingMetadata}
+                    disabled={savingMetadata || !documentLock.held}
                     onClick={(event) => {
                       event.stopPropagation()
                       cancelMetadataEdit()
@@ -448,14 +495,22 @@ export function DocumentRow({
                   size="icon-sm"
                   title="Sửa metadata"
                   disabled={
-                    document.sessionDocumentId === null || documentInactive
+                    document.sessionDocumentId === null ||
+                    documentInactive ||
+                    document.editLock?.locked === true ||
+                    documentLock.status === "acquiring" ||
+                    documentLock.status === "releasing"
                   }
                   onClick={(event) => {
                     event.stopPropagation()
-                    startMetadataEdit()
+                    void startMetadataEdit()
                   }}
                 >
-                  <Edit2 className="size-3.5" />
+                  {documentLock.status === "acquiring" ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Edit2 className="size-3.5" />
+                  )}
                 </Button>
               )}
             </div>

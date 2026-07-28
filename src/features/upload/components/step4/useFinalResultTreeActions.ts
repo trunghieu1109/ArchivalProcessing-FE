@@ -16,6 +16,7 @@ import {
   type SessionDossierSuggestionPayload,
   type SessionDocumentResponse,
 } from "@/features/upload/api/sessionApi"
+import { documentEditLockErrorMessage } from "@/features/upload/lib/documentEditLockErrors"
 import { buildDisplayMetadata } from "@/features/upload/lib/metadata"
 import { documentSignatureStatus } from "@/features/upload/lib/signatureStatus"
 import {
@@ -319,11 +320,7 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
         toast.success("Đã lưu metadata nháp hồ sơ.")
         return
       }
-      const response = await patchSessionDossier(
-        sessionId,
-        dossierId,
-        payload
-      )
+      const response = await patchSessionDossier(sessionId, dossierId, payload)
       setGroups((previous: any) =>
         updateDossierGroupFromResponse(previous, group.id, response)
       )
@@ -346,7 +343,8 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
   const handleSaveDocumentMetadata = async (
     document: ClusterDocument,
     clusterId: string,
-    metadata: Record<string, unknown>
+    metadata: Record<string, unknown>,
+    lockToken: string
   ) => {
     if (viewingHistoricalClusterVersion) {
       toast.error(
@@ -386,7 +384,8 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
       const patchedDocument = await patchDocumentMetadata(
         sessionId,
         sessionDocumentId,
-        metadata
+        metadata,
+        { lockToken }
       )
       updatedDocument = patchedDocument
       const feedback = await addMetadataEditKeepClusterFeedback(sessionId, {
@@ -442,9 +441,7 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
       } else {
         setStatus("Không thể lưu metadata tài liệu.")
         toast.error(
-          err instanceof Error
-            ? err.message
-            : "Không thể lưu metadata tài liệu."
+          documentEditLockErrorMessage(err, "Không thể lưu metadata tài liệu.")
         )
       }
       throw err
@@ -489,9 +486,8 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
           options: { limit: 10 },
         }
       )
-      const retentionPeriod = retentionPeriodSuggestionFromResponse(
-        retentionResponse
-      )
+      const retentionPeriod =
+        retentionPeriodSuggestionFromResponse(retentionResponse)
       if (retentionPeriod) {
         metadata.retention_period = retentionPeriod
       }
@@ -579,9 +575,8 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
 
     setPromotingSelectedDocuments(true)
     try {
-      const metadata = await buildPendingDossierSuggestionMetadata(
-        sessionDocumentIds
-      )
+      const metadata =
+        await buildPendingDossierSuggestionMetadata(sessionDocumentIds)
       const response = await promoteSelectedDocumentsToDossier(sessionId, {
         session_document_ids: sessionDocumentIds,
         metadata,
@@ -775,9 +770,8 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
 
     setPromotingTemporaryFolder(true)
     try {
-      const metadata = await buildPendingDossierSuggestionMetadata(
-        sessionDocumentIds
-      )
+      const metadata =
+        await buildPendingDossierSuggestionMetadata(sessionDocumentIds)
       const response = await promoteTemporaryFolderDocuments(sessionId, {
         session_document_ids: sessionDocumentIds,
         metadata,
@@ -854,9 +848,7 @@ function retentionPeriodSuggestionFromResponse(response: unknown): string {
 
   const candidates = Array.isArray(payload.candidates) ? payload.candidates : []
   for (const candidate of candidates) {
-    const retentionPeriod = textValue(
-      plainObject(candidate).retention_period
-    )
+    const retentionPeriod = textValue(plainObject(candidate).retention_period)
     if (retentionPeriod) return retentionPeriod
   }
   return ""

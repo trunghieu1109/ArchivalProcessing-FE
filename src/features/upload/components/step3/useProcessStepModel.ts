@@ -173,7 +173,7 @@ export function useProcessStepModel({
       metadataItems
         .map(
           (item) =>
-            `${item.id}:${item.ocr_batch_id ?? ""}:${item.import_action ?? ""}:${item.status}:${item.remote_metadata_status ?? ""}:${item.signature_status ?? ""}:${item.review_status}:${String(item.is_reviewed ?? false)}:${String(item.metadata_ready)}:${String(item.metadata_final)}:${String(item.metadata_user_edited ?? false)}:${item.metadata_batch_id ?? ""}:${item.metadata_batch_name ?? ""}:${item.metadata_batch_assigned_to_user_id ?? ""}:${item.metadata_batch_assigned_to_email ?? ""}:${item.metadata_batch_assigned_to_name ?? ""}:${item.metadata_verified_by_user_id ?? ""}:${item.metadata_verified_by_email ?? ""}:${item.metadata_verified_by_name ?? ""}`
+            `${item.id}:${item.ocr_batch_id ?? ""}:${item.import_action ?? ""}:${item.status}:${item.remote_metadata_status ?? ""}:${item.signature_status ?? ""}:${item.review_status}:${String(item.is_reviewed ?? false)}:${String(item.metadata_ready)}:${String(item.metadata_final)}:${String(item.metadata_user_edited ?? false)}:${item.metadata_batch_id ?? ""}:${item.metadata_batch_name ?? ""}:${item.metadata_batch_assigned_to_user_id ?? ""}:${item.metadata_batch_assigned_to_email ?? ""}:${item.metadata_batch_assigned_to_name ?? ""}:${item.metadata_verified_by_user_id ?? ""}:${item.metadata_verified_by_email ?? ""}:${item.metadata_verified_by_name ?? ""}:${String(item.edit_lock?.locked ?? false)}:${item.edit_lock?.locked_by?.user_id ?? ""}:${item.edit_lock?.locked_by?.email ?? ""}:${item.edit_lock?.lock_expires_at ?? ""}`
         )
         .join("\n"),
     [metadataItems]
@@ -454,8 +454,19 @@ export function useProcessStepModel({
       displayedItems.filter(
         (item) =>
           isMetadataConfirmable(item) &&
+          item.edit_lock?.locked !== true &&
           canUserEditMetadataItem(item, currentUserIdentity)
       ),
+    [currentUserIdentity, displayedItems]
+  )
+  const displayedLockedConfirmableCount = useMemo(
+    () =>
+      displayedItems.filter(
+        (item) =>
+          isMetadataConfirmable(item) &&
+          item.edit_lock?.locked === true &&
+          canUserEditMetadataItem(item, currentUserIdentity)
+      ).length,
     [currentUserIdentity, displayedItems]
   )
   const displayedRetryableItems = useMemo(
@@ -463,18 +474,26 @@ export function useProcessStepModel({
       displayedItems.filter(
         (item) =>
           isMetadataFailedItem(item) &&
+          item.edit_lock?.locked !== true &&
           item.metadata_retry_available !== false &&
           canRestartMetadata
       ),
     [canRestartMetadata, displayedItems]
   )
   const displayedBulkSelectableItems = useMemo(() => {
-    if (isCoordinator) return displayedItems
+    if (isCoordinator) {
+      return displayedItems.filter((item) => item.edit_lock?.locked !== true)
+    }
     const byId = new Map<number, PdfMetadata>()
     displayedConfirmableItems.forEach((item) => byId.set(item.id, item))
     displayedRetryableItems.forEach((item) => byId.set(item.id, item))
     return displayedItems.filter((item) => byId.has(item.id))
-  }, [displayedConfirmableItems, displayedItems, displayedRetryableItems, isCoordinator])
+  }, [
+    displayedConfirmableItems,
+    displayedItems,
+    displayedRetryableItems,
+    isCoordinator,
+  ])
   const bulkSelectedKnownItems = useMemo(
     () =>
       Array.from(bulkSelectedIds)
@@ -489,6 +508,7 @@ export function useProcessStepModel({
           (isCoordinator ||
             isMetadataConfirmable(item) ||
             isMetadataFailedItem(item)) &&
+          item.edit_lock?.locked !== true &&
           canUserEditMetadataItem(item, currentUserIdentity)
       ),
     [bulkSelectedKnownItems, currentUserIdentity, isCoordinator]
@@ -504,6 +524,10 @@ export function useProcessStepModel({
     : reviewMode === "batch" && !manualSplitActive
       ? displayedConfirmableItems
       : EMPTY_METADATA_ITEMS
+  const bulkVerifySkippedLockedCount =
+    !bulkReviewSelectionActive && reviewMode === "batch" && !manualSplitActive
+      ? displayedLockedConfirmableCount
+      : 0
   const bulkSelectionCount = bulkSelectedItems.length
   const canBulkSelectMetadata =
     !manualSplitActive && displayedBulkSelectableItems.length > 0
@@ -673,7 +697,8 @@ export function useProcessStepModel({
     setManualQuickCounts((previous) => {
       const next = new Map<string, string>()
       selectedManualWorkerIds.forEach((workerId) => {
-        if (previous.has(workerId)) next.set(workerId, previous.get(workerId) ?? "")
+        if (previous.has(workerId))
+          next.set(workerId, previous.get(workerId) ?? "")
       })
       if (next.size !== previous.size) return next
       for (const [workerId, value] of next) {
@@ -714,8 +739,8 @@ export function useProcessStepModel({
           autoBatchConfirmations.has(group.index)
             ? (previous.get(group.index) ?? "")
             : workerIds.length > 0
-            ? workerIds[index % workerIds.length]
-            : "",
+              ? workerIds[index % workerIds.length]
+              : "",
         ])
       )
     })
@@ -1036,6 +1061,7 @@ export function useProcessStepModel({
     bulkSelectedKnownItems,
     bulkRetryItems,
     bulkVerifyItems,
+    bulkVerifySkippedLockedCount,
     bulkSelectionCount,
     canBulkSelectMetadata,
     selectedItem,

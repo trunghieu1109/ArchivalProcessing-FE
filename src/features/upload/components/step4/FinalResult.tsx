@@ -35,6 +35,7 @@ import {
 import { useFinalResultPolling } from "./useFinalResultPolling"
 import { useFinalResultVersionActions } from "./useFinalResultVersionActions"
 import { useFinalResultTreeActions } from "./useFinalResultTreeActions"
+import { useNumberingInProgressWarning } from "./useNumberingInProgressWarning"
 import type {
   DraggedDocument,
   FinalResultProps,
@@ -52,6 +53,7 @@ import {
   clusterDocumentToPreviewTarget,
   dossierPageCount,
   regularDossierCount,
+  stableFinalResultMetadataItems,
   updateDossierGroupFromResponse,
 } from "./FinalResult.metadataUtils"
 import {
@@ -67,15 +69,16 @@ import {
 } from "./FinalResult.pendingFeedback"
 
 const DOSSIER_SUGGESTION_TOP_K = 5
-
 export function FinalResult({
   sessionId,
   groups: initialGroups,
   fondsName,
-  metadataItems = [],
+  metadataItems: providedMetadataItems,
   onFinish,
 }: FinalResultProps) {
   const { user } = useAuth()
+  const metadataItems = stableFinalResultMetadataItems(providedMetadataItems)
+  const numberingInProgress = useNumberingInProgressWarning(sessionId)
   const initialDossierCount = regularDossierCount(initialGroups)
   const [groups, setGroups] = useState<ClusterGroup[]>(() =>
     ensureTemporaryFolderGroup(initialGroups)
@@ -239,15 +242,23 @@ export function FinalResult({
         previewDocuments
           .filter(
             (entry) =>
-              !entry.document.lifecycleStatus ||
-              entry.document.lifecycleStatus === "active"
+              (!entry.document.lifecycleStatus ||
+                entry.document.lifecycleStatus === "active") &&
+              entry.document.editLock?.locked !== true
           )
           .map((entry) => entry.sessionDocumentId)
       ),
     [previewDocuments]
   )
   const selectedDocumentCount = selectedSessionDocumentIds.size
-  const userRole = String(user?.role ?? "").trim().toLowerCase()
+  const selectedHasActiveEditLock = previewDocuments.some(
+    (entry) =>
+      selectedSessionDocumentIds.has(entry.sessionDocumentId) &&
+      entry.document.editLock?.locked === true
+  )
+  const userRole = String(user?.role ?? "")
+    .trim()
+    .toLowerCase()
   const canManageDocuments = userRole === "admin" || userRole === "coordinator"
   const canDeleteDocuments = SHOW_DOCUMENT_DELETION && canManageDocuments
   const canTransferDocuments = canManageDocuments
@@ -362,6 +373,33 @@ export function FinalResult({
     displayedClusterVersionRef.current = displayedClusterVersion
     metadataItemsRef.current = metadataItems
   }, [displayedClusterVersion, metadataItems])
+
+  useEffect(() => {
+    if (metadataItems.length === 0) return
+
+    const locksBySessionDocumentId = new Map(
+      metadataItems.map((item) => [item.id, item.edit_lock ?? null] as const)
+    )
+    const timeoutId = window.setTimeout(() => {
+      setGroups((previous) =>
+        previous.map((group) => ({
+          ...group,
+          documents: group.documents.map((document) =>
+            document.sessionDocumentId !== null &&
+            locksBySessionDocumentId.has(document.sessionDocumentId)
+              ? {
+                  ...document,
+                  editLock:
+                    locksBySessionDocumentId.get(document.sessionDocumentId) ??
+                    null,
+                }
+              : document
+          ),
+        }))
+      )
+    }, 0)
+    return () => window.clearTimeout(timeoutId)
+  }, [metadataItems])
 
   useEffect(() => {
     let cancelled = false
@@ -1168,6 +1206,13 @@ export function FinalResult({
               : `Đang lập hồ sơ mới. ${status}`
       : status
   const handleDeleteSelectedDocuments = useCallback(() => {
+    const selectedEntries = previewDocuments.filter((entry) =>
+      selectedSessionDocumentIds.has(entry.sessionDocumentId)
+    )
+    if (selectedEntries.some((entry) => entry.document.editLock?.locked)) {
+      toast.error("Không thể xóa khi có tài liệu đang được chỉnh sửa.")
+      return
+    }
     const targets = previewDocuments
       .filter(
         (entry) =>
@@ -1187,6 +1232,13 @@ export function FinalResult({
   }, [previewDocuments, selectedSessionDocumentIds])
 
   const handleTransferSelectedDocuments = useCallback(() => {
+    const selectedEntries = previewDocuments.filter((entry) =>
+      selectedSessionDocumentIds.has(entry.sessionDocumentId)
+    )
+    if (selectedEntries.some((entry) => entry.document.editLock?.locked)) {
+      toast.error("Không thể chuyển phông khi có tài liệu đang được chỉnh sửa.")
+      return
+    }
     const targets = previewDocuments
       .filter(
         (entry) =>
@@ -1311,11 +1363,7 @@ export function FinalResult({
       const projection = result.source_cluster_projection
       const projectedVersionId =
         projection?.new_cluster_version_id ?? projection?.cluster_version_id
-      if (
-        projection?.status === "created" &&
-        projectedVersionId &&
-        sessionId
-      ) {
+      if (projection?.status === "created" && projectedVersionId && sessionId) {
         setLoadingClusterVersionId(projectedVersionId)
         try {
           const [version, versionsResponse] = await Promise.all([
@@ -1422,15 +1470,19 @@ export function FinalResult({
     Boolean(rebuildBaselineVersionId) ||
     Boolean(pendingClusterVersion)
   const selectedDocumentsActionDisabled =
-    temporaryFolderUpdateDisabled || clusterVersionStale || selectedDocumentCount === 0
+    temporaryFolderUpdateDisabled ||
+    clusterVersionStale ||
+    selectedDocumentCount === 0
   const deleteSelectedDocumentsDisabled =
     !canDeleteDocuments ||
     temporaryFolderUpdateDisabled ||
-    selectedDocumentCount === 0
+    selectedDocumentCount === 0 ||
+    selectedHasActiveEditLock
   const transferSelectedDocumentsDisabled =
     !canTransferDocuments ||
     temporaryFolderUpdateDisabled ||
-    selectedDocumentCount === 0
+    selectedDocumentCount === 0 ||
+    selectedHasActiveEditLock
   const handleResultTreeSearchNavigate = useCallback(
     (direction: number) => {
       setResultTreeSearchIndex((current) => {
@@ -1444,127 +1496,136 @@ export function FinalResult({
   return (
     <>
       <FinalResultView
-      activeClusterVersionId={activeClusterVersionId}
-      canDeleteDocuments={canDeleteDocuments}
-      canTransferDocuments={canTransferDocuments}
-      canRestoreFileRegisterVersion={canRestoreFileRegisterVersion}
-      cancelingPendingFeedback={cancelingPendingFeedback}
-      checkingClusters={checkingClusters}
-      clusterCompletedPhases={clusterCompletedPhases}
-      clusterJobMode={clusterJobMode}
-      clusterProgressMessage={clusterProgressMessage}
-      clusterProgressPhase={clusterProgressPhase}
-      clusterVersionNavigationBusy={clusterVersionNavigationBusy}
-      clusterVersionStale={clusterVersionStale}
-      deleteSelectedDocumentsDisabled={deleteSelectedDocumentsDisabled}
-      transferSelectedDocumentsDisabled={transferSelectedDocumentsDisabled}
-      displayedClusterVersion={displayedClusterVersion}
-      displayedClusterVersionId={displayedClusterVersionId}
-      draggedDocument={draggedDocument}
-      dropTargetId={dropTargetId}
-      handleActivateDisplayedClusterVersion={
-        handleActivateDisplayedClusterVersion
-      }
-      handleApplyPendingClusterVersion={handleApplyPendingClusterVersion}
-      handleCancelPendingFeedback={handleCancelPendingFeedback}
-      handleCreateDossierFromSelection={handleCreateDossierFromSelection}
-      handleCreateDossierFromSuggestions={handleCreateDossierFromSuggestions}
-      handleDropOnDossier={handleDropOnDossier}
-      handleDeleteSelectedDocuments={handleDeleteSelectedDocuments}
-      handleTransferSelectedDocuments={handleTransferSelectedDocuments}
-      handleFinish={handleFinish}
-      handleMoveSelectionToDossier={handleMoveSelectionToDossier}
-      handlePreviewResizePointerDown={handlePreviewResizePointerDown}
-      handlePromoteTemporaryFolder={handlePromoteTemporaryFolder}
-      handleRebuildClusters={handleRebuildClusters}
-      handleRestorePreviousClusterVersion={handleRestorePreviousClusterVersion}
-      handleResultTreeDragOver={handleResultTreeDragOver}
-      handleSaveDossierMetadata={handleSaveDossierMetadata}
-      handleSaveDocumentMetadata={handleSaveDocumentMetadata}
-      handleSelectDossierMetadata={handleSelectDossierMetadataFromTree}
-      handleSelectDossierSuggestions={handleSelectDossierSuggestionsFromTree}
-      handleSelectDossierSuggestionsFromSelection={
-        handleSelectDossierSuggestionsFromSelection
-      }
-      handleRefreshDossierSuggestions={handleRefreshDossierSuggestions}
-      handleMoveDossierSuggestion={handleMoveDossierSuggestion}
-      handleSelectGroupInformation={handleSelectGroupInformation}
-      handleSelectRetentionCandidate={handleSelectRetentionCandidate}
-      handleSelectPreviewDocument={handleSelectPreviewDocumentFromTree}
-      handleToggleDocumentSelection={handleToggleDocumentSelection}
-      handleToggleGroupSelection={handleToggleGroupSelection}
-      handleViewClusterVersion={handleViewClusterVersion}
-      groupInformationError={groupInformationError}
-      groupInformationLoading={groupInformationLoading}
-      groupInformationTable={groupInformationTable}
-      handleCloseGroupInformation={handleCloseGroupInformation}
-      handleSelectGroupInfoDossier={handleSelectGroupInfoDossier}
-      handleSelectGroupInfoDocument={handleSelectGroupInfoDocument}
-      handleCloseDossierSuggestions={handleCloseDossierSuggestions}
-      loading={loading}
-      loadingClusterVersionId={loadingClusterVersionId}
-      movingSelectedDocumentsTargetId={movingSelectedDocumentsTargetId}
-      nextDisplayVersion={nextDisplayVersion}
-      openNodeIds={openNodeIds}
-      pendingClusterDocumentCount={pendingClusterDocumentCount}
-      pendingClusterVersion={pendingClusterVersion}
-      pendingDossierCount={pendingDossierCount}
-      pendingFeedbackCount={pendingFeedbackCount}
-      previewDocument={previewDocument}
-      selectedDossierSuggestionsDocuments={selectedDossierSuggestionsDocuments}
-      selectedDossierSuggestionCandidates={selectedDossierSuggestionCandidates}
-      dossierSuggestionRepresentativeDocuments={
-        dossierSuggestionRepresentativeDocuments
-      }
-      dossierSuggestionDossiers={groups}
-      selectedDossierSuggestionsDocumentId={
-        selectedDossierSuggestionsDocumentId
-      }
-      dossierSuggestionsLoading={dossierSuggestionsLoading}
-      dossierSuggestionsRefreshing={dossierSuggestionsRefreshing}
-      dossierSuggestionsError={dossierSuggestionsError}
-      previewLayoutRef={previewLayoutRef}
-      previewWidthPercent={previewWidthPercent}
-      previousDisplayVersion={previousDisplayVersion}
-      promotingSelectedDocuments={promotingSelectedDocuments}
-      promotingTemporaryFolder={promotingTemporaryFolder}
-      rebuildBaselineVersionId={rebuildBaselineVersionId}
-      rebuildSubmitting={rebuildSubmitting}
-      resultStatusText={resultStatusText}
-      resultTreeSearch={resultTreeSearch}
-      resultTreeSearchIndex={resultTreeSearchIndex}
-      resultTreeSearchTotal={resultTreeSearchMatches.length}
-      resultTreeScrollRef={resultTreeScrollRef}
-      restoringClusterVersion={restoringClusterVersion}
-      savingDossierMetadataId={savingDossierMetadataId}
-      selectedDocumentCount={selectedDocumentCount}
-      selectedDocumentsActionDisabled={selectedDocumentsActionDisabled}
-      selectedGroupInfoNode={selectedGroupInfoNode}
-      selectedGroupInfoNodeId={selectedGroupInfoNodeId}
-      selectedMetadataGroup={selectedMetadataGroup}
-      selectedMetadataGroupId={selectedMetadataGroupId}
-      selectedPreviewDocumentId={selectedPreviewDocumentId}
-      selectedSessionDocumentIds={selectedSessionDocumentIds}
-      sessionId={sessionId}
-      setDraggedDocument={setDraggedDocument}
-      setDropTargetId={setDropTargetId}
-      setResultTreeSearch={setResultTreeSearch}
-      setSelectedMetadataGroupId={setSelectedMetadataGroupId}
-      setSelectedPreviewDocumentId={setSelectedPreviewDocumentId}
-      showClusterProgress={showClusterProgress}
-      sidePreviewOpen={sidePreviewOpen}
-      sortedClusterVersions={sortedClusterVersions}
-      stopResultTreeAutoScroll={stopResultTreeAutoScroll}
-      temporaryFolderUpdateDisabled={temporaryFolderUpdateDisabled}
-      totalDossiers={totalDossiers}
-      totalFiles={totalFiles}
-      totalPages={totalPages}
-      tree={tree}
-      toggleNode={toggleNode}
-      updatingClusterVersion={updatingClusterVersion}
-      viewingHistoricalClusterVersion={viewingHistoricalClusterVersion}
-      activeResultTreeSearchNodeId={activeResultTreeSearchMatch?.nodeId ?? null}
-      onResultTreeSearchNavigate={handleResultTreeSearchNavigate}
+        activeClusterVersionId={activeClusterVersionId}
+        canDeleteDocuments={canDeleteDocuments}
+        canTransferDocuments={canTransferDocuments}
+        canRestoreFileRegisterVersion={canRestoreFileRegisterVersion}
+        cancelingPendingFeedback={cancelingPendingFeedback}
+        checkingClusters={checkingClusters}
+        clusterCompletedPhases={clusterCompletedPhases}
+        clusterJobMode={clusterJobMode}
+        clusterProgressMessage={clusterProgressMessage}
+        clusterProgressPhase={clusterProgressPhase}
+        clusterVersionNavigationBusy={clusterVersionNavigationBusy}
+        clusterVersionStale={clusterVersionStale}
+        deleteSelectedDocumentsDisabled={deleteSelectedDocumentsDisabled}
+        transferSelectedDocumentsDisabled={transferSelectedDocumentsDisabled}
+        displayedClusterVersion={displayedClusterVersion}
+        displayedClusterVersionId={displayedClusterVersionId}
+        draggedDocument={draggedDocument}
+        dropTargetId={dropTargetId}
+        handleActivateDisplayedClusterVersion={
+          handleActivateDisplayedClusterVersion
+        }
+        handleApplyPendingClusterVersion={handleApplyPendingClusterVersion}
+        handleCancelPendingFeedback={handleCancelPendingFeedback}
+        handleCreateDossierFromSelection={handleCreateDossierFromSelection}
+        handleCreateDossierFromSuggestions={handleCreateDossierFromSuggestions}
+        handleDropOnDossier={handleDropOnDossier}
+        handleDeleteSelectedDocuments={handleDeleteSelectedDocuments}
+        handleTransferSelectedDocuments={handleTransferSelectedDocuments}
+        handleFinish={handleFinish}
+        handleMoveSelectionToDossier={handleMoveSelectionToDossier}
+        handlePreviewResizePointerDown={handlePreviewResizePointerDown}
+        handlePromoteTemporaryFolder={handlePromoteTemporaryFolder}
+        handleRebuildClusters={handleRebuildClusters}
+        handleRestorePreviousClusterVersion={
+          handleRestorePreviousClusterVersion
+        }
+        handleResultTreeDragOver={handleResultTreeDragOver}
+        handleSaveDossierMetadata={handleSaveDossierMetadata}
+        handleSaveDocumentMetadata={handleSaveDocumentMetadata}
+        handleSelectDossierMetadata={handleSelectDossierMetadataFromTree}
+        handleSelectDossierSuggestions={handleSelectDossierSuggestionsFromTree}
+        handleSelectDossierSuggestionsFromSelection={
+          handleSelectDossierSuggestionsFromSelection
+        }
+        handleRefreshDossierSuggestions={handleRefreshDossierSuggestions}
+        handleMoveDossierSuggestion={handleMoveDossierSuggestion}
+        handleSelectGroupInformation={handleSelectGroupInformation}
+        handleSelectRetentionCandidate={handleSelectRetentionCandidate}
+        handleSelectPreviewDocument={handleSelectPreviewDocumentFromTree}
+        handleToggleDocumentSelection={handleToggleDocumentSelection}
+        handleToggleGroupSelection={handleToggleGroupSelection}
+        handleViewClusterVersion={handleViewClusterVersion}
+        groupInformationError={groupInformationError}
+        groupInformationLoading={groupInformationLoading}
+        groupInformationTable={groupInformationTable}
+        handleCloseGroupInformation={handleCloseGroupInformation}
+        handleSelectGroupInfoDossier={handleSelectGroupInfoDossier}
+        handleSelectGroupInfoDocument={handleSelectGroupInfoDocument}
+        handleCloseDossierSuggestions={handleCloseDossierSuggestions}
+        loading={loading}
+        loadingClusterVersionId={loadingClusterVersionId}
+        movingSelectedDocumentsTargetId={movingSelectedDocumentsTargetId}
+        numberingInProgress={numberingInProgress}
+        nextDisplayVersion={nextDisplayVersion}
+        openNodeIds={openNodeIds}
+        pendingClusterDocumentCount={pendingClusterDocumentCount}
+        pendingClusterVersion={pendingClusterVersion}
+        pendingDossierCount={pendingDossierCount}
+        pendingFeedbackCount={pendingFeedbackCount}
+        previewDocument={previewDocument}
+        selectedDossierSuggestionsDocuments={
+          selectedDossierSuggestionsDocuments
+        }
+        selectedDossierSuggestionCandidates={
+          selectedDossierSuggestionCandidates
+        }
+        dossierSuggestionRepresentativeDocuments={
+          dossierSuggestionRepresentativeDocuments
+        }
+        dossierSuggestionDossiers={groups}
+        selectedDossierSuggestionsDocumentId={
+          selectedDossierSuggestionsDocumentId
+        }
+        dossierSuggestionsLoading={dossierSuggestionsLoading}
+        dossierSuggestionsRefreshing={dossierSuggestionsRefreshing}
+        dossierSuggestionsError={dossierSuggestionsError}
+        previewLayoutRef={previewLayoutRef}
+        previewWidthPercent={previewWidthPercent}
+        previousDisplayVersion={previousDisplayVersion}
+        promotingSelectedDocuments={promotingSelectedDocuments}
+        promotingTemporaryFolder={promotingTemporaryFolder}
+        rebuildBaselineVersionId={rebuildBaselineVersionId}
+        rebuildSubmitting={rebuildSubmitting}
+        resultStatusText={resultStatusText}
+        resultTreeSearch={resultTreeSearch}
+        resultTreeSearchIndex={resultTreeSearchIndex}
+        resultTreeSearchTotal={resultTreeSearchMatches.length}
+        resultTreeScrollRef={resultTreeScrollRef}
+        restoringClusterVersion={restoringClusterVersion}
+        savingDossierMetadataId={savingDossierMetadataId}
+        selectedDocumentCount={selectedDocumentCount}
+        selectedDocumentsActionDisabled={selectedDocumentsActionDisabled}
+        selectedGroupInfoNode={selectedGroupInfoNode}
+        selectedGroupInfoNodeId={selectedGroupInfoNodeId}
+        selectedMetadataGroup={selectedMetadataGroup}
+        selectedMetadataGroupId={selectedMetadataGroupId}
+        selectedPreviewDocumentId={selectedPreviewDocumentId}
+        selectedSessionDocumentIds={selectedSessionDocumentIds}
+        sessionId={sessionId}
+        setDraggedDocument={setDraggedDocument}
+        setDropTargetId={setDropTargetId}
+        setResultTreeSearch={setResultTreeSearch}
+        setSelectedMetadataGroupId={setSelectedMetadataGroupId}
+        setSelectedPreviewDocumentId={setSelectedPreviewDocumentId}
+        showClusterProgress={showClusterProgress}
+        sidePreviewOpen={sidePreviewOpen}
+        sortedClusterVersions={sortedClusterVersions}
+        stopResultTreeAutoScroll={stopResultTreeAutoScroll}
+        temporaryFolderUpdateDisabled={temporaryFolderUpdateDisabled}
+        totalDossiers={totalDossiers}
+        totalFiles={totalFiles}
+        totalPages={totalPages}
+        tree={tree}
+        toggleNode={toggleNode}
+        updatingClusterVersion={updatingClusterVersion}
+        viewingHistoricalClusterVersion={viewingHistoricalClusterVersion}
+        activeResultTreeSearchNodeId={
+          activeResultTreeSearchMatch?.nodeId ?? null
+        }
+        onResultTreeSearchNavigate={handleResultTreeSearchNavigate}
       />
       <DocumentDeletionDialog
         open={deletionTargets.length > 0}

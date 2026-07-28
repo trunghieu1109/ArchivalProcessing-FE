@@ -23,6 +23,7 @@ import {
   replaceDocument,
 } from "./ProcessStep.metadataUtils"
 import { canUserEditMetadataItem } from "./ProcessStep.batchUtils"
+import { isDocumentLockedByOther } from "@/features/upload/lib/documentEditLockErrors"
 import type { SessionDocumentResponse } from "@/features/upload/api/sessionApi"
 import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
 import type { PdfMetadata } from "@/features/upload/types"
@@ -102,6 +103,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     confirmingAutoBatchIndexes,
     confirmingManualQuickWorkerIds,
     handleApply,
+    handleDocumentEditLockLost,
     handleDocumentsDeleted,
     handleExportMetadataReview,
     handlePreviewResizePointerDown,
@@ -457,17 +459,23 @@ export function ProcessStepView(props: ProcessStepViewProps) {
                     item,
                     currentUserIdentity
                   )
+                  const lockedByOther = isDocumentLockedByOther(
+                    item.edit_lock,
+                    currentUserIdentity
+                  )
                   const bulkSelectionDisabled =
                     bulkReviewSelectionActive &&
-                    !isCoordinator &&
-                    ((!isMetadataConfirmable(item) &&
-                      !isMetadataFailedItem(item)) ||
-                      (isMetadataFailedItem(item) && !canRestartMetadata) ||
-                      !canEditItem)
+                    (item.edit_lock?.locked === true ||
+                      (!isCoordinator &&
+                        ((!isMetadataConfirmable(item) &&
+                          !isMetadataFailedItem(item)) ||
+                          (isMetadataFailedItem(item) && !canRestartMetadata) ||
+                          !canEditItem)))
                   return (
                     <MetadataCard
                       key={item.id}
                       item={item}
+                      sessionId={sessionId}
                       selected={item.id === selectedDocumentId}
                       selectionMode={
                         manualSplitActive || bulkReviewSelectionActive
@@ -478,7 +486,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
                           : bulkSelectedIds.has(item.id)
                       }
                       selectionDisabled={bulkSelectionDisabled}
-                      readOnly={!canEditItem}
+                      readOnly={!canEditItem || lockedByOther}
                       onSelectionChange={(checked, shiftKey) =>
                         manualSplitActive
                           ? toggleManualSelection(item, checked, shiftKey)
@@ -488,6 +496,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
                       retrying={retryingIds.has(item.id)}
                       onSelect={() => setSelectedDocumentId(item.id)}
                       onApply={handleApply}
+                      onLockChanged={handleDocumentEditLockLost}
                       onRetry={
                         canRestartMetadata &&
                         item.metadata_retry_available !== false
@@ -495,7 +504,9 @@ export function ProcessStepView(props: ProcessStepViewProps) {
                           : undefined
                       }
                       onDelete={
-                        SHOW_DOCUMENT_DELETION && isCoordinator
+                        SHOW_DOCUMENT_DELETION &&
+                        isCoordinator &&
+                        item.edit_lock?.locked !== true
                           ? () => openDocumentDeletion([item])
                           : undefined
                       }
@@ -587,6 +598,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
         pendingReadyCount={pendingReadyDocumentCount}
         dossierReadyItems={dossierReadyItems}
         dossierReadyCount={dossierReadyDocumentCount}
+        warningCount={warningCount}
         readyItems={readyItems}
         metadataMessage={metadataMessage}
         canContinue={canContinue}

@@ -1,15 +1,18 @@
 import type { PointerEvent as ReactPointerEvent } from "react"
 import { toast } from "sonner"
 import {
+  acquireDocumentEditLock,
   bulkVerifyDocumentMetadata,
   closeMetadataBatch,
   createMetadataBatch,
   downloadSessionMetadataReviewXlsx,
   getDigitizationStatus,
+  releaseDocumentEditLock,
   verifyDocumentMetadata,
   type SessionDocumentResponse,
   type DocumentDeletionOperationResponse,
 } from "@/features/upload/api/sessionApi"
+import { documentEditLockErrorMessage } from "@/features/upload/lib/documentEditLockErrors"
 import type { PdfMetadata } from "@/features/upload/types"
 import type {
   MetadataBatchGroup,
@@ -79,6 +82,7 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     setItems,
     setVerifyingIds,
     bulkVerifyItems,
+    bulkVerifySkippedLockedCount,
     bulkRetryItems,
     onDocumentsVerified,
     onMetadataDocumentScopeChange,
@@ -155,7 +159,8 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
 
   const handleApply = async (
     dataPath: string,
-    meta?: Record<string, unknown>
+    meta: Record<string, unknown> | undefined,
+    lockToken: string
   ) => {
     const item =
       items.find((candidate) => candidate.data_path === dataPath) ??
@@ -178,7 +183,9 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
 
     setVerifyingIds((previous) => addId(previous, item.id))
     try {
-      const verified = await verifyDocumentMetadata(sessionId, item.id, meta)
+      const verified = await verifyDocumentMetadata(sessionId, item.id, meta, {
+        lockToken,
+      })
       const nextItems = replaceVerifiedDocument(items, verified)
       const nextDisplayedItems = replaceVerifiedDocument(
         displayedItems,
@@ -203,9 +210,7 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     targetedDocumentIds: number[]
   ) => {
     const removedIds = new Set(targetedDocumentIds)
-    setItems((previous) =>
-      previous.filter((item) => !removedIds.has(item.id))
-    )
+    setItems((previous) => previous.filter((item) => !removedIds.has(item.id)))
     setSelectedDocumentId((previous) =>
       previous !== null && removedIds.has(previous) ? null : previous
     )
@@ -232,6 +237,10 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     onMetadataDocumentsChanged?.()
   }
 
+  const handleDocumentEditLockLost = () => {
+    onMetadataDocumentsChanged?.()
+  }
+
   const handleVerifyAllReady = async () => {
     if (!sessionId) {
       toast.error("Chưa có session để xác nhận metadata.")
@@ -239,6 +248,7 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
     }
     if (bulkVerifyItems.length === 0) return
 
+    const acquiredLocks: Array<{ item: PdfMetadata; token: string }> = []
     setBulkVerifying(true)
     setVerifyingIds((previous) => {
       const next = new Set(previous)
@@ -246,14 +256,31 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
       return next
     })
     try {
-      const requestGroups = chunkItems(bulkVerifyItems, BULK_ACTION_BATCH_SIZE)
+      const { acquired, failures: acquireFailures } =
+        await acquireBulkDocumentEditLocks(
+          sessionId,
+          bulkVerifyItems,
+          BULK_ACTION_CONCURRENCY
+        )
+      acquiredLocks.push(...acquired)
+
+      const requestGroups = chunkItems(acquiredLocks, BULK_ACTION_BATCH_SIZE)
       const results = await runSettledWithConcurrency(
         requestGroups,
-        (group) =>
-          bulkVerifyDocumentMetadata(
+        (group) => {
+          const lockTokens = group.reduce<Record<number, string>>(
+            (tokens, entry) => {
+              tokens[entry.item.id] = entry.token
+              return tokens
+            },
+            {}
+          )
+          return bulkVerifyDocumentMetadata(
             sessionId,
-            group.map((item) => item.id)
-          ),
+            group.map((entry) => entry.item.id),
+            lockTokens
+          )
+        },
         BULK_ACTION_CONCURRENCY
       )
       const verified = results
@@ -269,7 +296,6 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
         const nextItems = replaceVerifiedDocuments(items, verified)
         setItems(nextItems)
         onDocumentsVerified?.(verified)
-        onMetadataDocumentsChanged?.()
         const verifiedIds = new Set(verified.map((document) => document.id))
         setBulkSelectedIds((previous) => {
           const next = new Set(previous)
@@ -283,16 +309,27 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
         })
       }
 
-      const failedCount = results.reduce((count, result, index) => {
+      const backendFailedCount = results.reduce((count, result, index) => {
         if (result.status === "fulfilled") {
           return count + result.value.failed_count
         }
         return count + (requestGroups[index]?.length ?? 0)
       }, 0)
+      const failedCount =
+        bulkVerifySkippedLockedCount +
+        acquireFailures.length +
+        backendFailedCount
+      const totalCandidateCount =
+        bulkVerifyItems.length + bulkVerifySkippedLockedCount
       const failedDetails = results.flatMap((result) => {
         if (result.status === "fulfilled") {
           return (result.value.errors ?? [])
-            .map((error) => String(error.detail ?? "").trim())
+            .map((error) => {
+              const detail = error.detail
+              if (typeof detail === "string" && detail.trim())
+                return detail.trim()
+              return String(error.code ?? "").trim()
+            })
             .filter(Boolean)
         }
         const reason =
@@ -301,17 +338,33 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
             : String(result.reason ?? "").trim()
         return reason ? [reason] : []
       })
-      if (failedCount > 0) {
+      const firstFailure =
+        acquireFailures.length > 0
+          ? documentEditLockErrorMessage(acquireFailures[0])
+          : failedDetails[0]
+      if (verified.length > 0) {
+        toast.success(
+          failedCount > 0
+            ? `Đã xác nhận ${verified.length}/${totalCandidateCount}; bỏ qua ${failedCount} tài liệu đang được chỉnh sửa hoặc không còn hợp lệ.`
+            : `Đã xác nhận ${verified.length} tài liệu.`
+        )
+      } else if (failedCount > 0) {
         toast.error(
-          failedDetails[0]
-            ? `${failedCount} tài liệu chưa xác nhận được. ${failedDetails[0]}`
+          firstFailure
+            ? `${failedCount} tài liệu chưa xác nhận được. ${firstFailure}`
             : `${failedCount} tài liệu chưa xác nhận được. Vui lòng kiểm tra lại.`
         )
       }
-      if (verified.length > 0) {
-        toast.success(`Đã xác nhận ${verified.length} tài liệu.`)
-      }
     } finally {
+      await runSettledWithConcurrency(
+        acquiredLocks,
+        (entry) =>
+          releaseDocumentEditLock(sessionId, entry.item.id, entry.token).then(
+            () => undefined
+          ),
+        BULK_ACTION_CONCURRENCY
+      )
+      onMetadataDocumentsChanged?.()
       setBulkVerifying(false)
       setVerifyingIds((previous) => {
         const next = new Set(previous)
@@ -1247,6 +1300,7 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
 
   return {
     handleApply,
+    handleDocumentEditLockLost,
     handleDocumentsDeleted,
     handleVerifyAllReady,
     handleReviewModeChange,
@@ -1340,4 +1394,31 @@ async function runSettledWithConcurrency<T, R>(
     Array.from({ length: Math.min(concurrency, items.length) }, () => runNext())
   )
   return results
+}
+
+export async function acquireBulkDocumentEditLocks<T extends { id: number }>(
+  sessionId: string,
+  items: readonly T[],
+  concurrency: number
+): Promise<{
+  acquired: Array<{ item: T; token: string }>
+  failures: unknown[]
+}> {
+  const results = await runSettledWithConcurrency(
+    items,
+    async (item) => {
+      const response = await acquireDocumentEditLock(sessionId, item.id)
+      const token = String(response.lock_token ?? "").trim()
+      if (!token) throw new Error("Backend không trả lock_token.")
+      return { item, token }
+    },
+    concurrency
+  )
+  const acquired: Array<{ item: T; token: string }> = []
+  const failures: unknown[] = []
+  results.forEach((result) => {
+    if (result.status === "fulfilled") acquired.push(result.value)
+    else failures.push(result.reason)
+  })
+  return { acquired, failures }
 }

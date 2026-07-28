@@ -1,4 +1,8 @@
-import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react"
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Loader2,
+} from "lucide-react"
 import { motion } from "framer-motion"
 import { cn } from "@/shared/lib/utils"
 import { ProgressMetric } from "./ProcessStep.parts"
@@ -129,6 +133,7 @@ export function ProcessStepFooter({
   pendingReadyCount,
   dossierReadyItems: dossierReadyPageItems,
   dossierReadyCount,
+  warningCount = 0,
   readyItems,
   metadataMessage,
   canContinue,
@@ -137,40 +142,55 @@ export function ProcessStepFooter({
 }: Record<string, any>) {
   const pendingCount = pendingReadyCount ?? pendingReadyPageItems.length
   const readyForDossierCount = dossierReadyCount ?? dossierReadyPageItems.length
-  const pendingReadyItems = { length: pendingCount }
   const dossierReadyItems = { length: readyForDossierCount }
+  const reviewWarningCount = Math.max(
+    pendingCount,
+    Number(warningCount) || 0
+  )
+  const showWarning = reviewWarningCount > 0
+  const warningTone = Boolean(buildBlockedMessage) || showWarning
 
   return (
-    <div className="flex flex-col gap-4 rounded-2xl border border-[#CBD5E1] bg-white px-4 py-4 shadow-sm sm:px-6 lg:flex-row lg:items-center lg:justify-between">
-      <div className="min-w-0 text-sm text-[#475569]">
-        {buildBlockedMessage ? (
-          <span className="flex items-center gap-2 text-amber-700">
-            <AlertTriangle className="size-4" />
-            {buildBlockedMessage}
-          </span>
-        ) : pendingReadyItems.length > 0 && dossierReadyItems.length === 0 ? (
-          <span className="flex items-center gap-2 text-amber-700">
-            <AlertTriangle className="size-4" />
-            Còn {pendingReadyItems.length} tài liệu cần review metadata.
-          </span>
-        ) : pendingReadyItems.length > 0 ? (
-          <span className="flex items-center gap-2 text-[#475569]">
-            <CheckCircle2 className="size-4 text-emerald-600" />
-            Có thể lập hồ sơ với {dossierReadyItems.length} tài liệu đủ điều
-            kiện;
-            {` ${pendingReadyItems.length}`} tài liệu còn lại có thể cập nhật hồ
-            sơ sau.
-          </span>
+    <div className="sticky bottom-0 z-20 flex flex-col gap-3 border-t border-[#CBD5E1] bg-white/95 px-4 py-3 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur sm:flex-row sm:items-center sm:gap-5">
+      <div className="flex min-w-0 flex-1 items-start gap-2.5">
+        {warningTone ? (
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" />
         ) : readyItems.length > 0 ? (
-          <span className="flex items-center gap-2 text-emerald-700">
-            <CheckCircle2 className="size-4" /> Metadata đã được review.
-          </span>
+          <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" />
         ) : (
-          <span className="flex items-center gap-2">
-            <Loader2 className="size-4 animate-spin text-[#0052FF]" />
-            {metadataMessage}
-          </span>
+          <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-[#0052FF]" />
         )}
+        <div className="min-w-0">
+          <p
+            className={cn(
+              "text-sm font-semibold",
+              warningTone ? "text-[#78350F]" : "text-[#0F172A]"
+            )}
+          >
+            {buildBlockedMessage
+              ? "Chưa thể lập hồ sơ"
+              : showWarning
+                ? `Còn ${reviewWarningCount} tài liệu chưa xác minh metadata`
+                : readyItems.length > 0
+                  ? "Sẵn sàng lập hồ sơ"
+                  : metadataMessage}
+          </p>
+          {buildBlockedMessage ? (
+            <p className="mt-0.5 text-xs leading-5 text-[#A16207]">
+              {buildBlockedMessage}
+            </p>
+          ) : showWarning ? (
+            <p className="mt-0.5 text-xs leading-5 text-[#A16207]">
+              {dossierReadyItems.length > 0
+                ? `${dossierReadyItems.length} tài liệu đã đủ điều kiện. Bạn vẫn có thể lập hồ sơ, nhưng nên xác minh trước để dữ liệu đầy đủ hơn.`
+                : "Hãy xác minh metadata trước khi lập hồ sơ."}
+            </p>
+          ) : readyItems.length > 0 ? (
+            <p className="mt-0.5 text-xs leading-5 text-[#64748B]">
+              {dossierReadyItems.length} tài liệu đã đủ điều kiện.
+            </p>
+          ) : null}
+        </div>
       </div>
       <button
         disabled={!canContinue}
@@ -179,17 +199,17 @@ export function ProcessStepFooter({
           onContinue([])
         }}
         className={cn(
-          "group flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold transition-all duration-200 sm:w-auto",
+          "group flex w-full shrink-0 items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all duration-200 sm:ml-auto sm:w-auto",
           canContinue
-            ? "text-white hover:-translate-y-0.5 active:scale-[0.98]"
+            ? "text-white hover:brightness-95 active:scale-[0.98]"
             : "cursor-not-allowed bg-[#CBD5E1] text-[#475569]"
         )}
         style={
           canContinue
-            ? {
-                background: "linear-gradient(to right, #0052FF, #4D7CFF)",
-                boxShadow: "0 4px 14px rgba(0,82,255,0.25)",
-              }
+              ? {
+                  background: "linear-gradient(to right, #0052FF, #4D7CFF)",
+                  boxShadow: "0 3px 10px rgba(0,82,255,0.2)",
+                }
             : {}
         }
       >

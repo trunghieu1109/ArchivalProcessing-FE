@@ -1152,6 +1152,16 @@ export function NumberingStep({
     () => groupDocumentsByDossier(status?.documents ?? []),
     [status?.documents]
   )
+  const dossiersWithoutBoxCount = useMemo(
+    () => {
+      const summaryCount = status?.summary.dossiers_without_box_count
+      if (summaryCount !== undefined) return Math.max(0, summaryCount)
+      return (status?.dossiers ?? []).filter(
+        (dossier) => !textOrNull(dossier.box_number)
+      ).length
+    },
+    [status?.dossiers, status?.summary.dossiers_without_box_count]
+  )
   const persistedMetadataCountConflicts = useMemo(
     () =>
       SHOW_METADATA_COUNT_CONFLICT_WARNING
@@ -1439,11 +1449,41 @@ export function NumberingStep({
   const activeWorkerId =
     status?.job?.status === "running" ? status.job.locked_by : null
   const metadataBusy = metadataExporting || metadataImporting
+  const continueBlockedReason = useMemo(() => {
+    const reasons: string[] = []
+    if (!status) reasons.push("Chưa có kết quả đánh số tài liệu.")
+    if (active) reasons.push("Đang đánh số tài liệu, vui lòng chờ hoàn tất.")
+    if (metadataBusy) {
+      reasons.push("Đang cập nhật metadata, vui lòng chờ hoàn tất.")
+    }
+    if (failedCount > 0) {
+      reasons.push(`Còn ${failedCount} tài liệu đánh số lỗi.`)
+    }
+    if (unresolvedCount > 0) {
+      reasons.push(`Còn ${unresolvedCount} tài liệu chưa hoàn tất đánh số.`)
+    }
+    if (hasPendingNumberingConfigChanges) {
+      reasons.push("Cấu hình đánh số đã thay đổi và chưa được áp dụng.")
+    }
+    if (dossiersWithoutBoxCount > 0) {
+      reasons.push(`Chưa nhập số hộp cho ${dossiersWithoutBoxCount} hồ sơ.`)
+    }
+    return reasons.join(" ") || null
+  }, [
+    active,
+    dossiersWithoutBoxCount,
+    failedCount,
+    hasPendingNumberingConfigChanges,
+    metadataBusy,
+    status,
+    unresolvedCount,
+  ])
   const canContinue =
     complete &&
     failedCount === 0 &&
     unresolvedCount === 0 &&
-    !hasPendingNumberingConfigChanges
+    !hasPendingNumberingConfigChanges &&
+    dossiersWithoutBoxCount === 0
   const canRestartNumbering = hasNumberingOutput
   const changeNumberingMode = (mode: DocumentNumberingMode) => {
     if (active || changingMode || mode === numberingModeDraft) return
@@ -1863,6 +1903,8 @@ export function NumberingStep({
         active={active}
         metadataBusy={metadataBusy}
         canContinue={canContinue}
+        blockedReason={continueBlockedReason}
+        dossiersWithoutBoxCount={dossiersWithoutBoxCount}
         doneCount={doneCount}
         totalDocuments={totalDocuments}
         failedCount={failedCount}

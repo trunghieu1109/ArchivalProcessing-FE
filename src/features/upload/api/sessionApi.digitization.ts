@@ -31,6 +31,7 @@ import type {
   DocumentArchiveDownload,
   DocumentNumberingMode,
   DocumentNumberingStylePreset,
+  DocumentEditLockResponse,
   MetadataDocumentScope,
   DocumentPreviewUrlResponse,
   SessionDocumentResponse,
@@ -251,14 +252,19 @@ export async function getDigitizationStatus(
 export async function verifyDocumentMetadata(
   sessionId: string,
   documentId: number,
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>,
+  options: { lockToken?: string } = {}
 ): Promise<SessionDocumentResponse> {
   return requestJson<SessionDocumentResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/documents/${encodeURIComponent(String(documentId))}/verify`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ metadata, created_by: "ui" }),
+      body: JSON.stringify({
+        metadata,
+        lock_token: options.lockToken,
+        created_by: "ui",
+      }),
     }
   )
 }
@@ -266,21 +272,27 @@ export async function verifyDocumentMetadata(
 export async function patchDocumentMetadata(
   sessionId: string,
   documentId: number,
-  metadata: Record<string, unknown>
+  metadata: Record<string, unknown>,
+  options: { lockToken?: string } = {}
 ): Promise<SessionDocumentResponse> {
   return requestJson<SessionDocumentResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/documents/${encodeURIComponent(String(documentId))}/metadata`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ metadata, created_by: "ui" }),
+      body: JSON.stringify({
+        metadata,
+        lock_token: options.lockToken,
+        created_by: "ui",
+      }),
     }
   )
 }
 
 export async function bulkVerifyDocumentMetadata(
   sessionId: string,
-  documentIds: number[]
+  documentIds: number[],
+  lockTokens: Record<number, string> = {}
 ): Promise<BulkVerifyDocumentsResponse> {
   return requestJson<BulkVerifyDocumentsResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/documents/bulk-verify`,
@@ -289,10 +301,69 @@ export async function bulkVerifyDocumentMetadata(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         document_ids: documentIds,
+        lock_tokens: lockTokens,
         created_by: "ui",
       }),
     }
   )
+}
+
+export async function acquireDocumentEditLock(
+  sessionId: string,
+  documentId: number
+): Promise<DocumentEditLockResponse> {
+  return requestJson<DocumentEditLockResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/documents/${encodeURIComponent(String(documentId))}/edit-lock`,
+    { method: "POST" }
+  )
+}
+
+export async function heartbeatDocumentEditLock(
+  sessionId: string,
+  documentId: number,
+  lockToken: string
+): Promise<DocumentEditLockResponse> {
+  return requestJson<DocumentEditLockResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/documents/${encodeURIComponent(String(documentId))}/edit-lock/heartbeat`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lock_token: lockToken }),
+    }
+  )
+}
+
+export async function releaseDocumentEditLock(
+  sessionId: string,
+  documentId: number,
+  lockToken: string
+): Promise<{ session_id: string; document_id: number; locked: false }> {
+  return requestJson(
+    `/sessions/${encodeURIComponent(sessionId)}/documents/${encodeURIComponent(String(documentId))}/edit-lock`,
+    {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lock_token: lockToken }),
+    }
+  )
+}
+
+export function releaseDocumentEditLockOnPageUnload(
+  sessionId: string,
+  documentId: number,
+  lockToken: string
+): void {
+  void fetch(
+    apiUrl(
+      `/sessions/${encodeURIComponent(sessionId)}/documents/${encodeURIComponent(String(documentId))}/edit-lock`
+    ),
+    withAuth({
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lock_token: lockToken }),
+      keepalive: true,
+    })
+  ).catch(() => undefined)
 }
 
 export async function createMetadataBatch(
@@ -341,7 +412,7 @@ export async function closeMetadataBatch(
 export async function restartDocumentMetadata(
   sessionId: string,
   documentId: number,
-  payload: { force?: boolean } = {}
+  payload: { force?: boolean; lockToken?: string } = {}
 ): Promise<SessionDocumentResponse> {
   return requestJson<SessionDocumentResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/documents/${encodeURIComponent(String(documentId))}/restart-metadata`,
@@ -350,7 +421,8 @@ export async function restartDocumentMetadata(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         force: true,
-        ...payload,
+        ...(payload.force === undefined ? {} : { force: payload.force }),
+        lock_token: payload.lockToken,
       }),
     }
   )
@@ -510,6 +582,7 @@ export function digitizationToFolderStatus(
       metadata_verified_by_name: document.metadata_verified_by_name,
       metadata_verified_at: document.metadata_verified_at,
       metadata_review_note: document.metadata_review_note,
+      edit_lock: document.edit_lock,
       status: document.ocr_status,
       remote_metadata_status: document.remote_metadata_status,
       signature_status: document.signature_status,

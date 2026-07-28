@@ -10,6 +10,7 @@ import {
   Trash2,
   Undo2,
 } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { SHOW_DOSSIER_SUGGESTIONS } from "./temporaryFeatureVisibility"
 
@@ -81,6 +82,26 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
     totalFiles,
     viewingHistoricalClusterVersion,
   } = props
+
+  const finishBlockedReason = viewingHistoricalClusterVersion
+    ? "Bạn đang xem phiên bản hồ sơ cũ. Hãy kích hoạt hoặc quay về phiên bản đang dùng trước khi đánh số trang."
+    : clusterVersionStale
+      ? "Danh sách tài liệu đã thay đổi. Hãy lập lại hồ sơ trước khi sang bước Đánh số trang."
+      : pendingFeedbackCount > 0
+        ? `Bạn còn ${pendingFeedbackCount} feedback chưa được cập nhật vào hồ sơ. Hãy cập nhật hồ sơ hoặc hủy feedback trước khi tiếp tục.`
+        : pendingClusterVersion
+          ? "Có phiên bản hồ sơ mới đang chờ áp dụng. Hãy áp dụng phiên bản đó trước khi đánh số trang."
+          : totalDossiers === 0
+            ? "Chưa có hồ sơ để chuyển sang bước Đánh số trang."
+            : loading ||
+                rebuildSubmitting ||
+                restoringClusterVersion ||
+                promotingTemporaryFolder ||
+                promotingSelectedDocuments ||
+                Boolean(movingSelectedDocumentsTargetId) ||
+                Boolean(rebuildBaselineVersionId)
+              ? "Hồ sơ đang được cập nhật. Vui lòng chờ thao tác hoàn tất."
+              : null
 
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-[#D8E1EC] bg-white px-4 py-3 shadow-sm xl:flex-row xl:items-center xl:justify-between">
@@ -231,27 +252,24 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
           )}
           Hủy feedback
         </Button>
-        <Button
-          onClick={handleFinish}
-          className="w-full xl:w-auto"
-          disabled={
-            totalDossiers === 0 ||
-            clusterVersionStale ||
-            pendingFeedbackCount > 0 ||
-            loading ||
-            rebuildSubmitting ||
-            restoringClusterVersion ||
-            promotingTemporaryFolder ||
-            promotingSelectedDocuments ||
-            Boolean(movingSelectedDocumentsTargetId) ||
-            viewingHistoricalClusterVersion ||
-            Boolean(rebuildBaselineVersionId) ||
-            Boolean(pendingClusterVersion)
-          }
-        >
-          <CheckCircle2 data-icon="inline-start" />
-          Đánh số trang
-        </Button>
+        <div className="relative w-full xl:w-auto">
+          <Button
+            onClick={handleFinish}
+            className="w-full xl:w-auto"
+            disabled={Boolean(finishBlockedReason)}
+          >
+            <CheckCircle2 data-icon="inline-start" />
+            Đánh số trang
+          </Button>
+          {finishBlockedReason ? (
+            <button
+              type="button"
+              aria-label="Xem lý do không thể sang bước Đánh số trang"
+              onClick={() => toast.error(finishBlockedReason)}
+              className="absolute inset-0 h-full w-full cursor-not-allowed rounded-lg bg-transparent"
+            />
+          ) : null}
+        </div>
       </div>
     </div>
   )

@@ -26,6 +26,7 @@ import { SHOW_DOSSIER_CODE } from "./temporaryFeatureVisibility"
 
 export function ResultNode({
   node,
+  sessionId,
   depth,
   openNodeIds,
   draggedDocument,
@@ -58,6 +59,7 @@ export function ResultNode({
   onPromoteTemporaryFolder,
 }: {
   node: ResultTreeNode
+  sessionId: string | null
   depth: number
   openNodeIds: Set<string>
   draggedDocument: DraggedDocument | null
@@ -92,7 +94,8 @@ export function ResultNode({
   onSaveDocumentMetadata: (
     document: ClusterDocument,
     clusterId: string,
-    metadata: Record<string, unknown>
+    metadata: Record<string, unknown>,
+    lockToken: string
   ) => Promise<void>
   onPromoteTemporaryFolder: (group: ClusterGroup) => void
 }) {
@@ -240,14 +243,14 @@ export function ResultNode({
             {group?.createdFromTemporaryFolder &&
               !isTemporary &&
               !isPendingDossier && (
-              <span
-                className="flex h-6 shrink-0 items-center gap-1 rounded-full border border-[#0052FF] bg-[#0052FF] px-2.5 text-[11px] font-bold text-white shadow-[0_4px_12px_rgba(0,82,255,0.22)]"
-                title="Hồ sơ được tạo thủ công từ Thư mục tạm"
-              >
-                <FolderPlus className="size-3" />
-                Thủ công
-              </span>
-            )}
+                <span
+                  className="flex h-6 shrink-0 items-center gap-1 rounded-full border border-[#0052FF] bg-[#0052FF] px-2.5 text-[11px] font-bold text-white shadow-[0_4px_12px_rgba(0,82,255,0.22)]"
+                  title="Hồ sơ được tạo thủ công từ Thư mục tạm"
+                >
+                  <FolderPlus className="size-3" />
+                  Thủ công
+                </span>
+              )}
             {group?.hasPendingFeedback && (
               <span
                 className="flex h-6 shrink-0 items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 text-[11px] font-bold text-amber-700"
@@ -326,33 +329,33 @@ export function ResultNode({
             group &&
             !isPendingDossier &&
             selectedDocumentCount > 0 && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              title={
-                isTemporary
-                  ? "Chuyển các tài liệu đã chọn vào Thư mục tạm"
-                  : "Chuyển các tài liệu đã chọn tới hồ sơ này"
-              }
-              disabled={selectedDocumentsActionDisabled}
-              onClick={(event) => {
-                event.stopPropagation()
-                onMoveSelectionToDossier(group)
-              }}
-            >
-              {movingSelectedDocumentsTargetId === group.id ? (
-                <Loader2 data-icon="inline-start" className="animate-spin" />
-              ) : (
-                <MoveRight data-icon="inline-start" />
-              )}
-              <span className={cn(compact && "hidden 2xl:inline")}>
-                {isTemporary
-                  ? "Chuyển vào thư mục tạm"
-                  : "Chuyển tới hồ sơ này"}
-              </span>
-            </Button>
-          )}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                title={
+                  isTemporary
+                    ? "Chuyển các tài liệu đã chọn vào Thư mục tạm"
+                    : "Chuyển các tài liệu đã chọn tới hồ sơ này"
+                }
+                disabled={selectedDocumentsActionDisabled}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onMoveSelectionToDossier(group)
+                }}
+              >
+                {movingSelectedDocumentsTargetId === group.id ? (
+                  <Loader2 data-icon="inline-start" className="animate-spin" />
+                ) : (
+                  <MoveRight data-icon="inline-start" />
+                )}
+                <span className={cn(compact && "hidden 2xl:inline")}>
+                  {isTemporary
+                    ? "Chuyển vào thư mục tạm"
+                    : "Chuyển tới hồ sơ này"}
+                </span>
+              </Button>
+            )}
           {isTemporary && group && group.documents.length > 0 && (
             <Button
               type="button"
@@ -416,6 +419,7 @@ export function ResultNode({
               <DocumentRow
                 key={`${group.id}-${document.documentId}`}
                 document={document}
+                sessionId={sessionId}
                 clusterId={group.id}
                 metadataFeedbackClusterId={group.clusterId}
                 depth={depth + 1}
@@ -428,10 +432,14 @@ export function ResultNode({
                   document.sessionDocumentId !== null &&
                   selectedSessionDocumentIds.has(document.sessionDocumentId)
                 }
-                selectionDisabled={document.sessionDocumentId === null}
+                selectionDisabled={
+                  document.sessionDocumentId === null ||
+                  document.editLock?.locked === true
+                }
                 selectedDossierSuggestions={
                   document.sessionDocumentId !== null &&
-                  document.sessionDocumentId === selectedDossierSuggestionsDocumentId
+                  document.sessionDocumentId ===
+                    selectedDossierSuggestionsDocumentId
                 }
                 onToggleSelection={onToggleDocumentSelection}
                 onDragStart={onDragStart}
@@ -445,6 +453,7 @@ export function ResultNode({
             <ResultNode
               key={child.id}
               node={child}
+              sessionId={sessionId}
               depth={depth + 1}
               openNodeIds={openNodeIds}
               draggedDocument={draggedDocument}

@@ -24,6 +24,7 @@ import {
   suggestSessionDossierTitle,
   transferSessionDocuments,
   type DocumentTransferOperationResponse,
+  type DocumentTransferBlocker,
   type DocumentTransferPreviewResponse,
   type DocumentTransferTargetSession,
   type RetentionCandidateSummary,
@@ -333,9 +334,9 @@ export function DocumentTransferDialog({
   )
   const transferStateLocked = Boolean(
     completedTransfer ||
-      retryableTransfer ||
-      terminalTransfer ||
-      submissionUncertain
+    retryableTransfer ||
+    terminalTransfer ||
+    submissionUncertain
   )
 
   const resetDialogState = () => {
@@ -676,9 +677,7 @@ export function DocumentTransferDialog({
                         type="button"
                         variant="outline"
                         className="w-full"
-                        disabled={
-                          loadingMoreSessions || transferStateLocked
-                        }
+                        disabled={loadingMoreSessions || transferStateLocked}
                         onClick={() => void loadMoreTargetSessions()}
                       >
                         {loadingMoreSessions ? (
@@ -767,16 +766,12 @@ export function DocumentTransferDialog({
               ) : null}
 
               {blockers.length > 0 ? (
-                <WarningBox title="Chưa thể chuyển vì có job đang chạy">
+                <WarningBox title="Chưa thể chuyển tài liệu">
                   {blockers.map((blocker, index) => (
                     <li
                       key={`${blocker.session_id}-${blocker.job_id ?? index}`}
                     >
-                      {blocker.session_role === "target"
-                        ? "Phông đích"
-                        : "Phông nguồn"}
-                      {" · "}
-                      {jobTypeLabel(blocker.job_type)} · {blocker.status}
+                      {transferBlockerLabel(blocker)}
                     </li>
                   ))}
                 </WarningBox>
@@ -866,9 +861,9 @@ export function DocumentTransferDialog({
               {submissionUncertain ? (
                 <WarningBox title="Chưa nhận được phản hồi của thao tác chuyển">
                   <li>
-                    Có thể gửi lại đúng yêu cầu này. Backend sẽ trả lại operation
-                    đang chạy hoặc kết quả đã lưu, không chuyển lại tài liệu đã
-                    thành công.
+                    Có thể gửi lại đúng yêu cầu này. Backend sẽ trả lại
+                    operation đang chạy hoặc kết quả đã lưu, không chuyển lại
+                    tài liệu đã thành công.
                   </li>
                 </WarningBox>
               ) : null}
@@ -935,9 +930,9 @@ export function DocumentTransferDialog({
                     ? "Thử đồng bộ lại kết quả chuyển"
                     : submissionUncertain
                       ? "Thử lại yêu cầu chuyển"
-                    : mode === "temporary_dossier"
-                    ? "Chuyển và tạo hồ sơ tạm"
-                    : "Chuyển và tự động phân loại"}
+                      : mode === "temporary_dossier"
+                        ? "Chuyển và tạo hồ sơ tạm"
+                        : "Chuyển và tự động phân loại"}
               </Button>
             </div>
           </div>
@@ -1342,6 +1337,24 @@ function jobTypeLabel(jobType: string): string {
       document_mutation: "Thay đổi tập tài liệu",
     }[jobType] ?? jobType
   )
+}
+
+function transferBlockerLabel(blocker: DocumentTransferBlocker): string {
+  if (blocker.type === "document_edit_lock") {
+    const owner =
+      blocker.owner?.name || blocker.owner?.email || blocker.owner?.user_id
+    const documentId = blocker.document_id ?? blocker.session_document_id
+    return [
+      documentId ? `Tài liệu #${documentId}` : "Tài liệu",
+      owner ? `đang được ${owner} chỉnh sửa` : "đang được chỉnh sửa",
+      blocker.expires_at ? `đến ${blocker.expires_at}` : "",
+    ]
+      .filter(Boolean)
+      .join(" ")
+  }
+  const sessionRole =
+    blocker.session_role === "target" ? "Phông đích" : "Phông nguồn"
+  return `${sessionRole} · ${jobTypeLabel(blocker.job_type ?? "task")} · ${blocker.status ?? "active"}`
 }
 
 function validationErrorLabel(code: string): string {

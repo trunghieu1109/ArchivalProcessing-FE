@@ -7,6 +7,36 @@ const API_BASE = (import.meta.env.VITE_ARCHIVAL_API_BASE_URL ?? "/api").replace(
 )
 const inFlightGetJsonRequests = new Map<string, Promise<unknown>>()
 
+export class ApiRequestError extends Error {
+  readonly status: number
+  readonly code: string | null
+  readonly detail: unknown
+  readonly documentId: number | null
+
+  constructor(
+    message: string,
+    status: number,
+    options: { code?: string | null; detail?: unknown } = {}
+  ) {
+    super(message)
+    this.name = "ApiRequestError"
+    this.status = status
+    this.code = options.code ?? null
+    this.detail = options.detail
+    const rawDocumentId =
+      options.detail && typeof options.detail === "object"
+        ? (options.detail as Record<string, unknown>).document_id
+        : null
+    const documentId = Number(rawDocumentId)
+    this.documentId =
+      rawDocumentId !== null &&
+      rawDocumentId !== undefined &&
+      Number.isInteger(documentId)
+        ? documentId
+        : null
+  }
+}
+
 export async function requestJson<T>(
   path: string,
   init?: RequestInit
@@ -63,7 +93,12 @@ async function fetchJson<T>(
   const response = await fetch(apiUrl(path), init)
   if (allowNotFound && response.status === 404) return null
   if (!response.ok) {
-    throw new Error(await responseErrorMessage(response))
+    const text = await response.text()
+    const error = responseTextError(response.status, text)
+    throw new ApiRequestError(error.message, response.status, {
+      code: error.code,
+      detail: error.detail,
+    })
   }
   return response.json() as Promise<T>
 }
@@ -101,15 +136,52 @@ export async function responseErrorMessage(
 }
 
 export function responseTextErrorMessage(status: number, text: string): string {
-  if (!text) return `API error ${status}`
-  try {
-    const payload = JSON.parse(text) as { detail?: unknown }
-    if (typeof payload.detail === "string") return payload.detail
-    if (payload.detail) return JSON.stringify(payload.detail)
-  } catch {
-    return text
+  return responseTextError(status, text).message
+}
+
+function responseTextError(
+  status: number,
+  text: string
+): { message: string; code: string | null; detail: unknown } {
+  if (!text) {
+    return { message: `API error ${status}`, code: null, detail: null }
   }
-  return text
+  try {
+    const payload = JSON.parse(text) as Record<string, unknown>
+    if (typeof payload.detail === "string") {
+      return { message: payload.detail, code: null, detail: payload.detail }
+    }
+    if (payload.detail && typeof payload.detail === "object") {
+      const detail = payload.detail as Record<string, unknown>
+      const code =
+        typeof detail.code === "string" && detail.code.trim()
+          ? detail.code.trim()
+          : null
+      const message =
+        typeof detail.message === "string" && detail.message.trim()
+          ? detail.message.trim()
+          : JSON.stringify(detail)
+      return { message, code, detail }
+    }
+    const code =
+      typeof payload.code === "string" && payload.code.trim()
+        ? payload.code.trim()
+        : null
+    const message =
+      typeof payload.message === "string" && payload.message.trim()
+        ? payload.message.trim()
+        : ""
+    if (code || message) {
+      return {
+        message: message || `API error ${status}`,
+        code,
+        detail: payload,
+      }
+    }
+  } catch {
+    return { message: text, code: null, detail: text }
+  }
+  return { message: text, code: null, detail: text }
 }
 
 export function downloadFileName(contentDisposition: string | null): string {

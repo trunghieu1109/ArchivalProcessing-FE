@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { toast } from "sonner"
 import { cn } from "@/shared/lib/utils"
 import type {
   DocumentNumberingMode,
@@ -620,6 +621,8 @@ export function NumberingStepFooter({
   active,
   metadataBusy,
   canContinue,
+  blockedReason,
+  dossiersWithoutBoxCount,
   doneCount,
   totalDocuments,
   failedCount,
@@ -629,43 +632,82 @@ export function NumberingStepFooter({
   active: boolean
   metadataBusy: boolean
   canContinue: boolean
+  blockedReason: string | null
+  dossiersWithoutBoxCount: number
   doneCount: number
   totalDocuments: number
   failedCount: number
   unresolvedCount: number
   onContinue: () => void
 }) {
+  const missingBoxWarning = dossiersWithoutBoxCount > 0
+
   return (
-    <div className="sticky bottom-0 z-20 -mx-3 border-t border-[#D8E1EC] bg-white/95 px-3 py-3 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur sm:mx-0 sm:rounded-2xl sm:border sm:px-4">
+    <div className="sticky bottom-0 z-20 border-t border-[#CBD5E1] bg-white/95 px-4 py-3 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-[#0F172A]">
-            {active
-              ? "Đang đánh số tài liệu"
-              : metadataBusy
-                ? "Đang cập nhật metadata"
-                : canContinue
-                  ? "Đã sẵn sàng tạo mục lục"
-                  : "Hoàn tất đánh số trước khi tạo mục lục"}
-          </p>
-          <p className="mt-1 text-xs text-[#64748B]">
-            Đã đánh số {doneCount}/{totalDocuments} tài liệu
-            {failedCount > 0 ? `, ${failedCount} tài liệu lỗi` : ""}
-            {unresolvedCount > 0
-              ? `, còn ${unresolvedCount} tài liệu chưa hoàn tất`
-              : ""}
-            .
-          </p>
+        <div className="flex min-w-0 items-start gap-2.5">
+          {missingBoxWarning ? (
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" />
+          ) : null}
+          <div className="min-w-0">
+            <p
+              className={cn(
+                "text-sm font-semibold",
+                missingBoxWarning ? "text-[#78350F]" : "text-[#0F172A]"
+              )}
+            >
+              {missingBoxWarning
+                ? "Còn thiếu số hộp"
+                : active
+                  ? "Đang đánh số tài liệu"
+                  : metadataBusy
+                    ? "Đang cập nhật metadata"
+                    : canContinue
+                      ? "Đã sẵn sàng tạo mục lục"
+                      : "Hoàn tất đánh số trước khi tạo mục lục"}
+            </p>
+            <p
+              className={cn(
+                "mt-0.5 text-xs leading-5",
+                missingBoxWarning ? "text-[#A16207]" : "text-[#64748B]"
+              )}
+            >
+              {missingBoxWarning
+                ? `Chưa nhập số hộp cho ${dossiersWithoutBoxCount} hồ sơ.`
+                : `Đã đánh số ${doneCount}/${totalDocuments} tài liệu${
+                    failedCount > 0 ? `, ${failedCount} tài liệu lỗi` : ""
+                  }${
+                    unresolvedCount > 0
+                      ? `, còn ${unresolvedCount} tài liệu chưa hoàn tất`
+                      : ""
+                  }.`}
+            </p>
+          </div>
         </div>
-        <Button
-          type="button"
-          onClick={onContinue}
-          disabled={!canContinue || metadataBusy}
-          className="w-full bg-[#0052FF] text-white hover:bg-[#0047D6] sm:w-auto"
-        >
-          Tạo mục lục
-          <ArrowRight data-icon="inline-end" />
-        </Button>
+        <div className="relative w-full shrink-0 lg:ml-auto lg:w-auto">
+          <Button
+            type="button"
+            onClick={onContinue}
+            disabled={!canContinue || metadataBusy}
+            className="w-full bg-[#0052FF] text-white hover:bg-[#0047D6] sm:w-auto"
+          >
+            Tạo mục lục
+            <ArrowRight data-icon="inline-end" />
+          </Button>
+          {!canContinue || metadataBusy ? (
+            <button
+              type="button"
+              aria-label="Xem lý do không thể tạo mục lục"
+              onClick={() =>
+                toast.error(
+                  blockedReason ??
+                    "Hiện chưa thể tạo mục lục. Vui lòng kiểm tra trạng thái đánh số và metadata."
+                )
+              }
+              className="absolute inset-0 h-full w-full cursor-not-allowed rounded-lg bg-transparent"
+            />
+          ) : null}
+        </div>
       </div>
     </div>
   )

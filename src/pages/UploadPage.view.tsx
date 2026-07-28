@@ -741,6 +741,7 @@ export function UploadPageView(props: Record<string, any>) {
                 sessionId={sessionId}
                 groups={clusterGroups}
                 fondsName={sessionMetadata?.fonds_name}
+                metadataItems={ocrMetadataItems}
                 onFinish={() => {
                   const currentSessionId = sessionId ?? routeSessionId
                   if (!currentSessionId) {
@@ -811,6 +812,7 @@ export function UploadPageView(props: Record<string, any>) {
             >
               <FinalizeArtifactsStep
                 sessionId={sessionId ?? routeSessionId ?? null}
+                sessionMetadata={sessionMetadata}
                 autoStart={searchParams.get("start") === "1"}
                 onAutoStartHandled={handleFinalizeAutoStartHandled}
                 embedded

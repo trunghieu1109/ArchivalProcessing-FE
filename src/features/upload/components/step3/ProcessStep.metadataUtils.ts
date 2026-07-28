@@ -36,6 +36,7 @@ export function mergeIncomingMetadata(
         metadata_batch_assigned_to_email: item.metadata_batch_assigned_to_email,
         metadata_batch_assigned_to_name: item.metadata_batch_assigned_to_name,
         metadata_batch_assigned_at: item.metadata_batch_assigned_at,
+        edit_lock: item.edit_lock,
       }
     }
     if (
@@ -65,6 +66,7 @@ export function mergeIncomingMetadata(
         metadata_verified_by_name: item.metadata_verified_by_name,
         metadata_verified_at: item.metadata_verified_at,
         metadata_review_note: item.metadata_review_note,
+        edit_lock: item.edit_lock,
         is_reviewed: local.is_reviewed,
         metadata_ready: item.metadata_ready,
         metadata_final: item.metadata_final,
@@ -174,7 +176,9 @@ export function documentResponseToPdfMetadata(
 ): PdfMetadata {
   const lightMetadata = buildDisplayMetadata(document)
   const reviewStatus = normalizeDocumentReviewStatus(document, lightMetadata)
-  const status = String(document.remote_metadata_status || document.ocr_status || "")
+  const status = String(
+    document.remote_metadata_status || document.ocr_status || ""
+  )
     .trim()
     .toLowerCase()
   const reextractStartedAt =
@@ -199,6 +203,7 @@ export function documentResponseToPdfMetadata(
     metadata_verified_by_name: document.metadata_verified_by_name,
     metadata_verified_at: document.metadata_verified_at,
     metadata_review_note: document.metadata_review_note,
+    edit_lock: document.edit_lock,
     status: document.ocr_status,
     remote_metadata_status: document.remote_metadata_status,
     signature_status: document.signature_status,
@@ -336,6 +341,8 @@ function shouldKeepLocalReextractingState(
     return false
   }
 
-  return Date.now() - local.metadata_reextract_started_at <
+  return (
+    Date.now() - local.metadata_reextract_started_at <
     REEXTRACT_STALE_RESPONSE_GRACE_MS
+  )
 }

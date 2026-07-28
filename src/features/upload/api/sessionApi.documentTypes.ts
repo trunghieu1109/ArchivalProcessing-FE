@@ -16,6 +16,25 @@ export interface PaginationMeta {
   next_offset?: number | null
 }
 
+export interface DocumentEditLockOwner {
+  user_id?: string | number | null
+  email?: string | null
+  name?: string | null
+}
+
+export interface DocumentEditLock {
+  locked: boolean
+  locked_by?: DocumentEditLockOwner | null
+  locked_at?: string | null
+  lock_expires_at?: string | null
+}
+
+export interface DocumentEditLockResponse extends DocumentEditLock {
+  session_id: string
+  document_id: number
+  lock_token?: string | null
+}
+
 export interface DigitizationDocument {
   id: number
   lifecycle_status?: "active" | "delete_pending" | "deleted" | string
@@ -51,6 +70,7 @@ export interface DigitizationDocument {
   metadata_verified_by_name?: string | null
   metadata_verified_at?: string | null
   metadata_review_note?: string | null
+  edit_lock?: DocumentEditLock | null
   remote_metadata_status?: string | null
   signature_status?: string | null
   ocr_status: string
@@ -276,6 +296,7 @@ export interface NumberingStatusResponse extends ApiRevisionMetadata {
   summary: {
     total_documents: number
     total_dossiers?: number
+    dossiers_without_box_count?: number
     status_counts: Record<string, number>
     done: number
     failed: number
@@ -316,14 +337,18 @@ export interface NumberingPreviewDocument extends NumberingDocumentStatus {
   expires_in?: number | null
 }
 
-export interface NumberingDocumentStatusPageResponse
-  extends Omit<NumberingStatusResponse, "dossiers" | "pagination"> {
+export interface NumberingDocumentStatusPageResponse extends Omit<
+  NumberingStatusResponse,
+  "dossiers" | "pagination"
+> {
   pagination_scope: "documents"
   pagination: PaginationMeta
 }
 
-export interface NumberingDocumentPreviewUrlsResponse
-  extends Omit<NumberingDocumentStatusPageResponse, "documents"> {
+export interface NumberingDocumentPreviewUrlsResponse extends Omit<
+  NumberingDocumentStatusPageResponse,
+  "documents"
+> {
   documents: NumberingPreviewDocument[]
   preview_summary: NumberingPreviewSummary
 }
@@ -333,8 +358,10 @@ export interface NumberingPreviewDossier extends NumberingDossierStatus {
   preview_summary: NumberingPreviewSummary
 }
 
-export interface NumberingDossierPreviewUrlsResponse
-  extends Omit<NumberingStatusResponse, "documents" | "dossiers" | "pagination"> {
+export interface NumberingDossierPreviewUrlsResponse extends Omit<
+  NumberingStatusResponse,
+  "documents" | "dossiers" | "pagination"
+> {
   documents: NumberingPreviewDocument[]
   dossiers: NumberingPreviewDossier[]
   preview_summary: NumberingPreviewSummary
@@ -527,6 +554,7 @@ export interface SessionDocumentResponse {
   metadata_verified_by_name?: string | null
   metadata_verified_at?: string | null
   metadata_review_note?: string | null
+  edit_lock?: DocumentEditLock | null
   remote_metadata_status?: string | null
   signature_status?: string | null
   ocr_status: string
@@ -552,14 +580,21 @@ export interface BulkVerifyDocumentsResponse {
   documents: SessionDocumentResponse[]
   errors: Array<{
     document_id: number
-    detail: string
+    code: string
+    detail: unknown
   }>
 }
 
 export interface DocumentDeletionBlocker {
+  type?: string
+  code?: string
+  document_id?: number | null
+  session_document_id?: number | null
+  owner?: DocumentEditLockOwner | null
+  expires_at?: string | null
   job_id?: number | null
-  job_type: string
-  status: string
+  job_type?: string
+  status?: string
   operation_id?: string | null
   ocr_batch_id?: number | null
   remote_document_id?: string | null

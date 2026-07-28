@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 import {
   AlertTriangle,
   Check,
@@ -16,6 +16,8 @@ import { AnimatePresence, motion } from "framer-motion"
 import { toast } from "sonner"
 import { cn } from "@/shared/lib/utils"
 import { Button } from "@/components/ui/button"
+import { useDocumentEditLock } from "@/features/upload/hooks/useDocumentEditLock"
+import { documentEditLockErrorMessage } from "@/features/upload/lib/documentEditLockErrors"
 import {
   getWarningEntries,
   getWarningFields,
@@ -46,6 +48,7 @@ import { isMetadataExtractionPending } from "./ProcessStep.metadataUtils"
 
 interface MetadataCardProps {
   item: PdfMetadata
+  sessionId: string | null
   submitting?: boolean
   retrying?: boolean
   selected?: boolean
@@ -57,14 +60,17 @@ interface MetadataCardProps {
   onSelect?: (expanded: boolean) => void
   onRetry?: () => void
   onDelete?: () => void
+  onLockChanged?: () => void
   onApply: (
     dataPath: string,
-    meta?: Record<string, unknown>
+    meta: Record<string, unknown> | undefined,
+    lockToken: string
   ) => Promise<void> | void
 }
 
 export function MetadataCard({
   item,
+  sessionId,
   submitting = false,
   retrying = false,
   selected = false,
@@ -76,11 +82,26 @@ export function MetadataCard({
   onSelect,
   onRetry,
   onDelete,
+  onLockChanged,
   onApply,
 }: MetadataCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<Record<string, string>>({})
+  const {
+    status: editLockStatus,
+    held: editLockHeld,
+    acquire: acquireEditLock,
+    release: releaseEditLock,
+  } = useDocumentEditLock({
+    sessionId,
+    documentId: item.id,
+    onLockLost: (error) => {
+      setEditing(false)
+      toast.error(documentEditLockErrorMessage(error))
+      onLockChanged?.()
+    },
+  })
   const warningFields = getWarningFields(item.light_metadata)
   const warningEntries = getWarningEntries(item.light_metadata)
   const hasWarnings = hasMetadataWarning(item)
@@ -93,12 +114,21 @@ export function MetadataCard({
   const metadataFailed = isMetadataFailed(item.status)
   const metadataUnavailable = metadataFailed && !item.metadata_ready
   const hasMetadataEdits = item.metadata_user_edited === true
+  const serverEditLocked = item.edit_lock?.locked === true
+  const editLocked = serverEditLocked || editLockHeld
+  const editLockedBy = String(
+    item.edit_lock?.locked_by?.name ||
+      item.edit_lock?.locked_by?.email ||
+      item.edit_lock?.locked_by?.user_id ||
+      ""
+  ).trim()
   const signatureTag = signatureTagInfo(item)
   const canRetryMetadata = Boolean(
     !readOnly &&
-      onRetry &&
-      !metadataPending &&
-      item.metadata_retry_available !== false
+    onRetry &&
+    !metadataPending &&
+    item.metadata_retry_available !== false &&
+    !editLocked
   )
   const blankPageWarningPages = blankPageWarningOriginalPages(item)
   const hasBlankPageWarnings =
@@ -106,14 +136,15 @@ export function MetadataCard({
   const removedBlankPages = blankPageRemovedPages(item)
   const hasRemovedBlankPages = removedBlankPages.length > 0
 
-  useEffect(() => {
-    if (readOnly && editing) {
-      setEditing(false)
-    }
-  }, [editing, readOnly])
-
-  const startEdit = () => {
+  const startEdit = async () => {
     if (readOnly) return
+    try {
+      await acquireEditLock()
+    } catch (error) {
+      toast.error(documentEditLockErrorMessage(error))
+      onLockChanged?.()
+      return
+    }
     const nextDraft: Record<string, string> = {}
     METADATA_FIELDS.forEach((field) => {
       nextDraft[field.key] = metadataFieldText(
@@ -136,20 +167,34 @@ export function MetadataCard({
       updated[field.key] = draft[field.key] ?? ""
     })
     updated["_warnings"] = {}
-    await applyMetadata(updated)
-    setEditing(false)
+    if (await applyMetadata(updated)) setEditing(false)
   }
 
-  const applyMetadata = async (metadata?: Record<string, unknown>) => {
-    if (readOnly) return
+  const applyMetadata = async (
+    metadata?: Record<string, unknown>
+  ): Promise<boolean> => {
+    if (readOnly) return false
     try {
-      await onApply(item.data_path, metadata)
+      const lockToken = await acquireEditLock()
+      await onApply(item.data_path, metadata, lockToken)
       toast.success("Metadata đã được xác nhận.")
+      return true
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Không thể xác nhận metadata."
+        documentEditLockErrorMessage(err, "Không thể xác nhận metadata.")
       )
+      return false
+    } finally {
+      await releaseEditLock().catch(() => undefined)
+      onLockChanged?.()
     }
+  }
+
+  const cancelEdit = () => {
+    setEditing(false)
+    void releaseEditLock()
+      .catch(() => undefined)
+      .finally(() => onLockChanged?.())
   }
 
   const toggleMetadata = () => {
@@ -157,7 +202,7 @@ export function MetadataCard({
     setExpanded(next)
     onSelect?.(next)
     if (!next) {
-      setEditing(false)
+      cancelEdit()
     }
   }
 
@@ -225,6 +270,24 @@ export function MetadataCard({
           {item.data_path.split("/").pop()}
         </p>
         <div className="flex shrink-0 items-center gap-1">
+          {editLocked && (
+            <span
+              className="max-w-40 truncate rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800"
+              title={
+                editLockHeld
+                  ? "Bạn đang giữ quyền chỉnh sửa tài liệu này"
+                  : editLockedBy
+                    ? `Đang được chỉnh sửa bởi ${editLockedBy}`
+                    : "Tài liệu đang được chỉnh sửa"
+              }
+            >
+              {editLockHeld
+                ? "Bạn đang sửa"
+                : editLockedBy
+                  ? `${editLockedBy} đang sửa`
+                  : "Đang chỉnh sửa"}
+            </span>
+          )}
           <MetadataCompactTags
             signatureTag={signatureTag}
             hasMetadataEdits={hasMetadataEdits}
@@ -258,7 +321,7 @@ export function MetadataCard({
               )}
             </Button>
           )}
-          {!readOnly && onDelete ? (
+          {!readOnly && !editLocked && onDelete ? (
             <Button
               variant="destructive"
               size="sm"
@@ -338,7 +401,7 @@ export function MetadataCard({
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => setEditing(false)}
+                        onClick={cancelEdit}
                         disabled={submitting || retrying}
                       >
                         Hủy
@@ -346,7 +409,7 @@ export function MetadataCard({
                       <Button
                         size="sm"
                         onClick={() => void commitEdit()}
-                        disabled={submitting}
+                        disabled={submitting || !editLockHeld}
                       >
                         {submitting && (
                           <Loader2
@@ -453,10 +516,23 @@ export function MetadataCard({
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={startEdit}
-                        disabled={submitting || retrying}
+                        onClick={() => void startEdit()}
+                        disabled={
+                          submitting ||
+                          retrying ||
+                          editLockStatus === "acquiring" ||
+                          editLockStatus === "releasing"
+                        }
                       >
-                        <Edit2 data-icon="inline-start" /> Sửa
+                        {editLockStatus === "acquiring" ? (
+                          <Loader2
+                            data-icon="inline-start"
+                            className="animate-spin"
+                          />
+                        ) : (
+                          <Edit2 data-icon="inline-start" />
+                        )}{" "}
+                        Sửa
                       </Button>
                       {canRetryMetadata && (
                         <Button
@@ -537,7 +613,7 @@ function MetadataDocumentInfo({
         <p className="text-[10px] font-semibold tracking-wide text-[#64748B] uppercase">
           Đường dẫn
         </p>
-        <p className="mt-0.5 break-all font-roboto text-xs leading-5 text-[#0F172A]">
+        <p className="mt-0.5 font-roboto text-xs leading-5 break-all text-[#0F172A]">
           {item.data_path}
         </p>
       </div>
@@ -546,7 +622,9 @@ function MetadataDocumentInfo({
           <p className="text-[10px] font-semibold tracking-wide text-[#64748B] uppercase">
             Ghi chú review
           </p>
-          <p className="mt-0.5 text-xs font-medium text-[#0052FF]">{reviewNote}</p>
+          <p className="mt-0.5 text-xs font-medium text-[#0052FF]">
+            {reviewNote}
+          </p>
         </div>
       ) : null}
       {hasBlankPageWarnings ? (
@@ -666,7 +744,8 @@ function MetadataCompactTags({
               ? {
                   label: "Sẵn sàng",
                   title: "Metadata sẵn sàng",
-                  className: "border-emerald-300 bg-emerald-50 text-emerald-700",
+                  className:
+                    "border-emerald-300 bg-emerald-50 text-emerald-700",
                   icon: <CheckCircle2 className="size-2.5" />,
                 }
               : {
@@ -738,9 +817,7 @@ function blankPageWarningOriginalPages(item: PdfMetadata): number[] {
   if (Array.isArray(warnings)) {
     warnings.forEach((warning) => {
       if (!warning || typeof warning !== "object") return
-      const page = Number(
-        (warning as Record<string, unknown>).page_number
-      )
+      const page = Number((warning as Record<string, unknown>).page_number)
       if (Number.isInteger(page) && page > 0) pages.add(page)
     })
   }
