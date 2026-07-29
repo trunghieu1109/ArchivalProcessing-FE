@@ -1,5 +1,6 @@
 import {
   type FormEvent,
+  type ReactNode,
   type RefObject,
   useEffect,
   useMemo,
@@ -9,6 +10,9 @@ import { Dialog } from "radix-ui"
 import {
   AlertTriangle,
   ArrowRight,
+  Check,
+  ChevronLeft,
+  ChevronRight,
   Eye,
   FileSpreadsheet,
   FileText,
@@ -44,6 +48,173 @@ import { SHOW_METADATA_COUNT_CONFLICT_WARNING } from "../step4/temporaryFeatureV
 
 export type DossierUpdateMode = "auto" | "manual"
 export type NumberingUpdateMode = DossierUpdateMode | "cascade"
+
+export function NumberingTimelineControls({
+  applied,
+  viewed,
+  count,
+  dirty,
+  busy,
+  canPrevious,
+  canNext,
+  canApply,
+  applyBlockedReason,
+  onWorking,
+  onPrevious,
+  onNext,
+  onApply,
+}: {
+  applied: number | null
+  viewed: number | null
+  count: number
+  dirty: boolean
+  busy: boolean
+  canPrevious: boolean
+  canNext: boolean
+  canApply: boolean
+  applyBlockedReason?: string | null
+  onWorking: () => void | Promise<unknown>
+  onPrevious: () => void | Promise<unknown>
+  onNext: () => void | Promise<unknown>
+  onApply: () => void | Promise<unknown>
+}) {
+  const viewingHistory = viewed !== null
+  const workingChangesBlockBrowsing = !viewingHistory && dirty
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl border border-[#CBD5E1] bg-white px-5 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <p className="text-sm font-semibold text-[#0F172A]">
+          Lịch sử trạng thái đánh số
+        </p>
+        <p className="mt-1 text-xs text-[#64748B]">
+          {viewingHistory
+            ? `Đang xem trạng thái ${viewed}/${count}`
+            : applied === null
+              ? "Đang sử dụng bản khởi tạo · Chưa có state"
+              : `Đang sử dụng trạng thái ${applied}/${count}`}
+          {!viewingHistory
+            ? dirty
+              ? " · Có thay đổi chưa lưu"
+              : " · Đã đồng bộ"
+            : applied !== null
+              ? ` · Đang sử dụng trạng thái ${applied}/${count}`
+              : " · Đang sử dụng bản khởi tạo"}
+        </p>
+        {applyBlockedReason ? (
+          <p className="mt-1 max-w-2xl text-xs leading-5 text-amber-700">
+            {applyBlockedReason}
+          </p>
+        ) : null}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {viewingHistory ? (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy}
+            onClick={() => void onWorking()}
+          >
+            Bản đang dùng
+          </Button>
+        ) : null}
+        <Button
+          type="button"
+          variant="outline"
+          disabled={busy || workingChangesBlockBrowsing || !canPrevious}
+          title={
+            workingChangesBlockBrowsing
+              ? "Hãy lưu hoặc bỏ thay đổi hiện tại trước khi xem lịch sử."
+              : undefined
+          }
+          onClick={() => void onPrevious()}
+        >
+          <ChevronLeft data-icon="inline-start" />
+          Trước
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={busy || workingChangesBlockBrowsing || !canNext}
+          title={
+            workingChangesBlockBrowsing
+              ? "Hãy lưu hoặc bỏ thay đổi hiện tại trước khi xem lịch sử."
+              : undefined
+          }
+          onClick={() => void onNext()}
+        >
+          Sau
+          <ChevronRight data-icon="inline-end" />
+        </Button>
+        {viewingHistory ? (
+          <Button
+            type="button"
+            disabled={busy || !canApply}
+            title={applyBlockedReason ?? undefined}
+            onClick={() => void onApply()}
+          >
+            {busy ? (
+              <Loader2 data-icon="inline-start" className="animate-spin" />
+            ) : (
+              <Check data-icon="inline-start" />
+            )}
+            Sử dụng trạng thái
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+export function NumberingTimelineWorkingActions({
+  busy,
+  canDiscard,
+  canSave,
+  discardBlockedReason,
+  onDiscard,
+  onSave,
+  embedded = false,
+}: {
+  busy: boolean
+  canDiscard: boolean
+  canSave: boolean
+  discardBlockedReason?: string | null
+  onDiscard: () => void | Promise<unknown>
+  onSave: () => void | Promise<unknown>
+  embedded?: boolean
+}) {
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap items-center justify-end gap-2",
+        !embedded &&
+          "rounded-2xl border border-[#CBD5E1] bg-white px-5 py-4 shadow-sm"
+      )}
+    >
+      <Button
+        type="button"
+        variant="outline"
+        disabled={busy || !canDiscard}
+        title={discardBlockedReason ?? undefined}
+        onClick={() => void onDiscard()}
+      >
+        <RotateCcw data-icon="inline-start" />
+        Bỏ thay đổi
+      </Button>
+      <Button
+        type="button"
+        disabled={busy || !canSave}
+        onClick={() => void onSave()}
+      >
+        {busy ? (
+          <Loader2 data-icon="inline-start" className="animate-spin" />
+        ) : (
+          <Save data-icon="inline-start" />
+        )}
+        Lưu trạng thái
+      </Button>
+    </div>
+  )
+}
 
 export function NumberingStepHeader({
   modeLabel,
@@ -374,7 +545,7 @@ export function NumberingStepHeader({
               <Play data-icon="inline-start" />
             )}
             {hasPendingConfigChanges
-              ? "Áp dụng và đánh số lại"
+              ? "Áp dụng cấu hình"
               : complete
                 ? "Lấy kết quả"
                 : "Bắt đầu đánh số"}
@@ -409,7 +580,7 @@ export function NumberingMetadataPanel({
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const [exportMode, setExportMode] = useState<MetadataExportMode>("combined")
   const countConflicts = SHOW_METADATA_COUNT_CONFLICT_WARNING
-    ? metadataImportReview?.count_conflicts ?? []
+    ? (metadataImportReview?.count_conflicts ?? [])
     : []
 
   return (
@@ -431,8 +602,8 @@ export function NumberingMetadataPanel({
             Metadata snapshot hồ sơ
           </p>
           <p className="mt-1 max-w-3xl text-sm text-[#64748B]">
-            Xuất hoặc nhập số hộp, số hồ sơ, ký hiệu hồ sơ, ghi chú hồ sơ, số
-            tờ và số trang trước khi tạo mục lục.
+            Xuất hoặc nhập số hộp, số hồ sơ, ký hiệu hồ sơ, ghi chú hồ sơ, số tờ
+            và số trang trước khi tạo mục lục.
           </p>
         </div>
         <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:w-auto">
@@ -476,9 +647,9 @@ export function NumberingMetadataPanel({
                   Cần xác nhận {countConflicts.length} hồ sơ
                 </p>
                 <p className="mt-1 text-sm text-[#92400E]">
-                  Tag cảnh báo đã được gắn vào hồ sơ có số không đồng nhất.
-                  Hệ thống đang giữ số cũ cho đến khi xác nhận
-                  dùng số mới. Xử lý từng hồ sơ trong danh sách bên dưới.
+                  Tag cảnh báo đã được gắn vào hồ sơ có số không đồng nhất. Hệ
+                  thống đang giữ số cũ cho đến khi xác nhận dùng số mới. Xử lý
+                  từng hồ sơ trong danh sách bên dưới.
                 </p>
               </div>
             </div>
@@ -627,6 +798,7 @@ export function NumberingStepFooter({
   totalDocuments,
   failedCount,
   unresolvedCount,
+  workingActions,
   onContinue,
 }: {
   active: boolean
@@ -638,12 +810,13 @@ export function NumberingStepFooter({
   totalDocuments: number
   failedCount: number
   unresolvedCount: number
+  workingActions?: ReactNode
   onContinue: () => void
 }) {
   const missingBoxWarning = dossiersWithoutBoxCount > 0
 
   return (
-    <div className="sticky bottom-0 z-20 border-t border-[#CBD5E1] bg-white/95 px-4 py-3 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur">
+    <div className="sticky bottom-0 z-20 overflow-hidden rounded-2xl border border-[#CBD5E1] bg-white/95 px-4 py-3 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 items-start gap-2.5">
           {missingBoxWarning ? (
@@ -684,29 +857,32 @@ export function NumberingStepFooter({
             </p>
           </div>
         </div>
-        <div className="relative w-full shrink-0 lg:ml-auto lg:w-auto">
-          <Button
-            type="button"
-            onClick={onContinue}
-            disabled={!canContinue || metadataBusy}
-            className="w-full bg-[#0052FF] text-white hover:bg-[#0047D6] sm:w-auto"
-          >
-            Tạo mục lục
-            <ArrowRight data-icon="inline-end" />
-          </Button>
-          {!canContinue || metadataBusy ? (
-            <button
+        <div className="flex w-full shrink-0 flex-wrap items-center justify-end gap-2 lg:ml-auto lg:w-auto">
+          {workingActions}
+          <div className="relative w-full shrink-0 sm:w-auto">
+            <Button
               type="button"
-              aria-label="Xem lý do không thể tạo mục lục"
-              onClick={() =>
-                toast.error(
-                  blockedReason ??
-                    "Hiện chưa thể tạo mục lục. Vui lòng kiểm tra trạng thái đánh số và metadata."
-                )
-              }
-              className="absolute inset-0 h-full w-full cursor-not-allowed rounded-lg bg-transparent"
-            />
-          ) : null}
+              onClick={onContinue}
+              disabled={!canContinue || metadataBusy}
+              className="w-full bg-[#0052FF] text-white hover:bg-[#0047D6] sm:w-auto"
+            >
+              Tạo mục lục
+              <ArrowRight data-icon="inline-end" />
+            </Button>
+            {!canContinue || metadataBusy ? (
+              <button
+                type="button"
+                aria-label="Xem lý do không thể tạo mục lục"
+                onClick={() =>
+                  toast.error(
+                    blockedReason ??
+                      "Hiện chưa thể tạo mục lục. Vui lòng kiểm tra trạng thái đánh số và metadata."
+                  )
+                }
+                className="absolute inset-0 h-full w-full cursor-not-allowed rounded-lg bg-transparent"
+              />
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
@@ -848,6 +1024,7 @@ export function NumberingDocumentRow({
   stalled: boolean
   disabled: boolean
 }) {
+  const historicalOnly = Boolean(document.historical_only)
   const entries = useMemo(() => numberingEntries(document), [document])
   const [pageValue, setPageValue] = useState(
     String(entries[0]?.page_number ?? 1)
@@ -882,12 +1059,17 @@ export function NumberingDocumentRow({
     updateMode,
   ])
 
-  const badge = stalled
-    ? {
-        label: "Chưa hoàn tất",
-        className: "bg-rose-50 text-rose-700",
-      }
-    : statusBadge(document.status)
+  const lifecycleBadge = historicalOnly
+    ? historicalLifecycleBadge(document.lifecycle_status)
+    : null
+  const badge =
+    lifecycleBadge ??
+    (stalled
+      ? {
+          label: "Chưa hoàn tất",
+          className: "bg-rose-50 text-rose-700",
+        }
+      : statusBadge(document.status))
   const trimmedPageValue = pageValue.trim()
   const pageNumberIsValid = positiveIntegerText(trimmedPageValue)
   const parsedPageNumber = pageNumberIsValid
@@ -903,7 +1085,10 @@ export function NumberingDocumentRow({
     Number(document.entry_count) || 0,
     ...entries.map((entry) => entry.page_number)
   )
-  const parsedManualEntries = validateManualEntryRows(manualEntryRows, pageLimit)
+  const parsedManualEntries = validateManualEntryRows(
+    manualEntryRows,
+    pageLimit
+  )
   const manualPageIsValid =
     pageNumberIsValid && (pageLimit <= 0 || parsedPageNumber <= pageLimit)
   const canUpdate =
@@ -913,27 +1098,40 @@ export function NumberingDocumentRow({
         ? manualPageIsValid && cascadeLabelIsValid
         : parsedManualEntries.entries.length > 0 &&
           parsedManualEntries.error === "") &&
+    !historicalOnly &&
     !disabled &&
     !updating
   const span =
     document.document_number_start === document.document_number_end
       ? String(document.document_number_start)
       : `${document.document_number_start}-${document.document_number_end}`
+  const historicalVersion =
+    document.numbering_versions?.find(
+      (version) => version.id === document.selected_numbering_version_id
+    ) ?? document.numbering_versions?.[0]
+  const hasHistoricalNumbering =
+    historicalOnly &&
+    Boolean(
+      historicalVersion ||
+      document.numbered_pdf_version_id ||
+      document.document_number_start > 0 ||
+      document.document_number_end > 0
+    )
   const handleUpdate = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!canUpdate) return
     onUpdateFromPage(
       document,
       updateMode === "auto"
-        ? firstEntry?.page_number ?? 1
+        ? (firstEntry?.page_number ?? 1)
         : updateMode === "manual"
-        ? parsedManualEntries.entries[0]?.page_number ?? 1
-        : parsedPageNumber,
+          ? (parsedManualEntries.entries[0]?.page_number ?? 1)
+          : parsedPageNumber,
       updateMode === "auto"
         ? String(document.document_number_start || 1)
         : updateMode === "manual"
-        ? parsedManualEntries.entries[0]?.label ?? ""
-        : trimmedNumberValue,
+          ? (parsedManualEntries.entries[0]?.label ?? "")
+          : trimmedNumberValue,
       updateMode,
       updateMode === "manual" ? parsedManualEntries.entries : undefined
     )
@@ -964,7 +1162,7 @@ export function NumberingDocumentRow({
         ? "Cập nhật theo mốc và dồn phần sau"
         : "Cập nhật tự động từ trang này"
 
-  const actionButtons = (
+  const actionButtons = historicalOnly ? null : (
     <>
       <button
         type="submit"
@@ -1033,9 +1231,11 @@ export function NumberingDocumentRow({
         highlighted
           ? "border-[#0052FF] bg-[#EEF4FF] shadow-[0_0_0_2px_rgba(0,82,255,0.12)]"
           : "border-[#D8E1EC]",
-        updateMode === "manual"
-          ? "lg:grid-cols-[minmax(11rem,0.9fr)_minmax(18rem,1.35fr)_auto] lg:items-start"
-          : "sm:grid-cols-[minmax(12rem,1fr)_minmax(0,auto)_auto] sm:items-center"
+        historicalOnly
+          ? "sm:grid-cols-[minmax(12rem,1fr)_minmax(12rem,auto)] sm:items-center"
+          : updateMode === "manual"
+            ? "lg:grid-cols-[minmax(11rem,0.9fr)_minmax(18rem,1.35fr)_auto] lg:items-start"
+            : "sm:grid-cols-[minmax(12rem,1fr)_minmax(0,auto)_auto] sm:items-center"
       )}
     >
       <div className="flex min-w-0 items-start gap-2.5">
@@ -1047,16 +1247,37 @@ export function NumberingDocumentRow({
             <p className="min-w-0 truncate text-sm font-semibold text-[#0F172A]">
               {document.file_name || document.document_id}
             </p>
-            <span
-              className={cn(
-                "inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                badge.className
-              )}
-            >
-              {badge.label}
+            <span className="flex shrink-0 items-center gap-1">
+              {document.was_renumbered ? (
+                <span className="inline-flex rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700">
+                  Đã đánh số lại
+                </span>
+              ) : null}
+              <span
+                className={cn(
+                  "inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                  badge.className
+                )}
+              >
+                {badge.label}
+              </span>
             </span>
           </div>
-          <p className="mt-0.5 truncate text-xs text-[#64748B]">Số {span}</p>
+          <p className="mt-0.5 truncate text-xs text-[#64748B]">
+            {historicalOnly
+              ? hasHistoricalNumbering
+                ? `${historicalVersion ? `Phiên bản V${historicalVersion.version_number} · ` : ""}Số ${span}`
+                : "Chưa có phiên bản đánh số trước khi xóa/chuyển"
+              : `Số ${span}`}
+          </p>
+          {historicalOnly && document.transferred_to_session_id ? (
+            <p className="mt-1 text-xs text-[#64748B]">
+              Đã chuyển tới session {document.transferred_to_session_id}
+              {document.transferred_to_session_document_id
+                ? ` · tài liệu ${document.transferred_to_session_document_id}`
+                : ""}
+            </p>
+          ) : null}
           {document.error ? (
             <p className="mt-1 text-xs text-rose-700">{document.error}</p>
           ) : null}
@@ -1078,12 +1299,23 @@ export function NumberingDocumentRow({
             : "flex-wrap items-center sm:border-l sm:pl-3"
         )}
       >
-        {updateMode === "manual" ? (
+        {historicalOnly ? (
+          <div className="flex min-h-8 min-w-[12rem] items-center justify-between gap-3 rounded-lg border border-[#CBD5E1] bg-white px-3 py-1.5 text-xs text-[#64748B]">
+            <span className="font-semibold">Chỉ đọc</span>
+            <span className="text-right">
+              {hasHistoricalNumbering
+                ? historicalVersion
+                  ? `Kết quả đánh số V${historicalVersion.version_number}`
+                  : "Kết quả đánh số lịch sử"
+                : "Không có kết quả đánh số"}
+            </span>
+          </div>
+        ) : updateMode === "manual" ? (
           <ManualNumberingEntriesEditor
             documentId={document.session_document_id}
             rows={manualEntryRows}
             pageLimit={pageLimit}
-            disabled={disabled || updating}
+            disabled={disabled || updating || historicalOnly}
             error={parsedManualEntries.error}
             onChange={setManualEntryRows}
           />
@@ -1106,7 +1338,7 @@ export function NumberingDocumentRow({
               pattern="[0-9]*"
               value={pageValue}
               onChange={(event) => updatePageValue(event.target.value)}
-              disabled={disabled || updating}
+              disabled={disabled || updating || historicalOnly}
               className="h-7 w-14 shrink-0 rounded-md border border-[#CBD5E1] bg-white px-1.5 text-center text-xs font-medium text-[#0F172A] tabular-nums transition-colors outline-none focus:border-[#0052FF] focus:ring-2 focus:ring-[#0052FF]/10 disabled:bg-[#F1F5F9] disabled:text-[#94A3B8]"
             />
             <label
@@ -1121,20 +1353,22 @@ export function NumberingDocumentRow({
               inputMode="text"
               value={numberValue}
               onChange={(event) => updateNumberValue(event.target.value)}
-              disabled={disabled || updating}
+              disabled={disabled || updating || historicalOnly}
               className="h-7 w-16 shrink-0 rounded-md border border-[#CBD5E1] bg-white px-1.5 text-center text-xs font-medium text-[#0F172A] tabular-nums transition-colors outline-none focus:border-[#0052FF] focus:ring-2 focus:ring-[#0052FF]/10 disabled:bg-[#F1F5F9] disabled:text-[#94A3B8]"
             />
           </>
         )}
       </div>
-      <div
-        className={cn(
-          "flex shrink-0 items-center justify-end gap-1.5 justify-self-end",
-          updateMode === "manual" ? "self-start" : "self-center"
-        )}
-      >
-        {actionButtons}
-      </div>
+      {!historicalOnly ? (
+        <div
+          className={cn(
+            "flex shrink-0 items-center justify-end gap-1.5 justify-self-end",
+            updateMode === "manual" ? "self-start" : "self-center"
+          )}
+        >
+          {actionButtons}
+        </div>
+      ) : null}
     </form>
   )
 }
@@ -1160,11 +1394,7 @@ function ManualNumberingEntriesEditor({
   error: string
   onChange: (rows: ManualEntryRow[]) => void
 }) {
-  const updateRow = (
-    index: number,
-    field: "page" | "label",
-    value: string
-  ) => {
+  const updateRow = (index: number, field: "page" | "label", value: string) => {
     onChange(
       rows.map((row, rowIndex) =>
         rowIndex === index ? { ...row, [field]: value } : row
@@ -1221,7 +1451,9 @@ function ManualNumberingEntriesEditor({
               id={`numbering-manual-label-${documentId}-${index}`}
               type="text"
               value={row.label}
-              onChange={(event) => updateRow(index, "label", event.target.value)}
+              onChange={(event) =>
+                updateRow(index, "label", event.target.value)
+              }
               disabled={disabled}
               placeholder="VD: 12"
               className="h-7 min-w-0 rounded-md border border-[#CBD5E1] bg-[#F8FAFC] px-2 text-xs font-medium text-[#0F172A] transition-colors outline-none placeholder:text-[#CBD5E1] focus:border-[#0052FF] focus:bg-white focus:ring-2 focus:ring-[#0052FF]/10 disabled:bg-[#F1F5F9] disabled:text-[#94A3B8]"
@@ -1385,4 +1617,22 @@ function numberingLabelText(value: string): boolean {
 
 function positiveIntegerText(value: string): boolean {
   return /^[0-9]+$/.test(value) && Number.parseInt(value, 10) > 0
+}
+
+function historicalLifecycleBadge(status: string | null | undefined): {
+  label: string
+  className: string
+} {
+  switch (status) {
+    case "delete_pending":
+      return { label: "Đang xóa", className: "bg-amber-50 text-amber-700" }
+    case "deleted":
+      return { label: "Đã xóa", className: "bg-slate-100 text-slate-600" }
+    case "transfer_pending":
+      return { label: "Đang chuyển", className: "bg-blue-50 text-blue-700" }
+    case "transferred_out":
+      return { label: "Đã chuyển", className: "bg-indigo-50 text-indigo-700" }
+    default:
+      return { label: "Lịch sử", className: "bg-slate-100 text-slate-600" }
+  }
 }

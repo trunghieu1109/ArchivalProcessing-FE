@@ -266,6 +266,65 @@ export interface NumberingDocumentStatus {
   expires_at?: string | number | null
   error?: string | null
   updated_at?: string | null
+  numbering_configuration_id?: number | null
+  selected_numbering_version_id?: number | null
+  numbering_versions?: NumberingDocumentVersion[]
+  was_renumbered?: boolean
+  historical_only?: boolean
+  lifecycle_status?:
+    | "active"
+    | "delete_pending"
+    | "deleted"
+    | "transfer_pending"
+    | "transferred_out"
+    | string
+  transferred_to_session_id?: string | null
+  transferred_to_session_document_id?: number | null
+}
+
+export interface NumberingDocumentVersion {
+  id: number
+  version_number: number
+  numbered_pdf_version_id: string | number
+  created_at?: string | null
+}
+
+export interface NumberingConfiguration {
+  id: number
+  cluster_version_id: string
+  document_numbering_mode: DocumentNumberingMode
+  document_numbering_style_preset: DocumentNumberingStylePreset
+  document_numbering_style_overrides?: {
+    font_size?: number
+    color?: string
+    opacity?: number
+  } | null
+}
+
+export interface NumberingTimelineStateSummary {
+  id: number
+  configuration_id: number
+  sequence_number: number
+  created_by: string
+  created_at?: string | null
+}
+
+export interface NumberingStateStatus {
+  current: NumberingTimelineStateSummary | null
+  applied_state?: NumberingTimelineStateSummary | null
+  working_origin?: "initial" | "state"
+  working_revision?: number
+  initial_snapshot_ready?: boolean
+  count: number
+  dirty: boolean
+  can_browse?: boolean
+  can_previous: boolean
+  can_next: boolean
+  previous_state_id?: number | null
+  next_state_id?: number | null
+  can_discard: boolean
+  discard_blocked_reason?: string | null
+  inactive_document_count: number
 }
 
 export interface NumberingDossierStatus {
@@ -304,6 +363,40 @@ export interface NumberingStatusResponse extends ApiRevisionMetadata {
     running: number
     blank_page_warning_documents?: number
   }
+  documents: NumberingDocumentStatus[]
+  dossiers: NumberingDossierStatus[]
+  pagination?: PaginationMeta
+  numbering_capabilities?: {
+    timeline_enabled: boolean
+  }
+  numbering_configuration?: NumberingConfiguration | null
+  numbering_state?: NumberingStateStatus
+}
+
+export interface NumberingStateMutationResponse {
+  session_id: string
+  numbering_configuration_id: number
+  numbering_configuration?: NumberingConfiguration | null
+  state: NumberingTimelineStateSummary | null
+  created?: boolean
+  working_origin?: "initial" | "state"
+  working_revision?: number
+  base_state_id?: number | null
+  skipped_inactive_document_ids?: number[]
+  numbering_status?: NumberingStatusResponse
+}
+
+export interface NumberingStateDetailResponse {
+  session_id: string
+  state: NumberingTimelineStateSummary
+  configuration: NumberingConfiguration
+  position: number
+  count: number
+  previous_state_id: number | null
+  next_state_id: number | null
+  compatible_with_active_cluster: boolean
+  can_apply: boolean
+  is_applied: boolean
   documents: NumberingDocumentStatus[]
   dossiers: NumberingDossierStatus[]
   pagination?: PaginationMeta

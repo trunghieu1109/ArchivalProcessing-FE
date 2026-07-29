@@ -793,9 +793,7 @@ export function UploadPageView(props: Record<string, any>) {
                     toast.error("Chưa có session để tạo mục lục.")
                     return
                   }
-                  navigate(
-                    `/sessions/${encodeURIComponent(currentSessionId)}/step/6`
-                  )
+                  goTo(6, currentSessionId)
                 }}
               />
             </motion.div>

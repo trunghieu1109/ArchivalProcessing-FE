@@ -1,6 +1,11 @@
 ﻿import { useEffect, useRef, useState } from "react"
 import { useCallback } from "react"
-import { useNavigate, useParams, useSearchParams } from "react-router-dom"
+import {
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom"
 import { toast } from "sonner"
 import { useAuth } from "@/features/auth/lib/AuthContext"
 import {
@@ -74,8 +79,10 @@ import {
   missingDossierBuildInputs,
   selectedUploadLabels,
 } from "./UploadPage.requirements"
+import { workflowStepFromLocation } from "./UploadPage.routing"
 
 export function UploadPage() {
+  const location = useLocation()
   const navigate = useNavigate()
   const { user } = useAuth()
   const folderUploadJobs = useFolderUploadJobs()
@@ -88,10 +95,7 @@ export function UploadPage() {
   }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const existingSessionMode = Boolean(routeSessionId)
-  const currentStep = Math.min(
-    Math.max(parseInt(step ?? "1", 10), 1),
-    7
-  ) as AppStep
+  const currentStep = workflowStepFromLocation(step, location.pathname)
   const visitedStepStorageKey = `archival-processing:highest-visited-step:${routeSessionId ?? "new"}`
   const storedVisitedStep = Number(
     window.sessionStorage.getItem(visitedStepStorageKey)
@@ -1594,6 +1598,7 @@ export function UploadPage() {
   return (
     <>
       <UploadPageView
+        key={`${routeSessionId ?? "new"}:${currentStep}`}
         currentStep={currentStep}
         highestVisitedStep={highestVisitedStep}
         existingSessionMode={existingSessionMode}

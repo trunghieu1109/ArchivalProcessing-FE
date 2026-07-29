@@ -12,11 +12,14 @@ import {
   X,
 } from "lucide-react"
 import { toast } from "sonner"
+import { useAuth } from "@/features/auth/lib/AuthContext"
 import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import { PaginationControls } from "@/features/upload/components/PaginationControls"
 import {
   downloadArtifact,
+  applyNumberingState,
+  discardNumberingState,
   enqueueDocumentNumbering,
   exportMetadataSnapshot,
   clearMetadataBoxNumberPendingCounts,
@@ -24,8 +27,10 @@ import {
   getDocumentPreviewUrl,
   getNumberedDocumentPreviewUrl,
   getNumberingStyles,
+  getNumberingState,
   importMetadataBoxNumbers as importMetadataBoxNumbersApi,
   patchSessionDossier,
+  saveNumberingState,
   updateDocumentNumberingFromPage,
   type DocumentNumberingMode,
   type DocumentNumberingStylePreset,
@@ -35,6 +40,7 @@ import {
   type NumberingDocumentStatus,
   type SessionDossierPatchPayload,
   type NumberingStatusResponse,
+  type NumberingStateDetailResponse,
   type NumberingStyleOption,
 } from "@/features/upload/api/sessionApi"
 import {
@@ -45,6 +51,8 @@ import {
   NumberingStat,
   NumberingStepFooter,
   NumberingStepHeader,
+  NumberingTimelineControls,
+  NumberingTimelineWorkingActions,
   type DossierUpdateMode,
   type NumberingUpdateMode,
 } from "./NumberingStep.parts"
@@ -53,6 +61,8 @@ import {
   canPreviewNumberingDocument,
   groupDocumentsByDossier,
   isNumberingComplete,
+  mergeCachedNumberingPage,
+  mergeNumberingSummaryResponse,
   numberingEntries,
   saveBlob,
   statusBadge,
@@ -141,15 +151,23 @@ export function NumberingStep({
   onAutoStartHandled,
   onContinue,
 }: NumberingStepProps) {
+  const { user } = useAuth()
+  const currentUserRole = String(user?.role ?? "")
+    .trim()
+    .toLowerCase()
+  const canManageNumbering =
+    currentUserRole === "admin" || currentUserRole === "coordinator"
   const autoStartedSessionRef = useRef<string | null>(null)
   const [status, setStatus] = useState<NumberingStatusResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState(false)
+  const [timelineMutating, setTimelineMutating] = useState(false)
+  const [viewedNumberingState, setViewedNumberingState] =
+    useState<NumberingStateDetailResponse | null>(null)
   const changingMode = false
   const [numberingModeDraft, setNumberingModeDraft] =
     useState<DocumentNumberingMode>(documentNumberingMode)
-  const [numberingModeDraftDirty, setNumberingModeDraftDirty] =
-    useState(false)
+  const [numberingModeDraftDirty, setNumberingModeDraftDirty] = useState(false)
   const numberingModeDraftSessionRef = useRef<string | null>(null)
   const [stylePresetDraft, setStylePresetDraft] =
     useState<DocumentNumberingStylePreset>(documentNumberingStylePreset)
@@ -209,6 +227,8 @@ export function NumberingStep({
   const numberingConfigCacheKeyRef = useRef<string | null>(null)
   const prefetchingNumberingPagesRef = useRef<Set<number>>(new Set())
   const numberingDocumentsRevisionRef = useRef<string | null>(null)
+  const numberingRequestGenerationRef = useRef(0)
+  const timelineMutationInFlightRef = useRef(false)
   const [completedPhases, setCompletedPhases] = useState<Set<string>>(
     () => new Set()
   )
@@ -249,12 +269,7 @@ export function NumberingStep({
         stylePresetDraft,
         styleOverridesDraft,
       }),
-    [
-      numberingModeDraft,
-      sessionId,
-      styleOverridesDraft,
-      stylePresetDraft,
-    ]
+    [numberingModeDraft, sessionId, styleOverridesDraft, stylePresetDraft]
   )
   const currentMissingNavigatorCacheKey = `${sessionId ?? ""}:${
     revisionToken(status?.documents_revision) ?? ""
@@ -267,11 +282,13 @@ export function NumberingStep({
   useEffect(() => {
     if (numberingPageCacheSessionRef.current === sessionId) return
     numberingPageCacheSessionRef.current = sessionId
+    numberingRequestGenerationRef.current += 1
     numberingPageCacheRef.current.clear()
     prefetchingNumberingPagesRef.current.clear()
     numberingDocumentsRevisionRef.current = null
     setNumberingPageIndex(0)
     setMetadataImportReview(null)
+    setViewedNumberingState(null)
   }, [sessionId])
 
   useEffect(() => {
@@ -340,13 +357,21 @@ export function NumberingStep({
       if (prefetchingNumberingPagesRef.current.has(pageIndex)) return
 
       prefetchingNumberingPagesRef.current.add(pageIndex)
+      const requestGeneration = numberingRequestGenerationRef.current
       try {
         const response = await fetchNumberingPageStatus(pageIndex)
-        if (response) numberingPageCacheRef.current.set(pageIndex, response)
+        if (
+          response &&
+          requestGeneration === numberingRequestGenerationRef.current
+        ) {
+          numberingPageCacheRef.current.set(pageIndex, response)
+        }
       } catch {
         // Prefetch is best-effort; visible refreshes surface real errors.
       } finally {
-        prefetchingNumberingPagesRef.current.delete(pageIndex)
+        if (requestGeneration === numberingRequestGenerationRef.current) {
+          prefetchingNumberingPagesRef.current.delete(pageIndex)
+        }
       }
     },
     [fetchNumberingPageStatus, sessionId]
@@ -359,9 +384,11 @@ export function NumberingStep({
         includeDocuments?: boolean
         pageIndex?: number
         force?: boolean
+        deferApply?: boolean
       } = {}
     ) => {
       if (!sessionId) {
+        numberingRequestGenerationRef.current += 1
         numberingPageCacheRef.current.clear()
         prefetchingNumberingPagesRef.current.clear()
         setStatus(null)
@@ -373,6 +400,7 @@ export function NumberingStep({
         setLoading(true)
         setError("")
       }
+      let requestGeneration = numberingRequestGenerationRef.current
       try {
         const includeDocuments = options.includeDocuments ?? true
         const pageSize = NUMBERING_PAGE_SIZE
@@ -381,9 +409,11 @@ export function NumberingStep({
           Math.floor(Number(options.pageIndex ?? numberingPageIndex) || 0)
         )
         if (includeDocuments && options.force) {
+          numberingRequestGenerationRef.current += 1
           numberingPageCacheRef.current.clear()
           prefetchingNumberingPagesRef.current.clear()
         }
+        requestGeneration = numberingRequestGenerationRef.current
 
         const cachedStatus =
           includeDocuments && !options.force
@@ -412,7 +442,12 @@ export function NumberingStep({
               includeDocuments,
               summaryOnly: true,
             })
-        if (!response) return null
+        if (
+          !response ||
+          requestGeneration !== numberingRequestGenerationRef.current
+        ) {
+          return null
+        }
         const nextDocumentsRevision = revisionToken(response.documents_revision)
         if (includeDocuments) {
           numberingDocumentsRevisionRef.current = nextDocumentsRevision
@@ -425,17 +460,13 @@ export function NumberingStep({
           numberingPageCacheRef.current.clear()
           prefetchingNumberingPagesRef.current.clear()
         }
-        setStatus((current) => {
-          if (includeDocuments || !current) return response
-          return {
-            ...response,
-            documents: current.documents,
-            pagination: mergeNumberingPaginationTotal(
-              current.pagination,
-              response.pagination
-            ),
-          }
-        })
+        if (!options.deferApply) {
+          setStatus((current) =>
+            includeDocuments
+              ? response
+              : mergeNumberingSummaryResponse(current, response)
+          )
+        }
         setError("")
         if (includeDocuments) {
           const nextPageIndex = nextNumberingPrefetchPageIndex(
@@ -449,14 +480,21 @@ export function NumberingStep({
         }
         return response
       } catch (err) {
+        const requestIsCurrent =
+          numberingRequestGenerationRef.current === requestGeneration
         const message =
           err instanceof Error
             ? err.message
             : "Không tải được trạng thái đánh số."
-        if (!options.silent) setError(message)
+        if (!options.silent && requestIsCurrent) setError(message)
         return null
       } finally {
-        if (!options.silent) setLoading(false)
+        if (
+          !options.silent &&
+          numberingRequestGenerationRef.current === requestGeneration
+        ) {
+          setLoading(false)
+        }
       }
     },
     [
@@ -465,6 +503,256 @@ export function NumberingStep({
       prefetchNumberingPage,
       sessionId,
     ]
+  )
+
+  const clearNumberingClientCaches = useCallback(() => {
+    numberingRequestGenerationRef.current += 1
+    numberingPageCacheRef.current.clear()
+    prefetchingNumberingPagesRef.current.clear()
+    numberingDocumentsRevisionRef.current = null
+    setLoading(false)
+    setNumberingPageIndex(0)
+    setMissingNavigatorOpen(false)
+    setMissingNavigatorCacheKey("")
+    setMissingNavigatorDocuments([])
+    setMissingNavigatorIndex(0)
+    setPreviewRefreshKey((key) => key + 1)
+  }, [])
+
+  const applyNumberingStatusConfiguration = useCallback(
+    (nextStatus: NumberingStatusResponse) => {
+      const configuration = nextStatus.numbering_configuration
+      const nextMode =
+        configuration?.document_numbering_mode ??
+        nextStatus.document_numbering_mode
+      const nextPreset =
+        configuration?.document_numbering_style_preset ??
+        nextStatus.document_numbering_style_preset ??
+        documentNumberingStylePreset
+      const nextOverrides = cleanNumberingStyleOverrides(
+        configuration?.document_numbering_style_overrides ??
+          nextStatus.document_numbering_style_overrides
+      )
+      setNumberingModeDraft(nextMode)
+      setStylePresetDraft(nextPreset)
+      setStyleOverridesDraft(nextOverrides)
+      setNumberingModeDraftDirty(false)
+      setStyleDraftDirty(false)
+      onDocumentNumberingModeApplied?.(nextMode)
+      onDocumentNumberingStyleApplied?.(nextPreset, nextOverrides)
+    },
+    [
+      documentNumberingStylePreset,
+      onDocumentNumberingModeApplied,
+      onDocumentNumberingStyleApplied,
+    ]
+  )
+
+  const returnToWorkingNumberingView = useCallback(async () => {
+    clearNumberingClientCaches()
+    setViewedNumberingState(null)
+    setPreviewDocumentId(null)
+    setNumberingPageIndex(0)
+    const nextStatus = await refreshStatus({
+      silent: true,
+      includeDocuments: true,
+      pageIndex: 0,
+      force: true,
+    })
+    if (nextStatus) {
+      setStatus(nextStatus)
+      applyNumberingStatusConfiguration(nextStatus)
+    }
+  }, [
+    applyNumberingStatusConfiguration,
+    clearNumberingClientCaches,
+    refreshStatus,
+  ])
+
+  const mutateNumberingTimeline = useCallback(
+    async (
+      action: "save" | "discard" | "previous" | "next" | "apply" | "working"
+    ) => {
+      if (!sessionId || timelineMutationInFlightRef.current) {
+        return
+      }
+      if (action === "working") {
+        await returnToWorkingNumberingView()
+        return
+      }
+      if (
+        (action === "previous" || action === "next") &&
+        !viewedNumberingState &&
+        statusForCurrentSession?.numbering_state?.dirty
+      ) {
+        return
+      }
+      if (
+        ["save", "discard", "apply"].includes(action) &&
+        !canManageNumbering
+      ) {
+        return
+      }
+      timelineMutationInFlightRef.current = true
+      setTimelineMutating(true)
+      setError("")
+      try {
+        const expectation = {
+          configurationId:
+            statusForCurrentSession?.numbering_configuration?.id ?? null,
+          workingRevision:
+            statusForCurrentSession?.numbering_state?.working_revision ?? null,
+          baseStateId:
+            statusForCurrentSession?.numbering_state?.applied_state?.id ??
+            statusForCurrentSession?.numbering_state?.current?.id ??
+            null,
+        }
+        if (action === "save") {
+          if (viewedNumberingState) return
+          const response = await saveNumberingState(sessionId, expectation)
+          await refreshStatus({
+            silent: true,
+            includeDocuments: true,
+            pageIndex: numberingPageIndex,
+            force: true,
+          })
+          toast.success(
+            response.created === false
+              ? "Trạng thái hiện tại đã được lưu trước đó."
+              : "Đã lưu trạng thái đánh số."
+          )
+          return
+        }
+
+        if (action === "previous" || action === "next") {
+          const targetStateId = viewedNumberingState
+            ? action === "previous"
+              ? viewedNumberingState.previous_state_id
+              : viewedNumberingState.next_state_id
+            : action === "previous"
+              ? statusForCurrentSession?.numbering_state?.previous_state_id
+              : statusForCurrentSession?.numbering_state?.next_state_id
+          if (!targetStateId) return
+          const detail = await getNumberingState(sessionId, targetStateId, {
+            limit: NUMBERING_PAGE_SIZE,
+            offset: 0,
+          })
+          if (detail.is_applied) {
+            await returnToWorkingNumberingView()
+            return
+          }
+          setViewedNumberingState(detail)
+          setPreviewDocumentId(null)
+          setNumberingPageIndex(0)
+          return
+        }
+
+        const response =
+          action === "apply"
+            ? viewedNumberingState
+              ? await applyNumberingState(
+                  sessionId,
+                  viewedNumberingState.state.id,
+                  expectation
+                )
+              : null
+            : await discardNumberingState(sessionId, expectation)
+        if (!response) return
+        clearNumberingClientCaches()
+        setViewedNumberingState(null)
+        const nextStatus =
+          response.numbering_status ??
+          (await refreshStatus({
+            silent: true,
+            includeDocuments: true,
+            pageIndex: 0,
+            force: true,
+          }))
+        if (nextStatus) {
+          numberingDocumentsRevisionRef.current = revisionToken(
+            nextStatus.documents_revision
+          )
+          setStatus(nextStatus)
+          applyNumberingStatusConfiguration(nextStatus)
+        }
+        toast.success(
+          action === "discard"
+            ? "Đã bỏ các thay đổi chưa lưu."
+            : "Đã sử dụng trạng thái đánh số đã chọn."
+        )
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Không thể cập nhật timeline đánh số."
+        await refreshStatus({
+          silent: true,
+          includeDocuments: true,
+          pageIndex: 0,
+          force: true,
+        })
+        setError(message)
+        toast.error(message)
+      } finally {
+        timelineMutationInFlightRef.current = false
+        setTimelineMutating(false)
+      }
+    },
+    [
+      applyNumberingStatusConfiguration,
+      canManageNumbering,
+      clearNumberingClientCaches,
+      numberingPageIndex,
+      refreshStatus,
+      returnToWorkingNumberingView,
+      sessionId,
+      statusForCurrentSession,
+      viewedNumberingState,
+    ]
+  )
+
+  const loadViewedNumberingStatePage = useCallback(
+    async (pageIndex: number) => {
+      if (
+        !sessionId ||
+        !viewedNumberingState ||
+        timelineMutationInFlightRef.current
+      ) {
+        return
+      }
+      const normalizedPageIndex = Math.max(0, Math.floor(pageIndex))
+      timelineMutationInFlightRef.current = true
+      setTimelineMutating(true)
+      setError("")
+      try {
+        const detail = await getNumberingState(
+          sessionId,
+          viewedNumberingState.state.id,
+          {
+            limit: NUMBERING_PAGE_SIZE,
+            offset: normalizedPageIndex * NUMBERING_PAGE_SIZE,
+          }
+        )
+        if (detail.is_applied) {
+          await returnToWorkingNumberingView()
+          return
+        }
+        setViewedNumberingState(detail)
+        setNumberingPageIndex(normalizedPageIndex)
+        setPreviewDocumentId(null)
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Không thể tải trang tài liệu của trạng thái đánh số."
+        setError(message)
+        toast.error(message)
+      } finally {
+        timelineMutationInFlightRef.current = false
+        setTimelineMutating(false)
+      }
+    },
+    [returnToWorkingNumberingView, sessionId, viewedNumberingState]
   )
 
   useEffect(() => {
@@ -476,6 +764,7 @@ export function NumberingStep({
 
     const hadPreviousConfig = numberingConfigCacheKeyRef.current !== null
     numberingConfigCacheKeyRef.current = numberingConfigCacheKey
+    numberingRequestGenerationRef.current += 1
     numberingPageCacheRef.current.clear()
     prefetchingNumberingPagesRef.current.clear()
     numberingDocumentsRevisionRef.current = null
@@ -546,20 +835,21 @@ export function NumberingStep({
         toast.error("Chưa có session để đánh số trang.")
         return
       }
-      const shouldForce = force || hasPendingNumberingConfigChanges
       setStarting(true)
       setError("")
       setProgressPhase("loading_data")
       setProgressMessage(
-        shouldForce
+        force
           ? "Đang gửi yêu cầu đánh số lại theo cấu hình hiện tại."
-          : "Đang gửi yêu cầu đánh số trang."
+          : hasPendingNumberingConfigChanges
+            ? "Đang áp dụng cấu hình và lấy hoặc tạo phần kết quả còn thiếu."
+            : "Đang gửi yêu cầu đánh số trang."
       )
       setCompletedPhases(new Set())
       try {
         const response = await enqueueDocumentNumbering(sessionId, {
           created_by: "ui",
-          force: shouldForce,
+          force,
           document_numbering_mode: numberingModeDraft,
           document_numbering_style_preset: stylePresetDraft,
           document_numbering_style_overrides: styleOverridesDraft,
@@ -601,9 +891,7 @@ export function NumberingStep({
           }
         } else if (response.created) {
           toast.success(
-            shouldForce
-              ? "Đã gửi task đánh số lại."
-              : "Đã gửi task đánh số trang."
+            force ? "Đã gửi task đánh số lại." : "Đã gửi task đánh số trang."
           )
         } else {
           toast.info("Task đánh số trang đang được xử lý.")
@@ -797,12 +1085,7 @@ export function NumberingStep({
         setRetryingDocumentId(null)
       }
     },
-    [
-      refreshStatus,
-      sessionId,
-      starting,
-      status?.active,
-    ]
+    [refreshStatus, sessionId, starting, status?.active]
   )
 
   const exportMetadata = useCallback(
@@ -876,7 +1159,7 @@ export function NumberingStep({
           confirm_count_conflicts: options.confirmCountConflicts,
         })
         const countConflicts = SHOW_METADATA_COUNT_CONFLICT_WARNING
-          ? result.count_conflicts ?? []
+          ? (result.count_conflicts ?? [])
           : []
         if (
           SHOW_METADATA_COUNT_CONFLICT_WARNING &&
@@ -934,7 +1217,9 @@ export function NumberingStep({
       )
       setMetadataImportReview((current) => {
         if (!current) return current
-        const remainingConflicts = (current.response.count_conflicts ?? []).filter(
+        const remainingConflicts = (
+          current.response.count_conflicts ?? []
+        ).filter(
           (conflict) =>
             !resolvedKeys.has(
               `${conflict.session_dossier_id}:${conflict.dossier_id}:${conflict.field}`
@@ -956,74 +1241,76 @@ export function NumberingStep({
     []
   )
 
-  const keepOldMetadataCountsForDossier = useCallback(async (
-    conflicts: MetadataCountConflict[]
-  ) => {
-    if (!sessionId || conflicts.length <= 0) return
-    const firstConflict = conflicts[0]
-    setMetadataImporting(true)
-    setError("")
-    try {
-      await clearMetadataBoxNumberPendingCounts(sessionId, {
-        created_by: "ui",
-        dossier_id: firstConflict.dossier_id || firstConflict.cluster_id,
-        session_dossier_id: firstConflict.session_dossier_id,
-        fields: conflicts.map((conflict) => conflict.field),
-      })
-      removeLocalMetadataCountConflicts(conflicts)
-      await refreshStatus({ silent: true, force: true })
-      toast.info(
-        `Đã giữ số cũ cho hồ sơ "${firstConflict.dossier_title || firstConflict.dossier_id}".`
-      )
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : "Không thể xóa cảnh báo xung đột số tờ/số trang."
-      setError(message)
-      toast.error(message)
-    } finally {
-      setMetadataImporting(false)
-    }
-  }, [refreshStatus, removeLocalMetadataCountConflicts, sessionId])
-
-  const confirmMetadataCountConflictsForDossier = useCallback(async (
-    conflicts: MetadataCountConflict[]
-  ) => {
-    if (!sessionId || conflicts.length <= 0) return
-    const firstConflict = conflicts[0]
-    const payload: SessionDossierPatchPayload = { created_by: "ui" }
-    for (const conflict of conflicts) {
-      if (conflict.field === "page_count") {
-        payload.page_count = conflict.new_value
-      } else {
-        payload.sheet_count = conflict.new_value
+  const keepOldMetadataCountsForDossier = useCallback(
+    async (conflicts: MetadataCountConflict[]) => {
+      if (!sessionId || conflicts.length <= 0) return
+      const firstConflict = conflicts[0]
+      setMetadataImporting(true)
+      setError("")
+      try {
+        await clearMetadataBoxNumberPendingCounts(sessionId, {
+          created_by: "ui",
+          dossier_id: firstConflict.dossier_id || firstConflict.cluster_id,
+          session_dossier_id: firstConflict.session_dossier_id,
+          fields: conflicts.map((conflict) => conflict.field),
+        })
+        removeLocalMetadataCountConflicts(conflicts)
+        await refreshStatus({ silent: true, force: true })
+        toast.info(
+          `Đã giữ số cũ cho hồ sơ "${firstConflict.dossier_title || firstConflict.dossier_id}".`
+        )
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Không thể xóa cảnh báo xung đột số tờ/số trang."
+        setError(message)
+        toast.error(message)
+      } finally {
+        setMetadataImporting(false)
       }
-    }
-    setMetadataImporting(true)
-    setError("")
-    try {
-      await patchSessionDossier(
-        sessionId,
-        firstConflict.dossier_id || firstConflict.cluster_id,
-        payload
-      )
-      removeLocalMetadataCountConflicts(conflicts)
-      await refreshStatus({ silent: true, force: true })
-      toast.success(
-        `Đã dùng số mới cho hồ sơ "${firstConflict.dossier_title || firstConflict.dossier_id}".`
-      )
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : "Không thể xác nhận dùng số mới cho hồ sơ."
-      setError(message)
-      toast.error(message)
-    } finally {
-      setMetadataImporting(false)
-    }
-  }, [refreshStatus, removeLocalMetadataCountConflicts, sessionId])
+    },
+    [refreshStatus, removeLocalMetadataCountConflicts, sessionId]
+  )
+
+  const confirmMetadataCountConflictsForDossier = useCallback(
+    async (conflicts: MetadataCountConflict[]) => {
+      if (!sessionId || conflicts.length <= 0) return
+      const firstConflict = conflicts[0]
+      const payload: SessionDossierPatchPayload = { created_by: "ui" }
+      for (const conflict of conflicts) {
+        if (conflict.field === "page_count") {
+          payload.page_count = conflict.new_value
+        } else {
+          payload.sheet_count = conflict.new_value
+        }
+      }
+      setMetadataImporting(true)
+      setError("")
+      try {
+        await patchSessionDossier(
+          sessionId,
+          firstConflict.dossier_id || firstConflict.cluster_id,
+          payload
+        )
+        removeLocalMetadataCountConflicts(conflicts)
+        await refreshStatus({ silent: true, force: true })
+        toast.success(
+          `Đã dùng số mới cho hồ sơ "${firstConflict.dossier_title || firstConflict.dossier_id}".`
+        )
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Không thể xác nhận dùng số mới cho hồ sơ."
+        setError(message)
+        toast.error(message)
+      } finally {
+        setMetadataImporting(false)
+      }
+    },
+    [refreshStatus, removeLocalMetadataCountConflicts, sessionId]
+  )
 
   useEffect(() => {
     void refreshStatus()
@@ -1049,6 +1336,7 @@ export function NumberingStep({
       const response = await refreshStatus({
         silent: true,
         includeDocuments: false,
+        deferApply: true,
       })
       if (cancelled) return
       const nextDocumentsRevision = revisionToken(response?.documents_revision)
@@ -1058,16 +1346,17 @@ export function NumberingStep({
       const periodicDocumentRefresh =
         pollCount % NUMBERING_DOCUMENT_REFRESH_EVERY === 0
       const shouldRefreshDocuments =
-        !response?.active ||
-        documentsChanged ||
-        periodicDocumentRefresh
+        !response?.active || documentsChanged || periodicDocumentRefresh
       if (shouldRefreshDocuments) {
         await refreshStatus({
           silent: true,
           includeDocuments: true,
           force: true,
         })
+      } else if (response) {
+        setStatus((current) => mergeNumberingSummaryResponse(current, response))
       }
+      if (cancelled) return
       if (!response?.active && missingNavigatorOpen) {
         await loadMissingNavigatorDocuments()
       }
@@ -1084,8 +1373,7 @@ export function NumberingStep({
           new Set(NUMBERING_PROGRESS_PHASES.map((phase) => phase.id))
         )
         setProgressMessage("Đã hoàn tất đánh số trang.")
-        const warningCount =
-          response.summary.blank_page_warning_documents ?? 0
+        const warningCount = response.summary.blank_page_warning_documents ?? 0
         if (warningCount > 0) {
           toast.warning(
             `Đã đánh số xong. Có ${warningCount} tài liệu có cảnh báo trang trắng.`
@@ -1148,23 +1436,29 @@ export function NumberingStep({
     }
   }, [starting, status])
 
+  const viewingNumberingHistory = viewedNumberingState !== null
+  const displayedNumberingDocuments = useMemo(
+    () => viewedNumberingState?.documents ?? status?.documents ?? [],
+    [status?.documents, viewedNumberingState?.documents]
+  )
+  const displayedNumberingDossiers = useMemo(
+    () => viewedNumberingState?.dossiers ?? status?.dossiers ?? [],
+    [status?.dossiers, viewedNumberingState?.dossiers]
+  )
   const documentsByDossier = useMemo(
-    () => groupDocumentsByDossier(status?.documents ?? []),
-    [status?.documents]
+    () => groupDocumentsByDossier(displayedNumberingDocuments),
+    [displayedNumberingDocuments]
   )
-  const dossiersWithoutBoxCount = useMemo(
-    () => {
-      const summaryCount = status?.summary.dossiers_without_box_count
-      if (summaryCount !== undefined) return Math.max(0, summaryCount)
-      return (status?.dossiers ?? []).filter(
-        (dossier) => !textOrNull(dossier.box_number)
-      ).length
-    },
-    [status?.dossiers, status?.summary.dossiers_without_box_count]
-  )
+  const dossiersWithoutBoxCount = useMemo(() => {
+    const summaryCount = status?.summary.dossiers_without_box_count
+    if (summaryCount !== undefined) return Math.max(0, summaryCount)
+    return displayedNumberingDossiers.filter(
+      (dossier) => !textOrNull(dossier.box_number)
+    ).length
+  }, [displayedNumberingDossiers, status?.summary.dossiers_without_box_count])
   const persistedMetadataCountConflicts = useMemo(
     () =>
-      SHOW_METADATA_COUNT_CONFLICT_WARNING
+      SHOW_METADATA_COUNT_CONFLICT_WARNING && !viewingNumberingHistory
         ? [
             ...((status?.dossiers ?? []).flatMap(
               (dossier) => dossier.pending_count_conflicts ?? []
@@ -1174,17 +1468,15 @@ export function NumberingStep({
             ) ?? []),
           ]
         : [],
-    [status?.dossiers, status?.documents]
+    [status?.dossiers, status?.documents, viewingNumberingHistory]
   )
   const metadataCountConflictsByDossier = useMemo(
     () =>
       SHOW_METADATA_COUNT_CONFLICT_WARNING
-        ? groupMetadataCountConflicts(
-            [
-              ...persistedMetadataCountConflicts,
-              ...(metadataImportReview?.response.count_conflicts ?? []),
-            ]
-          )
+        ? groupMetadataCountConflicts([
+            ...persistedMetadataCountConflicts,
+            ...(metadataImportReview?.response.count_conflicts ?? []),
+          ])
         : new Map<string, MetadataCountConflict[]>(),
     [metadataImportReview, persistedMetadataCountConflicts]
   )
@@ -1201,8 +1493,14 @@ export function NumberingStep({
     [documentsByDossier, normalizedNumberingFilter]
   )
   const pagedDocumentsByDossier = filteredDocumentsByDossier
+  const displayedNumberingPagination =
+    viewedNumberingState?.pagination ?? status?.pagination
   const numberingPaginationTotal =
-    status?.pagination?.total ?? status?.summary.total_dossiers ?? 0
+    displayedNumberingPagination?.total ??
+    (viewingNumberingHistory
+      ? displayedNumberingDocuments.length
+      : status?.summary.total_dossiers) ??
+    0
   const numberingPageCount = Math.max(
     1,
     Math.ceil(numberingPaginationTotal / NUMBERING_PAGE_SIZE)
@@ -1212,10 +1510,10 @@ export function NumberingStep({
     numberingPageCount - 1
   )
   const numberingPageOffset =
-    status?.pagination?.offset ??
+    displayedNumberingPagination?.offset ??
     normalizedNumberingPageIndex * NUMBERING_PAGE_SIZE
   const numberingPageReturned =
-    status?.pagination?.returned ?? filteredDocumentsByDossier.length
+    displayedNumberingPagination?.returned ?? displayedNumberingDocuments.length
   const missingNumberingDocuments = useMemo(
     () => visibleMissingNavigatorDocuments.filter(isMissingNumberingDocument),
     [visibleMissingNavigatorDocuments]
@@ -1294,14 +1592,18 @@ export function NumberingStep({
   )
   const previewDocument = useMemo(
     () =>
-      (status?.documents ?? []).find(
+      displayedNumberingDocuments.find(
         (document) => document.session_document_id === previewDocumentId
       ) ??
       visibleMissingNavigatorDocuments.find(
         (document) => document.session_document_id === previewDocumentId
       ) ??
       null,
-    [previewDocumentId, status?.documents, visibleMissingNavigatorDocuments]
+    [
+      displayedNumberingDocuments,
+      previewDocumentId,
+      visibleMissingNavigatorDocuments,
+    ]
   )
   const previewSessionDocumentId = previewDocument?.session_document_id ?? null
   const previewPdfVersionId = textOrNull(
@@ -1317,11 +1619,7 @@ export function NumberingStep({
   }, [previewUrl])
 
   useEffect(() => {
-    if (
-      !sessionId ||
-      previewSessionDocumentId === null ||
-      !previewCanPreview
-    ) {
+    if (!sessionId || previewSessionDocumentId === null || !previewCanPreview) {
       previewTargetRef.current = ""
       previewUrlRef.current = ""
       setPreviewUrl("")
@@ -1349,7 +1647,8 @@ export function NumberingStep({
         if (previewPdfVersionId) {
           const response = await getNumberedDocumentPreviewUrl(
             sessionId,
-            previewSessionDocumentId
+            previewSessionDocumentId,
+            previewPdfVersionId
           )
           nextPreviewUrl = textOrNull(response.download_url)
         } else if (previewSourceUrl) {
@@ -1427,6 +1726,12 @@ export function NumberingStep({
 
   const totalDocuments = status?.summary.total_documents ?? 0
   const doneCount = status?.summary.done ?? 0
+  const displayedNumberingTotalDocuments = viewingNumberingHistory
+    ? numberingPaginationTotal
+    : totalDocuments
+  const displayedNumberingDoneCount = viewingNumberingHistory
+    ? numberingPaginationTotal
+    : doneCount
   const failedCount = status?.summary.failed ?? 0
   const pendingCount = status?.summary.pending ?? 0
   const blankPageWarningDocumentCount =
@@ -1484,7 +1789,18 @@ export function NumberingStep({
     unresolvedCount === 0 &&
     !hasPendingNumberingConfigChanges &&
     dossiersWithoutBoxCount === 0
-  const canRestartNumbering = hasNumberingOutput
+  const canRestartNumbering = hasNumberingOutput && canManageNumbering
+  const timelineEnabled = Boolean(
+    status?.numbering_capabilities?.timeline_enabled
+  )
+  const numberingState = status?.numbering_state
+  const canSaveNumberingState = Boolean(
+    canManageNumbering &&
+    complete &&
+    !active &&
+    !viewingNumberingHistory &&
+    (numberingState?.dirty || !numberingState?.current)
+  )
   const changeNumberingMode = (mode: DocumentNumberingMode) => {
     if (active || changingMode || mode === numberingModeDraft) return
     setError("")
@@ -1519,21 +1835,30 @@ export function NumberingStep({
         !numberingStyleOverridesEqual(nextOverrides, appliedStyleOverrides)
     )
   }
+  const displayedMode =
+    viewedNumberingState?.configuration.document_numbering_mode ??
+    numberingModeDraft
+  const displayedStylePreset =
+    viewedNumberingState?.configuration.document_numbering_style_preset ??
+    stylePresetDraft
+  const displayedStyleOverrides =
+    viewedNumberingState?.configuration.document_numbering_style_overrides ??
+    styleOverridesDraft
   const modeLabel =
-    numberingModeDraft === "sheet" ? "Đánh số theo tờ" : "Đánh số theo trang"
+    displayedMode === "sheet" ? "Đánh số theo tờ" : "Đánh số theo trang"
 
   return (
     <div className="flex flex-col gap-5">
       <NumberingStepHeader
         modeLabel={modeLabel}
-        documentNumberingMode={numberingModeDraft}
-        documentNumberingStylePreset={stylePresetDraft}
-        documentNumberingStyleOverrides={styleOverridesDraft}
+        documentNumberingMode={displayedMode}
+        documentNumberingStylePreset={displayedStylePreset}
+        documentNumberingStyleOverrides={displayedStyleOverrides}
         numberingStyleOptions={numberingStyleOptions}
         changingMode={changingMode}
-        loading={loading}
+        loading={loading || viewingNumberingHistory}
         starting={starting}
-        active={active}
+        active={active || viewingNumberingHistory}
         complete={complete}
         hasPendingConfigChanges={hasPendingNumberingConfigChanges}
         canRestart={canRestartNumbering}
@@ -1544,17 +1869,59 @@ export function NumberingStep({
         onStyleChange={changeNumberingStyle}
         onOverridesChange={changeNumberingStyleOverrides}
       />
-      <NumberingMetadataPanel
-        metadataImportInputRef={metadataImportInputRef}
-        sessionId={sessionId}
-        active={active}
-        metadataBusy={metadataBusy}
-        metadataExporting={metadataExporting}
-        metadataImporting={metadataImporting}
-        metadataImportReview={metadataImportReview?.response ?? null}
-        onExportMetadata={exportMetadata}
-        onImportMetadataBoxNumbers={importMetadataBoxNumbers}
-      />
+      {timelineEnabled ? (
+        <NumberingTimelineControls
+          applied={
+            numberingState?.applied_state?.sequence_number ??
+            numberingState?.current?.sequence_number ??
+            null
+          }
+          viewed={viewedNumberingState?.position ?? null}
+          count={numberingState?.count ?? 0}
+          dirty={numberingState?.dirty ?? true}
+          busy={timelineMutating || active}
+          canPrevious={
+            viewedNumberingState
+              ? viewedNumberingState.previous_state_id !== null
+              : Boolean(!numberingState?.dirty && numberingState?.can_previous)
+          }
+          canNext={
+            viewedNumberingState
+              ? viewedNumberingState.next_state_id !== null
+              : Boolean(!numberingState?.dirty && numberingState?.can_next)
+          }
+          canApply={Boolean(
+            canManageNumbering &&
+            viewedNumberingState?.can_apply &&
+            !viewedNumberingState.is_applied
+          )}
+          applyBlockedReason={
+            viewedNumberingState &&
+            !viewedNumberingState.compatible_with_active_cluster
+              ? "Chỉ có thể sử dụng state thuộc kết quả lập hồ sơ hiện hành."
+              : viewedNumberingState?.is_applied
+                ? "Đây là trạng thái đang được sử dụng."
+                : null
+          }
+          onWorking={() => mutateNumberingTimeline("working")}
+          onPrevious={() => mutateNumberingTimeline("previous")}
+          onNext={() => mutateNumberingTimeline("next")}
+          onApply={() => mutateNumberingTimeline("apply")}
+        />
+      ) : null}
+      {!viewingNumberingHistory ? (
+        <NumberingMetadataPanel
+          metadataImportInputRef={metadataImportInputRef}
+          sessionId={sessionId}
+          active={active}
+          metadataBusy={metadataBusy}
+          metadataExporting={metadataExporting}
+          metadataImporting={metadataImporting}
+          metadataImportReview={metadataImportReview?.response ?? null}
+          onExportMetadata={exportMetadata}
+          onImportMetadataBoxNumbers={importMetadataBoxNumbers}
+        />
+      ) : null}
       {(status?.active || progressMessage || starting) && (
         <ProgressTimeline
           phases={NUMBERING_PROGRESS_PHASES}
@@ -1579,7 +1946,7 @@ export function NumberingStep({
           </span>
         </div>
       ) : null}
-      {stoppedWithUnresolved ? (
+      {stoppedWithUnresolved && !viewingNumberingHistory ? (
         <MissingNumberingNavigator
           unresolvedCount={unresolvedCount}
           failedCount={failedCount}
@@ -1612,7 +1979,19 @@ export function NumberingStep({
           <span>{error}</span>
         </div>
       ) : null}
-      {complete && blankPageWarningDocumentCount > 0 ? (
+      {viewedNumberingState ? (
+        <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+          <ListChecks className="mt-0.5 size-4 shrink-0" />
+          <span>
+            Đang xem bản lưu trạng thái {viewedNumberingState.position}/
+            {viewedNumberingState.count}. Nội dung chỉ đọc và không thay đổi bản
+            đang sử dụng.
+          </span>
+        </div>
+      ) : null}
+      {complete &&
+      !viewingNumberingHistory &&
+      blankPageWarningDocumentCount > 0 ? (
         <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
           <span>
@@ -1623,17 +2002,24 @@ export function NumberingStep({
         </div>
       ) : null}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <NumberingStat label="Tổng tài liệu" value={totalDocuments} />
-        <NumberingStat label="Đã đánh số" value={doneCount} tone="success" />
+        <NumberingStat
+          label="Tổng tài liệu"
+          value={displayedNumberingTotalDocuments}
+        />
+        <NumberingStat
+          label="Đã đánh số"
+          value={displayedNumberingDoneCount}
+          tone="success"
+        />
         <NumberingStat
           label="Chưa hoàn tất"
-          value={unresolvedCount}
-          tone={unresolvedCount ? "danger" : "neutral"}
+          value={viewedNumberingState ? 0 : unresolvedCount}
+          tone={!viewedNumberingState && unresolvedCount ? "danger" : "neutral"}
         />
         <NumberingStat
           label="Lỗi"
-          value={failedCount}
-          tone={failedCount ? "danger" : "neutral"}
+          value={viewedNumberingState ? 0 : failedCount}
+          tone={!viewedNumberingState && failedCount ? "danger" : "neutral"}
         />
       </div>
       <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(420px,1.05fr)] xl:items-stretch">
@@ -1645,7 +2031,9 @@ export function NumberingStep({
                   Danh sách PDF đánh số
                 </p>
                 <p className="mt-1 text-xs text-[#64748B]">
-                  Các tài liệu được nhóm theo hồ sơ đang active.
+                  {viewedNumberingState
+                    ? "Các tài liệu thuộc snapshot đang xem; tài liệu đã xóa/chuyển được giữ read-only."
+                    : "Các tài liệu được nhóm theo hồ sơ đang active."}
                 </p>
               </div>
             </div>
@@ -1704,162 +2092,172 @@ export function NumberingStep({
                     firstDocument?.cluster_id ?? ""
                   ) ??
                   []
-                const oldCountChoiceLabel =
-                  formatMetadataCountChoiceLabel(
-                    metadataCountConflicts,
-                    "old"
-                  )
-                const newCountChoiceLabel =
-                  formatMetadataCountChoiceLabel(
-                    metadataCountConflicts,
-                    "new"
-                  )
+                const oldCountChoiceLabel = formatMetadataCountChoiceLabel(
+                  metadataCountConflicts,
+                  "old"
+                )
+                const newCountChoiceLabel = formatMetadataCountChoiceLabel(
+                  metadataCountConflicts,
+                  "new"
+                )
                 return (
-                <section key={group.dossierId} className="px-4 py-3">
-                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-[#0F172A]">
-                        {group.title || group.dossierId}
-                      </p>
-                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-[#64748B]">
-                        <span>{group.documents.length} tài liệu</span>
-                        <DossierMetaChip
-                          label="Hồ sơ số"
-                          value={group.dossierNumber}
-                        />
-                        <DossierMetaChip
-                          label="Hộp số"
-                          value={group.boxNumber}
-                        />
-                        {metadataCountConflicts.map((conflict) => (
-                          <span
-                            key={`${conflict.field}:${conflict.old_value}:${conflict.new_value}`}
-                            title={`Cũ: ${conflict.old_value} · Mới: ${conflict.new_value}`}
-                            className="inline-flex shrink-0 items-center rounded-full border border-[#F59E0B] bg-[#FFFBEB] px-2 py-0.5 text-[10px] font-semibold text-[#92400E]"
-                          >
-                            <AlertTriangle className="mr-1 size-3" />
-                            {conflict.tag}
-                          </span>
-                        ))}
-                        {metadataCountConflicts.length > 0 ? (
-                          <span className="inline-flex shrink-0 items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                void keepOldMetadataCountsForDossier(
-                                  metadataCountConflicts
-                                )
-                              }
-                              disabled={metadataBusy || active}
-                              title="Giữ số cũ cho hồ sơ này"
-                              className="inline-flex h-6 items-center gap-1 rounded-md border border-[#F59E0B] bg-white px-2 text-[10px] font-semibold text-[#92400E] transition-colors hover:bg-[#FFFBEB] disabled:pointer-events-none disabled:opacity-50"
+                  <section key={group.dossierId} className="px-4 py-3">
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-[#0F172A]">
+                          {group.title || group.dossierId}
+                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-[#64748B]">
+                          <span>{group.documents.length} tài liệu</span>
+                          <DossierMetaChip
+                            label="Hồ sơ số"
+                            value={group.dossierNumber}
+                          />
+                          <DossierMetaChip
+                            label="Hộp số"
+                            value={group.boxNumber}
+                          />
+                          {metadataCountConflicts.map((conflict) => (
+                            <span
+                              key={`${conflict.field}:${conflict.old_value}:${conflict.new_value}`}
+                              title={`Cũ: ${conflict.old_value} · Mới: ${conflict.new_value}`}
+                              className="inline-flex shrink-0 items-center rounded-full border border-[#F59E0B] bg-[#FFFBEB] px-2 py-0.5 text-[10px] font-semibold text-[#92400E]"
                             >
-                              <RotateCcw className="size-3" />
-                              Giữ số cũ
-                              {oldCountChoiceLabel ? ` (${oldCountChoiceLabel})` : ""}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                void confirmMetadataCountConflictsForDossier(
-                                  metadataCountConflicts
-                                )
-                              }
-                              disabled={metadataBusy || active}
-                              title="Dùng số mới cho hồ sơ này"
-                              className="inline-flex h-6 items-center gap-1 rounded-md bg-[#0052FF] px-2 text-[10px] font-semibold text-white transition-colors hover:bg-[#0046D8] disabled:pointer-events-none disabled:opacity-50"
-                            >
-                              <Check className="size-3" />
-                              Dùng số mới
-                              {newCountChoiceLabel ? ` (${newCountChoiceLabel})` : ""}
-                            </button>
-                          </span>
-                        ) : null}
+                              <AlertTriangle className="mr-1 size-3" />
+                              {conflict.tag}
+                            </span>
+                          ))}
+                          {metadataCountConflicts.length > 0 ? (
+                            <span className="inline-flex shrink-0 items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void keepOldMetadataCountsForDossier(
+                                    metadataCountConflicts
+                                  )
+                                }
+                                disabled={metadataBusy || active}
+                                title="Giữ số cũ cho hồ sơ này"
+                                className="inline-flex h-6 items-center gap-1 rounded-md border border-[#F59E0B] bg-white px-2 text-[10px] font-semibold text-[#92400E] transition-colors hover:bg-[#FFFBEB] disabled:pointer-events-none disabled:opacity-50"
+                              >
+                                <RotateCcw className="size-3" />
+                                Giữ số cũ
+                                {oldCountChoiceLabel
+                                  ? ` (${oldCountChoiceLabel})`
+                                  : ""}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void confirmMetadataCountConflictsForDossier(
+                                    metadataCountConflicts
+                                  )
+                                }
+                                disabled={metadataBusy || active}
+                                title="Dùng số mới cho hồ sơ này"
+                                className="inline-flex h-6 items-center gap-1 rounded-md bg-[#0052FF] px-2 text-[10px] font-semibold text-white transition-colors hover:bg-[#0046D8] disabled:pointer-events-none disabled:opacity-50"
+                              >
+                                <Check className="size-3" />
+                                Dùng số mới
+                                {newCountChoiceLabel
+                                  ? ` (${newCountChoiceLabel})`
+                                  : ""}
+                              </button>
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
+                      {hasNewNumberingDocuments && !viewingNumberingHistory ? (
+                        <DossierNumberingModeToggle
+                          updateMode={dossierUpdateMode}
+                          disabled={modeToggleDisabled}
+                          onChange={(mode) =>
+                            setDossierUpdateModes((current) => ({
+                              ...current,
+                              [group.dossierId]: mode,
+                            }))
+                          }
+                        />
+                      ) : null}
                     </div>
-                    {hasNewNumberingDocuments ? (
-                      <DossierNumberingModeToggle
-                        updateMode={dossierUpdateMode}
-                        disabled={modeToggleDisabled}
-                        onChange={(mode) =>
-                          setDossierUpdateModes((current) => ({
-                            ...current,
-                            [group.dossierId]: mode,
-                          }))
-                        }
-                      />
-                    ) : null}
-                  </div>
-                  <div className="grid gap-1.5">
-                    {group.documents.map((document) => {
-                      const isAddedDocument = isAddedNumberingDocument(
-                        document,
-                        hasNumberingOutput
-                      )
-                      const updateMode: NumberingUpdateMode =
-                        isAddedDocument
+                    <div className="grid gap-1.5">
+                      {group.documents.map((document) => {
+                        const isAddedDocument = isAddedNumberingDocument(
+                          document,
+                          hasNumberingOutput
+                        )
+                        const updateMode: NumberingUpdateMode = isAddedDocument
                           ? dossierUpdateMode
                           : "cascade"
-                      const numberingEntryKey =
-                        document.numbering_entries
-                          ?.map(
-                            (entry) => `${entry.page_number}:${entry.label}`
-                          )
-                          .join("|") ?? ""
-                      return (
-                        <NumberingDocumentRow
-                          key={[
-                            document.session_document_id,
-                            document.document_number_start,
-                            document.document_number_end,
-                            updateMode,
-                            numberingEntryKey,
-                          ].join(":")}
-                          document={document}
-                          updateMode={updateMode}
-                          previewing={
-                            previewDocumentId === document.session_document_id
-                          }
-                          highlighted={
-                            highlightedDocumentId ===
-                            document.session_document_id
-                          }
-                          onPreview={() =>
-                            setPreviewDocumentId(document.session_document_id)
-                          }
-                          onUpdateFromPage={updateDocumentNumberFromPage}
-                          updating={
-                            updatingDocumentId === document.session_document_id
-                          }
-                          retrying={
-                            retryingDocumentId === document.session_document_id
-                          }
-                          retryable={
-                            hasNumberingOutput && document.status !== "running"
-                          }
-                          stalled={
-                            stoppedWithUnresolved &&
-                            document.status !== "done" &&
-                            document.status !== "failed" &&
-                            document.status !== "running"
-                          }
-                          onRetry={retryIncompleteDocument}
-                          disabled={
-                            starting ||
-                            Boolean(status?.active) ||
-                            updatingDocumentId !== null ||
-                            retryingDocumentId !== null
-                          }
-                        />
-                      )
-                    })}
-                  </div>
-                </section>
+                        const numberingEntryKey =
+                          document.numbering_entries
+                            ?.map(
+                              (entry) => `${entry.page_number}:${entry.label}`
+                            )
+                            .join("|") ?? ""
+                        return (
+                          <NumberingDocumentRow
+                            key={[
+                              document.session_document_id,
+                              document.document_number_start,
+                              document.document_number_end,
+                              updateMode,
+                              numberingEntryKey,
+                            ].join(":")}
+                            document={document}
+                            updateMode={updateMode}
+                            previewing={
+                              previewDocumentId === document.session_document_id
+                            }
+                            highlighted={
+                              highlightedDocumentId ===
+                              document.session_document_id
+                            }
+                            onPreview={() =>
+                              setPreviewDocumentId(document.session_document_id)
+                            }
+                            onUpdateFromPage={updateDocumentNumberFromPage}
+                            updating={
+                              updatingDocumentId ===
+                              document.session_document_id
+                            }
+                            retrying={
+                              retryingDocumentId ===
+                              document.session_document_id
+                            }
+                            retryable={
+                              canManageNumbering &&
+                              !viewingNumberingHistory &&
+                              !document.historical_only &&
+                              hasNumberingOutput &&
+                              document.status !== "running"
+                            }
+                            stalled={
+                              stoppedWithUnresolved &&
+                              document.status !== "done" &&
+                              document.status !== "failed" &&
+                              document.status !== "running"
+                            }
+                            onRetry={retryIncompleteDocument}
+                            disabled={
+                              starting ||
+                              viewingNumberingHistory ||
+                              Boolean(status?.active) ||
+                              !canManageNumbering ||
+                              Boolean(document.historical_only) ||
+                              updatingDocumentId !== null ||
+                              retryingDocumentId !== null
+                            }
+                          />
+                        )
+                      })}
+                    </div>
+                  </section>
                 )
               })}
             </div>
           )}
-          {filteredDocumentsByDossier.length > 0 && (
+          {filteredDocumentsByDossier.length > 0 ? (
             <div className="border-t border-[#E2E8F0] px-4 py-3">
               <PaginationControls
                 total={numberingPaginationTotal}
@@ -1877,18 +2275,22 @@ export function NumberingStep({
                         numberingPageOffset + numberingPageReturned
                       )
                 }
-                itemLabel="hồ sơ"
+                itemLabel={viewingNumberingHistory ? "tài liệu" : "hồ sơ"}
                 onPageChange={(pageIndex) => {
-                  setNumberingPageIndex(pageIndex)
-                  void refreshStatus({
-                    silent: true,
-                    includeDocuments: true,
-                    pageIndex,
-                  })
+                  if (viewingNumberingHistory) {
+                    void loadViewedNumberingStatePage(pageIndex)
+                  } else {
+                    setNumberingPageIndex(pageIndex)
+                    void refreshStatus({
+                      silent: true,
+                      includeDocuments: true,
+                      pageIndex,
+                    })
+                  }
                 }}
               />
             </div>
-          )}
+          ) : null}
         </div>
         <NumberedPdfPreviewPanel
           document={previewDocument}
@@ -1900,15 +2302,34 @@ export function NumberingStep({
         />
       </div>
       <NumberingStepFooter
-        active={active}
+        active={active || viewingNumberingHistory}
         metadataBusy={metadataBusy}
-        canContinue={canContinue}
-        blockedReason={continueBlockedReason}
+        canContinue={!viewingNumberingHistory && canContinue}
+        blockedReason={
+          viewingNumberingHistory
+            ? "Hãy quay về Bản đang dùng trước khi tiếp tục."
+            : continueBlockedReason
+        }
         dossiersWithoutBoxCount={dossiersWithoutBoxCount}
         doneCount={doneCount}
         totalDocuments={totalDocuments}
         failedCount={failedCount}
         unresolvedCount={unresolvedCount}
+        workingActions={
+          timelineEnabled && !viewingNumberingHistory ? (
+            <NumberingTimelineWorkingActions
+              embedded
+              busy={timelineMutating || active}
+              canDiscard={
+                canManageNumbering && Boolean(numberingState?.can_discard)
+              }
+              canSave={canSaveNumberingState}
+              discardBlockedReason={numberingState?.discard_blocked_reason}
+              onDiscard={() => mutateNumberingTimeline("discard")}
+              onSave={() => mutateNumberingTimeline("save")}
+            />
+          ) : null
+        }
         onContinue={onContinue}
       />
     </div>
@@ -2084,7 +2505,10 @@ function MissingNumberingNavigator({
   )
 }
 
-function isMissingNumberingDocument(document: NumberingDocumentStatus): boolean {
+function isMissingNumberingDocument(
+  document: NumberingDocumentStatus
+): boolean {
+  if (document.historical_only) return false
   return String(document.status || "").toLowerCase() !== "done"
 }
 
@@ -2134,18 +2558,6 @@ function revisionToken(value: unknown): string | null {
   return null
 }
 
-function mergeNumberingPaginationTotal(
-  current: NumberingStatusResponse["pagination"] | undefined,
-  next: NumberingStatusResponse["pagination"] | undefined
-): NumberingStatusResponse["pagination"] | undefined {
-  if (!current) return next
-  if (!next) return current
-  return {
-    ...current,
-    total: next.total,
-  }
-}
-
 function groupMetadataCountConflicts(
   conflicts: MetadataCountConflict[]
 ): Map<string, MetadataCountConflict[]> {
@@ -2184,52 +2596,10 @@ function formatMetadataCountChoiceLabel(
   return conflicts
     .map((conflict) => {
       const fieldLabel = conflict.field === "sheet_count" ? "tờ" : "trang"
-      const value =
-        choice === "old" ? conflict.old_value : conflict.new_value
+      const value = choice === "old" ? conflict.old_value : conflict.new_value
       return `${fieldLabel} ${value}`
     })
     .join(", ")
-}
-
-function mergeCachedNumberingPage(
-  current: NumberingStatusResponse | null,
-  cached: NumberingStatusResponse
-): NumberingStatusResponse {
-  if (!current) return cached
-  return {
-    ...cached,
-    revision: current.revision,
-    documents_revision: current.documents_revision,
-    updated_at: current.updated_at,
-    last_event_id: current.last_event_id,
-    session_id: current.session_id,
-    cluster_version_id: current.cluster_version_id,
-    document_numbering_mode: current.document_numbering_mode,
-    document_numbering_style_preset: current.document_numbering_style_preset,
-    document_numbering_style_overrides:
-      current.document_numbering_style_overrides,
-    active: current.active,
-    job: current.job,
-    summary: current.summary,
-    pagination: mergeCachedNumberingPagination(
-      current.pagination,
-      cached.pagination
-    ),
-    documents: cached.documents,
-    dossiers: cached.dossiers,
-  }
-}
-
-function mergeCachedNumberingPagination(
-  current: NumberingStatusResponse["pagination"] | undefined,
-  cached: NumberingStatusResponse["pagination"] | undefined
-): NumberingStatusResponse["pagination"] | undefined {
-  if (!cached) return current
-  if (!current) return cached
-  return {
-    ...cached,
-    total: current.total,
-  }
 }
 
 function nextNumberingPrefetchPageIndex(
@@ -2251,7 +2621,9 @@ function isAddedNumberingDocument(
   hasNumberingOutput: boolean
 ): boolean {
   if (!hasNumberingOutput) return false
-  const changeStatus = String(document.document_change_status || "").toLowerCase()
+  const changeStatus = String(
+    document.document_change_status || ""
+  ).toLowerCase()
   if (!["added", "moved_cluster", "moved_dossier"].includes(changeStatus)) {
     return false
   }

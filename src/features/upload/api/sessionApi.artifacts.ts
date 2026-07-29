@@ -21,9 +21,27 @@ import type {
   NumberingDocumentStatusPageResponse,
   NumberingDossierPreviewUrlsResponse,
   NumberingStatusResponse,
+  NumberingStateDetailResponse,
+  NumberingStateMutationResponse,
   NumberingStylesResponse,
   RemoteArtifactSignedUrlResponse,
 } from "./sessionApi.types"
+
+export interface NumberingWorkingExpectation {
+  configurationId?: number | null
+  workingRevision?: number | null
+  baseStateId?: number | null
+}
+
+function numberingWorkingExpectationBody(
+  expectation: NumberingWorkingExpectation = {}
+) {
+  return {
+    expected_configuration_id: expectation.configurationId ?? null,
+    expected_working_revision: expectation.workingRevision ?? null,
+    expected_base_state_id: expectation.baseStateId ?? null,
+  }
+}
 
 export async function enqueueFinalizeArtifacts(
   sessionId: string,
@@ -51,8 +69,16 @@ export async function enqueueDocumentNumbering(
     document_numbering_mode?: DocumentNumberingMode
     document_numbering_style_preset?: string
     style_preset?: string
-    document_numbering_style_overrides?: { font_size?: number; color?: string; opacity?: number } | null
-    style_overrides?: { font_size?: number; color?: string; opacity?: number } | null
+    document_numbering_style_overrides?: {
+      font_size?: number
+      color?: string
+      opacity?: number
+    } | null
+    style_overrides?: {
+      font_size?: number
+      color?: string
+      opacity?: number
+    } | null
   } = {}
 ): Promise<EnqueueNumberingResponse> {
   return requestJson<EnqueueNumberingResponse>(
@@ -83,14 +109,11 @@ export async function updateDocumentNumberingConfig(
   return requestJson<{
     session_id: string
     document_numbering_mode: DocumentNumberingMode
-  }>(
-    `/sessions/${encodeURIComponent(sessionId)}/numbering/config`,
-    {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    }
-  )
+  }>(`/sessions/${encodeURIComponent(sessionId)}/numbering/config`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
 }
 
 export async function updateDocumentNumberingFromPage(
@@ -148,6 +171,85 @@ export async function getDocumentNumberingStatus(
   )
 }
 
+export async function saveNumberingState(
+  sessionId: string,
+  expectation: NumberingWorkingExpectation = {}
+): Promise<NumberingStateMutationResponse> {
+  return requestJson<NumberingStateMutationResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/numbering/states`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(numberingWorkingExpectationBody(expectation)),
+    }
+  )
+}
+
+export async function moveNumberingState(
+  sessionId: string,
+  direction: "previous" | "next",
+  expectedStateId?: number | null
+): Promise<NumberingStateMutationResponse> {
+  return requestJson<NumberingStateMutationResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/numbering/states/move`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        direction,
+        expected_state_id: expectedStateId ?? null,
+      }),
+    }
+  )
+}
+
+export async function discardNumberingState(
+  sessionId: string,
+  expectation: NumberingWorkingExpectation = {}
+): Promise<NumberingStateMutationResponse> {
+  return requestJson<NumberingStateMutationResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/numbering/states/discard`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(numberingWorkingExpectationBody(expectation)),
+    }
+  )
+}
+
+export async function getNumberingState(
+  sessionId: string,
+  stateId: number,
+  options: { limit?: number; offset?: number } = {}
+): Promise<NumberingStateDetailResponse> {
+  const searchParams = new URLSearchParams()
+  if (options.limit !== undefined) {
+    searchParams.set("limit", String(options.limit))
+  }
+  if (options.offset !== undefined) {
+    searchParams.set("offset", String(options.offset))
+  }
+  const query = searchParams.toString()
+  return requestJson<NumberingStateDetailResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/numbering/states/${encodeURIComponent(String(stateId))}${query ? `?${query}` : ""}`
+  )
+}
+
+export async function applyNumberingState(
+  sessionId: string,
+  stateId: number,
+  expectation: NumberingWorkingExpectation = {}
+): Promise<NumberingStateMutationResponse> {
+  return requestJson<NumberingStateMutationResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/numbering/states/${encodeURIComponent(String(stateId))}/apply`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(numberingWorkingExpectationBody(expectation)),
+    }
+  )
+}
+
 export async function getNumberingDocumentStatuses(
   sessionId: string,
   options: {
@@ -189,10 +291,16 @@ export async function getNumberingDossierPreviewUrls(
 
 export async function getNumberedDocumentPreviewUrl(
   sessionId: string,
-  sessionDocumentId: number
+  sessionDocumentId: number,
+  numberedPdfVersionId?: string | null
 ): Promise<NumberedDocumentPreviewUrlResponse> {
+  const searchParams = new URLSearchParams()
+  if (numberedPdfVersionId) {
+    searchParams.set("numbered_pdf_version_id", numberedPdfVersionId)
+  }
+  const query = searchParams.toString()
   return requestJson<NumberedDocumentPreviewUrlResponse>(
-    `/sessions/${encodeURIComponent(sessionId)}/numbering/documents/${encodeURIComponent(String(sessionDocumentId))}/preview-url`
+    `/sessions/${encodeURIComponent(sessionId)}/numbering/documents/${encodeURIComponent(String(sessionDocumentId))}/preview-url${query ? `?${query}` : ""}`
   )
 }
 

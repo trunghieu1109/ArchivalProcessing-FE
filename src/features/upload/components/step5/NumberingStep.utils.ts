@@ -157,10 +157,88 @@ export function textOrNull(value: unknown): string | null {
 export function canPreviewNumberingDocument(
   document: NumberingDocumentStatus
 ): boolean {
+  if (document.historical_only) {
+    return Boolean(
+      textOrNull(document.numbered_pdf_version_id) ||
+        textOrNull(document.download_url)
+    )
+  }
   if (textOrNull(document.numbered_pdf_version_id)) return true
   if (textOrNull(document.download_url)) return true
   if (textOrNull(document.source_version_id)) return true
   return (Number(document.source_page_count) || 0) > 0
+}
+
+export function mergeCachedNumberingPage(
+  current: NumberingStatusResponse | null,
+  cached: NumberingStatusResponse
+): NumberingStatusResponse {
+  if (!current) return cached
+  return {
+    ...cached,
+    revision: current.revision,
+    documents_revision: current.documents_revision,
+    updated_at: current.updated_at,
+    last_event_id: current.last_event_id,
+    session_id: current.session_id,
+    cluster_version_id: current.cluster_version_id,
+    document_numbering_mode: current.document_numbering_mode,
+    document_numbering_style_preset: current.document_numbering_style_preset,
+    document_numbering_style_overrides:
+      current.document_numbering_style_overrides,
+    active: current.active,
+    job: current.job,
+    summary: current.summary,
+    numbering_capabilities: current.numbering_capabilities,
+    numbering_configuration: current.numbering_configuration,
+    numbering_state: current.numbering_state,
+    pagination: mergeCachedNumberingPagination(
+      current.pagination,
+      cached.pagination
+    ),
+    documents: cached.documents,
+    dossiers: cached.dossiers,
+  }
+}
+
+export function mergeNumberingSummaryResponse(
+  current: NumberingStatusResponse | null,
+  summaryResponse: NumberingStatusResponse
+): NumberingStatusResponse {
+  if (!current) return summaryResponse
+  return {
+    ...summaryResponse,
+    documents: current.documents,
+    dossiers: current.dossiers,
+    pagination: mergeNumberingSummaryPagination(
+      current.pagination,
+      summaryResponse.pagination
+    ),
+  }
+}
+
+function mergeNumberingSummaryPagination(
+  current: NumberingStatusResponse["pagination"] | undefined,
+  summary: NumberingStatusResponse["pagination"] | undefined
+): NumberingStatusResponse["pagination"] | undefined {
+  if (!current) return summary
+  if (!summary) return current
+  return {
+    ...current,
+    total: summary.total,
+  }
+}
+
+function mergeCachedNumberingPagination(
+  current: NumberingStatusResponse["pagination"] | undefined,
+  cached: NumberingStatusResponse["pagination"] | undefined
+): NumberingStatusResponse["pagination"] | undefined {
+  if (!cached) return current
+  if (!current) return cached
+  return {
+    ...cached,
+    total: current.total,
+  }
 }
 
 export function saveBlob(blob: Blob, fileName: string) {
