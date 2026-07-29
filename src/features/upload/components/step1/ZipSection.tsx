@@ -58,7 +58,7 @@ import type {
 const MAX_FILES_ERROR = "Số lượng tài liệu cần số hóa phải là số nguyên dương."
 const FOLDER_UPLOAD_FILE_PAGE_SIZE = 10
 const FOLDER_UPLOAD_ENABLED = ["1", "true", "yes", "on"].includes(
-  String(import.meta.env.VITE_FOLDER_UPLOAD_ENABLED ?? "false")
+  String(import.meta.env.VITE_FOLDER_UPLOAD_ENABLED ?? "true")
     .trim()
     .toLowerCase()
 )

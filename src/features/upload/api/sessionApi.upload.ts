@@ -33,7 +33,7 @@ export const DIRECT_PRESIGNED_UPLOAD_ENABLED = [
   "yes",
   "on",
 ].includes(
-  String(import.meta.env.VITE_ARCHIVAL_DIRECT_PRESIGNED_UPLOAD ?? "false")
+  String(import.meta.env.VITE_ARCHIVAL_DIRECT_PRESIGNED_UPLOAD ?? "true")
     .trim()
     .toLowerCase()
 )
