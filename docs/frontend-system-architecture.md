@@ -1,6 +1,10 @@
 # Frontend System Architecture
 
-Tài liệu này là bản đồ nhanh cho người mới hoặc agent khác khi cần làm việc với frontend `ArchivalProcessing-FE`. Mục tiêu là hiểu được ứng dụng đang được chia lớp như thế nào, file nào nên đọc trước, luồng nghiệp vụ chạy ra sao, và khi cần sửa một tính năng thì nên bắt đầu ở đâu.
+Tài liệu này là bản đồ nhanh cho người mới hoặc agent khác khi cần làm việc với frontend
+`ArchivalProcessing-FE`. Mục tiêu là hiểu được ứng dụng đang được chia lớp như thế nào, file
+nào nên đọc trước, luồng nghiệp vụ chạy ra sao, và khi cần sửa một tính năng thì nên bắt đầu ở
+đâu. Nội dung được đối chiếu với code ngày 29/07/2026. Bản đồ owner, invariant, cách sửa và test chi tiết theo từng nhóm chức năng nằm tại
+[`frontend-capability-architecture.md`](frontend-capability-architecture.md).
 
 ## 1. Tổng Quan
 
@@ -26,7 +30,9 @@ Runtime quan trọng:
 
 ```text
 ArchivalProcessing-FE/
-  deploy/                         # Cấu hình triển khai bổ sung
+  .agents/skills/                 # Skill repo-local dùng khi bảo trì frontend
+  deploy/nginx/                   # Nginx template cho môi trường triển khai
+  docs/                           # Kiến trúc và tài liệu thay đổi
   dist/                           # Output build, không sửa thủ công
   public/                         # Static assets Vite phục vụ trực tiếp
   src/
@@ -35,11 +41,15 @@ ArchivalProcessing-FE/
     features/
       admin/                      # API/dashboard admin
       auth/                       # Login, token storage, AuthContext
+      folder-upload/              # Manager/provider/dock upload folder
       upload/                     # Domain chính của workflow session
+      zip-upload/                 # Manager/provider upload ZIP
     pages/                        # Route-level screens và orchestration
     shared/lib/                   # Utility dùng chung
     styles/                       # CSS global và Tailwind entry
+    test/                         # Vitest setup
     main.tsx                      # React root entrypoint
+  tests/                          # Test helper/workflow ngoài source tree
   API.md                          # Tài liệu API cũ/worker integration
   Dockerfile                      # Build production frontend
   docker-compose.yml              # Chạy FE container riêng
@@ -55,6 +65,8 @@ Các thư mục cần đọc trước:
 - `src/pages/UploadPage.tsx`: orchestrator chính cho workflow 7 bước.
 - `src/features/upload/api/`: API facade gọi backend.
 - `src/features/upload/components/`: UI theo từng bước workflow.
+- `src/features/folder-upload/` và `src/features/zip-upload/`: state machine upload sống ngoài
+  vòng đời một page.
 - `src/features/auth/`: đăng nhập, token, user hiện tại, phân quyền UI.
 
 ## 3. Entrypoint Và Routing
@@ -64,8 +76,9 @@ Các thư mục cần đọc trước:
 1. `BrowserRouter` bọc toàn bộ app.
 2. `ThemeProvider` quản lý theme.
 3. `AuthProvider` đọc/lưu phiên đăng nhập.
-4. `App` khai báo route.
-5. `Toaster` hiển thị thông báo toàn cục.
+4. `FolderUploadProvider` và `ZipUploadProvider` giữ upload khi chuyển route.
+5. `App` khai báo route.
+6. `GlobalUploadDock` và `Toaster` hiển thị trạng thái toàn cục.
 
 `src/app/App.tsx` định nghĩa routes:
 
@@ -228,9 +241,11 @@ Luồng:
 1. FE poll `/sessions/{id}/events` và `/sessions/{id}/plan` khi plan đang `processing`.
 2. Khi backend có active plan, `activePlanToParsedPlan()` normalize response.
 3. `planToTree()` chuyển `ParsedPlan.groups` thành cây UI.
-4. User có thể chỉnh cây, criteria, retention appendix và chiến lược lập hồ sơ.
-5. `patchActivePlan()` lưu thay đổi về backend.
-6. `handleConfirmPlan()` xác nhận phương án và chuyển sang extract metadata hoặc bước tiếp theo tùy trạng thái input.
+4. User có thể chỉnh cây, criteria, retention appendix, chiến lược lập hồ sơ và cấu hình đánh số.
+5. `patchDraftPlan()` lưu working/draft version; `activatePlanVersion()` kích hoạt version đã
+   xác nhận.
+6. `handleConfirmPlan()` xác nhận phương án và chuyển sang extract metadata hoặc bước tiếp theo
+   tùy trạng thái input.
 
 ### Step 3: Extract Metadata Và Review Tài Liệu
 
@@ -257,7 +272,12 @@ API chính:
 - `createMetadataBatch()`, `getAutoMetadataBatchPlan()`, `closeMetadataBatch()`: chia việc review metadata.
 - `restartDocumentMetadata()`: chạy lại metadata cho document.
 - `getDocumentPreviewUrl()`: lấy signed URL preview PDF.
+- `acquireDocumentEditLock()`, `heartbeatDocumentEditLock()`,
+  `releaseDocumentEditLock()`: giữ quyền sửa metadata theo document.
+- `removeDocumentBlankPages()`: tạo processed version sau khi bỏ trang trắng.
+- Nhóm preview/execute/status/retry cho xóa hoặc chuyển document.
 - `downloadSessionDocuments()`: tải ZIP các tài liệu đã chọn.
+- `downloadSessionMetadataReviewXlsx()`: tải bảng review metadata.
 
 Luồng:
 
@@ -265,7 +285,8 @@ Luồng:
 2. Backend xử lý nền; FE poll status bằng `useUploadPageOcr()`.
 3. `digitizationToFolderStatus()` map response backend thành shape UI cũ gồm `jobs`.
 4. UI phân trang document, filter theo metadata batch hoặc scope.
-5. Worker/coordinator review metadata trong `MetadataCard`.
+5. Worker/coordinator review metadata trong `MetadataCard`; edit phải giữ document lock và
+   release khi cancel/unmount/unload.
 6. `hasVerifiedDocuments` đúng khi summary có `metadata_verified_documents > 0`,
    `metadata_reviewed_documents > 0`, hoặc danh sách hiện tại có document
    `metadata_ready` và `verified`/`is_reviewed`.
@@ -331,13 +352,19 @@ API chính:
 - `getDocumentNumberingStatus()`.
 - `getNumberedDocumentPreviewUrl()`.
 - `updateDocumentNumberingFromPage()`.
+- `saveNumberingState()`, `discardNumberingState()`, `getNumberingState()`,
+  `applyNumberingState()`. `moveNumberingState()` chỉ còn để tương thích endpoint deprecated.
+- `getNumberingDocumentStatuses()`, `getNumberingDocumentPreviewUrls()`,
+  `getNumberingDossierPreviewUrls()`.
 
 Luồng:
 
 1. Step có thể auto start khi URL có `?start=1`.
-2. FE enqueue job numbering và poll status.
-3. User xem preview PDF đã đánh số, chỉnh anchor/new number cho từng document nếu cần.
-4. Hoàn tất thì chuyển Step 6 với `?start=1`.
+2. FE enqueue job numbering và poll status theo revision.
+3. User xem preview PDF đã đánh số, chỉnh `auto`/`manual`/`cascade` cho từng document nếu cần.
+4. Timeline phân biệt working state, saved/applied state và historical state; snapshot lịch sử
+   không tương thích là read-only.
+5. Hoàn tất thì chuyển Step 6 với `?start=1`.
 
 ### Step 6: Sinh Artifact Cuối
 
@@ -355,15 +382,20 @@ API chính:
 - `listArtifacts()`.
 - `downloadArtifact()`, `downloadAllArtifacts()`.
 - `getArtifactPreviewHtml()`.
-- `exportMetadataSnapshot()`, `importMetadataBoxNumbers()`.
+- `getArtifactRemoteSignedUrl()`.
+- `exportMetadataSnapshot()`, `importMetadataBoxNumbers()`,
+  `clearMetadataBoxNumberPendingCounts()`.
 
 Luồng:
 
-1. FE enqueue finalize artifacts nếu auto start hoặc user bấm tạo.
+1. FE enqueue finalize artifacts nếu auto start hoặc user bấm tạo; response có thể là
+   `queued`, `already_queued_or_running` hoặc `not_needed`.
 2. Poll `/artifacts`.
 3. Hiển thị artifact theo section, preview HTML cho XLSX/DOCX khi backend hỗ trợ.
 4. User có thể export snapshot metadata, import số hộp, tải từng artifact hoặc tải tất cả.
-5. Hoàn tất thì chuyển Step 7.
+5. Artifact được publish remote có thể lấy signed URL mới; frontend không persist URL hết hạn
+   như source of truth.
+6. Hoàn tất thì chuyển Step 7.
 
 ### Step 7: Xuất Bản
 
@@ -377,6 +409,9 @@ API chính:
 
 - `getPublicationManifest()`.
 - `updatePublicationName()`.
+- `updatePublicationBoxStandardName()`.
+- `updatePublicationDossierStandardName()`.
+- `updatePublicationDocumentStandardName()`.
 - `enqueuePublicationArchive()`.
 - `getPublicationArchiveStatus()`.
 - `downloadPublicationArchiveArtifact()`.
@@ -388,7 +423,7 @@ API chính:
 Luồng:
 
 1. FE lấy manifest publication theo session.
-2. User có thể chỉnh tên xuất bản.
+2. User có thể chỉnh tên xuất bản và standard name ở cấp box/dossier/document.
 3. FE enqueue build archive nếu cần.
 4. User tải toàn bộ, theo hộp, theo hồ sơ hoặc theo tài liệu.
 
@@ -415,6 +450,17 @@ Lưu ý:
 - `LAST_SESSION_KEY` trong localStorage lưu session gần nhất.
 - `highest-visited-step` trong sessionStorage giúp header biết user đã đi đến bước nào.
 - Query params `extract=1` và `start=1` dùng để auto start metadata extraction/numbering/finalize.
+- `ZipUploadManager` và `FolderUploadManager` giữ upload job ngoài vòng đời page; không sao chép
+  state machine này vào `UploadPage`.
+- Auth session sống trong localStorage, còn page size có thể được `usePagedItems` lưu riêng.
+
+Source of truth:
+
+- Backend sở hữu session, job, active version, reviewed/verified state và artifact/publication.
+- React state sở hữu trạng thái render hiện tại.
+- `UploadPage.cache.ts` chỉ hỗ trợ chuyển route trong cùng tab, không được dùng làm bằng chứng
+  rằng backend đã hoàn tất.
+- State cần sống qua reload phải được persist ở backend hoặc storage có chủ đích.
 
 Polling:
 
@@ -490,6 +536,9 @@ Upload inputs
   -> POST /sessions/{id}/inputs/remote-upload/presign
   -> PUT presigned upload hoặc POST proxy upload
   -> POST /sessions/{id}/inputs/remote-upload/complete
+  -> hoặc POST /sessions/{id}/inputs/folder-uploads
+     -> register/presign/complete file windows
+     -> heartbeat -> seal/cancel -> poll reconciliation
 
 Analyze plan
   -> POST /sessions/{id}/plan/analyze
@@ -499,7 +548,9 @@ Analyze plan
 Digitization and metadata review
   -> POST /sessions/{id}/digitization/start
   -> GET /sessions/{id}/digitization
-  -> PATCH /sessions/{id}/documents/{document_id}/metadata
+  -> POST /sessions/{id}/documents/{document_id}/edit-lock
+  -> PATCH /sessions/{id}/documents/{document_id}/metadata với lock token
+  -> heartbeat/release edit lock
   -> POST /sessions/{id}/documents/{document_id}/verify
 
 Build dossiers
@@ -510,19 +561,27 @@ Build dossiers
 
 Numbering
   -> POST /sessions/{id}/numbering/start
-  -> GET /sessions/{id}/numbering/status
+  -> GET /sessions/{id}/numbering/status hoặc bulk status/preview
+  -> optional save/read/discard/apply numbering state
 
 Artifacts
   -> POST /sessions/{id}/artifacts/finalize
   -> GET /sessions/{id}/artifacts
+  -> optional GET /sessions/{id}/artifacts/{artifact_id}/remote-signed-url
 
 Publication
   -> GET /sessions/{id}/publication
+  -> PATCH typed standard-name theo box/dossier/document
   -> POST /sessions/{id}/publication/archive
   -> GET /sessions/{id}/publication/download
 ```
 
 ## 11. Hướng Dẫn Cho Agent Khi Sửa Code
+
+Trước khi sửa, chọn đúng nhóm và đọc hướng dẫn chi tiết trong
+[`frontend-capability-architecture.md`](frontend-capability-architecture.md). Trace đủ chuỗi
+`route/page -> component/hook/manager -> API/type/normalizer -> test`; tên file chỉ là điểm bắt
+đầu, không phải bằng chứng về owner cuối cùng.
 
 Khi cần sửa UI một bước:
 
@@ -530,9 +589,10 @@ Khi cần sửa UI một bước:
 - Step 2: bắt đầu từ `FolderTree.tsx` và `UploadPage.planUtils.ts`.
 - Step 3: bắt đầu từ `ProcessStep.tsx`, `useProcessStepModel.ts`, `ProcessStep.actions.ts`, `MetadataCard.tsx`.
 - Step 4: bắt đầu từ `FinalResult.tsx`, `FinalResult.view.tsx`, `useFinalResultPolling.ts`, `FinalResult.treeUtils.ts`.
-- Step 5: bắt đầu từ `NumberingStep.tsx`.
-- Step 6: bắt đầu từ `FinalizeArtifactsPage.tsx`.
-- Step 7: bắt đầu từ `PublicationStep.tsx`.
+- Step 5: bắt đầu từ `NumberingStep.tsx`, `NumberingStep.parts.tsx` và phần numbering của
+  `sessionApi.artifacts.ts`.
+- Step 6: bắt đầu từ `FinalizeArtifactsPage.tsx` và các file `preview`/`utils`.
+- Step 7: bắt đầu từ `PublicationStep.tsx` và `sessionApi.publication.ts`.
 
 Khi cần sửa API:
 
@@ -545,6 +605,21 @@ Khi cần sửa state workflow:
 - Kiểm tra cả React state trong `UploadPage.tsx` và `uploadPageCache`.
 - Nếu state phải sống qua route navigation, sync vào cache.
 - Nếu state phải sống qua reload, backend hoặc localStorage/sessionStorage mới là nơi đúng.
+- Nếu state upload phải sống khi page unmount, sửa manager/provider ZIP hoặc folder tương ứng.
+- Với polling, giữ terminal condition, job/session identity, cleanup timer và
+  `visibleAwareDelay()` khi tab bị ẩn.
+
+Khi cần sửa document:
+
+- Sửa metadata phải đi qua edit lock; bulk action phải chấp nhận partial failure theo document.
+- Delete, transfer và bỏ trang trắng có thể làm stale cluster, numbering, artifact và
+  publication; kiểm tra toàn bộ chuỗi downstream.
+
+Khi cần sửa version:
+
+- Plan: phân biệt working/draft và active.
+- Cluster: phân biệt active version, version đang xem và rebuild đang chạy.
+- Numbering: phân biệt working, saved/applied và historical state.
 
 Khi cần sửa quyền/role:
 
@@ -558,15 +633,18 @@ Scripts chính:
 
 ```powershell
 npm run dev
+npm run test
 npm run typecheck
 npm run lint
 npm run build
 npm run preview
 ```
 
-Khi chỉ sửa docs, không cần build. Khi sửa TypeScript/UI, nên chạy ít nhất:
+Khi chỉ sửa docs/skill, kiểm tra link/path, skill validator và `git diff --check`; không cần
+build. Khi sửa TypeScript/UI, nên chạy ít nhất:
 
 ```powershell
+npm run test
 npm run typecheck
 npm run lint
 ```

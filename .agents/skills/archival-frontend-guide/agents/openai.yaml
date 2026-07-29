@@ -1,0 +1,4 @@
+interface:
+  display_name: "Archival Frontend Guide"
+  short_description: "Navigate and safely change archival frontend"
+  default_prompt: "Use $archival-frontend-guide to locate and safely implement this frontend change."

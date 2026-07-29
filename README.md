@@ -1,189 +1,161 @@
-# Vite shadcn Template
+# ArchivalProcessing Frontend
 
-A root-level Vite + React + TypeScript template with shadcn/ui, Tailwind CSS, ESLint, Prettier, and a feature-oriented source structure.
+React frontend for the MBFS archival-processing platform. The application guides
+authenticated users through a seven-step, session-based workflow:
+
+```text
+upload -> plan review -> OCR/metadata review -> dossier review
+  -> numbering -> final artifacts -> publication
+```
+
+The backend contract is implemented by the sibling `ArchivalProcessing` repo.
+This repository owns browser orchestration, role-aware navigation, upload
+managers, API adapters and the user interface; the backend remains authoritative
+for access control and workflow state.
 
 ## Stack
 
-- Vite 7
-- React 19
-- TypeScript
-- Tailwind CSS 4
-- shadcn/ui
-- ESLint
-- Prettier
+- React 19, TypeScript 5.9 and Vite 7
+- React Router 7
+- Tailwind CSS 4 and shadcn/ui primitives
+- Vitest, Testing Library and jsdom
+- TanStack Table, Framer Motion, PDF.js, ExcelJS and Mammoth
 
-## Requirements
+Use Node.js 20.19+ or 22.12+; the repository lockfile is managed with npm 11.
 
-Use Node.js 20.19+ or 22.12+.
+## Getting Started
 
-```bash
-node --version
-npm --version
-```
-
-## Getting started
-
-```bash
+```powershell
+Copy-Item .env.sample .env
 npm install
 npm run dev
 ```
 
-Open the local URL printed by Vite.
+The Vite server uses `VITE_ARCHIVAL_DEV_API_PROXY_TARGET` for `/api`; the
+default is `http://127.0.0.1:8000`.
 
-## Docker
+Useful scripts:
 
-Copy the sample environment file and adjust the backend target when needed:
-
-```bash
-cp .env.sample .env
+```powershell
+npm run dev
+npm test
+npm run typecheck
+npm run lint
+npm run build
+npm run preview
 ```
 
-Build and run the production frontend container:
+## Runtime Configuration
 
-```bash
-docker compose up --build
-```
+| Variable | Purpose |
+| --- | --- |
+| `VITE_ARCHIVAL_API_BASE_URL` | Browser API base; use `/api` behind Vite/Nginx |
+| `VITE_ARCHIVAL_DEV_API_PROXY_TARGET` | Backend target for the Vite proxy |
+| `VITE_ARCHIVAL_DIRECT_PRESIGNED_UPLOAD` | Allow direct browser PUT to signed storage URLs |
+| `VITE_ARCHIVAL_CHUNKED_UPLOAD_CHUNK_SIZE_MB` | ZIP multipart chunk size |
+| `VITE_FOLDER_UPLOAD_ENABLED` | Enable folder manifest upload and the global dock |
+| `VITE_ARCHIVAL_BULK_ACTION_BATCH_SIZE` | Metadata bulk-action batch size |
+| `VITE_ARCHIVAL_BULK_ACTION_CONCURRENCY` | Metadata bulk-action concurrency |
 
-By default the app is exposed at `http://127.0.0.1:5173` and Nginx proxies browser calls from `/api/*` to `ARCHIVAL_API_PROXY_PASS`. Keep `VITE_ARCHIVAL_API_BASE_URL=/api` when using the bundled Nginx reverse proxy.
+See [.env.sample](.env.sample) for deployment-oriented defaults.
 
-## Scripts
-
-```bash
-npm run dev        # Start the Vite dev server
-npm run build      # Type-check and build for production
-npm run lint       # Run ESLint
-npm run typecheck  # Run TypeScript without emitting files
-npm run format     # Format TypeScript and TSX files
-npm run preview    # Preview the production build
-```
-
-## Project structure
+## Repository Structure
 
 ```text
-vite-shadcn-template/
-├── public/                 # Static assets served directly by Vite
-├── src/                    # Application source code
-│   ├── app/                # App composition layer
-│   │   ├── routes/         # Route config, route guards, route constants
-│   │   ├── providers/      # ThemeProvider, QueryProvider, AuthProvider, etc.
-│   │   ├── layouts/        # MainLayout, AuthLayout, DashboardLayout
-│   │   └── App.tsx         # Root React component
-│   ├── pages/              # Route-level page components
-│   ├── features/           # Business/domain feature modules
-│   │   └── <feature>/
-│   │       ├── components/ # Components used only by this feature
-│   │       ├── api/        # Feature API calls and request helpers
-│   │       ├── hooks/      # Feature-specific React hooks
-│   │       ├── types/      # Feature-specific TypeScript types
-│   │       └── utils/      # Optional feature-only utilities
-│   ├── shared/             # Code shared across multiple features
-│   │   ├── components/     # Shared non-shadcn components
-│   │   ├── api/            # Base API client, interceptors, shared API types
-│   │   ├── hooks/          # Generic reusable hooks
-│   │   ├── lib/            # Generic utilities
-│   │   └── types/          # Shared TypeScript types
-│   ├── components/
-│   │   └── ui/             # shadcn/ui primitives only
-│   ├── styles/             # Global CSS and Tailwind entry styles
-│   └── main.tsx            # Vite React entry point
-├── components.json         # shadcn/ui configuration
-├── eslint.config.js        # ESLint configuration
-├── index.html              # Vite HTML entry point
-├── package.json            # Scripts and dependencies
-├── tsconfig.json           # TypeScript configuration
-└── vite.config.ts          # Vite configuration
+ArchivalProcessing-FE/
+  .agents/skills/                 # Repo-local maintenance skills
+  deploy/                         # Deployment support
+  docs/                           # Architecture and implementation notes
+  public/                         # Static Vite assets
+  src/
+    app/                          # App routes, layouts and providers
+    components/ui/                # Shared shadcn/ui primitives
+    features/
+      admin/                      # Admin dashboard API/UI
+      auth/                       # Login, token storage and AuthContext
+      folder-upload/              # Folder manager, provider and global dock
+      upload/
+        api/                      # Typed backend adapters by capability
+        components/               # Shared and step-specific workflow UI
+        hooks/                    # Polling, edit-lock and feature hooks
+        lib/                      # Pure workflow/domain helpers
+      zip-upload/                 # In-memory ZIP manager and provider
+    pages/                        # Route-level workflow orchestration
+    shared/lib/                   # Cross-feature technical utilities
+    styles/                       # Global CSS and Tailwind entry
+    test/                         # Vitest setup
+    main.tsx                      # Provider composition and React entrypoint
+  tests/                          # Node regression tests
+  Dockerfile
+  nginx.conf
+  vite.config.ts
+  vitest.config.ts
 ```
 
-## Code placement guide
+Generated `dist/` and installed `node_modules/` are not source.
 
-- Use `src/app/` for application composition: providers, layouts, routing setup, and root app wiring.
-- Use `src/pages/` for route-level screens.
-- Use `src/features/<feature>/` for domain-specific components, hooks, API helpers, types, and utilities.
-- Use `src/shared/` for reusable code that is not tied to one feature.
-- Use `src/components/ui/` only for shadcn/ui primitives.
-- Use `src/styles/globals.css` for Tailwind imports, theme tokens, and global styles.
+## Application Boundaries
 
-## shadcn/ui aliases
+- `src/main.tsx` composes theme, auth, folder/ZIP upload providers, the global
+  upload dock and the app.
+- `src/app/App.tsx` owns routes and the authentication guard.
+- `src/pages/UploadPage*.ts(x)` coordinates the seven-step shell, route
+  restoration, workflow policies and cache/state.
+- `src/pages/FinalizeArtifactsPage*.tsx` owns the reusable Step 6 implementation.
+- `src/features/upload/components/step7/` owns publication.
+- `src/features/upload/api/sessionApi.*.ts` is the backend API boundary. Add
+  typed helpers there rather than calling JSON endpoints directly from UI code.
+- `src/features/folder-upload/` and `src/features/zip-upload/` own background
+  upload lifecycles that must survive workflow-route navigation within the tab.
 
-The template uses these aliases in `components.json`:
+Document metadata editing uses a lease/token lock acquired before the editor
+opens, heartbeated while held and released on save/cancel/unload. Numbering uses
+bulk status/preview APIs and, when enabled by the backend, a saved-state timeline
+with optimistic workspace expectations.
 
-```json
-{
-  "components": "@/components",
-  "hooks": "@/shared/hooks",
-  "lib": "@/shared/lib",
-  "utils": "@/shared/lib/utils",
-  "ui": "@/components/ui"
-}
+## Routes
+
+```text
+/login
+/register
+/admin/access
+/sessions
+/sessions/:sessionId/finalize
+/sessions/new/step/:step
+/sessions/:sessionId/step/:step
 ```
 
-Use `@/shared/lib/utils` for shared utilities such as `cn`, and keep generated UI primitives in `src/components/ui/`.
+Legacy `/step/:step` redirects to a new-session route; unknown routes redirect
+to `/sessions`.
 
-## Installing shadcn/ui components
+## Validation
 
-Run the shadcn CLI from the project root:
+For documentation-only changes, check links and examples. For TypeScript/UI
+changes, run:
 
-```bash
-npx shadcn@latest add card
-```
-
-Install multiple components at once:
-
-```bash
-npx shadcn@latest add card input label form
-```
-
-New primitives are generated into `src/components/ui/` using the aliases in `components.json`.
-
-Example usage after installing `card`:
-
-```tsx
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-
-export function ExampleCard() {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Hello shadcn</CardTitle>
-      </CardHeader>
-      <CardContent>This card was added with shadcn/ui.</CardContent>
-    </Card>
-  )
-}
-```
-
-If the CLI asks about overwriting files, only accept when you intentionally want to replace the existing component.
-
-After adding components, validate the project:
-
-```bash
+```powershell
+npm test
 npm run typecheck
-npm run lint
 npm run build
 ```
 
-## Creating a new project from this template
+Run `npm run lint` as well, but distinguish new violations from the repository's
+known baseline in large orchestration components.
 
-```bash
-git clone <template-repo-url> my-app
-cd my-app
-rm -rf .git
-git init
-npm install
-npm run dev
-```
+## Documentation
 
-Then update `name` in `package.json` and replace the starter UI in `src/app/App.tsx`.
+- [Frontend System Architecture](docs/frontend-system-architecture.md)
+- [Frontend Capability Architecture](docs/frontend-capability-architecture.md)
+- [Backend API Integration Guide](../ArchivalProcessing/docs/api-integration-guide.md)
+- [Cross-Repo System Overview](../ArchivalProcessing/docs/system-overview.md)
+- [Backend Component Index](../ArchivalProcessing/docs/components/README.md)
+- [Folder Upload Implementation](../ArchivalProcessing/docs/FOLDER_UPLOAD_IMPLEMENTATION_GUIDE.md)
+- [Document Edit Lock](../ArchivalProcessing/docs/document-edit-lock.md)
+- [Numbering Version Timeline](../ArchivalProcessing/docs/numbering-version-timeline.md)
 
-## Validate before shipping
+`API.md` documents the lower-level Chỉnh Lý worker API retained for integration
+reference; it is not the primary browser-to-ArchivalProcessing contract.
 
-```bash
-npm run typecheck
-npm run lint
-npm run build
-```
+When working with Codex, invoke `$archival-frontend-guide` from
+`.agents/skills/archival-frontend-guide` to route a change to the correct owner,
+invariants and verification set.

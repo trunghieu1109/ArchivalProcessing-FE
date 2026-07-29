@@ -1,6 +1,11 @@
 # Chinhly Worker API
 
 Tài liệu này dành cho hệ thống tích hợp gọi vào service `svr_chinhly`.
+Đây không phải hợp đồng browser ↔ backend chính của `ArchivalProcessing-FE`. Với API session
+FastAPI mà frontend đang gọi, dùng
+[`../ArchivalProcessing/docs/api-integration-guide.md`](../ArchivalProcessing/docs/api-integration-guide.md);
+với ownership và luồng frontend, dùng
+[`docs/frontend-system-architecture.md`](docs/frontend-system-architecture.md).
 
 Base URL mặc định:
 
