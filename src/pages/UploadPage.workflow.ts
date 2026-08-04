@@ -14,7 +14,11 @@ import {
   planProgressMessageForPhase,
   wait,
 } from "./UploadPage.progress"
-import { canNavigateDirectlyToMetadata } from "./UploadPage.workflowPolicy"
+import {
+  canNavigateDirectlyToMetadata,
+  resolvePlanInputsReuploaded,
+  shouldAnalyzePlanInputsAfterDataUpload,
+} from "./UploadPage.workflowPolicy"
 
 export function createUploadPageWorkflowActions(context: Record<string, any>) {
   const {
@@ -29,7 +33,6 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     planAnalysisState,
     allDone,
     hasPlanReady,
-    planReanalysisReady,
     planReuploadState,
     dossierBuildStrategy,
     doc1Has,
@@ -75,16 +78,28 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
       toast.error("Chưa có session để phân tích lại phương án.")
       return
     }
+    const currentPlanReuploadState = {
+      arrangement:
+        Boolean(planReuploadState.arrangement) ||
+        cache.arrangementPlanReuploaded,
+      retention:
+        Boolean(planReuploadState.retention) || cache.retentionReuploaded,
+    }
+    const currentPlanReanalysisReady =
+      existingSessionMode &&
+      (currentPlanReuploadState.arrangement ||
+        currentPlanReuploadState.retention)
     const analyzeStoredInputs = !hasPlanReady && Boolean(doc1Has || doc2Has)
-    if (!planReanalysisReady && !analyzeStoredInputs) {
+    if (!currentPlanReanalysisReady && !analyzeStoredInputs) {
       toast.error("Vui lòng tải lại phương án chỉnh lý hoặc thời hạn bảo quản.")
       return
     }
 
     const analyzeArrangement =
-      planReuploadState.arrangement || (analyzeStoredInputs && doc1Has)
+      currentPlanReuploadState.arrangement ||
+      (analyzeStoredInputs && doc1Has)
     const analyzeRetention =
-      planReuploadState.retention || (analyzeStoredInputs && doc2Has)
+      currentPlanReuploadState.retention || (analyzeStoredInputs && doc2Has)
     const retentionOnly = analyzeRetention && !analyzeArrangement
     const planFile = analyzeArrangement
       ? cache.arrangementPlanUpload?.local_cached_path
@@ -297,11 +312,26 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
       try {
         const currentSessionId = await ensureSession()
         const dataInput = await uploadPendingDataInput(currentSessionId)
-        if (dataInput && sessionIsActive(currentSessionId)) {
+        const dataUploadSucceeded = Boolean(
+          dataInput && sessionIsActive(currentSessionId)
+        )
+        if (dataInput && dataUploadSucceeded) {
           const isFolderInput = "folder_upload_id" in dataInput
+          const hasReuploadedPlanInputs = resolvePlanInputsReuploaded({
+            renderedState: Boolean(planInputsReuploaded),
+            arrangementCached: cache.arrangementPlanReuploaded,
+            retentionCached: cache.retentionReuploaded,
+          })
           cache.rawZipReuploaded = !isFolderInput
           setZipSupplementUploaded(true)
-          if (isFolderInput) {
+          if (
+            shouldAnalyzePlanInputsAfterDataUpload({
+              dataUploadSucceeded,
+              planInputsReuploaded: hasReuploadedPlanInputs,
+            })
+          ) {
+            await handleReanalyzeExistingSessionPlan()
+          } else if (isFolderInput) {
             navigate(
               `/sessions/${encodeURIComponent(currentSessionId)}/step/3?extract=1`
             )

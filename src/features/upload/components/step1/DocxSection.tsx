@@ -16,6 +16,7 @@ interface DocxSectionProps {
   onHasFileChange: (v: boolean) => void
   onUploadFile?: (file: File) => Promise<void>
   onUploadFiles?: (files: File[]) => Promise<void>
+  uploadCompleteState?: ProcessState
   multiple?: boolean
 }
 
@@ -30,6 +31,7 @@ export const DocxSection = forwardRef<SectionHandle, DocxSectionProps>(
       onHasFileChange,
       onUploadFile,
       onUploadFiles,
+      uploadCompleteState = "idle",
       multiple = false,
     },
     ref
@@ -57,6 +59,7 @@ export const DocxSection = forwardRef<SectionHandle, DocxSectionProps>(
         Boolean
       )
       if (selectedFiles.length === 0) return
+      const stateBeforeUpload = processState
       setError("")
       if (!multiple) {
         setHasContent(false)
@@ -66,7 +69,7 @@ export const DocxSection = forwardRef<SectionHandle, DocxSectionProps>(
       setFileNames((previous) =>
         multiple ? [...previous, ...nextFileNames] : nextFileNames
       )
-      onProcessStateChange("idle")
+      onProcessStateChange("processing")
       setLoading(true)
       try {
         await Promise.all(
@@ -88,6 +91,7 @@ export const DocxSection = forwardRef<SectionHandle, DocxSectionProps>(
         }
         setHasContent(true)
         onHasFileChange(true)
+        onProcessStateChange(uploadCompleteState)
       } catch (err) {
         if (multiple) {
           setFileNames((previous) =>
@@ -104,6 +108,7 @@ export const DocxSection = forwardRef<SectionHandle, DocxSectionProps>(
         if (!multiple) {
           onHasFileChange(false)
         }
+        onProcessStateChange(stateBeforeUpload)
       } finally {
         setLoading(false)
       }

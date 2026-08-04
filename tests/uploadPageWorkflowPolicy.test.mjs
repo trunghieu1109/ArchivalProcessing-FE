@@ -4,6 +4,8 @@ import test from "node:test"
 import {
   canNavigateDirectlyToMetadata,
   planWorkflowActionLabel,
+  resolvePlanInputsReuploaded,
+  shouldAnalyzePlanInputsAfterDataUpload,
 } from "../src/pages/UploadPage.workflowPolicy.ts"
 
 test("ưu tiên xem phương án khi đã có phương án sẵn sàng", () => {
@@ -14,6 +16,44 @@ test("ưu tiên xem phương án khi đã có phương án sẵn sàng", () => {
       hasRetentionSchedule: true,
     }),
     "Xem phương án phân loại"
+  )
+})
+
+test("analyzes retention inputs after a supplemental ZIP upload succeeds", () => {
+  assert.equal(
+    shouldAnalyzePlanInputsAfterDataUpload({
+      dataUploadSucceeded: true,
+      planInputsReuploaded: true,
+    }),
+    true
+  )
+})
+
+test("uses the live cache when a retention upload completes during ZIP upload", () => {
+  assert.equal(
+    resolvePlanInputsReuploaded({
+      renderedState: false,
+      arrangementCached: false,
+      retentionCached: true,
+    }),
+    true
+  )
+})
+
+test("does not analyze after a ZIP-only or failed supplemental upload", () => {
+  assert.equal(
+    shouldAnalyzePlanInputsAfterDataUpload({
+      dataUploadSucceeded: true,
+      planInputsReuploaded: false,
+    }),
+    false
+  )
+  assert.equal(
+    shouldAnalyzePlanInputsAfterDataUpload({
+      dataUploadSucceeded: false,
+      planInputsReuploaded: true,
+    }),
+    false
   )
 })
 

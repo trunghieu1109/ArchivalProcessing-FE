@@ -324,7 +324,6 @@ export function ResultNode({
           )}
           {isDropFolder &&
             group &&
-            !isPendingDossier &&
             selectedDocumentCount > 0 && (
             <Button
               type="button"

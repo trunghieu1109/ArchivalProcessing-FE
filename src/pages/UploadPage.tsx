@@ -40,6 +40,7 @@ import { isOcrPollingReplacedError } from "@/features/upload/hooks/useOcrFolder"
 import { UploadPageView } from "./UploadPage.view"
 import { createConfirmPlanHandler } from "./UploadPage.confirmPlan"
 import { createUploadPageWorkflowActions } from "./UploadPage.workflow"
+import { resolvePlanInputsReuploaded } from "./UploadPage.workflowPolicy"
 import { createUploadPageActions } from "./UploadPage.actions"
 import { useUploadPageOcr } from "./UploadPage.ocr"
 import { useUploadPageLifecycle } from "./UploadPage.lifecycle"
@@ -610,6 +611,11 @@ export function UploadPage() {
       (observedActiveZipJobIdsRef.current.has(job.id) ||
         job.completedAt > zipViewRef.current.startedAt)
     if (
+      resolvePlanInputsReuploaded({
+        renderedState: false,
+        arrangementCached: cache.arrangementPlanReuploaded,
+        retentionCached: cache.retentionReuploaded,
+      }) ||
       !existingSessionMode ||
       currentStep !== 1 ||
       routeSessionId !== job.sessionId ||
@@ -956,7 +962,6 @@ export function UploadPage() {
     },
     []
   )
-  const planReanalysisReady = existingSessionMode && planInputsReuploaded
   const hasAnyFile = doc1Has || doc2Has || zipHas
   const hasActivePlan = Boolean(activePlanVersionId)
   const hasApprovedPlan = hasActivePlan
@@ -1366,7 +1371,6 @@ export function UploadPage() {
       planAnalysisState,
       allDone,
       hasPlanReady: hasAnalyzedArrangementPlan || hasApprovedPlan,
-      planReanalysisReady,
       planReuploadState,
       dossierBuildStrategy,
       doc1Has,
