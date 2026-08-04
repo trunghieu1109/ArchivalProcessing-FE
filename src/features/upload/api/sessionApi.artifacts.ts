@@ -12,6 +12,7 @@ import type {
   DocumentNumberingMode,
   EnqueueNumberingResponse,
   FinalizeArtifactDispatchResponse,
+  FinalizeArtifactStatusResponse,
   MetadataExportMode,
   MetadataSnapshotGroup,
   MetadataBoxNumberImportResponse,
@@ -39,6 +40,14 @@ export async function enqueueFinalizeArtifacts(
   )
 }
 
+export async function getFinalizeArtifactsStatus(
+  sessionId: string
+): Promise<FinalizeArtifactStatusResponse> {
+  return requestJson<FinalizeArtifactStatusResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/artifacts/finalize/status`
+  )
+}
+
 export async function enqueueDocumentNumbering(
   sessionId: string,
   payload: {
@@ -47,8 +56,16 @@ export async function enqueueDocumentNumbering(
     document_numbering_mode?: DocumentNumberingMode
     document_numbering_style_preset?: string
     style_preset?: string
-    document_numbering_style_overrides?: { font_size?: number; color?: string; opacity?: number } | null
-    style_overrides?: { font_size?: number; color?: string; opacity?: number } | null
+    document_numbering_style_overrides?: {
+      font_size?: number
+      color?: string
+      opacity?: number
+    } | null
+    style_overrides?: {
+      font_size?: number
+      color?: string
+      opacity?: number
+    } | null
   } = {}
 ): Promise<EnqueueNumberingResponse> {
   return requestJson<EnqueueNumberingResponse>(
@@ -79,14 +96,11 @@ export async function updateDocumentNumberingConfig(
   return requestJson<{
     session_id: string
     document_numbering_mode: DocumentNumberingMode
-  }>(
-    `/sessions/${encodeURIComponent(sessionId)}/numbering/config`,
-    {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    }
-  )
+  }>(`/sessions/${encodeURIComponent(sessionId)}/numbering/config`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
 }
 
 export async function updateDocumentNumberingFromPage(

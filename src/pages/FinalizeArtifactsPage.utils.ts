@@ -56,6 +56,40 @@ export const FINALIZE_PROGRESS_PHASES = [
   { id: "completed", label: "Hoàn tất" },
 ]
 
+export interface FinalizeProgressViewState {
+  activePhase: string | null
+  failedPhase: string | null
+  completedPhases: Set<string>
+}
+
+export function buildFinalizeProgressViewState(
+  phase: string | null | undefined,
+  jobStatus: string | null | undefined
+): FinalizeProgressViewState {
+  const normalizedPhase = String(phase ?? "").trim()
+  const phaseIndex = FINALIZE_PROGRESS_PHASES.findIndex(
+    (item) => item.id === normalizedPhase
+  )
+  const completedPhases = new Set<string>()
+  const isDone = jobStatus === "done" || normalizedPhase === "completed"
+  const isFailed = jobStatus === "failed"
+
+  if (isDone) {
+    FINALIZE_PROGRESS_PHASES.forEach((item) => completedPhases.add(item.id))
+  } else if (phaseIndex > 0) {
+    FINALIZE_PROGRESS_PHASES.slice(0, phaseIndex).forEach((item) =>
+      completedPhases.add(item.id)
+    )
+  }
+
+  return {
+    activePhase:
+      !isDone && !isFailed && phaseIndex >= 0 ? normalizedPhase : null,
+    failedPhase: isFailed && phaseIndex >= 0 ? normalizedPhase : null,
+    completedPhases,
+  }
+}
+
 export function filterVisibleArtifacts(
   artifacts: SessionArtifact[]
 ): SessionArtifact[] {
@@ -102,7 +136,9 @@ export function buildArtifactSections(
   return sections
 }
 
-export function artifactSectionId(artifact: SessionArtifact): ArtifactSectionId {
+export function artifactSectionId(
+  artifact: SessionArtifact
+): ArtifactSectionId {
   const type = normalizeFilterText(artifact.artifact_type)
   if (type === "phieu_tin") return "phieuTin"
   if (type === "nhan_hop") return "nhanHop"
@@ -147,10 +183,6 @@ function artifactTypePriority(
 
 function normalizeFilterText(value: string): string {
   return value.trim().toLowerCase()
-}
-
-export function maxArtifactId(artifacts: SessionArtifact[]): number {
-  return artifacts.reduce((maxId, artifact) => Math.max(maxId, artifact.id), 0)
 }
 
 export function latestArtifactDate(
