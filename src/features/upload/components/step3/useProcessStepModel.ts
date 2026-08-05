@@ -242,14 +242,11 @@ export function useProcessStepModel({
     [items]
   )
   const dossierReadyItems = useMemo(
-    () =>
-      items.filter(
-        (item) => item.is_reviewed === true || item.review_status === "verified"
-      ),
+    () => items.filter((item) => item.metadata_ready && item.is_reviewed === true),
     [items]
   )
   const pendingReadyItems = useMemo(
-    () => readyItems.filter(needsMetadataReview),
+    () => readyItems.filter((item) => item.is_reviewed !== true),
     [readyItems]
   )
   const sortedItems = useMemo(

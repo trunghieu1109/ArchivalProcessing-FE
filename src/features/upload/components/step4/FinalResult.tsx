@@ -164,7 +164,7 @@ export function FinalResult({
   const verifiedItems = useMemo(
     () =>
       metadataItems.filter(
-        (item) => item.is_reviewed === true || item.review_status === "verified"
+        (item) => item.metadata_ready && item.is_reviewed === true
       ),
     [metadataItems]
   )

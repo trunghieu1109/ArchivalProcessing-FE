@@ -149,19 +149,20 @@ export function ProcessStepFooter({
         ) : pendingReadyItems.length > 0 && dossierReadyItems.length === 0 ? (
           <span className="flex items-center gap-2 text-amber-700">
             <AlertTriangle className="size-4" />
-            Còn {pendingReadyItems.length} tài liệu cần review metadata.
+            Còn {pendingReadyItems.length} tài liệu cần chuyên gia xác thực.
           </span>
         ) : pendingReadyItems.length > 0 ? (
           <span className="flex items-center gap-2 text-[#475569]">
             <CheckCircle2 className="size-4 text-emerald-600" />
-            Có thể lập hồ sơ với {dossierReadyItems.length} tài liệu đủ điều
-            kiện;
-            {` ${pendingReadyItems.length}`} tài liệu còn lại có thể cập nhật hồ
-            sơ sau.
+            Có thể lập hồ sơ với {dossierReadyItems.length} tài liệu đã được
+            chuyên gia xác thực;
+            {` ${pendingReadyItems.length}`} tài liệu còn lại chưa được ghi nhận
+            vào hồ sơ.
           </span>
         ) : readyItems.length > 0 ? (
           <span className="flex items-center gap-2 text-emerald-700">
-            <CheckCircle2 className="size-4" /> Metadata đã được review.
+            <CheckCircle2 className="size-4" /> Metadata đã được chuyên gia xác
+            thực.
           </span>
         ) : (
           <span className="flex items-center gap-2">

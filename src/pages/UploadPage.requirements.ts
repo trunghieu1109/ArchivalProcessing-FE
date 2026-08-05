@@ -7,8 +7,24 @@ export type DossierBuildInputKey =
 const INPUT_LABELS: Record<DossierBuildInputKey, string> = {
   arrangement_plan: "phương án chỉnh lý",
   retention_schedule: "thông tư thời hạn bảo quản",
-  verified_documents: "tài liệu đã xác thực",
+  verified_documents: "tài liệu đã được chuyên gia xác thực",
   active_plan: "phương án chỉnh lý đã được duyệt",
+}
+
+export function hasExpertReviewedDocuments({
+  reviewedCount,
+  documents,
+}: {
+  reviewedCount: number
+  documents: Array<{ metadata_ready?: boolean; is_reviewed?: boolean }>
+}): boolean {
+  return (
+    reviewedCount > 0 ||
+    documents.some(
+      (document) =>
+        document.metadata_ready === true && document.is_reviewed === true
+    )
+  )
 }
 
 export function missingDossierBuildInputs({

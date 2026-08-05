@@ -70,6 +70,7 @@ import {
 import {
   dossierBuildMissingLabels,
   dossierBuildMissingMessage,
+  hasExpertReviewedDocuments,
   missingDossierBuildInputs,
   selectedUploadLabels,
 } from "./UploadPage.requirements"
@@ -660,14 +661,10 @@ export function UploadPage() {
     currentStep,
     targetIngestionRunId: metadataTargetIngestionRunId,
   })
-  const hasVerifiedDocuments =
-    (ocr.status?.metadata_verified_documents ?? 0) > 0 ||
-    (ocr.status?.metadata_reviewed_documents ?? 0) > 0 ||
-    ocrMetadataItems.some(
-      (item) =>
-        item.metadata_ready &&
-        (item.is_reviewed === true || item.review_status === "verified")
-    )
+  const hasVerifiedDocuments = hasExpertReviewedDocuments({
+    reviewedCount: ocr.status?.metadata_reviewed_documents ?? 0,
+    documents: ocrMetadataItems,
+  })
 
   useEffect(() => {
     const planPollingSessionId = routeSessionId ?? sessionId
