@@ -48,7 +48,10 @@ import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
 import { UploadPageView } from "./UploadPage.view"
 import { createConfirmPlanHandler } from "./UploadPage.confirmPlan"
 import { createUploadPageWorkflowActions } from "./UploadPage.workflow"
-import { canNavigateDirectlyToMetadata } from "./UploadPage.workflowPolicy"
+import {
+  canNavigateDirectlyToMetadata,
+  resolvePlanInputsReuploaded,
+} from "./UploadPage.workflowPolicy"
 import { createUploadPageActions } from "./UploadPage.actions"
 import { isMetadataDiscoveryPending } from "./UploadPage.metadataDiscovery"
 import { useUploadPageOcr } from "./UploadPage.ocr"
@@ -745,7 +748,6 @@ export function UploadPage() {
 
   const planInputsReuploaded =
     planReuploadState.arrangement || planReuploadState.retention
-  const planReanalysisReady = existingSessionMode && planInputsReuploaded
   // URL session is the source of truth while viewing an existing session.
   // The local session id is only used for the `/sessions/new` flow after
   // ensureSession has created the backing session.
@@ -867,10 +869,13 @@ export function UploadPage() {
     !currentFolderUploadJob?.summary?.ingestion_run?.ocr_batch_ids?.length &&
     !handledFolderIngestionRuns.has(folderIngestionRunKey)
   )
-  const folderUploadCanNavigateDirectly = canNavigateDirectlyToMetadata(
-    doc1Has,
-    doc2Has
-  )
+  const folderUploadCanNavigateDirectly =
+    canNavigateDirectlyToMetadata(doc1Has, doc2Has) &&
+    !resolvePlanInputsReuploaded({
+      renderedState: Boolean(planInputsReuploaded),
+      arrangementCached: cache.arrangementPlanReuploaded,
+      retentionCached: cache.retentionReuploaded,
+    })
   const folderUploadMetadataNavigationReady =
     folderUploadActionReady && folderUploadCanNavigateDirectly
   const folderUploadInProgress = Boolean(
@@ -1261,6 +1266,11 @@ export function UploadPage() {
   useEffect(() => {
     const viewedUploadSessionId = routeSessionId ?? sessionId
     if (
+      resolvePlanInputsReuploaded({
+        renderedState: Boolean(planInputsReuploaded),
+        arrangementCached: cache.arrangementPlanReuploaded,
+        retentionCached: cache.retentionReuploaded,
+      }) ||
       !existingSessionMode ||
       !canNavigateDirectlyToMetadata(doc1Has, doc2Has) ||
       !viewedUploadSessionId ||
@@ -1313,6 +1323,7 @@ export function UploadPage() {
     doc2Has,
     existingSessionMode,
     navigate,
+    planInputsReuploaded,
     routeSessionId,
     sessionId,
   ])
@@ -1320,6 +1331,11 @@ export function UploadPage() {
   useEffect(() => {
     const viewedUploadSessionId = routeSessionId ?? sessionId
     if (
+      resolvePlanInputsReuploaded({
+        renderedState: Boolean(planInputsReuploaded),
+        arrangementCached: cache.arrangementPlanReuploaded,
+        retentionCached: cache.retentionReuploaded,
+      }) ||
       !folderUploadCanNavigateDirectly ||
       !viewedUploadSessionId ||
       !isViewingUploadStepForSession({
@@ -1383,6 +1399,7 @@ export function UploadPage() {
     folderUploadManager,
     folderUploadReady,
     navigate,
+    planInputsReuploaded,
     routeSessionId,
     sessionId,
   ])
@@ -1514,7 +1531,6 @@ export function UploadPage() {
     allDone,
     hasPlanReady,
     hasWorkingPlan,
-    planReanalysisReady,
     planReuploadState,
     dossierBuildStrategy,
     doc1Has,

@@ -1,6 +1,7 @@
 import {
   Archive,
   ArrowLeft,
+  AlertCircle,
   CheckCircle2,
   CloudDownload,
   Download,
@@ -198,11 +199,13 @@ export function FinalizeToolbar({
 
 export function FinalizeStatusCard({
   finalizing,
+  finalizeFailed,
   statusMessage,
   latestGeneratedAt,
   visibleArtifactCount,
 }: {
   finalizing: boolean
+  finalizeFailed: boolean
   statusMessage: string
   latestGeneratedAt: string | null
   visibleArtifactCount: number
@@ -216,11 +219,15 @@ export function FinalizeStatusCard({
               "flex size-10 items-center justify-center rounded-xl",
               finalizing
                 ? "bg-blue-50 text-[#0052FF]"
-                : "bg-emerald-50 text-emerald-700"
+                : finalizeFailed
+                  ? "bg-red-50 text-red-700"
+                  : "bg-emerald-50 text-emerald-700"
             )}
           >
             {finalizing ? (
               <Loader2 className="size-5 animate-spin" />
+            ) : finalizeFailed ? (
+              <AlertCircle className="size-5" />
             ) : (
               <CheckCircle2 className="size-5" />
             )}

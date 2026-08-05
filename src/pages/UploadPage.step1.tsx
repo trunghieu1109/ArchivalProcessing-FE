@@ -194,6 +194,7 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
           processState={doc1State}
           onProcessStateChange={syncDoc1State}
           onHasFileChange={syncDoc1Has}
+          uploadCompleteState={existingSessionMode ? "done" : "idle"}
           onUploadFile={(file) =>
             uploadInput("arrangement_plan", file).then(() => undefined)
           }
@@ -210,6 +211,7 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
           processState={doc2State}
           onProcessStateChange={syncDoc2State}
           onHasFileChange={syncDoc2Has}
+          uploadCompleteState={existingSessionMode ? "done" : "idle"}
           multiple
           onUploadFiles={(files) =>
             uploadRetentionInputs(files).then(() => undefined)

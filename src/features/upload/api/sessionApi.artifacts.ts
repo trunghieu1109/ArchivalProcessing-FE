@@ -12,6 +12,7 @@ import type {
   DocumentNumberingMode,
   EnqueueNumberingResponse,
   FinalizeArtifactDispatchResponse,
+  FinalizeArtifactStatusResponse,
   MetadataExportMode,
   MetadataSnapshotGroup,
   MetadataBoxNumberImportResponse,
@@ -58,6 +59,14 @@ export async function enqueueFinalizeArtifacts(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }
+  )
+}
+
+export async function getFinalizeArtifactsStatus(
+  sessionId: string
+): Promise<FinalizeArtifactStatusResponse> {
+  return requestJson<FinalizeArtifactStatusResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/artifacts/finalize/status`
   )
 }
 

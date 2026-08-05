@@ -29,3 +29,25 @@ export function canNavigateDirectlyToMetadata(
 ): boolean {
   return !hasArrangementPlan && !hasRetentionSchedule
 }
+
+export function shouldAnalyzePlanInputsAfterDataUpload({
+  dataUploadSucceeded,
+  planInputsReuploaded,
+}: {
+  dataUploadSucceeded: boolean
+  planInputsReuploaded: boolean
+}): boolean {
+  return dataUploadSucceeded && planInputsReuploaded
+}
+
+export function resolvePlanInputsReuploaded({
+  renderedState,
+  arrangementCached,
+  retentionCached,
+}: {
+  renderedState: boolean
+  arrangementCached: boolean
+  retentionCached: boolean
+}): boolean {
+  return renderedState || arrangementCached || retentionCached
+}

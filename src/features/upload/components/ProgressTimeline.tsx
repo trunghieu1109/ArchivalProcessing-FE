@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   ClipboardList,
   Clock3,
+  CircleAlert,
   Database,
   FileSearch,
   FileSignature,
@@ -37,6 +38,7 @@ interface ProgressTimelineProps {
   message?: string
   compact?: boolean
   visiblePhaseIds?: Set<string>
+  failedPhase?: string | null
 }
 
 export function ProgressTimeline({
@@ -47,6 +49,7 @@ export function ProgressTimeline({
   message,
   compact = false,
   visiblePhaseIds,
+  failedPhase,
 }: ProgressTimelineProps) {
   const visiblePhases = visiblePhaseIds
     ? phases.filter((phase) => visiblePhaseIds.has(phase.id))
@@ -84,8 +87,11 @@ export function ProgressTimeline({
             completedPhases?.has(phase.id) ||
             (activeIndex >= 0 && index < activeIndex)
           const isActive = phase.id === activePhase
+          const isFailed = phase.id === failedPhase
           const isLineComplete = isComplete || isActive
-          const Icon = phase.icon ?? PHASE_ICONS[phase.id] ?? ClipboardList
+          const Icon = isFailed
+            ? CircleAlert
+            : (phase.icon ?? PHASE_ICONS[phase.id] ?? ClipboardList)
           return (
             <div
               key={phase.id}
@@ -98,35 +104,43 @@ export function ProgressTimeline({
                 <div
                   className={cn(
                     "absolute top-5 right-1/2 left-[-50%] h-px",
-                    isLineComplete ? "bg-emerald-300" : "bg-[#D8E1EC]"
+                    isFailed
+                      ? "bg-red-300"
+                      : isLineComplete
+                        ? "bg-emerald-300"
+                        : "bg-[#D8E1EC]"
                   )}
                 />
               )}
               <div
                 className={cn(
                   "relative z-10 flex size-10 items-center justify-center rounded-2xl border bg-white transition-all",
-                  isComplete
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-600 shadow-sm"
-                    : isActive
-                      ? "border-[#BFD3FF] text-[#64748B] shadow-[0_0_0_5px_rgba(0,82,255,0.06)]"
-                      : "border-[#D8E1EC] text-[#94A3B8]",
+                  isFailed
+                    ? "border-red-200 bg-red-50 text-red-600 shadow-sm"
+                    : isComplete
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-600 shadow-sm"
+                      : isActive
+                        ? "border-[#BFD3FF] text-[#64748B] shadow-[0_0_0_5px_rgba(0,82,255,0.06)]"
+                        : "border-[#D8E1EC] text-[#94A3B8]",
                   compact && "size-9 rounded-xl"
                 )}
               >
                 <Icon className={cn(compact ? "size-4" : "size-5")} />
               </div>
               <div className="mt-2 flex min-h-9 max-w-36 items-start justify-center gap-1.5">
-                {isActive && !isComplete && (
+                {isActive && !isComplete && !isFailed && (
                   <Loader2 className="mt-0.5 size-3.5 shrink-0 animate-spin text-[#0052FF]" />
                 )}
                 <span
                   className={cn(
                     "text-xs leading-4 font-medium",
-                    isComplete
-                      ? "text-emerald-700"
-                      : isActive
-                        ? "text-[#0F172A]"
-                        : "text-[#94A3B8]"
+                    isFailed
+                      ? "text-red-700"
+                      : isComplete
+                        ? "text-emerald-700"
+                        : isActive
+                          ? "text-[#0F172A]"
+                          : "text-[#94A3B8]"
                   )}
                 >
                   {phase.label}

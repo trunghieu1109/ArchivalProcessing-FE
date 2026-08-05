@@ -509,6 +509,40 @@ export interface FinalizeArtifactDispatchResponse {
   freshness_reason?: string
 }
 
+export interface FinalizeArtifactProgress {
+  event_id: number
+  job_id: number
+  phase: string
+  message?: string | null
+  created_at?: string | null
+  dossier_count?: number | null
+  placement_count?: number | null
+  artifact_count?: number | null
+  run_id?: string | null
+  summary?: Record<string, unknown>
+}
+
+export interface FinalizeArtifactResult {
+  event_id: number
+  job_id: number
+  run_id?: string | null
+  output_dir?: string | null
+  artifact_count?: number | null
+  summary?: Record<string, unknown>
+  source_fingerprint?: string | null
+  message?: string | null
+  created_at?: string | null
+}
+
+export interface FinalizeArtifactStatusResponse extends ApiRevisionMetadata {
+  session_id: string
+  job_type: "finalize_artifacts"
+  active: boolean
+  job: ActiveJobSummary | null
+  progress: FinalizeArtifactProgress | null
+  result: FinalizeArtifactResult | null
+}
+
 export interface ArtifactListResponse extends ApiRevisionMetadata {
   session_id: string
   artifacts: SessionArtifact[]

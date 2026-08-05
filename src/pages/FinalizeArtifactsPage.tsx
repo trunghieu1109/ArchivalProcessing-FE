@@ -27,10 +27,10 @@ import {
   FINALIZE_POLL_TIMEOUT_MS,
   FINALIZE_PROGRESS_PHASES,
   artifactExtension,
+  buildFinalizeProgressViewState,
   buildArtifactSections,
   filterVisibleArtifacts,
   latestArtifactDate,
-  maxArtifactId,
   saveBlob,
 } from "./FinalizeArtifactsPage.utils"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
@@ -41,13 +41,12 @@ import {
   enqueueFinalizeArtifacts,
   getArtifactRemoteSignedUrl,
   getArtifactPreviewHtml,
+  getFinalizeArtifactsStatus,
   listArtifacts,
-  listSessionEvents,
+  type FinalizeArtifactStatusResponse,
   type MetadataExportMode,
   type SessionArtifact,
 } from "@/features/upload/api/sessionApi"
-
-const FINALIZE_EVENT_POLL_INTERVAL_MS = 5_000
 
 interface FinalizeArtifactsStepProps {
   sessionId?: string | null
@@ -81,13 +80,14 @@ export function FinalizeArtifactsStep({
 }: FinalizeArtifactsStepProps) {
   const navigate = useNavigate()
   const autoStartHandled = useRef(false)
+  const activeFinalizeJobIdRef = useRef<number | null>(null)
 
   const [artifacts, setArtifacts] = useState<SessionArtifact[]>([])
   const [loading, setLoading] = useState(true)
   const [finalizing, setFinalizing] = useState(false)
+  const [finalizeFailed, setFinalizeFailed] = useState(false)
   const [metadataExportMode, setMetadataExportMode] =
     useState<MetadataExportMode>("combined")
-  const [pollAfterArtifactId, setPollAfterArtifactId] = useState(0)
   const [statusMessage, setStatusMessage] = useState("Đang tải tệp mục lục...")
   const [error, setError] = useState("")
   const [selectedArtifactId, setSelectedArtifactId] = useState<number | null>(
@@ -106,6 +106,7 @@ export function FinalizeArtifactsStep({
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0)
   const previewBlobUrlRef = useRef<string | null>(null)
   const [progressPhase, setProgressPhase] = useState<string | null>(null)
+  const [failedPhase, setFailedPhase] = useState<string | null>(null)
   const [progressMessage, setProgressMessage] = useState("")
   const [completedPhases, setCompletedPhases] = useState<Set<string>>(
     () => new Set()
@@ -157,8 +158,30 @@ export function FinalizeArtifactsStep({
     sessionMetadata?.fonds_creator_code,
     sessionMetadata?.fonds_name,
   ])
-  const missingPublishMetadataSummary =
-    missingPublishMetadataFields.join(" · ")
+  const missingPublishMetadataSummary = missingPublishMetadataFields.join(" · ")
+
+  const applyFinalizeStatus = useCallback(
+    (status: FinalizeArtifactStatusResponse) => {
+      const jobStatus = status.job?.status
+      const phase =
+        status.progress?.phase ??
+        (jobStatus === "done"
+          ? "completed"
+          : status.active
+            ? "loading_data"
+            : null)
+      const viewState = buildFinalizeProgressViewState(phase, jobStatus)
+      setProgressPhase(viewState.activePhase)
+      setFailedPhase(viewState.failedPhase)
+      setCompletedPhases(viewState.completedPhases)
+      if (status.progress?.message) {
+        setProgressMessage(status.progress.message)
+        setStatusMessage(status.progress.message)
+      }
+      return viewState
+    },
+    []
+  )
 
   const refreshArtifacts = useCallback(
     async (options: { silent?: boolean } = {}) => {
@@ -192,7 +215,7 @@ export function FinalizeArtifactsStep({
           err instanceof Error ? err.message : "Không thể tải tệp mục lục."
         setError(message)
         if (!options.silent) toast.error(message)
-        return []
+        return null
       } finally {
         if (!options.silent) setLoading(false)
       }
@@ -200,65 +223,88 @@ export function FinalizeArtifactsStep({
     [sessionId]
   )
 
-  const startFinalize = useCallback(async (
-    options: { force?: boolean } = { force: true }
-  ) => {
-    if (!sessionId) {
-      const message = "Chưa có session để tạo mục lục."
-      setError(message)
-      setLoading(false)
-      setStatusMessage(message)
-      toast.error(message)
-      onAutoStartHandled?.()
-      return
-    }
-    setFinalizing(true)
-    setError("")
-    setStatusMessage("Đang chuẩn bị tạo mục lục...")
-    try {
-      const currentArtifacts = await refreshArtifacts({ silent: true })
-      setLoading(false)
-      setPollAfterArtifactId(maxArtifactId(currentArtifacts))
-      const dispatch = await enqueueFinalizeArtifacts(sessionId, {
-        created_by: "ui",
-        metadata_export_mode: metadataExportMode,
-        force: options.force ?? true,
-      })
-      if (dispatch.status === "not_needed") {
-        setFinalizing(false)
-        setProgressPhase(null)
-        setCompletedPhases(
-          new Set(FINALIZE_PROGRESS_PHASES.map((phase) => phase.id))
-        )
-        setProgressMessage("Tệp mục lục hiện tại đã được cập nhật.")
-        setStatusMessage(
-          `Đang dùng ${currentArtifacts.length} tệp mục lục mới nhất.`
-        )
-        toast.success("Tệp mục lục đã ở trạng thái mới nhất.")
+  const startFinalize = useCallback(
+    async (options: { force?: boolean } = { force: true }) => {
+      if (!sessionId) {
+        const message = "Chưa có session để tạo mục lục."
+        setError(message)
+        setLoading(false)
+        setStatusMessage(message)
+        toast.error(message)
         onAutoStartHandled?.()
         return
       }
-      setProgressPhase("loading_data")
-      setProgressMessage("Đã gửi yêu cầu tạo mục lục. Đang chờ worker xử lý.")
-      setCompletedPhases(new Set())
-      setStatusMessage(
-        "Đã gửi yêu cầu tạo mục lục. Đang chờ worker sinh tệp..."
-      )
-      toast.success("Đã gửi yêu cầu tạo mục lục.")
-      onAutoStartHandled?.()
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : "Không thể gửi yêu cầu tạo mục lục."
-      setFinalizing(false)
-      setLoading(false)
-      setError(message)
-      setStatusMessage("Chưa chạy được bước tạo mục lục.")
-      toast.error(message)
-      onAutoStartHandled?.()
-    }
-  }, [metadataExportMode, onAutoStartHandled, refreshArtifacts, sessionId])
+
+      setFinalizing(true)
+      setFinalizeFailed(false)
+      setFailedPhase(null)
+      setError("")
+      setStatusMessage("Đang chuẩn bị tạo mục lục...")
+      try {
+        const currentArtifacts =
+          (await refreshArtifacts({ silent: true })) ?? []
+        setLoading(false)
+        const dispatch = await enqueueFinalizeArtifacts(sessionId, {
+          created_by: "ui",
+          metadata_export_mode: metadataExportMode,
+          force: options.force ?? true,
+        })
+        activeFinalizeJobIdRef.current = dispatch.job_id
+
+        if (dispatch.status === "not_needed") {
+          activeFinalizeJobIdRef.current = null
+          setFinalizing(false)
+          setFinalizeFailed(false)
+          setFailedPhase(null)
+          setProgressPhase(null)
+          setCompletedPhases(
+            new Set(FINALIZE_PROGRESS_PHASES.map((phase) => phase.id))
+          )
+          setProgressMessage("Tệp mục lục hiện tại đã được cập nhật.")
+          setStatusMessage(
+            `Đang dùng ${currentArtifacts.length} tệp mục lục mới nhất.`
+          )
+          toast.success("Tệp mục lục đã ở trạng thái mới nhất.")
+          onAutoStartHandled?.()
+          return
+        }
+
+        setProgressPhase("loading_data")
+        setProgressMessage(
+          dispatch.status === "already_queued_or_running"
+            ? "Job tạo mục lục đang chạy. Đang tiếp tục theo dõi."
+            : "Đã gửi yêu cầu tạo mục lục. Đang chờ worker xử lý."
+        )
+        setCompletedPhases(new Set())
+        setStatusMessage(
+          dispatch.status === "already_queued_or_running"
+            ? "Job tạo mục lục đang chạy. Đang tiếp tục theo dõi..."
+            : "Đã gửi yêu cầu tạo mục lục. Đang chờ worker sinh tệp..."
+        )
+        if (dispatch.status === "already_queued_or_running") {
+          toast.info("Session đã có job tạo mục lục. Đang theo dõi tiếp.")
+        } else {
+          toast.success("Đã gửi yêu cầu tạo mục lục.")
+        }
+        onAutoStartHandled?.()
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Không thể gửi yêu cầu tạo mục lục."
+        activeFinalizeJobIdRef.current = null
+        setFinalizing(false)
+        setFinalizeFailed(true)
+        setFailedPhase(null)
+        setLoading(false)
+        setError(message)
+        setStatusMessage("Chưa chạy được bước tạo mục lục.")
+        toast.error(message)
+        onAutoStartHandled?.()
+      }
+    },
+    [metadataExportMode, onAutoStartHandled, refreshArtifacts, sessionId]
+  )
 
   useEffect(() => {
     if (!autoStart || autoStartHandled.current) return
@@ -270,6 +316,48 @@ export function FinalizeArtifactsStep({
     if (autoStart) return
     void refreshArtifacts()
   }, [autoStart, refreshArtifacts])
+
+  useEffect(() => {
+    if (autoStart || !sessionId) return
+    let cancelled = false
+
+    void getFinalizeArtifactsStatus(sessionId)
+      .then((status) => {
+        if (cancelled || !status.job) return
+        if (status.active) {
+          activeFinalizeJobIdRef.current = status.job.id
+          setFinalizeFailed(false)
+          setError("")
+          applyFinalizeStatus(status)
+          setStatusMessage(
+            status.progress?.message ??
+              "Yêu cầu tạo mục lục đang chạy. Đang chờ worker xử lý..."
+          )
+          setProgressMessage(
+            status.progress?.message ??
+              "Yêu cầu tạo mục lục đang được backend xử lý."
+          )
+          setFinalizing(true)
+          return
+        }
+        if (status.job.status === "failed") {
+          const message =
+            status.job.error ?? "Quá trình tạo mục lục gần nhất đã thất bại."
+          applyFinalizeStatus(status)
+          setFinalizeFailed(true)
+          setError(message)
+          setProgressMessage(message)
+          setStatusMessage("Tạo mục lục thất bại.")
+        }
+      })
+      .catch(() => {
+        // Artifact listing remains usable if the best-effort resume check fails.
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [applyFinalizeStatus, autoStart, sessionId])
 
   useEffect(() => {
     if (selectedArtifactId === null) return
@@ -343,113 +431,113 @@ export function FinalizeArtifactsStep({
 
   useEffect(() => {
     if (!finalizing || !sessionId) return
+    const currentSessionId = sessionId
     let cancelled = false
     let timeoutId: number | undefined
     const startedAt = Date.now()
 
-    const poll = async () => {
-      const nextVisibleArtifacts = await refreshArtifacts({ silent: true })
+    const scheduleNextPoll = () => {
       if (cancelled) return
-      const hasNewArtifacts = nextVisibleArtifacts.some(
-        (artifact) => artifact.id > pollAfterArtifactId
-      )
-      if (hasNewArtifacts) {
-        setFinalizing(false)
-        setStatusMessage(
-          `Đã có ${nextVisibleArtifacts.length} tệp mục lục sẵn sàng.`
-        )
-        setProgressPhase(null)
-        setCompletedPhases(
-          new Set(FINALIZE_PROGRESS_PHASES.map((phase) => phase.id))
-        )
-        setProgressMessage("Tệp mục lục đã sẵn sàng.")
-        toast.success("Tệp mục lục đã sẵn sàng.")
-        return
-      }
-      if (Date.now() - startedAt > FINALIZE_POLL_TIMEOUT_MS) {
-        setFinalizing(false)
-        setStatusMessage(
-          "Quá thời gian chờ tạo mục lục. Hãy kiểm tra backend worker."
-        )
-        return
-      }
       timeoutId = window.setTimeout(
         poll,
         visibleAwareDelay(FINALIZE_POLL_INTERVAL_MS)
       )
     }
 
-    timeoutId = window.setTimeout(
-      poll,
-      visibleAwareDelay(FINALIZE_POLL_INTERVAL_MS)
-    )
-    return () => {
-      cancelled = true
-      if (timeoutId !== undefined) window.clearTimeout(timeoutId)
+    const stopWithFailure = (message: string, phase?: string | null) => {
+      activeFinalizeJobIdRef.current = null
+      setFinalizing(false)
+      setFinalizeFailed(true)
+      setProgressPhase(null)
+      setFailedPhase(phase ?? null)
+      setError(message)
+      setProgressMessage(message)
+      setStatusMessage(message)
+      toast.error(message)
     }
-  }, [finalizing, pollAfterArtifactId, refreshArtifacts, sessionId])
 
-  useEffect(() => {
-    if (!finalizing || !sessionId) return
-
-    let cancelled = false
-    let afterId = 0
-    let timeoutId: number | undefined
-
-    const pollEvents = async () => {
-      try {
-        const response = await listSessionEvents(sessionId, {
-          afterId,
-          limit: 50,
-        })
-        if (cancelled) return
-        for (const event of response.events) {
-          afterId = Math.max(afterId, event.id)
-          if (event.event_type === "artifacts.finalize.progress") {
-            const phase = String(event.payload?.phase ?? "")
-            if (phase) {
-              setProgressPhase(phase === "completed" ? null : phase)
-              setCompletedPhases((previous) => {
-                const next = new Set(previous)
-                const phaseIndex = FINALIZE_PROGRESS_PHASES.findIndex(
-                  (item) => item.id === phase
-                )
-                FINALIZE_PROGRESS_PHASES.slice(
-                  0,
-                  Math.max(phaseIndex, 0)
-                ).forEach((item) => next.add(item.id))
-                if (phase === "completed") {
-                  FINALIZE_PROGRESS_PHASES.forEach((item) => next.add(item.id))
-                }
-                return next
-              })
-            }
-            if (event.message) {
-              setProgressMessage(event.message)
-              setStatusMessage(event.message)
-            }
-          }
-          if (event.event_type === "artifacts.item.ready" && event.message) {
-            setProgressMessage(event.message)
-          }
-        }
-      } catch {
-        // Artifact polling owns user-facing errors.
+    async function poll() {
+      if (cancelled) return
+      if (Date.now() - startedAt > FINALIZE_POLL_TIMEOUT_MS) {
+        stopWithFailure(
+          "Quá thời gian chờ tạo mục lục. Hãy kiểm tra backend worker."
+        )
+        return
       }
-      if (!cancelled) {
-        timeoutId = window.setTimeout(
-          pollEvents,
-          visibleAwareDelay(FINALIZE_EVENT_POLL_INTERVAL_MS)
+
+      let status: FinalizeArtifactStatusResponse
+      try {
+        status = await getFinalizeArtifactsStatus(currentSessionId)
+      } catch {
+        scheduleNextPoll()
+        return
+      }
+      if (cancelled) return
+
+      const expectedJobId = activeFinalizeJobIdRef.current
+      if (
+        status.job &&
+        expectedJobId !== null &&
+        status.job.id < expectedJobId
+      ) {
+        scheduleNextPoll()
+        return
+      }
+      if (status.job) activeFinalizeJobIdRef.current = status.job.id
+
+      const viewState = applyFinalizeStatus(status)
+      const jobStatus = String(status.job?.status ?? "").toLowerCase()
+      if (jobStatus === "done") {
+        const nextVisibleArtifacts = await refreshArtifacts({ silent: true })
+        if (cancelled) return
+        if (nextVisibleArtifacts === null) {
+          scheduleNextPoll()
+          return
+        }
+        activeFinalizeJobIdRef.current = null
+        setFinalizing(false)
+        setFinalizeFailed(false)
+        setFailedPhase(null)
+        setError("")
+        setStatusMessage(
+          `Đã có ${nextVisibleArtifacts.length} tệp mục lục sẵn sàng.`
+        )
+        setProgressMessage("Tệp mục lục đã sẵn sàng.")
+        toast.success("Tệp mục lục đã sẵn sàng.")
+        return
+      }
+
+      if (jobStatus === "failed") {
+        stopWithFailure(
+          String(status.job?.error ?? "").trim() ||
+            "Job tạo mục lục đã thất bại.",
+          viewState.failedPhase
+        )
+        return
+      }
+
+      if (!status.active && status.job) {
+        stopWithFailure(
+          `Job tạo mục lục đã dừng bất thường ở trạng thái ${status.job.status}.`,
+          viewState.failedPhase
+        )
+        return
+      }
+
+      if (!status.progress) {
+        setProgressMessage(
+          "Đang chờ backend chuẩn bị và ghi nhận tiến độ tạo mục lục."
         )
       }
+      scheduleNextPoll()
     }
 
-    void pollEvents()
+    void poll()
     return () => {
       cancelled = true
       if (timeoutId !== undefined) window.clearTimeout(timeoutId)
     }
-  }, [finalizing, sessionId])
+  }, [applyFinalizeStatus, finalizing, refreshArtifacts, sessionId])
 
   const handleDownloadAll = useCallback(async () => {
     if (!sessionId || visibleArtifacts.length === 0) return
@@ -552,10 +640,11 @@ export function FinalizeArtifactsStep({
           onMetadataExportModeChange={setMetadataExportMode}
         />
 
-        {(finalizing || progressMessage) && (
+        {(finalizing || finalizeFailed || progressMessage) && (
           <ProgressTimeline
             phases={FINALIZE_PROGRESS_PHASES}
             activePhase={progressPhase}
+            failedPhase={failedPhase}
             completedPhases={completedPhases}
             title="Tiến độ tạo mục lục"
             message={
@@ -567,6 +656,7 @@ export function FinalizeArtifactsStep({
 
         <FinalizeStatusCard
           finalizing={finalizing}
+          finalizeFailed={finalizeFailed}
           statusMessage={statusMessage}
           latestGeneratedAt={latestGeneratedAt}
           visibleArtifactCount={visibleArtifacts.length}
@@ -674,10 +764,7 @@ export function FinalizeArtifactsStep({
           <div className="sticky bottom-0 z-20 border-t border-[#CBD5E1] bg-white/95 px-4 py-3 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur">
             <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:gap-5">
               {missingPublishMetadataFields.length > 0 ? (
-                <div
-                  role="alert"
-                  className="min-w-0 flex-1"
-                >
+                <div role="alert" className="min-w-0 flex-1">
                   <div className="flex items-start gap-2.5">
                     <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
                     <div className="min-w-0">
@@ -685,7 +772,7 @@ export function FinalizeArtifactsStep({
                         Còn thiếu thông tin xuất bản
                       </p>
                       <p
-                        className="mt-0.5 break-words text-xs leading-5 text-[#A16207]"
+                        className="mt-0.5 text-xs leading-5 break-words text-[#A16207]"
                         title={missingPublishMetadataSummary}
                       >
                         {missingPublishMetadataSummary}

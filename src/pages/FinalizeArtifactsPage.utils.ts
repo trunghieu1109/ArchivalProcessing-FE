@@ -56,6 +56,48 @@ export const FINALIZE_PROGRESS_PHASES = [
   { id: "completed", label: "Hoàn tất" },
 ]
 
+export interface FinalizeProgressViewState {
+  activePhase: string | null
+  failedPhase: string | null
+  completedPhases: Set<string>
+}
+
+export function buildFinalizeProgressViewState(
+  phase: string | null | undefined,
+  jobStatus: string | null | undefined
+): FinalizeProgressViewState {
+  const normalizedPhase = String(phase ?? "").trim()
+  const normalizedStatus = String(jobStatus ?? "")
+    .trim()
+    .toLowerCase()
+  const phaseIndex = FINALIZE_PROGRESS_PHASES.findIndex(
+    (item) => item.id === normalizedPhase
+  )
+  const allPhaseIds = FINALIZE_PROGRESS_PHASES.map((item) => item.id)
+
+  if (normalizedStatus === "done" || normalizedPhase === "completed") {
+    return {
+      activePhase: null,
+      failedPhase: null,
+      completedPhases: new Set(allPhaseIds),
+    }
+  }
+
+  if (phaseIndex < 0) {
+    return {
+      activePhase: null,
+      failedPhase: null,
+      completedPhases: new Set(),
+    }
+  }
+
+  return {
+    activePhase: normalizedStatus === "failed" ? null : normalizedPhase,
+    failedPhase: normalizedStatus === "failed" ? normalizedPhase : null,
+    completedPhases: new Set(allPhaseIds.slice(0, phaseIndex)),
+  }
+}
+
 export function filterVisibleArtifacts(
   artifacts: SessionArtifact[]
 ): SessionArtifact[] {
@@ -147,10 +189,6 @@ function artifactTypePriority(
 
 function normalizeFilterText(value: string): string {
   return value.trim().toLowerCase()
-}
-
-export function maxArtifactId(artifacts: SessionArtifact[]): number {
-  return artifacts.reduce((maxId, artifact) => Math.max(maxId, artifact.id), 0)
 }
 
 export function latestArtifactDate(

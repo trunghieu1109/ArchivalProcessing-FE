@@ -4,6 +4,8 @@ import test from "node:test"
 import {
   canNavigateDirectlyToMetadata,
   resolveExistingSessionWorkflowAction,
+  resolvePlanInputsReuploaded,
+  shouldAnalyzePlanInputsAfterDataUpload,
 } from "../src/pages/UploadPage.workflowPolicy.ts"
 
 const baseState = {
@@ -66,4 +68,42 @@ test("raw upload can auto-navigate only when PAPL/THBQ are absent", () => {
   assert.equal(canNavigateDirectlyToMetadata(true, false), false)
   assert.equal(canNavigateDirectlyToMetadata(false, true), false)
   assert.equal(canNavigateDirectlyToMetadata(true, true), false)
+})
+
+test("analyzes retention inputs after a supplemental ZIP upload succeeds", () => {
+  assert.equal(
+    shouldAnalyzePlanInputsAfterDataUpload({
+      dataUploadSucceeded: true,
+      planInputsReuploaded: true,
+    }),
+    true
+  )
+})
+
+test("uses the live cache when a retention upload completes during ZIP upload", () => {
+  assert.equal(
+    resolvePlanInputsReuploaded({
+      renderedState: false,
+      arrangementCached: false,
+      retentionCached: true,
+    }),
+    true
+  )
+})
+
+test("does not analyze after a ZIP-only or failed supplemental upload", () => {
+  assert.equal(
+    shouldAnalyzePlanInputsAfterDataUpload({
+      dataUploadSucceeded: true,
+      planInputsReuploaded: false,
+    }),
+    false
+  )
+  assert.equal(
+    shouldAnalyzePlanInputsAfterDataUpload({
+      dataUploadSucceeded: false,
+      planInputsReuploaded: true,
+    }),
+    false
+  )
 })

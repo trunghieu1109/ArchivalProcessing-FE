@@ -5,6 +5,7 @@ import type {
   DeleteSessionResponse,
   DossierBuildStrategy,
   DocumentNumberingMode,
+  DocumentNumberingStylePreset,
   EnqueuePlanAnalysisResponse,
   SessionDetailResponse,
   SessionListResponse,
@@ -121,6 +122,12 @@ export async function enqueuePlanAnalysis(
     retention_files?: string[]
     dossier_build_strategy?: DossierBuildStrategy
     document_numbering_mode?: DocumentNumberingMode
+    document_numbering_style_preset?: DocumentNumberingStylePreset
+    document_numbering_style_overrides?: {
+      font_size?: number
+      color?: string
+      opacity?: number
+    } | null
   }
 ): Promise<EnqueuePlanAnalysisResponse> {
   return requestJson<EnqueuePlanAnalysisResponse>(

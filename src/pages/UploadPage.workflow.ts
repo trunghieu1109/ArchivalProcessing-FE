@@ -12,7 +12,11 @@ import {
   planProgressMessageForPhase,
   wait,
 } from "./UploadPage.progress"
-import { resolveExistingSessionWorkflowAction } from "./UploadPage.workflowPolicy"
+import {
+  resolveExistingSessionWorkflowAction,
+  resolvePlanInputsReuploaded,
+  shouldAnalyzePlanInputsAfterDataUpload,
+} from "./UploadPage.workflowPolicy"
 
 export function createUploadPageWorkflowActions(context: Record<string, any>) {
   const {
@@ -25,7 +29,6 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     allDone,
     hasPlanReady,
     hasWorkingPlan,
-    planReanalysisReady,
     planReuploadState,
     dossierBuildStrategy,
     doc1Has,
@@ -54,6 +57,16 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     onZipUploadAccepted,
   } = context
 
+  const planNumberingConfigPayload = () => {
+    const overrides = cache.documentNumberingStyleOverrides
+    return {
+      document_numbering_mode: cache.documentNumberingMode,
+      document_numbering_style_preset: cache.documentNumberingStylePreset,
+      document_numbering_style_overrides:
+        Object.keys(overrides).length > 0 ? { ...overrides } : null,
+    }
+  }
+
   const resetPlanReuploadState = (updateView = true) => {
     cache.arrangementPlanReuploaded = false
     cache.retentionReuploaded = false
@@ -81,7 +94,22 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
       }
       return
     }
-    if (!includeStoredInputs && !planReanalysisReady) {
+    const currentPlanReuploadState = {
+      arrangement:
+        Boolean(planReuploadState.arrangement) ||
+        cache.arrangementPlanReuploaded,
+      retention:
+        Boolean(planReuploadState.retention) || cache.retentionReuploaded,
+    }
+    const currentPlanInputsReuploaded = resolvePlanInputsReuploaded({
+      renderedState: false,
+      arrangementCached: currentPlanReuploadState.arrangement,
+      retentionCached: currentPlanReuploadState.retention,
+    })
+    if (
+      !includeStoredInputs &&
+      !(existingSessionMode && currentPlanInputsReuploaded)
+    ) {
       if (isWorkflowActive()) {
         toast.error(
           "Vui lòng tải lại phương án chỉnh lý hoặc thời hạn bảo quản."
@@ -92,10 +120,10 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
 
     const analyzeArrangement = includeStoredInputs
       ? doc1Has
-      : planReuploadState.arrangement
+      : currentPlanReuploadState.arrangement
     const analyzeRetention = includeStoredInputs
       ? doc2Has
-      : planReuploadState.retention
+      : currentPlanReuploadState.retention
     const planFile = analyzeArrangement
       ? cache.arrangementPlanUpload?.local_cached_path
       : undefined
@@ -144,6 +172,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
           ? { retention_files: retentionFiles }
           : {}),
         dossier_build_strategy: dossierBuildStrategy,
+        ...planNumberingConfigPayload(),
       })
       syncPlanAnalysisJobId(queuedJob.job_id, isWorkflowActive())
       resetPlanReuploadState(isWorkflowActive())
@@ -235,10 +264,13 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
       pendingDataUpload?.kind === "folder"
         ? pendingDataUpload.completion
         : undefined
+    let supplementalDataUploadSucceeded = false
 
     if (existingSessionMode && pendingFolderCompletion) {
       try {
         await pendingFolderCompletion
+        if (!isWorkflowActive()) return
+        supplementalDataUploadSucceeded = true
       } catch (err) {
         if (isWorkflowActive()) {
           toast.error(
@@ -260,18 +292,46 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     if (existingSessionMode) {
       if (cache.draftZipFile) {
         const uploaded = await uploadPendingZipForExistingSession()
-        if (!uploaded) return
+        if (!uploaded || !isWorkflowActive()) return
+        supplementalDataUploadSucceeded = true
+      }
+
+      const currentPlanInputsReuploaded = resolvePlanInputsReuploaded({
+        renderedState: Boolean(planInputsReuploaded),
+        arrangementCached: cache.arrangementPlanReuploaded,
+        retentionCached: cache.retentionReuploaded,
+      })
+      if (
+        shouldAnalyzePlanInputsAfterDataUpload({
+          dataUploadSucceeded: supplementalDataUploadSucceeded,
+          planInputsReuploaded: currentPlanInputsReuploaded,
+        })
+      ) {
+        await handleAnalyzeExistingSessionPlan({ isWorkflowActive })
+        return
+      }
+      if (supplementalDataUploadSucceeded) {
+        if (pendingFolderCompletion && isWorkflowActive()) {
+          const currentSessionId =
+            routeSessionId ?? sessionId ?? cache.sessionId
+          if (currentSessionId) {
+            navigate(
+              `/sessions/${encodeURIComponent(currentSessionId)}/step/3?extract=1`
+            )
+          }
+        }
+        return
       }
 
       const action = resolveExistingSessionWorkflowAction({
         hasPlanInputs: doc1Has || doc2Has,
-        planInputsChanged: planInputsReuploaded,
+        planInputsChanged: currentPlanInputsReuploaded,
         planAnalysisRunning: planAnalysisState === "processing",
         hasPlanAnalysisResult: hasPlanReady || hasWorkingPlan,
       })
       if (action === "analyze_plan") {
         await handleAnalyzeExistingSessionPlan({
-          includeStoredInputs: !planInputsReuploaded,
+          includeStoredInputs: !currentPlanInputsReuploaded,
           isWorkflowActive,
         })
       } else if (action === "monitor_plan_analysis" || action === "view_plan") {
@@ -408,6 +468,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
           const queuedJob = await enqueuePlanAnalysis(currentSessionId, {
             retention_files: retentionFiles,
             dossier_build_strategy: dossierBuildStrategy,
+            ...planNumberingConfigPayload(),
           })
           syncPlanAnalysisJobId(queuedJob.job_id, isWorkflowActive())
           if (!isWorkflowActive()) return
@@ -451,6 +512,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
           ? { retention_files: retentionFiles }
           : {}),
         dossier_build_strategy: dossierBuildStrategy,
+        ...planNumberingConfigPayload(),
       })
       if (isWorkflowActive()) {
         setPlanCompletedPhases((previous: Set<string>) =>
