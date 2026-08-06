@@ -440,9 +440,8 @@ export function FinalizeArtifactsStep({
 
         const expectedJobId = activeFinalizeJobIdRef.current
         if (
-          expectedJobId !== null &&
-          status.job !== null &&
-          status.job.id < expectedJobId
+          expectedJobId === null ||
+          status.job?.id !== expectedJobId
         ) {
           scheduleNextPoll()
           return
