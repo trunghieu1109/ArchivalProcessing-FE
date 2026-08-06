@@ -416,6 +416,12 @@ function jobTypeLabel(jobType: string): string {
 }
 
 function deletionBlockerLabel(blocker: DocumentDeletionBlocker): string {
+  if (
+    blocker.code === "DOCUMENT_DELETION_LOCKED_AFTER_CLUSTERING" &&
+    blocker.message
+  ) {
+    return blocker.message
+  }
   if (blocker.type === "document_edit_lock") {
     const owner =
       blocker.owner?.name || blocker.owner?.email || blocker.owner?.user_id

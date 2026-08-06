@@ -43,6 +43,28 @@ export type DossierUpdateMode = "auto" | "manual"
 export type NumberingUpdateMode = DossierUpdateMode | "cascade"
 const METADATA_COUNT_CONFLICT_WARNING_ENABLED = true
 
+function formatRowNumberRanges(values: number[]): string {
+  const rowNumbers = [...new Set(values)]
+    .filter((value) => Number.isInteger(value))
+    .sort((left, right) => left - right)
+  if (!rowNumbers.length) return ""
+
+  const ranges: string[] = []
+  let rangeStart = rowNumbers[0]
+  let rangeEnd = rowNumbers[0]
+  for (const rowNumber of rowNumbers.slice(1)) {
+    if (rowNumber === rangeEnd + 1) {
+      rangeEnd = rowNumber
+      continue
+    }
+    ranges.push(rangeStart === rangeEnd ? `${rangeStart}` : `${rangeStart}–${rangeEnd}`)
+    rangeStart = rowNumber
+    rangeEnd = rowNumber
+  }
+  ranges.push(rangeStart === rangeEnd ? `${rangeStart}` : `${rangeStart}–${rangeEnd}`)
+  return ranges.join(", ")
+}
+
 export function NumberingStepHeader({
   modeLabel,
   documentNumberingMode,
@@ -626,7 +648,7 @@ export function MetadataCountConflictCard({
           const fieldLabel =
             conflict.field === "sheet_count" ? "Số tờ" : "Số trang"
           const rowLabel = conflict.row_numbers.length
-            ? `Dòng Excel ${conflict.row_numbers.join(", ")}`
+            ? `Dòng Excel ${formatRowNumberRanges(conflict.row_numbers)}`
             : "Dữ liệu từ Excel"
           return (
             <div

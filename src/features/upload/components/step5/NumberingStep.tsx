@@ -1559,7 +1559,9 @@ export function NumberingStep({
       {error ? (
         <div className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-          <span>{error}</span>
+          <span className="min-w-0 whitespace-pre-wrap break-words leading-relaxed">
+            {error}
+          </span>
         </div>
       ) : null}
       {complete && blankPageWarningDocumentCount > 0 ? (

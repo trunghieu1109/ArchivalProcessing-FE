@@ -23,7 +23,10 @@ import {
   DocumentDeletionDialog,
   type DocumentDeletionTarget,
 } from "../DocumentDeletionDialog"
-import { SHOW_DOCUMENT_DELETION } from "./temporaryFeatureVisibility"
+import {
+  SHOW_DOCUMENT_DELETION,
+  SHOW_DOCUMENT_DELETION_IN_DOSSIER_STEP,
+} from "./temporaryFeatureVisibility"
 import { useFinalResultPolling } from "./useFinalResultPolling"
 import { useFinalResultVersionActions } from "./useFinalResultVersionActions"
 import { useFinalResultTreeActions } from "./useFinalResultTreeActions"
@@ -237,6 +240,7 @@ export function FinalResult({
   const userRole = String(user?.role ?? "").trim().toLowerCase()
   const canDeleteDocuments =
     SHOW_DOCUMENT_DELETION &&
+    SHOW_DOCUMENT_DELETION_IN_DOSSIER_STEP &&
     (userRole === "admin" || userRole === "coordinator")
   const selectedPreviewEntry = useMemo(
     () =>
