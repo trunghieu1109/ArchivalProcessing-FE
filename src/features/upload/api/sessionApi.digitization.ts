@@ -23,6 +23,8 @@ import type {
   DigitizationBatch,
   DigitizationDocument,
   DigitizationStatusResponse,
+  DocumentDeletionOperationResponse,
+  DocumentDeletionPreviewResponse,
   DocumentArchiveDownload,
   DocumentNumberingMode,
   DocumentNumberingStylePreset,
@@ -31,6 +33,60 @@ import type {
   SessionDocumentResponse,
   UploadMode,
 } from "./sessionApi.types"
+
+export async function previewSessionDocumentDeletion(
+  sessionId: string,
+  documentIds: number[]
+): Promise<DocumentDeletionPreviewResponse> {
+  return requestJson<DocumentDeletionPreviewResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/documents/delete-preview`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_document_ids: documentIds }),
+    }
+  )
+}
+
+export async function deleteSessionDocuments(
+  sessionId: string,
+  documentIds: number[],
+  reason: string | null,
+  confirmed: boolean
+): Promise<DocumentDeletionOperationResponse> {
+  return requestJson<DocumentDeletionOperationResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/documents/delete`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session_document_ids: documentIds,
+        reason: reason?.trim() || null,
+        confirmed,
+      }),
+    }
+  )
+}
+
+export async function getSessionDocumentDeletion(
+  sessionId: string,
+  operationId: string
+): Promise<DocumentDeletionOperationResponse> {
+  return requestJson<DocumentDeletionOperationResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/document-deletions/${encodeURIComponent(operationId)}`,
+    { cache: "no-store" }
+  )
+}
+
+export async function retrySessionDocumentDeletion(
+  sessionId: string,
+  operationId: string
+): Promise<DocumentDeletionOperationResponse> {
+  return requestJson<DocumentDeletionOperationResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/document-deletions/${encodeURIComponent(operationId)}/retry`,
+    { method: "POST", headers: { "Content-Type": "application/json" } }
+  )
+}
 
 export async function startDigitization(
   sessionId: string,
@@ -380,6 +436,13 @@ export function digitizationToFolderStatus(
     const lightMetadata = buildDisplayMetadata(document)
     return {
       id: document.id,
+      lifecycle_status: document.lifecycle_status,
+      generation: document.generation,
+      delete_requested_at: document.delete_requested_at,
+      deleted_at: document.deleted_at,
+      deleted_by_name: document.deleted_by_name,
+      delete_error: document.delete_error,
+      preview_available: document.preview_available,
       ocr_batch_id: document.ocr_batch_id,
       document_id: document.document_id,
       data_path: document.data_path,

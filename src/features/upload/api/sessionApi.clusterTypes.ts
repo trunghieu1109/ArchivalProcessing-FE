@@ -67,6 +67,10 @@ export interface ClusterPlacement {
   document_numbering_mode?: DocumentNumberingMode | null
   dossier_suggestions?: SessionDossierSuggestion[] | null
   metadata: Record<string, unknown>
+  lifecycle_status?: "active" | "delete_pending" | "deleted" | string
+  deleted_at?: string | null
+  deleted_by_name?: string | null
+  preview_available?: boolean
 }
 
 export interface SessionDossierSuggestionRepresentativeDocument {
@@ -388,6 +392,10 @@ export interface ClusterVersionResponse extends ApiRevisionMetadata {
   affected_clusters: string[]
   batch_snapshot_count: number
   created_at: string
+  is_stale?: boolean
+  stale_reason?: string | null
+  source_document_set_revision?: number
+  current_document_set_revision?: number
   clusters?: SessionClusterSummary[]
 }
 

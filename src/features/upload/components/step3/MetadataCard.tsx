@@ -56,6 +56,7 @@ interface MetadataCardProps {
   onSelectionChange?: (checked: boolean, shiftKey: boolean) => void
   onSelect?: (expanded: boolean) => void
   onRetry?: () => void
+  onDelete?: () => void
   onApply: (
     dataPath: string,
     meta?: Record<string, unknown>
@@ -74,6 +75,7 @@ export function MetadataCard({
   onSelectionChange,
   onSelect,
   onRetry,
+  onDelete,
   onApply,
 }: MetadataCardProps) {
   const [expanded, setExpanded] = useState(false)
@@ -251,6 +253,21 @@ export function MetadataCard({
               )}
             </Button>
           )}
+          {!readOnly && onDelete ? (
+            <Button
+              variant="destructive"
+              size="sm"
+              title="Xóa tài liệu khỏi session"
+              onClick={(event) => {
+                event.stopPropagation()
+                onDelete()
+              }}
+              disabled={submitting || retrying}
+              className="size-6 shrink-0 rounded-full p-0"
+            >
+              <Trash2 className="size-3" />
+            </Button>
+          ) : null}
           <Button
             variant="ghost"
             size="sm"

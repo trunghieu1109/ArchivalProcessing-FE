@@ -17,6 +17,13 @@ export interface FolderPreviewRequest {
 
 export interface JobSummary {
   id: number
+  lifecycle_status?: "active" | "delete_pending" | "deleted" | string
+  generation?: number
+  delete_requested_at?: string | null
+  deleted_at?: string | null
+  deleted_by_name?: string | null
+  delete_error?: string | null
+  preview_available?: boolean
   ocr_batch_id?: number | null
   document_id: string
   data_path: string

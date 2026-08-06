@@ -84,6 +84,18 @@ export function DocumentRow({
   const [savingMetadata, setSavingMetadata] = useState(false)
   const [metadataDraft, setMetadataDraft] = useState<Record<string, string>>({})
   const clusterWarning = document.clusterWarning
+  const documentDeleted = document.lifecycleStatus === "deleted"
+  const documentDeletePending = document.lifecycleStatus === "delete_pending"
+  const documentInactive = documentDeleted || documentDeletePending
+  const deletedDetails = documentDeleted
+    ? [
+        "Đã xóa khỏi session",
+        document.deletedByName ? `bởi ${document.deletedByName}` : "",
+        document.deletedAt ? `lúc ${formatDeletedAt(document.deletedAt)}` : "",
+      ]
+        .filter(Boolean)
+        .join(" ")
+    : "Đang chờ xác nhận xóa từ Chỉnh Lý"
   const summary = metadataText(document.metadata, [
     "document_summary",
     "trich_yeu_van_ban",
@@ -152,13 +164,14 @@ export function DocumentRow({
   return (
     <div className="max-w-full min-w-0 overflow-hidden">
       <div
-        draggable
+        draggable={!documentInactive}
         onClick={() => {
           if (!dragging) {
             toggleExpanded()
           }
         }}
         onDragStart={() => {
+          if (documentInactive) return
           setDragging(true)
           onDragStart(document, clusterId)
         }}
@@ -177,10 +190,15 @@ export function DocumentRow({
         style={{ paddingLeft: `${8 + depth * indentStep}px` }}
         title="Nhấn để xem chi tiết tài liệu"
       >
-        <GripVertical className="mt-1.5 size-3 shrink-0 cursor-grab text-[#94A3B8]" />
+        <GripVertical
+          className={cn(
+            "mt-1.5 size-3 shrink-0 text-[#94A3B8]",
+            documentInactive ? "cursor-not-allowed opacity-40" : "cursor-grab"
+          )}
+        />
         <SelectionCheckbox
           checked={selectionChecked}
-          disabled={selectionDisabled}
+          disabled={selectionDisabled || documentInactive}
           ariaLabel={`Chọn tài liệu ${document.fileName}`}
           title="Chọn tài liệu để tạo hồ sơ mới"
           onChange={(checked) => {
@@ -197,6 +215,14 @@ export function DocumentRow({
             <span className="min-w-0 flex-1 truncate font-roboto text-xs font-medium text-[#334155]">
               {document.fileName}
             </span>
+            {documentInactive ? (
+              <span
+                title={deletedDetails}
+                className="shrink-0 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700"
+              >
+                {documentDeleted ? "Đã xóa khỏi session" : "Đang xóa"}
+              </span>
+            ) : null}
             {docType && (
               <span
                 className={cn(
@@ -304,8 +330,10 @@ export function DocumentRow({
           className="mt-0.5 shrink-0"
           onClick={(event) => {
             event.stopPropagation()
+            if (documentInactive || document.previewAvailable === false) return
             onSelectPreview(document)
           }}
+          disabled={documentInactive || document.previewAvailable === false}
           onDragStart={(event) => event.stopPropagation()}
         >
           <Eye className="size-3.5" />
@@ -392,7 +420,7 @@ export function DocumentRow({
                   variant="outline"
                   size="icon-sm"
                   title="Sửa metadata"
-                  disabled={document.sessionDocumentId === null}
+                  disabled={document.sessionDocumentId === null || documentInactive}
                   onClick={(event) => {
                     event.stopPropagation()
                     startMetadataEdit()
@@ -491,6 +519,11 @@ function EditablePreviewField({
       />
     </div>
   )
+}
+
+function formatDeletedAt(value: string): string {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("vi-VN")
 }
 
 export function Metric({ label, value }: { label: string; value: number }) {

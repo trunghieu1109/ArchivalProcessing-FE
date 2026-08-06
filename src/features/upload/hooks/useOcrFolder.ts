@@ -1256,13 +1256,15 @@ function digitizationStatusDocumentTotal(
     result.documents.length,
     result.summary?.total_documents ?? 0,
     statusCountTotal(result.summary?.status_counts),
-    ...result.batches.map((batch) =>
-      Math.max(
+    ...result.batches.map((batch) => {
+      const expectedTotal = Math.max(
         batch.total_files ?? 0,
-        batch.total_jobs ?? 0,
-        statusCountTotal(batch.status_counts)
+        batch.total_jobs ?? 0
       )
-    )
+      return expectedTotal > 0
+        ? expectedTotal
+        : statusCountTotal(batch.status_counts)
+    })
   )
 }
 
