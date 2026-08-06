@@ -5,7 +5,6 @@ import {
   getClusterGroupInformationTable,
   listClusterFeedback,
   patchSessionDossier,
-  suggestSelectedDocumentDossiers,
   type ClusterGroupInformationTableResponse,
   type ClusterVersionResponse,
   type SessionDossierSuggestion,
@@ -149,7 +148,6 @@ export function FinalResult({
   const displayedClusterVersionRef = useRef<ClusterVersionResponse | null>(null)
   const metadataItemsRef = useRef(metadataItems)
   const lastFeedbackRequestKeyRef = useRef("")
-  const dossierSuggestionsRequestRef = useRef(0)
   const [clusterJobMode, setClusterJobMode] = useState<ClusterJobMode>("new")
   const [clusterProgressPhase, setClusterProgressPhase] = useState<
     string | null
@@ -574,7 +572,6 @@ export function FinalResult({
     setSelectedGroupInfoNodeId(null)
     setGroupInformationTable(null)
     setGroupInformationError("")
-    dossierSuggestionsRequestRef.current += 1
     setSelectedDossierSuggestionsDocumentIds([])
     setSelectedDossierSuggestionCandidates(null)
     setDossierSuggestionsLoading(false)
@@ -740,7 +737,6 @@ export function FinalResult({
   )
 
   const handleCloseDossierSuggestions = useCallback(() => {
-    dossierSuggestionsRequestRef.current += 1
     setSelectedDossierSuggestionsDocumentIds([])
     setSelectedDossierSuggestionCandidates(null)
     setDossierSuggestionsLoading(false)
@@ -795,93 +791,12 @@ export function FinalResult({
         return
       }
 
-      if (!sessionId) {
-        setSelectedDossierSuggestionCandidates(null)
-        setDossierSuggestionsLoading(false)
-        setDossierSuggestionsRefreshing(false)
-        setDossierSuggestionsError("Chưa có phiên hồ sơ để lấy gợi ý.")
-        return
-      }
-
-      const requestId = dossierSuggestionsRequestRef.current + 1
-      dossierSuggestionsRequestRef.current = requestId
-      setDossierSuggestionsLoading(!forceRefresh)
-      setDossierSuggestionsRefreshing(forceRefresh)
       setSelectedDossierSuggestionCandidates(null)
-      void suggestSelectedDocumentDossiers(sessionId, {
-        session_document_ids: sessionDocumentIds,
-        cluster_version_id: displayedClusterVersionId ?? undefined,
-        force_refresh: forceRefresh,
-      })
-        .then((response) => {
-          if (dossierSuggestionsRequestRef.current !== requestId) {
-            return
-          }
-          const resultsBySessionDocumentId = new Map(
-            response.documents.map((item) => [item.session_document_id, item])
-          )
-          const missingSessionDocumentIds = sessionDocumentIds.filter(
-            (sessionDocumentId) =>
-              !resultsBySessionDocumentId.has(sessionDocumentId)
-          )
-          if (missingSessionDocumentIds.length > 0) {
-            throw new Error(
-              "Backend không trả về đủ gợi ý cho tài liệu đã chọn."
-            )
-          }
-
-          setGroups((previous) =>
-            previous.map((group) => ({
-              ...group,
-              documents: group.documents.map((item) =>
-                item.sessionDocumentId !== null &&
-                resultsBySessionDocumentId.has(item.sessionDocumentId)
-                  ? {
-                      ...item,
-                      dossierSuggestions:
-                        resultsBySessionDocumentId.get(item.sessionDocumentId)
-                          ?.dossier_suggestions ?? [],
-                    }
-                  : item
-              ),
-            }))
-          )
-
-          const suggestions =
-            response.dossier_suggestions ??
-            aggregateDossierSuggestionsFromResults(response.documents)
-          setSelectedDossierSuggestionCandidates(suggestions)
-          const suggestionCount = suggestions.length
-          if (forceRefresh) {
-            toast.success(
-              suggestionCount > 0
-                ? `Đã tải lại ${suggestionCount} gợi ý hồ sơ.`
-                : "Đã tính xong nhưng chưa tìm thấy hồ sơ phù hợp."
-            )
-          }
-        })
-        .catch((err) => {
-          if (dossierSuggestionsRequestRef.current !== requestId) {
-            return
-          }
-          setSelectedDossierSuggestionCandidates(null)
-          setDossierSuggestionsError(
-            err instanceof Error
-              ? err.message
-              : "Không thể tải danh sách hồ sơ được gợi ý."
-          )
-          if (forceRefresh) {
-            toast.error("Không thể tải lại gợi ý hồ sơ.")
-          }
-        })
-        .finally(() => {
-          if (dossierSuggestionsRequestRef.current === requestId) {
-            setDossierSuggestionsLoading(false)
-            setDossierSuggestionsRefreshing(false)
-          }
-        })
+      setDossierSuggestionsLoading(false)
+      setDossierSuggestionsRefreshing(false)
+      setDossierSuggestionsError("")
     },
-    [displayedClusterVersionId, sessionId]
+    []
   )
 
   const handleSelectDossierSuggestionsFromTree = useCallback(
@@ -1296,24 +1211,6 @@ function aggregateDossierSuggestionsFromDocuments(
       (document.dossierSuggestions ?? []).map((suggestion) => ({
         documentId: document.documentId,
         sessionDocumentId: document.sessionDocumentId ?? 0,
-        suggestion,
-      }))
-    )
-  )
-}
-
-function aggregateDossierSuggestionsFromResults(
-  documents: Array<{
-    session_document_id: number
-    document_id: string
-    dossier_suggestions: SessionDossierSuggestion[]
-  }>
-): SessionDossierSuggestion[] {
-  return aggregateDossierSuggestions(
-    documents.flatMap((document) =>
-      document.dossier_suggestions.map((suggestion) => ({
-        documentId: document.document_id,
-        sessionDocumentId: document.session_document_id,
         suggestion,
       }))
     )

@@ -8,6 +8,7 @@ import {
 import {
   AlertTriangle,
   ArrowRight,
+  Check,
   Eye,
   FileSpreadsheet,
   FileText,
@@ -26,6 +27,7 @@ import type {
   DocumentNumberingMode,
   DocumentNumberingStylePreset,
   MetadataBoxNumberImportResponse,
+  MetadataCountConflict,
   NumberingDocumentStatus,
   NumberingStyleOption,
 } from "@/features/upload/api/sessionApi"
@@ -405,6 +407,24 @@ export function NumberingMetadataPanel({
   const countConflicts = METADATA_COUNT_CONFLICT_WARNING_ENABLED
     ? metadataImportReview?.count_conflicts ?? []
     : []
+  const conflictDossierCount = new Set(
+    countConflicts.map((conflict) =>
+      String(
+        conflict.session_dossier_id ||
+          conflict.dossier_id ||
+          conflict.cluster_id
+      )
+    )
+  ).size
+  const rowConflictCount =
+    metadataImportReview?.row_conflict_count ??
+    Math.max(
+      0,
+      (metadataImportReview?.conflict_count ?? 0) -
+        (metadataImportReview?.count_conflict_count ?? 0)
+    )
+  const unresolvedRowCount =
+    (metadataImportReview?.unmatched_rows ?? 0) + rowConflictCount
 
   return (
     <div className="rounded-2xl border border-[#CBD5E1] bg-white px-5 py-4 shadow-sm">
@@ -461,24 +481,248 @@ export function NumberingMetadataPanel({
         </div>
       </div>
       {metadataImportReview && countConflicts.length > 0 ? (
-        <div className="mt-4 rounded-xl border border-[#FDE68A] bg-[#FFFBEB] px-3 py-3">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex min-w-0 items-start gap-3">
-              <AlertTriangle className="mt-0.5 size-5 shrink-0 text-[#B45309]" />
+        <div
+          role="alert"
+          className="mt-4 overflow-hidden rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-orange-50 shadow-[0_10px_30px_rgba(180,83,9,0.08)]"
+        >
+          <div className="flex flex-col gap-4 px-4 py-4 sm:px-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex min-w-0 items-start gap-3.5">
+              <div className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-amber-200 bg-white text-amber-700 shadow-sm">
+                <AlertTriangle className="size-5" />
+              </div>
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-[#78350F]">
-                  Cần xác nhận {countConflicts.length} hồ sơ
+                <p className="text-[11px] font-semibold tracking-[0.12em] text-amber-700 uppercase">
+                  Kiểm tra sau khi nhập
                 </p>
-                <p className="mt-1 text-sm text-[#92400E]">
-                  Tag cảnh báo đã được gắn vào hồ sơ có số không đồng nhất.
-                  Hệ thống đang giữ số cũ cho đến khi xác nhận
-                  dùng số mới. Xử lý từng hồ sơ trong danh sách bên dưới.
+                <h3 className="mt-1 text-base font-semibold text-[#422006]">
+                  Phát hiện {conflictDossierCount} hồ sơ có số lượng khác nhau
+                </h3>
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-[#92400E]">
+                  Số tờ hoặc số trang trong Excel khác dữ liệu hiện tại. Hệ
+                  thống chưa ghi đè các giá trị này để bạn có thể kiểm tra trước
+                  khi quyết định.
                 </p>
               </div>
+            </div>
+            <span className="inline-flex w-fit shrink-0 items-center gap-2 rounded-full border border-amber-200 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 shadow-sm">
+              <span className="size-2 rounded-full bg-amber-500" />
+              Đang giữ dữ liệu hiện tại
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 border-y border-amber-200/70 bg-white/65 sm:grid-cols-4">
+            <MetadataImportStat
+              label="Dòng trong file"
+              value={metadataImportReview.data_row_count}
+            />
+            <MetadataImportStat
+              label="Đã khớp hồ sơ"
+              value={metadataImportReview.matched_rows}
+            />
+            <MetadataImportStat
+              label="Đã cập nhật"
+              value={metadataImportReview.updated_dossiers}
+              tone="success"
+            />
+            <MetadataImportStat
+              label="Cần xác nhận"
+              value={conflictDossierCount}
+              tone="warning"
+            />
+          </div>
+
+          <div className="flex flex-col gap-2 px-4 py-3 text-xs text-[#78350F] sm:px-5 lg:flex-row lg:items-center lg:justify-between">
+            <p className="flex min-w-0 items-center gap-2">
+              <ArrowRight className="size-3.5 shrink-0" />
+              <span>
+                Xử lý từng hồ sơ trong danh sách PDF bên dưới; mỗi thay đổi đều
+                hiển thị giá trị cũ và giá trị từ Excel.
+              </span>
+            </p>
+            <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 text-amber-700">
+              <span className="font-medium">
+                Sheet: {metadataImportReview.sheet_name}
+              </span>
+              {unresolvedRowCount > 0 ? (
+                <span className="font-semibold">
+                  {unresolvedRowCount} dòng chưa xử lý
+                </span>
+              ) : null}
             </div>
           </div>
         </div>
       ) : null}
+    </div>
+  )
+}
+
+function MetadataImportStat({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string
+  value: number
+  tone?: "neutral" | "success" | "warning"
+}) {
+  return (
+    <div className="border-amber-100 px-4 py-3 not-first:border-l sm:px-5">
+      <p className="text-[11px] font-medium text-[#64748B]">{label}</p>
+      <p
+        className={cn(
+          "mt-0.5 text-lg font-semibold tabular-nums",
+          tone === "success"
+            ? "text-emerald-700"
+            : tone === "warning"
+              ? "text-amber-700"
+              : "text-[#0F172A]"
+        )}
+      >
+        {value}
+      </p>
+    </div>
+  )
+}
+
+export function MetadataCountConflictCard({
+  conflicts,
+  disabled,
+  onKeepCurrent,
+  onUseImported,
+}: {
+  conflicts: MetadataCountConflict[]
+  disabled: boolean
+  onKeepCurrent: () => void | Promise<unknown>
+  onUseImported: () => void | Promise<unknown>
+}) {
+  if (conflicts.length === 0) return null
+  const firstConflict = conflicts[0]
+
+  return (
+    <div className="mb-3 overflow-hidden rounded-xl border border-amber-200 bg-amber-50/60 shadow-[0_6px_18px_rgba(180,83,9,0.06)]">
+      <div className="flex flex-col gap-2 border-b border-amber-200/80 bg-white/80 px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+            <AlertTriangle className="size-4" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-[#78350F]">
+              Metadata cần xác nhận
+            </p>
+            <p className="mt-0.5 truncate text-[11px] text-[#92400E]">
+              {firstConflict.dossier_number
+                ? `Hồ sơ số ${firstConflict.dossier_number}`
+                : firstConflict.dossier_title || firstConflict.dossier_id}
+            </p>
+          </div>
+        </div>
+        <span className="inline-flex w-fit items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-800">
+          {conflicts.length} trường khác nhau
+        </span>
+      </div>
+
+      <div className="grid gap-2 p-3">
+        {conflicts.map((conflict) => {
+          const fieldLabel =
+            conflict.field === "sheet_count" ? "Số tờ" : "Số trang"
+          const rowLabel = conflict.row_numbers.length
+            ? `Dòng Excel ${conflict.row_numbers.join(", ")}`
+            : "Dữ liệu từ Excel"
+          return (
+            <div
+              key={`${conflict.field}:${conflict.old_value}:${conflict.new_value}`}
+              className="rounded-lg border border-amber-100 bg-white px-3 py-2.5"
+            >
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-[#334155]">
+                  {fieldLabel}
+                </p>
+                <span className="text-[10px] font-medium text-[#94A3B8]">
+                  {rowLabel}
+                </span>
+              </div>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-stretch gap-2">
+                <MetadataConflictValue
+                  label="Hiện tại"
+                  value={conflict.old_value}
+                />
+                <div className="flex items-center justify-center text-amber-500">
+                  <ArrowRight className="size-4" />
+                </div>
+                <MetadataConflictValue
+                  label="Trong Excel"
+                  value={conflict.new_value}
+                  highlighted
+                />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="flex flex-col gap-3 border-t border-amber-200/80 bg-white/70 px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-[11px] leading-5 text-[#92400E]">
+          Chọn giá trị sẽ dùng cho hồ sơ này.
+        </p>
+        <div className="grid shrink-0 grid-cols-1 gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => void onKeepCurrent()}
+            disabled={disabled}
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-50 disabled:pointer-events-none disabled:opacity-50"
+          >
+            <RotateCcw className="size-3.5" />
+            Giữ số hiện tại
+          </button>
+          <button
+            type="button"
+            onClick={() => void onUseImported()}
+            disabled={disabled}
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-[#0052FF] px-3 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#0046D8] disabled:pointer-events-none disabled:opacity-50"
+          >
+            <Check className="size-3.5" />
+            Dùng số từ Excel
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MetadataConflictValue({
+  label,
+  value,
+  highlighted = false,
+}: {
+  label: string
+  value: number
+  highlighted?: boolean
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-md border px-2.5 py-2",
+        highlighted
+          ? "border-blue-200 bg-blue-50/80"
+          : "border-[#E2E8F0] bg-[#F8FAFC]"
+      )}
+    >
+      <p
+        className={cn(
+          "text-[10px] font-medium",
+          highlighted ? "text-blue-600" : "text-[#64748B]"
+        )}
+      >
+        {label}
+      </p>
+      <p
+        className={cn(
+          "mt-0.5 text-base font-semibold tabular-nums",
+          highlighted ? "text-blue-700" : "text-[#0F172A]"
+        )}
+      >
+        {value}
+      </p>
     </div>
   )
 }
@@ -770,12 +1014,12 @@ export function NumberingDocumentRow({
         ? firstEntry?.page_number ?? 1
         : updateMode === "manual"
         ? parsedManualEntries.entries[0]?.page_number ?? 1
-        : parsedPageNumber,
+          : parsedPageNumber,
       updateMode === "auto"
         ? String(document.document_number_start || 1)
         : updateMode === "manual"
         ? parsedManualEntries.entries[0]?.label ?? ""
-        : trimmedNumberValue,
+          : trimmedNumberValue,
       updateMode,
       updateMode === "manual" ? parsedManualEntries.entries : undefined
     )

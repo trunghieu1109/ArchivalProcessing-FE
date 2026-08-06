@@ -102,12 +102,35 @@ export function responseTextErrorMessage(status: number, text: string): string {
   if (!text) return `API error ${status}`
   try {
     const payload = JSON.parse(text) as { detail?: unknown }
-    if (typeof payload.detail === "string") return payload.detail
-    if (payload.detail) return JSON.stringify(payload.detail)
+    const detailMessage = naturalDetailMessage(payload.detail)
+    if (detailMessage) return detailMessage
+    if (payload.detail) {
+      return `Yêu cầu không thể xử lý (lỗi ${status}). Vui lòng kiểm tra dữ liệu và thử lại.`
+    }
   } catch {
     return text
   }
   return text
+}
+
+function naturalDetailMessage(detail: unknown): string {
+  if (typeof detail === "string") return detail.trim()
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => naturalDetailMessage(item))
+      .filter(Boolean)
+      .join("\n")
+  }
+  if (!detail || typeof detail !== "object") return ""
+
+  const record = detail as Record<string, unknown>
+  if (typeof record.message === "string" && record.message.trim()) {
+    return record.message.trim()
+  }
+  if (typeof record.msg === "string" && record.msg.trim()) {
+    return record.msg.trim()
+  }
+  return ""
 }
 
 export function downloadFileName(contentDisposition: string | null): string {

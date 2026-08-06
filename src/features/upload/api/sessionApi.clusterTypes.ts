@@ -99,26 +99,6 @@ export interface SessionDossierSuggestion {
   document_count: number
 }
 
-export interface SelectedDocumentDossierSuggestionsResponse {
-  session_id: string
-  cluster_version_id: string
-  version_number: number
-  force_refresh: boolean
-  top_k: number
-  selected_document_count?: number
-  cached_document_count: number
-  computed_document_count: number
-  dossier_suggestions?: SessionDossierSuggestion[]
-  documents: Array<{
-    session_document_id: number
-    document_id: string
-    current_cluster_id: string
-    current_dossier_id: string
-    source: "cache" | "computed" | string
-    dossier_suggestions: SessionDossierSuggestion[]
-  }>
-}
-
 export interface DossierClassification {
   group_id: string | null
   group_name: string | null
