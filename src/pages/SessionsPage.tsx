@@ -8,15 +8,14 @@ import { useAuth } from "@/features/auth/lib/AuthContext"
 import { PaginationControls } from "@/features/upload/components/PaginationControls"
 import {
   assignSessionCoordinator,
+  collectSessionBackupUrls,
   deleteSession,
   getSession,
   listSessions,
+  type SessionBackupProgress,
   type SessionSummary,
 } from "@/features/upload/api/sessionApi"
-import {
-  SessionCard,
-  SummaryPill,
-} from "./SessionsPage.components"
+import { SessionCard, SummaryPill } from "./SessionsPage.components"
 import {
   analysisStatusesFromSessionDetail,
   chinhlyUserId,
@@ -53,10 +52,7 @@ async function loadAnalysisStatuses(
       }
     }
   }
-  const workerCount = Math.min(
-    SESSION_DETAIL_LOAD_CONCURRENCY,
-    sessions.length
-  )
+  const workerCount = Math.min(SESSION_DETAIL_LOAD_CONCURRENCY, sessions.length)
   await Promise.all(Array.from({ length: workerCount }, () => loadNext()))
 
   return fallbackStatuses
@@ -65,7 +61,9 @@ async function loadAnalysisStatuses(
 export function SessionsPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const isAdmin = normalizedRole(user?.role) === "admin"
+  const role = normalizedRole(user?.role)
+  const isAdmin = role === "admin"
+  const canBackup = role === "admin" || role === "coordinator"
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [sessionTotal, setSessionTotal] = useState(0)
   const [sessionPageIndex, setSessionPageIndex] = useState(0)
@@ -81,6 +79,9 @@ export function SessionsPage() {
   const [assigningSessionId, setAssigningSessionId] = useState<string | null>(
     null
   )
+  const [backupProgress, setBackupProgress] = useState<
+    (SessionBackupProgress & { sessionId: string }) | null
+  >(null)
   const loadRequestIdRef = useRef(0)
   const readyCount = useMemo(
     () => sessions.filter((session) => session.active_plan_version_id).length,
@@ -93,7 +94,10 @@ export function SessionsPage() {
   )
 
   const sessionOffset = sessionPageIndex * sessionPageSize
-  const sessionPageCount = Math.max(1, Math.ceil(sessionTotal / sessionPageSize))
+  const sessionPageCount = Math.max(
+    1,
+    Math.ceil(sessionTotal / sessionPageSize)
+  )
   const displayedPageIndex = Math.min(sessionPageIndex, sessionPageCount - 1)
   const sessionStartNumber =
     sessionTotal === 0 ? 0 : displayedPageIndex * sessionPageSize + 1
@@ -161,12 +165,7 @@ export function SessionsPage() {
     } finally {
       if (loadRequestIdRef.current === requestId) setLoading(false)
     }
-  }, [
-    isAdmin,
-    sessionOffset,
-    sessionPageIndex,
-    sessionPageSize,
-  ])
+  }, [isAdmin, sessionOffset, sessionPageIndex, sessionPageSize])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -253,6 +252,49 @@ export function SessionsPage() {
       )
     } finally {
       setAssigningSessionId(null)
+    }
+  }
+
+  const exportBackupUrls = async (session: SessionSummary) => {
+    setBackupProgress({
+      sessionId: session.session_id,
+      stage: "manifest",
+      processedDocuments: 0,
+      totalDocuments: session.document_count ?? 0,
+      batchNumber: 0,
+    })
+    try {
+      const result = await collectSessionBackupUrls(
+        session.session_id,
+        (progress) =>
+          setBackupProgress({ ...progress, sessionId: session.session_id })
+      )
+      const blob = new Blob([JSON.stringify(result, null, 2)], {
+        type: "application/json;charset=utf-8",
+      })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `${safeBackupFileName(session.session_id)}-backup-urls.json`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 0)
+      if (result.source_changed_during_export) {
+        toast.warning(
+          "Đã xuất JSON nhưng session có thay đổi trong lúc tổng hợp. Nên backup lại khi xử lý đã dừng."
+        )
+      } else {
+        toast.success(
+          "Đã xuất dữ liệu backup và URL PDF. Các URL tải có thời hạn."
+        )
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Không thể xuất dữ liệu backup."
+      )
+    } finally {
+      setBackupProgress(null)
     }
   }
 
@@ -345,6 +387,14 @@ export function SessionsPage() {
                 onOpen={() => openSession(session.session_id)}
                 onDelete={() => void removeSession(session)}
                 deleting={deletingSessionId === session.session_id}
+                canBackup={canBackup}
+                backupDisabled={Boolean(backupProgress)}
+                onBackup={() => void exportBackupUrls(session)}
+                backupProgress={
+                  backupProgress?.sessionId === session.session_id
+                    ? backupProgress
+                    : null
+                }
                 isAdmin={isAdmin}
                 coordinators={coordinators}
                 coordinator={coordinatorById.get(
@@ -397,5 +447,12 @@ export function SessionsPage() {
         )}
       </main>
     </div>
+  )
+}
+
+function safeBackupFileName(value: string): string {
+  return (
+    value.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[.-]+|[.-]+$/g, "") ||
+    "session"
   )
 }

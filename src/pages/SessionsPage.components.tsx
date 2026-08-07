@@ -5,6 +5,7 @@ import {
   Archive,
   ArrowRight,
   CheckCircle2,
+  Download,
   FileText,
   Layers3,
   Loader2,
@@ -16,7 +17,11 @@ import { motion } from "framer-motion"
 import { cn } from "@/shared/lib/utils"
 import type { ChinhlyUser } from "@/features/auth/api/authApi"
 import type { SessionSummary } from "@/features/upload/api/sessionApi"
-import { chinhlyUserId, type SessionAnalysisStatuses } from "./SessionsPage.utils"
+import type { SessionBackupProgress } from "@/features/upload/api/sessionApi"
+import {
+  chinhlyUserId,
+  type SessionAnalysisStatuses,
+} from "./SessionsPage.utils"
 
 export function SessionCard({
   session,
@@ -24,6 +29,10 @@ export function SessionCard({
   onOpen,
   onDelete,
   deleting,
+  canBackup,
+  backupDisabled,
+  onBackup,
+  backupProgress,
   isAdmin,
   coordinators,
   coordinator,
@@ -36,6 +45,10 @@ export function SessionCard({
   onOpen: () => void
   onDelete: () => void
   deleting: boolean
+  canBackup: boolean
+  backupDisabled: boolean
+  onBackup: () => void
+  backupProgress: SessionBackupProgress | null
   isAdmin: boolean
   coordinators: ChinhlyUser[]
   coordinator?: ChinhlyUser
@@ -97,7 +110,7 @@ export function SessionCard({
       tabIndex={0}
       onClick={onOpen}
       onKeyDown={handleKeyDown}
-      className="group flex min-h-56 cursor-pointer flex-col justify-between rounded-2xl border border-[#D8E1EC] bg-white p-5 text-left shadow-sm outline-none transition-all hover:-translate-y-1 hover:border-[#0052FF]/35 hover:shadow-[0_18px_42px_rgba(15,23,42,0.12)] focus-visible:border-[#0052FF] focus-visible:ring-2 focus-visible:ring-[#0052FF]/20"
+      className="group flex min-h-56 cursor-pointer flex-col justify-between rounded-2xl border border-[#D8E1EC] bg-white p-5 text-left shadow-sm transition-all outline-none hover:-translate-y-1 hover:border-[#0052FF]/35 hover:shadow-[0_18px_42px_rgba(15,23,42,0.12)] focus-visible:border-[#0052FF] focus-visible:ring-2 focus-visible:ring-[#0052FF]/20"
     >
       <div>
         <div className="flex items-start justify-between gap-3">
@@ -240,7 +253,27 @@ export function SessionCard({
           Mở phông
           <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
         </button>
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {canBackup && (
+            <button
+              type="button"
+              onClick={onBackup}
+              disabled={backupDisabled}
+              title="Xuất dữ liệu backup và URL tải; không tải nội dung PDF"
+              className="flex items-center justify-center gap-1.5 rounded-lg border border-[#B9CCF5] px-2.5 py-1 text-xs font-semibold text-[#0052FF] transition-colors hover:border-[#0052FF]/50 hover:bg-[#EAF1FF] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {backupProgress ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Download className="size-3.5" />
+              )}
+              {backupProgress
+                ? backupProgress.stage === "documents"
+                  ? `Backup ${backupProgress.processedDocuments}/${backupProgress.totalDocuments}`
+                  : "Đang backup"
+                : "Backup JSON"}
+            </button>
+          )}
           {isAdmin && (
             <button
               type="button"
