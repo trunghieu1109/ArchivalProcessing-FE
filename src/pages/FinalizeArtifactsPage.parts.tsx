@@ -88,7 +88,7 @@ export function FinalizeToolbar({
   metadataExportMode: MetadataExportMode
   onBack: () => void
   onRefreshArtifacts: () => void | Promise<unknown>
-  onStartFinalize: () => void | Promise<unknown>
+  onStartFinalize: (options: { force: boolean }) => void | Promise<unknown>
   onDownloadAll: () => void | Promise<unknown>
   onMetadataExportModeChange: (mode: MetadataExportMode) => void
 }) {
@@ -169,7 +169,7 @@ export function FinalizeToolbar({
           Làm mới
         </Button>
         <Button
-          onClick={() => void onStartFinalize()}
+          onClick={() => void onStartFinalize({ force: true })}
           disabled={finalizing || !sessionId}
           className="w-full bg-[#0052FF] text-white hover:bg-[#0047D6] lg:w-auto"
         >
@@ -262,7 +262,7 @@ export function FinalizeEmptyState({
 }: {
   finalizing: boolean
   sessionId: string | null | undefined
-  onStartFinalize: () => void | Promise<unknown>
+  onStartFinalize: (options: { force: boolean }) => void | Promise<unknown>
 }) {
   return (
     <div className="flex min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-[#CBD5E1] bg-white px-8 text-center shadow-sm">
@@ -278,7 +278,7 @@ export function FinalizeEmptyState({
       {!finalizing && (
         <Button
           className="mt-5"
-          onClick={() => void onStartFinalize()}
+          onClick={() => void onStartFinalize({ force: true })}
           disabled={!sessionId}
         >
           <Play data-icon="inline-start" />

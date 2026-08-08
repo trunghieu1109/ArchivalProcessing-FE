@@ -80,11 +80,13 @@ export function FinalizeArtifactsStep({
 }: FinalizeArtifactsStepProps) {
   const navigate = useNavigate()
   const autoStartHandled = useRef(false)
-  const activeFinalizeJobIdRef = useRef<number | null>(null)
 
   const [artifacts, setArtifacts] = useState<SessionArtifact[]>([])
   const [loading, setLoading] = useState(true)
   const [finalizing, setFinalizing] = useState(false)
+  const [activeFinalizeJobId, setActiveFinalizeJobId] = useState<number | null>(
+    null
+  )
   const [finalizeFailed, setFinalizeFailed] = useState(false)
   const [metadataExportMode, setMetadataExportMode] =
     useState<MetadataExportMode>("combined")
@@ -224,7 +226,7 @@ export function FinalizeArtifactsStep({
   )
 
   const startFinalize = useCallback(
-    async (options: { force?: boolean } = { force: true }) => {
+    async (options: { force?: boolean } = {}) => {
       if (!sessionId) {
         const message = "Chưa có session để tạo mục lục."
         setError(message)
@@ -235,6 +237,7 @@ export function FinalizeArtifactsStep({
         return
       }
 
+      setActiveFinalizeJobId(null)
       setFinalizing(true)
       setFinalizeFailed(false)
       setFailedPhase(null)
@@ -247,12 +250,10 @@ export function FinalizeArtifactsStep({
         const dispatch = await enqueueFinalizeArtifacts(sessionId, {
           created_by: "ui",
           metadata_export_mode: metadataExportMode,
-          force: options.force ?? true,
+          force: options.force ?? false,
         })
-        activeFinalizeJobIdRef.current = dispatch.job_id
-
         if (dispatch.status === "not_needed") {
-          activeFinalizeJobIdRef.current = null
+          setActiveFinalizeJobId(null)
           setFinalizing(false)
           setFinalizeFailed(false)
           setFailedPhase(null)
@@ -268,6 +269,13 @@ export function FinalizeArtifactsStep({
           onAutoStartHandled?.()
           return
         }
+
+        if (dispatch.job_id === null) {
+          throw new Error(
+            "Backend không trả về job ID cho yêu cầu tạo mục lục."
+          )
+        }
+        setActiveFinalizeJobId(dispatch.job_id)
 
         setProgressPhase("loading_data")
         setProgressMessage(
@@ -292,7 +300,7 @@ export function FinalizeArtifactsStep({
           err instanceof Error
             ? err.message
             : "Không thể gửi yêu cầu tạo mục lục."
-        activeFinalizeJobIdRef.current = null
+        setActiveFinalizeJobId(null)
         setFinalizing(false)
         setFinalizeFailed(true)
         setFailedPhase(null)
@@ -325,7 +333,7 @@ export function FinalizeArtifactsStep({
       .then((status) => {
         if (cancelled || !status.job) return
         if (status.active) {
-          activeFinalizeJobIdRef.current = status.job.id
+          setActiveFinalizeJobId(status.job.id)
           setFinalizeFailed(false)
           setError("")
           applyFinalizeStatus(status)
@@ -430,8 +438,9 @@ export function FinalizeArtifactsStep({
   }, [])
 
   useEffect(() => {
-    if (!finalizing || !sessionId) return
+    if (!finalizing || !sessionId || activeFinalizeJobId === null) return
     const currentSessionId = sessionId
+    const expectedJobId = activeFinalizeJobId
     let cancelled = false
     let timeoutId: number | undefined
     const startedAt = Date.now()
@@ -445,7 +454,7 @@ export function FinalizeArtifactsStep({
     }
 
     const stopWithFailure = (message: string, phase?: string | null) => {
-      activeFinalizeJobIdRef.current = null
+      setActiveFinalizeJobId(null)
       setFinalizing(false)
       setFinalizeFailed(true)
       setProgressPhase(null)
@@ -467,23 +476,20 @@ export function FinalizeArtifactsStep({
 
       let status: FinalizeArtifactStatusResponse
       try {
-        status = await getFinalizeArtifactsStatus(currentSessionId)
+        status = await getFinalizeArtifactsStatus(
+          currentSessionId,
+          expectedJobId
+        )
       } catch {
         scheduleNextPoll()
         return
       }
       if (cancelled) return
 
-      const expectedJobId = activeFinalizeJobIdRef.current
-      if (
-        status.job &&
-        expectedJobId !== null &&
-        status.job.id < expectedJobId
-      ) {
+      if (!status.job || status.job.id !== expectedJobId) {
         scheduleNextPoll()
         return
       }
-      if (status.job) activeFinalizeJobIdRef.current = status.job.id
 
       const viewState = applyFinalizeStatus(status)
       const jobStatus = String(status.job?.status ?? "").toLowerCase()
@@ -494,7 +500,7 @@ export function FinalizeArtifactsStep({
           scheduleNextPoll()
           return
         }
-        activeFinalizeJobIdRef.current = null
+        setActiveFinalizeJobId(null)
         setFinalizing(false)
         setFinalizeFailed(false)
         setFailedPhase(null)
@@ -537,7 +543,13 @@ export function FinalizeArtifactsStep({
       cancelled = true
       if (timeoutId !== undefined) window.clearTimeout(timeoutId)
     }
-  }, [applyFinalizeStatus, finalizing, refreshArtifacts, sessionId])
+  }, [
+    activeFinalizeJobId,
+    applyFinalizeStatus,
+    finalizing,
+    refreshArtifacts,
+    sessionId,
+  ])
 
   const handleDownloadAll = useCallback(async () => {
     if (!sessionId || visibleArtifacts.length === 0) return
