@@ -4,7 +4,12 @@ import test from "node:test"
 import {
   isPlanAnalysisEventForJob,
   normalizePlanProgressPhase,
+  planAnalysisFailureDomain,
+  planAnalysisFailureFromEvent,
+  planAnalysisFailureMessage,
   planAnalysisResultVersionId,
+  planAnalysisScopeForInputs,
+  planAnalysisTerminalState,
   shouldApplyPlanAnalysisResult,
 } from "../src/pages/UploadPage.progress.ts"
 
@@ -12,6 +17,85 @@ test("ánh xạ phase lập chỉ mục THBQ vào bước thời hạn bảo qu�
   assert.equal(
     normalizePlanProgressPhase("retention_indexing"),
     "retention_period"
+  )
+})
+
+test("recognizes failed and superseded plan analysis terminal events", () => {
+  assert.equal(planAnalysisTerminalState("job.failed"), "failed")
+  assert.equal(
+    planAnalysisTerminalState("plan.analysis.superseded"),
+    "superseded"
+  )
+  assert.equal(planAnalysisTerminalState("job.retrying"), null)
+})
+
+test("shows the backend plan analysis error", () => {
+  assert.equal(
+    planAnalysisFailureMessage(
+      { error: "Không tìm thấy nhóm phân loại." },
+      "Job failed"
+    ),
+    "Không tìm thấy nhóm phân loại."
+  )
+})
+
+test("builds a persistent failure state with exhausted retry details", () => {
+  assert.deepEqual(
+    planAnalysisFailureFromEvent(
+      {
+        error: "Không tìm thấy nhóm phân loại.",
+        retry_count: 3,
+        max_attempts: 3,
+      },
+      "Failed job analyze_plan.",
+      "classification_criteria",
+      "plan"
+    ),
+    {
+      message: "Không tìm thấy nhóm phân loại.",
+      retryCount: 3,
+      maxAttempts: 3,
+      failedPhase: "classification_criteria",
+      scope: "plan",
+    }
+  )
+})
+
+test("phân biệt scope PAPL, THBQ và combined từ input FE", () => {
+  assert.equal(
+    planAnalysisScopeForInputs({ analyzePlan: true, analyzeRetention: false }),
+    "plan"
+  )
+  assert.equal(
+    planAnalysisScopeForInputs({ analyzePlan: false, analyzeRetention: true }),
+    "retention"
+  )
+  assert.equal(
+    planAnalysisScopeForInputs({ analyzePlan: true, analyzeRetention: true }),
+    "combined"
+  )
+})
+
+test("gắn lỗi vào đúng phần PAPL hoặc THBQ", () => {
+  assert.equal(
+    planAnalysisFailureDomain({
+      message: "Retention failed",
+      retryCount: 3,
+      maxAttempts: 3,
+      failedPhase: "preparing_plan_file",
+      scope: "retention",
+    }),
+    "retention"
+  )
+  assert.equal(
+    planAnalysisFailureDomain({
+      message: "Combined failed while parsing retention",
+      retryCount: 3,
+      maxAttempts: 3,
+      failedPhase: "retention_period",
+      scope: "combined",
+    }),
+    "retention"
   )
 })
 

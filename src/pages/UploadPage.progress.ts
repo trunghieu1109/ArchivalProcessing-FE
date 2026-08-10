@@ -74,6 +74,85 @@ export function planAnalysisResultVersionId(
   return String(value).trim()
 }
 
+export type PlanAnalysisTerminalState = "failed" | "superseded" | null
+export type PlanAnalysisScope = "plan" | "retention" | "combined"
+export type PlanAnalysisDomain = "plan" | "retention"
+
+export interface PlanAnalysisFailure {
+  message: string
+  retryCount: number | null
+  maxAttempts: number | null
+  failedPhase: string | null
+  scope: PlanAnalysisScope | null
+}
+
+export function planAnalysisTerminalState(
+  eventType: unknown
+): PlanAnalysisTerminalState {
+  if (eventType === "job.failed") return "failed"
+  if (eventType === "plan.analysis.superseded") return "superseded"
+  return null
+}
+
+export function planAnalysisFailureMessage(
+  payload: Record<string, unknown> | null | undefined,
+  eventMessage?: string | null
+): string {
+  const error = payload?.error
+  if (typeof error === "string" && error.trim()) return error.trim()
+  if (typeof eventMessage === "string" && eventMessage.trim()) {
+    return eventMessage.trim()
+  }
+  return "Không thể phân tích phương án chỉnh lý. Vui lòng kiểm tra file và thử lại."
+}
+
+export function planAnalysisFailureFromEvent(
+  payload: Record<string, unknown> | null | undefined,
+  eventMessage?: string | null,
+  failedPhase?: string | null,
+  scope?: PlanAnalysisScope | null
+): PlanAnalysisFailure {
+  return {
+    message: planAnalysisFailureMessage(payload, eventMessage),
+    retryCount: optionalPositiveInteger(payload?.retry_count),
+    maxAttempts: optionalPositiveInteger(payload?.max_attempts),
+    failedPhase: failedPhase?.trim() || null,
+    scope: scope ?? null,
+  }
+}
+
+export function planAnalysisScopeForInputs({
+  analyzePlan,
+  analyzeRetention,
+}: {
+  analyzePlan: boolean
+  analyzeRetention: boolean
+}): PlanAnalysisScope | null {
+  if (analyzePlan && analyzeRetention) return "combined"
+  if (analyzePlan) return "plan"
+  if (analyzeRetention) return "retention"
+  return null
+}
+
+export function planAnalysisFailureDomain(
+  failure: PlanAnalysisFailure | null | undefined
+): PlanAnalysisDomain | null {
+  if (!failure) return null
+  if (failure.scope === "plan") return "plan"
+  if (failure.scope === "retention") return "retention"
+  return failure.failedPhase === "retention_period" ? "retention" : "plan"
+}
+
+function optionalPositiveInteger(value: unknown): number | null {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim()
+        ? Number(value)
+        : Number.NaN
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+}
+
 export function shouldApplyPlanAnalysisResult({
   currentPlanVersionId,
   nextPlanVersionId,

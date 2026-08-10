@@ -3,7 +3,9 @@ import { ArrowLeft, BadgeCheck, FileText, Home, PenLine } from "lucide-react"
 import { toast } from "sonner"
 import { FolderTree } from "@/features/upload/components/step2/FolderTree"
 import { RetentionAppendicesPanel } from "@/features/upload/components/step2/FolderTree.nodes"
+import { PlanReviewActions } from "@/features/upload/components/step2/PlanReviewActions"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
+import { PlanAnalysisFailureAlert } from "@/features/upload/components/PlanAnalysisFailureAlert"
 import { ProcessStep } from "@/features/upload/components/step3/ProcessStep"
 import { FinalResult } from "@/features/upload/components/step4/FinalResult"
 import { NumberingStep } from "@/features/upload/components/step5/NumberingStep"
@@ -13,8 +15,13 @@ import { SessionMetadataBar } from "@/features/upload/components/SessionMetadata
 import { cn } from "@/shared/lib/utils"
 import type { AppStep } from "@/features/upload/types"
 import { easeOut } from "./UploadPage.planUtils"
+import { planAnalysisFailureDomain } from "./UploadPage.progress"
 import { UploadPageHeader } from "./UploadPage.header"
 import { UploadPageStepOne } from "./UploadPage.step1"
+import {
+  hasArrangementPlanResult,
+  hasRetentionAnalysisResult,
+} from "./UploadPage.workflowPolicy"
 
 export function UploadPageView(props: Record<string, any>) {
   const {
@@ -46,11 +53,11 @@ export function UploadPageView(props: Record<string, any>) {
     doc2Has,
     zipHas,
     hasActivePlan,
-    hasAnalyzedArrangementPlan,
     doc1State,
     doc2State,
     zipState,
     planAnalyzing,
+    planAnalysisFailure,
     planProgressPhase,
     planCompletedPhases,
     planProgressMessage,
@@ -124,14 +131,16 @@ export function UploadPageView(props: Record<string, any>) {
     isWorkerUser,
     navigate,
   } = props
-  const hasAnalyzedPlan = Boolean(hasAnalyzedArrangementPlan)
-  const hasApprovedPlan = Boolean(hasActivePlan) && Boolean(activePlanVersionId)
+  const hasApprovedPlan =
+    Boolean(hasActivePlan) &&
+    Boolean(activePlanVersionId) &&
+    activeParsedPlan.groups.length > 0
   const hasActivePlanVersion =
     hasApprovedPlan && activeParsedPlan.groups.length > 0
-  const hasPlanReady =
-    hasAnalyzedPlan ||
-    hasApprovedPlan ||
-    (Boolean(planAnalyzing) && Boolean(workingPlanVersionId))
+  const hasPlanReady = hasArrangementPlanResult({
+    workingGroupCount: parsedPlan.groups.length,
+    activeGroupCount: activeParsedPlan.groups.length,
+  })
   const showActivePlanTab = planViewTab === "active"
   const draftIsActiveFallback =
     Boolean(activePlanVersionId) &&
@@ -150,10 +159,32 @@ export function UploadPageView(props: Record<string, any>) {
   const planProcessingMessage =
     planProgressMessage ||
     `${planProcessingTitle}. Kết quả sẽ tự hiển thị khi backend xử lý xong.`
-  const hasAnalyzedRetentionSchedule =
-    doc2Has &&
-    (parsedPlan.retention_appendices.length > 0 ||
-      parsedPlan.retention_sources.length > 0)
+  const hasAnalyzedRetentionSchedule = hasRetentionAnalysisResult({
+    appendixCount: parsedPlan.retention_appendices.length,
+    sourceCount: parsedPlan.retention_sources.length,
+  })
+  const failedDomain = planAnalysisFailureDomain(planAnalysisFailure)
+  const planFailure = failedDomain === "plan" ? planAnalysisFailure : null
+  const retentionFailure =
+    failedDomain === "retention" ? planAnalysisFailure : null
+  const planProcessing = planAnalyzing && doc1State === "processing"
+  const retentionProcessing = planAnalyzing && doc2State === "processing"
+  const planFailurePanel = planFailure ? (
+    <div className="flex flex-col gap-3">
+      <ProgressTimeline
+        phases={PLAN_PROGRESS_PHASES}
+        activePhase={null}
+        failedPhase={planFailure.failedPhase}
+        completedPhases={planCompletedPhases}
+        title="Phân tích phương án thất bại"
+        message="Job đã dừng sau khi thử lại nhưng vẫn không thành công."
+      />
+      <PlanAnalysisFailureAlert
+        failure={planFailure}
+        onBackToUpload={() => handlePlanStepNavigation(1)}
+      />
+    </div>
+  ) : null
   const goToMetadataStep = () => {
     const targetSessionId = sessionId ?? routeSessionId
     if (targetSessionId) {
@@ -239,6 +270,7 @@ export function UploadPageView(props: Record<string, any>) {
               currentSessionId={routeSessionId ?? sessionId ?? null}
               existingSessionMode={existingSessionMode}
               planAnalyzing={planAnalyzing}
+              planAnalysisFailure={planAnalysisFailure}
               planProgressMessage={planProgressMessage}
               PLAN_PROGRESS_PHASES={PLAN_PROGRESS_PHASES}
               planProgressPhase={planProgressPhase}
@@ -304,223 +336,8 @@ export function UploadPageView(props: Record<string, any>) {
               exit={{ opacity: 0, y: -16 }}
               transition={{ duration: 0.4, ease: easeOut }}
             >
-              {hasPlanReady ? (
-                <div className="flex flex-col gap-4">
-                  {planAnalyzing && (
-                    <ProgressTimeline
-                      phases={PLAN_PROGRESS_PHASES}
-                      activePhase={planProgressPhase}
-                      completedPhases={planCompletedPhases}
-                      title={planProcessingTitle}
-                      message={planProcessingMessage}
-                    />
-                  )}
-                  <div className="rounded-2xl border border-[#D8E1EC] bg-white p-3 shadow-sm sm:flex sm:items-center sm:justify-between sm:gap-5">
-                    <div className="px-1 pb-2 sm:pb-0">
-                      <p className="text-[11px] font-semibold text-[#64748B] uppercase">
-                        Phiên bản phương án
-                      </p>
-                      <p className="mt-1 text-xs text-[#94A3B8]">
-                        Chọn bản đã duyệt hoặc bản đang chỉnh sửa
-                      </p>
-                    </div>
-                    <div
-                      className="grid w-full grid-cols-2 gap-1 rounded-xl bg-[#F1F5F9] p-1 sm:w-auto sm:min-w-[430px]"
-                      role="tablist"
-                      aria-label="Chọn phiên bản phương án"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => setPlanViewTab("active")}
-                        role="tab"
-                        aria-selected={showActivePlanTab}
-                        className={cn(
-                          "flex min-h-14 items-center gap-2.5 rounded-lg px-3 py-2 text-left transition sm:px-4",
-                          showActivePlanTab
-                            ? "bg-white text-[#0F172A] shadow-sm ring-1 ring-[#D8E1EC]"
-                            : "text-[#64748B] hover:bg-white/70 hover:text-[#0F172A]"
-                        )}
-                      >
-                        <span
-                          className={cn(
-                            "flex size-8 shrink-0 items-center justify-center rounded-full",
-                            showActivePlanTab
-                              ? "bg-[#DCFCE7] text-[#15803D]"
-                              : "bg-white text-[#64748B]"
-                          )}
-                        >
-                          <BadgeCheck className="size-4" />
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block truncate text-sm font-semibold">
-                            Phương án đã được duyệt
-                          </span>
-                          <span className="mt-0.5 block text-[11px] font-medium text-[#94A3B8]">
-                            Đã duyệt gần nhất
-                          </span>
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setPlanViewTab("draft")}
-                        role="tab"
-                        aria-selected={!showActivePlanTab}
-                        className={cn(
-                          "flex min-h-14 items-center gap-2.5 rounded-lg px-3 py-2 text-left transition sm:px-4",
-                          !showActivePlanTab
-                            ? "bg-white text-[#0F172A] shadow-sm ring-1 ring-[#D8E1EC]"
-                            : "text-[#64748B] hover:bg-white/70 hover:text-[#0F172A]"
-                        )}
-                      >
-                        <span
-                          className={cn(
-                            "flex size-8 shrink-0 items-center justify-center rounded-full",
-                            !showActivePlanTab
-                              ? "bg-[#DBEAFE] text-[#1D4ED8]"
-                              : "bg-white text-[#64748B]"
-                          )}
-                        >
-                          <PenLine className="size-4" />
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block truncate text-sm font-semibold">
-                            Phương án nháp
-                          </span>
-                          <span className="mt-0.5 block text-[11px] font-medium text-[#94A3B8]">
-                            Bản đang chỉnh sửa
-                          </span>
-                        </span>
-                      </button>
-                    </div>
-                  </div>
-                  {showActivePlanTab ? (
-                    hasActivePlanVersion ? (
-                      <FolderTree
-                        tree={activeFolderTree}
-                        parsedPlan={activeParsedPlan}
-                        fondsName={sessionMetadata?.fonds_name}
-                        readOnly
-                        hasRetentionSchedule={doc2Has}
-                        dossierBuildStrategy={
-                          activePlanSettings.dossierBuildStrategy
-                        }
-                        onDossierBuildStrategyChange={() => undefined}
-                        documentNumberingMode={
-                          activePlanSettings.documentNumberingMode
-                        }
-                        onDocumentNumberingModeChange={() => undefined}
-                        documentNumberingStylePreset={
-                          activePlanSettings.documentNumberingStylePreset
-                        }
-                        documentNumberingStyleOverrides={
-                          activePlanSettings.documentNumberingStyleOverrides
-                        }
-                        onDocumentNumberingStylePresetChange={() => undefined}
-                        onDocumentNumberingStyleOverridesChange={() =>
-                          undefined
-                        }
-                        onFileRegisterConfigChange={() => undefined}
-                        onChange={() => undefined}
-                        onSaveTree={() => undefined}
-                        onCriteriaChange={() => undefined}
-                        onConfirm={handleConfirmPlan}
-                        onContinueToMetadata={handleContinueToExtractMetadata}
-                        confirming={confirmingPlan}
-                      />
-                    ) : (
-                      <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-white px-6 py-8 text-center shadow-sm">
-                        <FileText className="mx-auto size-9 text-[#94A3B8]" />
-                        <h2 className="mt-3 text-xl font-semibold text-[#0F172A]">
-                          {hasApprovedPlan
-                            ? "Không tải được nội dung phương án đã duyệt"
-                            : "Chưa có phương án đã duyệt"}
-                        </h2>
-                        <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[#64748B]">
-                          {hasApprovedPlan
-                            ? "Session đã có phiên bản phương án được duyệt, nhưng dữ liệu cây phân loại chưa được tải về. Hãy tải lại session; nếu vẫn còn lỗi, cần kiểm tra dữ liệu phiên bản active."
-                            : "Hãy duyệt phương án nháp trước khi lập hồ sơ."}
-                        </p>
-                      </div>
-                    )
-                  ) : (
-                    <>
-                      {planDraftDirty && (
-                        <div className="rounded-xl border border-[#FBBF24] bg-[#FFFBEB] px-4 py-3 text-sm font-medium text-[#92400E]">
-                          Bản draft hiện tại đang có sự thay đổi. Hãy lưu lại để
-                          tránh bị mất thông tin.
-                        </div>
-                      )}
-                      {hasPersistedDraft && (
-                        <div className="rounded-xl border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3 text-sm font-medium text-[#1E3A8A]">
-                          Bản draft đang khác so với bản active. Nhấn duyệt để
-                          ghi nhận những thay đổi.
-                        </div>
-                      )}
-                      {draftIsActiveFallback &&
-                        !planDraftDirty &&
-                        !hasPersistedDraft && (
-                          <div className="rounded-xl border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3 text-sm text-[#1E3A8A]">
-                            Chưa có draft riêng. Màn hình đang dùng bản active
-                            gần nhất làm nền chỉnh sửa.
-                          </div>
-                        )}
-                      {false &&
-                        (draftIsActiveFallback ||
-                          hasPersistedDraft ||
-                          planDraftDirty) && (
-                          <div className="rounded-xl border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3 text-sm text-[#1E3A8A]">
-                            {planDraftDirty
-                              ? draftIsActiveFallback
-                                ? "Chưa có draft riêng trên hệ thống. Các thay đổi đang được lưu tạm trên trình duyệt và sẽ tạo draft mới khi bạn rời màn hình hoặc xác nhận phương án."
-                                : "Các thay đổi đang được lưu tạm trên trình duyệt và sẽ tạo draft mới khi bạn rời màn hình hoặc xác nhận phương án."
-                              : hasPersistedDraft
-                                ? "Đây là bản nháp chưa được duyệt. Bạn có thể tiếp tục chỉnh sửa hoặc xác nhận phương án."
-                                : "Chưa có draft riêng. Màn hình đang dùng bản active gần nhất làm nền chỉnh sửa."}
-                          </div>
-                        )}
-                      <FolderTree
-                        tree={folderTree}
-                        parsedPlan={parsedPlan}
-                        fondsName={sessionMetadata?.fonds_name}
-                        readOnly={false}
-                        hasRetentionSchedule={doc2Has}
-                        dossierBuildStrategy={dossierBuildStrategy}
-                        onDossierBuildStrategyChange={
-                          selectDossierBuildStrategy
-                        }
-                        documentNumberingMode={documentNumberingMode}
-                        onDocumentNumberingModeChange={
-                          selectDocumentNumberingModeDraft
-                        }
-                        documentNumberingStylePreset={
-                          documentNumberingStylePreset
-                        }
-                        documentNumberingStyleOverrides={
-                          documentNumberingStyleOverrides
-                        }
-                        onDocumentNumberingStylePresetChange={
-                          selectDocumentNumberingStylePreset
-                        }
-                        onDocumentNumberingStyleOverridesChange={
-                          selectDocumentNumberingStyleOverrides
-                        }
-                        onFileRegisterConfigChange={saveFileRegisterConfig}
-                        onChange={syncFolderTree}
-                        onSaveTree={saveFolderTree}
-                        onCriteriaChange={savePlanCriterias}
-                        onSaveDraft={handleSaveDraft}
-                        onConfirm={handleConfirmPlan}
-                        onContinueToMetadata={handleContinueToExtractMetadata}
-                        savingDraft={savingPlanDraft}
-                        confirming={confirmingPlan}
-                        planDraftDirty={planDraftDirty}
-                        draftDiffersActive={hasPersistedDraft}
-                      />
-                    </>
-                  )}
-                </div>
-              ) : planAnalyzing ? (
-                <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-4">
+                {planAnalyzing && !planAnalysisFailure && (
                   <ProgressTimeline
                     phases={PLAN_PROGRESS_PHASES}
                     activePhase={planProgressPhase}
@@ -528,61 +345,333 @@ export function UploadPageView(props: Record<string, any>) {
                     title={planProcessingTitle}
                     message={planProcessingMessage}
                   />
-                  <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-white px-6 py-8 text-center shadow-sm">
-                    <FileText className="mx-auto size-9 text-[#94A3B8]" />
-                    <h2 className="mt-3 text-xl font-semibold text-[#0F172A]">
-                      {planProcessingTitle}
-                    </h2>
-                    <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[#64748B]">
-                      Hệ thống đã nhận file và đang chờ kết quả phân tích. Khi
-                      job hoàn tất, cây phương án hoặc thời hạn bảo quản sẽ tự
-                      cập nhật tại màn hình này.
-                    </p>
-                    {zipHas && (
-                      <button
-                        type="button"
-                        onClick={goToMetadataStep}
-                        className="mt-5 rounded-xl bg-[#0052FF] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0047DB]"
-                      >
-                        Đi tới extract metadata
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-white px-6 py-8 text-center shadow-sm">
-                  <FileText className="mx-auto size-9 text-[#94A3B8]" />
-                  <h2 className="mt-3 text-xl font-semibold text-[#0F172A]">
-                    {hasAnalyzedRetentionSchedule
-                      ? "Đã phân tích thời hạn bảo quản"
-                      : "Chưa có phương án chỉnh lý"}
-                  </h2>
-                  <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[#64748B]">
-                    {hasAnalyzedRetentionSchedule
-                      ? "Kết quả thời hạn bảo quản đã sẵn sàng. Bạn vẫn có thể upload phương án chỉnh lý ở Step 1 để xem cây phân loại."
-                      : "Hãy upload phương án chỉnh lý ở Step 1 để xem cây phân loại và tiêu chí phân tích. Các phần dữ liệu khác vẫn có thể xử lý độc lập."}
-                  </p>
-                  {(parsedPlan.retention_appendices.length > 0 ||
-                    parsedPlan.retention_sources.length > 0) && (
-                    <div className="mx-auto mt-6 max-w-4xl text-left">
-                      <RetentionAppendicesPanel
-                        appendices={parsedPlan.retention_appendices}
-                        sources={parsedPlan.retention_sources}
-                        hasRetentionSchedule={doc2Has}
+                )}
+                <section className="flex flex-col gap-4">
+                  {hasPlanReady ? (
+                    <div className="flex flex-col gap-4">
+                      {planFailure && planFailurePanel}
+                      <div className="rounded-2xl border border-[#D8E1EC] bg-white p-3 shadow-sm sm:flex sm:items-center sm:justify-between sm:gap-5">
+                        <div className="px-1 pb-2 sm:pb-0">
+                          <p className="text-[11px] font-semibold text-[#64748B] uppercase">
+                            Phiên bản phương án
+                          </p>
+                          <p className="mt-1 text-xs text-[#94A3B8]">
+                            Chọn bản đã duyệt hoặc bản đang chỉnh sửa
+                          </p>
+                        </div>
+                        <div
+                          className="grid w-full grid-cols-2 gap-1 rounded-xl bg-[#F1F5F9] p-1 sm:w-auto sm:min-w-[430px]"
+                          role="tablist"
+                          aria-label="Chọn phiên bản phương án"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setPlanViewTab("active")}
+                            role="tab"
+                            aria-selected={showActivePlanTab}
+                            className={cn(
+                              "flex min-h-14 items-center gap-2.5 rounded-lg px-3 py-2 text-left transition sm:px-4",
+                              showActivePlanTab
+                                ? "bg-white text-[#0F172A] shadow-sm ring-1 ring-[#D8E1EC]"
+                                : "text-[#64748B] hover:bg-white/70 hover:text-[#0F172A]"
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                "flex size-8 shrink-0 items-center justify-center rounded-full",
+                                showActivePlanTab
+                                  ? "bg-[#DCFCE7] text-[#15803D]"
+                                  : "bg-white text-[#64748B]"
+                              )}
+                            >
+                              <BadgeCheck className="size-4" />
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-semibold">
+                                Phương án đã được duyệt
+                              </span>
+                              <span className="mt-0.5 block text-[11px] font-medium text-[#94A3B8]">
+                                Đã duyệt gần nhất
+                              </span>
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPlanViewTab("draft")}
+                            role="tab"
+                            aria-selected={!showActivePlanTab}
+                            className={cn(
+                              "flex min-h-14 items-center gap-2.5 rounded-lg px-3 py-2 text-left transition sm:px-4",
+                              !showActivePlanTab
+                                ? "bg-white text-[#0F172A] shadow-sm ring-1 ring-[#D8E1EC]"
+                                : "text-[#64748B] hover:bg-white/70 hover:text-[#0F172A]"
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                "flex size-8 shrink-0 items-center justify-center rounded-full",
+                                !showActivePlanTab
+                                  ? "bg-[#DBEAFE] text-[#1D4ED8]"
+                                  : "bg-white text-[#64748B]"
+                              )}
+                            >
+                              <PenLine className="size-4" />
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-semibold">
+                                Phương án nháp
+                              </span>
+                              <span className="mt-0.5 block text-[11px] font-medium text-[#94A3B8]">
+                                Bản đang chỉnh sửa
+                              </span>
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+                      {showActivePlanTab ? (
+                        hasActivePlanVersion ? (
+                          <FolderTree
+                            tree={activeFolderTree}
+                            parsedPlan={activeParsedPlan}
+                            fondsName={sessionMetadata?.fonds_name}
+                            readOnly
+                            hasRetentionSchedule={doc2Has}
+                            showRetentionSection={false}
+                            showActions={false}
+                            dossierBuildStrategy={
+                              activePlanSettings.dossierBuildStrategy
+                            }
+                            onDossierBuildStrategyChange={() => undefined}
+                            documentNumberingMode={
+                              activePlanSettings.documentNumberingMode
+                            }
+                            onDocumentNumberingModeChange={() => undefined}
+                            documentNumberingStylePreset={
+                              activePlanSettings.documentNumberingStylePreset
+                            }
+                            documentNumberingStyleOverrides={
+                              activePlanSettings.documentNumberingStyleOverrides
+                            }
+                            onDocumentNumberingStylePresetChange={() =>
+                              undefined
+                            }
+                            onDocumentNumberingStyleOverridesChange={() =>
+                              undefined
+                            }
+                            onFileRegisterConfigChange={() => undefined}
+                            onChange={() => undefined}
+                            onSaveTree={() => undefined}
+                            onCriteriaChange={() => undefined}
+                            onConfirm={handleConfirmPlan}
+                            onContinueToMetadata={
+                              handleContinueToExtractMetadata
+                            }
+                            confirming={confirmingPlan}
+                          />
+                        ) : (
+                          <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-white px-6 py-8 text-center shadow-sm">
+                            <FileText className="mx-auto size-9 text-[#94A3B8]" />
+                            <h2 className="mt-3 text-xl font-semibold text-[#0F172A]">
+                              {hasApprovedPlan
+                                ? "Không tải được nội dung phương án đã duyệt"
+                                : "Chưa có phương án đã duyệt"}
+                            </h2>
+                            <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[#64748B]">
+                              {hasApprovedPlan
+                                ? "Session đã có phiên bản phương án được duyệt, nhưng dữ liệu cây phân loại chưa được tải về. Hãy tải lại session; nếu vẫn còn lỗi, cần kiểm tra dữ liệu phiên bản active."
+                                : "Hãy duyệt phương án nháp trước khi lập hồ sơ."}
+                            </p>
+                          </div>
+                        )
+                      ) : (
+                        <>
+                          {planDraftDirty && (
+                            <div className="rounded-xl border border-[#FBBF24] bg-[#FFFBEB] px-4 py-3 text-sm font-medium text-[#92400E]">
+                              Bản draft hiện tại đang có sự thay đổi. Hãy lưu
+                              lại để tránh bị mất thông tin.
+                            </div>
+                          )}
+                          {hasPersistedDraft && (
+                            <div className="rounded-xl border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3 text-sm font-medium text-[#1E3A8A]">
+                              Bản draft đang khác so với bản active. Nhấn duyệt
+                              để ghi nhận những thay đổi.
+                            </div>
+                          )}
+                          {draftIsActiveFallback &&
+                            !planDraftDirty &&
+                            !hasPersistedDraft && (
+                              <div className="rounded-xl border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3 text-sm text-[#1E3A8A]">
+                                Chưa có draft riêng. Màn hình đang dùng bản
+                                active gần nhất làm nền chỉnh sửa.
+                              </div>
+                            )}
+                          {false &&
+                            (draftIsActiveFallback ||
+                              hasPersistedDraft ||
+                              planDraftDirty) && (
+                              <div className="rounded-xl border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3 text-sm text-[#1E3A8A]">
+                                {planDraftDirty
+                                  ? draftIsActiveFallback
+                                    ? "Chưa có draft riêng trên hệ thống. Các thay đổi đang được lưu tạm trên trình duyệt và sẽ tạo draft mới khi bạn rời màn hình hoặc xác nhận phương án."
+                                    : "Các thay đổi đang được lưu tạm trên trình duyệt và sẽ tạo draft mới khi bạn rời màn hình hoặc xác nhận phương án."
+                                  : hasPersistedDraft
+                                    ? "Đây là bản nháp chưa được duyệt. Bạn có thể tiếp tục chỉnh sửa hoặc xác nhận phương án."
+                                    : "Chưa có draft riêng. Màn hình đang dùng bản active gần nhất làm nền chỉnh sửa."}
+                              </div>
+                            )}
+                          <FolderTree
+                            tree={folderTree}
+                            parsedPlan={parsedPlan}
+                            fondsName={sessionMetadata?.fonds_name}
+                            readOnly={false}
+                            hasRetentionSchedule={doc2Has}
+                            showRetentionSection={false}
+                            showActions={false}
+                            dossierBuildStrategy={dossierBuildStrategy}
+                            onDossierBuildStrategyChange={
+                              selectDossierBuildStrategy
+                            }
+                            documentNumberingMode={documentNumberingMode}
+                            onDocumentNumberingModeChange={
+                              selectDocumentNumberingModeDraft
+                            }
+                            documentNumberingStylePreset={
+                              documentNumberingStylePreset
+                            }
+                            documentNumberingStyleOverrides={
+                              documentNumberingStyleOverrides
+                            }
+                            onDocumentNumberingStylePresetChange={
+                              selectDocumentNumberingStylePreset
+                            }
+                            onDocumentNumberingStyleOverridesChange={
+                              selectDocumentNumberingStyleOverrides
+                            }
+                            onFileRegisterConfigChange={saveFileRegisterConfig}
+                            onChange={syncFolderTree}
+                            onSaveTree={saveFolderTree}
+                            onCriteriaChange={savePlanCriterias}
+                            onSaveDraft={handleSaveDraft}
+                            onConfirm={handleConfirmPlan}
+                            onContinueToMetadata={
+                              handleContinueToExtractMetadata
+                            }
+                            savingDraft={savingPlanDraft}
+                            confirming={confirmingPlan}
+                            planDraftDirty={planDraftDirty}
+                            draftDiffersActive={hasPersistedDraft}
+                          />
+                        </>
+                      )}
+                    </div>
+                  ) : planFailure ? (
+                    planFailurePanel
+                  ) : planProcessing ? (
+                    <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-white px-6 py-8 text-center shadow-sm">
+                      <FileText className="mx-auto size-9 text-[#94A3B8]" />
+                      <h2 className="mt-3 text-xl font-semibold text-[#0F172A]">
+                        {planProcessingTitle}
+                      </h2>
+                      <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[#64748B]">
+                        Hệ thống đã nhận file PAPL và đang chờ kết quả phân
+                        tích. Khi job hoàn tất, cây phương án sẽ tự cập nhật tại
+                        phần này.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-white px-6 py-8 text-center shadow-sm">
+                      <FileText className="mx-auto size-9 text-[#94A3B8]" />
+                      <h2 className="mt-3 text-xl font-semibold text-[#0F172A]">
+                        Chưa có phương án phân loại
+                      </h2>
+                      <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[#64748B]">
+                        {doc1Has
+                          ? "File PAPL đã được upload nhưng chưa có cây phân loại hợp lệ. Bạn có thể upload lại PAPL ở Step 1."
+                          : "Hãy upload PAPL ở Step 1 để xem cây phân loại và tiêu chí phân tích."}
+                      </p>
+                    </div>
+                  )}
+                </section>
+
+                <section className="flex flex-col gap-4">
+                  {retentionFailure && (
+                    <div className="flex flex-col gap-3">
+                      <ProgressTimeline
+                        phases={PLAN_PROGRESS_PHASES}
+                        activePhase={null}
+                        failedPhase={retentionFailure.failedPhase}
+                        completedPhases={planCompletedPhases}
+                        title="Phân tích thời hạn bảo quản thất bại"
+                        message="Job THBQ đã dừng sau khi thử lại nhưng vẫn không thành công."
+                      />
+                      <PlanAnalysisFailureAlert
+                        failure={retentionFailure}
+                        onBackToUpload={() => handlePlanStepNavigation(1)}
                       />
                     </div>
                   )}
-                  {zipHas && (
+
+                  {hasAnalyzedRetentionSchedule ? (
+                    <RetentionAppendicesPanel
+                      appendices={parsedPlan.retention_appendices}
+                      sources={parsedPlan.retention_sources}
+                      hasRetentionSchedule={doc2Has}
+                    />
+                  ) : (
+                    !retentionProcessing &&
+                    !retentionFailure && (
+                      <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-white px-6 py-7 text-center shadow-sm">
+                        <FileText className="mx-auto size-8 text-[#94A3B8]" />
+                        <h3 className="mt-3 text-base font-semibold text-[#0F172A]">
+                          {doc2Has
+                            ? "Chưa có kết quả thời hạn bảo quản"
+                            : "Chưa có thời hạn bảo quản"}
+                        </h3>
+                        <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[#64748B]">
+                          {doc2Has
+                            ? "File THBQ đã được upload nhưng chưa có phụ lục hoặc nguồn nào được phân tích thành công."
+                            : "Hãy upload THBQ ở Step 1 để phân tích phụ lục và nguồn thời hạn bảo quản."}
+                        </p>
+                      </div>
+                    )
+                  )}
+                </section>
+
+                {hasPlanReady &&
+                  (!showActivePlanTab || hasActivePlanVersion) && (
+                    <PlanReviewActions
+                      readOnly={showActivePlanTab}
+                      treeLength={
+                        showActivePlanTab
+                          ? activeFolderTree.length
+                          : folderTree.length
+                      }
+                      onSaveDraft={
+                        showActivePlanTab ? undefined : handleSaveDraft
+                      }
+                      onConfirm={handleConfirmPlan}
+                      onContinueToMetadata={handleContinueToExtractMetadata}
+                      savingDraft={savingPlanDraft}
+                      confirming={confirmingPlan}
+                      planDraftDirty={planDraftDirty}
+                      hasRetentionSchedule={
+                        doc2Has || hasAnalyzedRetentionSchedule
+                      }
+                    />
+                  )}
+
+                {zipHas && !hasPlanReady && (
+                  <div className="text-center">
                     <button
                       type="button"
                       onClick={goToMetadataStep}
-                      className="mt-5 rounded-xl bg-[#0052FF] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0047DB]"
+                      className="rounded-xl bg-[#0052FF] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0047DB]"
                     >
                       Đi tới extract metadata
                     </button>
-                  )}
-                </div>
-              )}
+                  </div>
+                )}
+              </div>
             </motion.div>
           )}
 

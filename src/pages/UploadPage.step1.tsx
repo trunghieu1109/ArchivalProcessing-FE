@@ -8,12 +8,14 @@ import {
   Play,
 } from "lucide-react"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
+import { PlanAnalysisFailureAlert } from "@/features/upload/components/PlanAnalysisFailureAlert"
 import { DocxSection } from "@/features/upload/components/step1/DocxSection"
 import { ZipSection } from "@/features/upload/components/step1/ZipSection"
 import { cn } from "@/shared/lib/utils"
 import type { UploadMode } from "@/features/upload/api/sessionApi"
 import type { SessionMetadataValues } from "@/features/upload/components/SessionMetadataBar"
 import { easeOut } from "./UploadPage.planUtils"
+import { planAnalysisFailureDomain } from "./UploadPage.progress"
 import {
   canNavigateDirectlyToMetadata,
   planWorkflowActionLabel,
@@ -24,6 +26,7 @@ export function UploadPageStepOne(props: Record<string, any>) {
     currentSessionId,
     existingSessionMode,
     planAnalyzing,
+    planAnalysisFailure,
     planProgressMessage,
     PLAN_PROGRESS_PHASES,
     planProgressPhase,
@@ -112,6 +115,11 @@ export function UploadPageStepOne(props: Record<string, any>) {
     (planReuploadState?.retention && !planReuploadState?.arrangement)
       ? "Phân tích thời hạn bảo quản"
       : "Phân tích phương án"
+  const failureDomain = planAnalysisFailureDomain(planAnalysisFailure)
+  const failureTitle =
+    failureDomain === "retention"
+      ? "Phân tích thời hạn bảo quản thất bại"
+      : "Phân tích phương án phân loại thất bại"
   const handleUploadModeSelect = (mode: UploadMode) => {
     if (mode === "overwrite" && uploadMode !== "overwrite") {
       const confirmed = window.confirm(
@@ -228,16 +236,31 @@ export function UploadPageStepOne(props: Record<string, any>) {
         </div>
       )}
 
-      {(planAnalyzing || planProgressMessage) && (
-        <ProgressTimeline
-          phases={PLAN_PROGRESS_PHASES}
-          activePhase={planProgressPhase}
-          completedPhases={planCompletedPhases}
-          title={progressTitle}
-          message={
-            planProgressMessage || "Backend đang phân tích phương án chỉnh lý."
-          }
-        />
+      {planAnalysisFailure ? (
+        <div className="flex flex-col gap-3">
+          <ProgressTimeline
+            phases={PLAN_PROGRESS_PHASES}
+            activePhase={null}
+            failedPhase={planAnalysisFailure.failedPhase}
+            completedPhases={planCompletedPhases}
+            title={failureTitle}
+            message="Job đã dừng sau khi thử lại nhưng vẫn không thành công."
+          />
+          <PlanAnalysisFailureAlert failure={planAnalysisFailure} />
+        </div>
+      ) : (
+        (planAnalyzing || planProgressMessage) && (
+          <ProgressTimeline
+            phases={PLAN_PROGRESS_PHASES}
+            activePhase={planProgressPhase}
+            completedPhases={planCompletedPhases}
+            title={progressTitle}
+            message={
+              planProgressMessage ||
+              "Backend đang phân tích phương án chỉnh lý."
+            }
+          />
+        )
       )}
 
       {/* ZIP */}

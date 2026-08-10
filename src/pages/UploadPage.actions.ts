@@ -53,6 +53,7 @@ export function createUploadPageActions(context: Record<string, any>) {
     syncSessionMetadata,
     setSessionId,
     setPlanAnalysisState,
+    syncPlanAnalysisFailure,
     setZipSupplementUploaded,
     setPlanReuploadState,
     setDoc1State,
@@ -148,6 +149,7 @@ export function createUploadPageActions(context: Record<string, any>) {
         fileType === "arrangement_plan" ||
         fileType === "retention_schedule"
       ) {
+        syncPlanAnalysisFailure(null)
         cache.planAnalysisState = "idle"
         setPlanAnalysisState("idle")
       }
@@ -160,6 +162,7 @@ export function createUploadPageActions(context: Record<string, any>) {
     )
     if (!sessionIsActive(currentSessionId)) return uploaded
     if (fileType === "arrangement_plan" || fileType === "retention_schedule") {
+      syncPlanAnalysisFailure(null)
       if (fileType === "arrangement_plan") {
         cache.arrangementPlanUpload = uploaded
         if (existingSessionMode) {
@@ -245,6 +248,7 @@ export function createUploadPageActions(context: Record<string, any>) {
       setDoc2State("done")
     }
     cache.planAnalysisState = "idle"
+    syncPlanAnalysisFailure(null)
     setPlanAnalysisState("idle")
     setPlanProgressPhase(null)
     setPlanProgressMessage("")

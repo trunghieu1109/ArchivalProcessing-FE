@@ -3,10 +3,64 @@ import test from "node:test"
 
 import {
   canNavigateDirectlyToMetadata,
+  hasArrangementPlanResult,
+  hasRetentionAnalysisResult,
   planWorkflowActionLabel,
+  resolveExistingPlanAnalysisAction,
+  resolvePlanAnalysisInputSelection,
   resolvePlanInputsReuploaded,
   shouldAnalyzePlanInputsAfterDataUpload,
 } from "../src/pages/UploadPage.workflowPolicy.ts"
+
+test("retention-only result is not presented as an arrangement plan", () => {
+  assert.equal(
+    hasArrangementPlanResult({ workingGroupCount: 0, activeGroupCount: 0 }),
+    false
+  )
+  assert.equal(
+    hasRetentionAnalysisResult({ appendixCount: 1, sourceCount: 1 }),
+    true
+  )
+})
+
+test("a retention-only reupload does not implicitly analyze a stale arrangement plan", () => {
+  assert.deepEqual(
+    resolvePlanAnalysisInputSelection({
+      arrangementReuploaded: false,
+      retentionReuploaded: true,
+      hasPlanReady: false,
+      hasArrangementPlan: true,
+      hasRetentionSchedule: true,
+    }),
+    { analyzeArrangement: false, analyzeRetention: true }
+  )
+})
+
+test("stored inputs are both analyzed when no new input was uploaded and no plan is ready", () => {
+  assert.deepEqual(
+    resolvePlanAnalysisInputSelection({
+      arrangementReuploaded: false,
+      retentionReuploaded: false,
+      hasPlanReady: false,
+      hasArrangementPlan: true,
+      hasRetentionSchedule: true,
+    }),
+    { analyzeArrangement: true, analyzeRetention: true }
+  )
+})
+
+test("explicitly reuploading both plan inputs selects combined analysis", () => {
+  assert.deepEqual(
+    resolvePlanAnalysisInputSelection({
+      arrangementReuploaded: true,
+      retentionReuploaded: true,
+      hasPlanReady: true,
+      hasArrangementPlan: true,
+      hasRetentionSchedule: true,
+    }),
+    { analyzeArrangement: true, analyzeRetention: true }
+  )
+})
 
 test("ưu tiên xem phương án khi đã có phương án sẵn sàng", () => {
   assert.equal(
@@ -16,6 +70,30 @@ test("ưu tiên xem phương án khi đã có phương án sẵn sàng", () => {
       hasRetentionSchedule: true,
     }),
     "Xem phương án phân loại"
+  )
+})
+
+test("reanalyzes a newly uploaded plan before viewing the old running job", () => {
+  assert.equal(
+    resolveExistingPlanAnalysisAction({
+      planInputsReuploaded: true,
+      planAnalysisProcessing: true,
+      hasPlanInput: true,
+      hasPlanReady: false,
+    }),
+    "reanalyze"
+  )
+})
+
+test("views current progress when no plan input was reuploaded", () => {
+  assert.equal(
+    resolveExistingPlanAnalysisAction({
+      planInputsReuploaded: false,
+      planAnalysisProcessing: true,
+      hasPlanInput: true,
+      hasPlanReady: false,
+    }),
+    "view_progress"
   )
 })
 

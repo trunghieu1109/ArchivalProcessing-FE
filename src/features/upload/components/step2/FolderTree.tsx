@@ -1,17 +1,12 @@
 import {
-  ArrowRight,
-  Check,
   ChevronDown,
   Files,
   FileText,
   Folder,
   FolderOpen,
-  Loader2,
   Plus,
-  Save,
 } from "lucide-react"
 import { AnimatePresence, motion } from "framer-motion"
-import { toast } from "sonner"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { PaginationControls } from "@/features/upload/components/PaginationControls"
 import { usePagedItems } from "@/features/upload/hooks/usePagedItems"
@@ -25,6 +20,7 @@ import {
   RetentionAppendicesPanel,
 } from "./FolderTree.nodes"
 import { DossierBuildStrategySection } from "./FolderTree.strategy"
+import { PlanReviewActions } from "./PlanReviewActions"
 import {
   addNode,
   deleteNode,
@@ -87,6 +83,8 @@ export function FolderTree({
   fondsName,
   readOnly = false,
   hasRetentionSchedule = true,
+  showRetentionSection = true,
+  showActions = true,
   dossierBuildStrategy,
   onDossierBuildStrategyChange,
   documentNumberingMode,
@@ -136,28 +134,6 @@ export function FolderTree({
       criteria: [],
     }
     onChange([...tree, newNode])
-  }
-
-  const handleConfirm = () => {
-    if (confirming || savingDraft) return
-    if (planDraftDirty) {
-      toast.warning("Hãy lưu bản nháp trước khi xác nhận phương án.")
-      return
-    }
-    if (tree.length === 0) {
-      toast.error("Vui lòng thêm ít nhất một thư mục.")
-      return
-    }
-    void onConfirm()
-  }
-
-  const handleContinueToMetadata = () => {
-    void onContinueToMetadata?.()
-  }
-
-  const handleSaveDraft = () => {
-    if (savingDraft || !planDraftDirty) return
-    void onSaveDraft?.()
   }
 
   return (
@@ -597,53 +573,27 @@ export function FolderTree({
         </motion.div>
       </AnimatePresence>
 
-      <RetentionAppendicesPanel
-        appendices={parsedPlan.retention_appendices}
-        sources={parsedPlan.retention_sources}
-        hasRetentionSchedule={hasRetentionSchedule}
-      />
+      {showRetentionSection && (
+        <RetentionAppendicesPanel
+          appendices={parsedPlan.retention_appendices}
+          sources={parsedPlan.retention_sources}
+          hasRetentionSchedule={hasRetentionSchedule}
+        />
+      )}
 
-      <div className="flex flex-col justify-stretch gap-3 sm:flex-row sm:justify-between">
-        {!readOnly && onSaveDraft && (
-          <button
-            type="button"
-            onClick={handleSaveDraft}
-            disabled={savingDraft || !planDraftDirty}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#CBD5E1] bg-white px-6 py-3 text-sm font-semibold text-[#0F172A] shadow-sm transition-all hover:border-[#0052FF]/30 hover:text-[#0052FF] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-          >
-            {savingDraft ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Save className="size-4" />
-            )}
-            Lưu bản nháp
-          </button>
-        )}
-        {!readOnly && (
-          <button
-            type="button"
-            onClick={handleConfirm}
-            disabled={confirming || savingDraft || planDraftDirty}
-            className="flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-white transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 sm:mr-auto sm:w-auto"
-            style={{
-              background: "linear-gradient(to right, #0052FF, #4D7CFF)",
-              boxShadow: "0 4px 14px rgba(0,82,255,0.25)",
-            }}
-          >
-            <Check className="size-4" /> Duyệt phương án
-          </button>
-        )}
-        {onContinueToMetadata && (
-          <button
-            type="button"
-            onClick={handleContinueToMetadata}
-            disabled={confirming || savingDraft}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#CBD5E1] bg-white px-6 py-3 text-sm font-semibold text-[#0F172A] shadow-sm transition-all hover:border-[#0052FF]/30 hover:text-[#0052FF] disabled:cursor-wait disabled:opacity-70 sm:ml-auto sm:w-auto"
-          >
-            <ArrowRight className="size-4" /> Sang extract metadata
-          </button>
-        )}
-      </div>
+      {showActions && (
+        <PlanReviewActions
+          readOnly={readOnly}
+          treeLength={tree.length}
+          onSaveDraft={onSaveDraft}
+          onConfirm={onConfirm}
+          onContinueToMetadata={onContinueToMetadata}
+          savingDraft={savingDraft}
+          confirming={confirming}
+          planDraftDirty={planDraftDirty}
+          hasRetentionSchedule={hasRetentionSchedule}
+        />
+      )}
     </motion.div>
   )
 }

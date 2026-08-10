@@ -52,9 +52,13 @@ import {
   STEP_LABELS,
   isPlanAnalysisEventForJob,
   normalizePlanProgressPhase,
+  planAnalysisFailureFromEvent,
+  planAnalysisFailureMessage,
   planAnalysisResultVersionId,
+  planAnalysisTerminalState,
   planProgressMessageForPhase,
   shouldApplyPlanAnalysisResult,
+  type PlanAnalysisFailure,
 } from "./UploadPage.progress"
 import {
   activePlanBuildStrategy,
@@ -285,6 +289,15 @@ export function UploadPage() {
   const [planAnalysisJobId, setPlanAnalysisJobId] = useState<number | null>(
     cache.planAnalysisJobId
   )
+  const [planAnalysisFailure, setPlanAnalysisFailure] =
+    useState<PlanAnalysisFailure | null>(cache.planAnalysisFailure)
+  const syncPlanAnalysisFailure = useCallback(
+    (failure: PlanAnalysisFailure | null) => {
+      cache.planAnalysisFailure = failure
+      setPlanAnalysisFailure(failure)
+    },
+    []
+  )
   const syncPlanAnalysisJobId = useCallback((jobId: number | null) => {
     cache.planAnalysisJobId = jobId
     setPlanAnalysisJobId(jobId)
@@ -498,6 +511,7 @@ export function UploadPage() {
     setZipState,
     setPlanAnalysisState,
     setPlanAnalysisJobId,
+    syncPlanAnalysisFailure,
     setDossierBuildStrategy,
     setDocumentNumberingMode,
     setDocumentNumberingStylePreset,
@@ -680,6 +694,9 @@ export function UploadPage() {
     let cancelled = false
     let afterId = 0
     let completedPlanVersionId = ""
+    let latestProgressPhase: string | null = null
+    let terminalState: "failed" | "superseded" | null = null
+    let terminalFailure: PlanAnalysisFailure | null = null
     let timeoutId: number | undefined
     const schedule = () => {
       if (!cancelled) {
@@ -711,9 +728,32 @@ export function UploadPage() {
           if (!isPlanAnalysisEventForJob(event.payload, planAnalysisJobId)) {
             continue
           }
+          const nextTerminalState = planAnalysisTerminalState(event.event_type)
+          if (nextTerminalState) {
+            terminalState = nextTerminalState
+            if (nextTerminalState === "failed") {
+              terminalFailure = planAnalysisFailureFromEvent(
+                event.payload,
+                event.message,
+                latestProgressPhase,
+                cache.planAnalysisScope
+              )
+            }
+            break
+          }
+          if (event.event_type === "job.retrying") {
+            const retryError = planAnalysisFailureMessage(
+              event.payload,
+              event.message
+            )
+            setPlanProgressMessage(
+              `Phân tích chưa thành công và backend đang tự thử lại. ${retryError}`
+            )
+          }
           if (event.event_type === "plan.analysis.progress") {
             const phase = normalizePlanProgressPhase(event.payload?.phase)
             if (phase) {
+              latestProgressPhase = phase
               setPlanProgressPhase(phase)
               setPlanCompletedPhases(() => {
                 const next = new Set<string>()
@@ -750,6 +790,28 @@ export function UploadPage() {
         }
       } catch {
         // Progress events are best-effort; the working-plan polling owns errors.
+      }
+      if (terminalState) {
+        cancelled = true
+        cache.planAnalysisState = "idle"
+        cache.planAnalysisJobId = null
+        cache.planAnalysisScope = null
+        const { doc1Has: currentDoc1Has, doc2Has: currentDoc2Has } =
+          planInputStateRef.current
+        cache.doc1State = currentDoc1Has ? "done" : "idle"
+        cache.doc2State = currentDoc2Has ? "done" : "idle"
+        setPlanAnalysisState("idle")
+        setPlanAnalysisJobId(null)
+        setDoc1State(cache.doc1State)
+        setDoc2State(cache.doc2State)
+        setPlanProgressPhase(null)
+        if (!terminalFailure) setPlanCompletedPhases(new Set())
+        setPlanProgressMessage("")
+        syncPlanAnalysisFailure(terminalFailure)
+        if (terminalFailure) {
+          toast.error(terminalFailure.message)
+        }
+        return
       }
       try {
         const planResponse = await getWorkingPlan(planPollingSessionId)
@@ -791,6 +853,8 @@ export function UploadPage() {
           cache.planViewTab = "draft"
           cache.planAnalysisState = "done"
           cache.planAnalysisJobId = null
+          cache.planAnalysisScope = null
+          syncPlanAnalysisFailure(null)
           const { doc1Has: currentDoc1Has, doc2Has: currentDoc2Has } =
             planInputStateRef.current
           cache.doc1State = currentDoc1Has ? "done" : "idle"
@@ -854,6 +918,7 @@ export function UploadPage() {
     planAnalysisState,
     routeSessionId,
     sessionId,
+    syncPlanAnalysisFailure,
   ])
 
   const {
@@ -902,6 +967,7 @@ export function UploadPage() {
     syncSessionMetadata,
     setSessionId,
     setPlanAnalysisState,
+    syncPlanAnalysisFailure,
     setZipSupplementUploaded,
     setPlanReuploadState,
     setDoc1State,
@@ -961,7 +1027,7 @@ export function UploadPage() {
   )
   const hasAnyFile = doc1Has || doc2Has || zipHas
   const hasActivePlan = Boolean(activePlanVersionId)
-  const hasApprovedPlan = hasActivePlan
+  const hasApprovedPlan = hasActivePlan && activeParsedPlan.groups.length > 0
   const hasWorkingPlan = Boolean(workingPlanVersionId)
   const draftMatchesActive =
     Boolean(cache.activePlanSignature) &&
@@ -1380,6 +1446,7 @@ export function UploadPage() {
       syncSessionMetadata,
       syncPlanAnalysisState,
       syncPlanAnalysisJobId,
+      syncPlanAnalysisFailure,
       syncDoc1State,
       syncDoc2State,
       syncZipState,
@@ -1448,11 +1515,11 @@ export function UploadPage() {
         doc2Has={doc2Has}
         zipHas={zipHas}
         hasActivePlan={hasActivePlan}
-        hasAnalyzedArrangementPlan={hasAnalyzedArrangementPlan}
         doc1State={doc1State}
         doc2State={doc2State}
         zipState={zipState}
         planAnalysisState={planAnalysisState}
+        planAnalysisFailure={planAnalysisFailure}
         planAnalyzing={planAnalyzing}
         planProgressPhase={planProgressPhase}
         planCompletedPhases={planCompletedPhases}

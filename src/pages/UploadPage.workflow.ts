@@ -11,11 +11,14 @@ import { uploadPageCache as cache } from "./UploadPage.cache"
 import {
   PLAN_DONE_VISIBLE_MS,
   addSetValue,
+  planAnalysisScopeForInputs,
   planProgressMessageForPhase,
   wait,
 } from "./UploadPage.progress"
 import {
   canNavigateDirectlyToMetadata,
+  resolveExistingPlanAnalysisAction,
+  resolvePlanAnalysisInputSelection,
   resolvePlanInputsReuploaded,
   shouldAnalyzePlanInputsAfterDataUpload,
 } from "./UploadPage.workflowPolicy"
@@ -43,6 +46,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     navigate,
     ensureSession,
     syncPlanAnalysisState,
+    syncPlanAnalysisFailure,
     syncPlanAnalysisJobId,
     syncDoc1State,
     syncDoc2State,
@@ -85,21 +89,25 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
       retention:
         Boolean(planReuploadState.retention) || cache.retentionReuploaded,
     }
+    const { analyzeArrangement, analyzeRetention } =
+      resolvePlanAnalysisInputSelection({
+        arrangementReuploaded: currentPlanReuploadState.arrangement,
+        retentionReuploaded: currentPlanReuploadState.retention,
+        hasPlanReady,
+        hasArrangementPlan: Boolean(doc1Has),
+        hasRetentionSchedule: Boolean(doc2Has),
+      })
     const currentPlanReanalysisReady =
-      existingSessionMode &&
-      (currentPlanReuploadState.arrangement ||
-        currentPlanReuploadState.retention)
-    const analyzeStoredInputs = !hasPlanReady && Boolean(doc1Has || doc2Has)
+      existingSessionMode && (analyzeArrangement || analyzeRetention)
+    const analyzeStoredInputs =
+      !currentPlanReuploadState.arrangement &&
+      !currentPlanReuploadState.retention &&
+      (analyzeArrangement || analyzeRetention)
     if (!currentPlanReanalysisReady && !analyzeStoredInputs) {
       toast.error("Vui lòng tải lại phương án chỉnh lý hoặc thời hạn bảo quản.")
       return
     }
 
-    const analyzeArrangement =
-      currentPlanReuploadState.arrangement ||
-      (analyzeStoredInputs && doc1Has)
-    const analyzeRetention =
-      currentPlanReuploadState.retention || (analyzeStoredInputs && doc2Has)
     const retentionOnly = analyzeRetention && !analyzeArrangement
     const planFile = analyzeArrangement
       ? cache.arrangementPlanUpload?.local_cached_path
@@ -127,7 +135,12 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     }
 
     try {
+      syncPlanAnalysisFailure(null)
       syncPlanAnalysisJobId(null)
+      cache.planAnalysisScope = planAnalysisScopeForInputs({
+        analyzePlan: analyzeArrangement,
+        analyzeRetention,
+      })
       syncPlanAnalysisState("processing")
       if (analyzeArrangement) syncDoc1State("processing")
       if (analyzeRetention) syncDoc2State("processing")
@@ -168,6 +181,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     } catch (err) {
       if (!sessionIsActive(currentSessionId)) return
       syncPlanAnalysisJobId(null)
+      cache.planAnalysisScope = null
       syncPlanAnalysisState("idle")
       syncDoc1State(doc1Has ? "done" : "idle")
       syncDoc2State(doc2Has ? "done" : "idle")
@@ -385,16 +399,18 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
       return
     }
     if (existingSessionMode) {
-      if (planAnalysisState === "processing" && (doc1Has || doc2Has)) {
+      const planAnalysisAction = resolveExistingPlanAnalysisAction({
+        planInputsReuploaded: Boolean(planInputsReuploaded),
+        planAnalysisProcessing: planAnalysisState === "processing",
+        hasPlanInput: Boolean(doc1Has || doc2Has),
+        hasPlanReady: Boolean(hasPlanReady),
+      })
+      if (planAnalysisAction === "reanalyze") {
+        await handleReanalyzeExistingSessionPlan()
+        return
+      }
+      if (planAnalysisAction === "view_progress") {
         goTo(2)
-        return
-      }
-      if (planInputsReuploaded) {
-        await handleReanalyzeExistingSessionPlan()
-        return
-      }
-      if (!hasPlanReady && (doc1Has || doc2Has)) {
-        await handleReanalyzeExistingSessionPlan()
         return
       }
       if (zipSupplementUploaded && canGoDirectlyToMetadata) {
@@ -437,8 +453,10 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
       return
     }
     try {
+      syncPlanAnalysisFailure(null)
       if (arrangementFile || retentionFileDrafts.length > 0) {
         syncPlanAnalysisJobId(null)
+        cache.planAnalysisScope = null
       }
       if (arrangementFile) {
         syncPlanAnalysisState("processing")
@@ -515,7 +533,9 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
         }
         if (retentionFiles.length > 0) {
           if (sessionIsActive(currentSessionId)) {
+            cache.planAnalysisScope = "retention"
             syncPlanAnalysisState("processing")
+            syncDoc2State("processing")
             setPlanProgressPhase("retention_period")
             setPlanProgressMessage("Đang phân tích thông tư thời hạn bảo quản.")
           }
@@ -572,6 +592,12 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
         dossier_build_strategy: dossierBuildStrategy,
       })
       if (sessionIsActive(currentSessionId)) {
+        cache.planAnalysisScope = planAnalysisScopeForInputs({
+          analyzePlan: true,
+          analyzeRetention: retentionFiles.length > 0,
+        })
+        syncDoc1State("processing")
+        if (retentionFiles.length > 0) syncDoc2State("processing")
         setPlanCompletedPhases((previous: Set<string>) =>
           addSetValue(previous, "upload_inputs")
         )
@@ -593,6 +619,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
       const currentSessionId = routeSessionId ?? sessionId ?? cache.sessionId
       if (currentSessionId && !sessionIsActive(currentSessionId)) return
       syncPlanAnalysisJobId(null)
+      cache.planAnalysisScope = null
       syncPlanAnalysisState("idle")
       setPlanProgressPhase(null)
       setPlanProgressMessage("")

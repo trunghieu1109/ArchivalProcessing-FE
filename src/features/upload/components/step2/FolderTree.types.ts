@@ -17,6 +17,8 @@ export interface FolderTreeProps {
   fondsName?: string | null
   readOnly?: boolean
   hasRetentionSchedule?: boolean
+  showRetentionSection?: boolean
+  showActions?: boolean
   dossierBuildStrategy: DossierBuildStrategy
   onDossierBuildStrategyChange: (strategy: DossierBuildStrategy) => void
   documentNumberingMode: DocumentNumberingMode
@@ -24,13 +26,19 @@ export interface FolderTreeProps {
     mode: DocumentNumberingMode
   ) => void | Promise<void>
   documentNumberingStylePreset: DocumentNumberingStylePreset
-  documentNumberingStyleOverrides?: { font_size?: number; color?: string; opacity?: number }
+  documentNumberingStyleOverrides?: {
+    font_size?: number
+    color?: string
+    opacity?: number
+  }
   onDocumentNumberingStylePresetChange: (
     stylePreset: DocumentNumberingStylePreset
   ) => void | Promise<void>
-  onDocumentNumberingStyleOverridesChange?: (
-    overrides: { font_size?: number; color?: string; opacity?: number }
-  ) => void | Promise<void>
+  onDocumentNumberingStyleOverridesChange?: (overrides: {
+    font_size?: number
+    color?: string
+    opacity?: number
+  }) => void | Promise<void>
   onFileRegisterConfigChange: (
     config: FileRegisterConfig
   ) => void | Promise<void>
