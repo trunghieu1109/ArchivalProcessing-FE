@@ -5,7 +5,10 @@ export type SessionInputFileType =
   | "retention_schedule"
   | "raw_zip"
 
-export type DossierBuildStrategy = "incremental" | "file_register"
+export type DossierBuildStrategy =
+  | "incremental"
+  | "file_register"
+  | "predefined"
 export type DocumentNumberingMode = "page" | "sheet"
 export type DocumentNumberingStylePreset =
   | "pencil_miama"

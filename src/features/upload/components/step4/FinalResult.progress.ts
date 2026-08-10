@@ -24,6 +24,7 @@ export type ClusterJobMode =
   | "update"
   | "plan_reanalysis"
   | "file_register"
+  | "predefined"
 
 export function completedClusterPhaseSet(): Set<string> {
   return new Set(CLUSTER_ALL_PHASE_IDS)
@@ -94,11 +95,15 @@ export function clusterProgressMessageForPhase(
         ? "Đang lập lại hồ sơ theo phương án chỉnh lý và thời hạn bảo quản mới."
         : mode === "file_register"
           ? "Đang sắp xếp tài liệu theo loại văn bản, thời gian và giới hạn số trang của tập lưu."
-          : mode === "update"
-            ? "Đang áp dụng feedback và cập nhật cấu trúc hồ sơ."
-            : "Đang gom tài liệu đã xác nhận vào hồ sơ."
+          : mode === "predefined"
+            ? "Đang gom trực tiếp các tài liệu cùng folder nguồn vào cùng một hồ sơ."
+            : mode === "update"
+              ? "Đang áp dụng feedback và cập nhật cấu trúc hồ sơ."
+              : "Đang gom tài liệu đã xác nhận vào hồ sơ."
     case "naming_dossiers":
-      return "Đang đặt tiêu đề hồ sơ từ nội dung tài liệu."
+      return mode === "predefined"
+        ? "Đang gợi ý tiêu đề từ nội dung tài liệu; tên folder sẽ được dùng nếu không có gợi ý phù hợp."
+        : "Đang đặt tiêu đề hồ sơ từ nội dung tài liệu."
     case "classifying_dossiers":
       return "Đang phân loại hồ sơ vào các nhóm lớn, vừa và nhỏ."
     case "finding_retention":
@@ -110,9 +115,11 @@ export function clusterProgressMessageForPhase(
         ? "Đang lập lại hồ sơ theo phương án chỉnh lý mới."
         : mode === "file_register"
           ? "Đang lập lại hồ sơ theo phương án tập lưu."
-          : mode === "update"
-            ? "Đang cập nhật hồ sơ từ feedback đã lưu."
-            : "Đang lập hồ sơ mới từ các tài liệu đã xác nhận."
+          : mode === "predefined"
+            ? "Đang lập hồ sơ trực tiếp theo cấu trúc folder nguồn."
+            : mode === "update"
+              ? "Đang cập nhật hồ sơ từ feedback đã lưu."
+              : "Đang lập hồ sơ mới từ các tài liệu đã xác nhận."
   }
 }
 
@@ -136,6 +143,7 @@ export function dossierUiMessage(message: string): string {
 export function clusterJobModeFromPayload(
   payload: Record<string, unknown> | null | undefined
 ): ClusterJobMode {
+  if (payload?.dossier_build_strategy === "predefined") return "predefined"
   return clusterJobModeFromSource(payload?.source)
 }
 

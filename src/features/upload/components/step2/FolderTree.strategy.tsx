@@ -1,4 +1,4 @@
-import { Archive, ChevronRight, FolderKanban } from "lucide-react"
+import { Archive, ChevronRight, FolderKanban, FolderTree } from "lucide-react"
 import { cn } from "@/shared/lib/utils"
 import type { DossierBuildStrategy } from "@/features/upload/api/sessionApi"
 import type {
@@ -76,7 +76,7 @@ export function DossierBuildStrategySection({
         </p>
       </div>
       <div
-        className="mt-4 grid gap-3 md:grid-cols-2"
+        className="mt-4 grid gap-3 md:grid-cols-3"
         role="radiogroup"
         aria-label="Cách thức lập hồ sơ"
       >
@@ -149,6 +149,45 @@ export function DossierBuildStrategySection({
             <span className="mt-1.5 block text-sm leading-6 text-[#64748B]">
               Gom theo loại văn bản, năm ban hành, sắp xếp theo thời gian và
               chia thành các tập hồ sơ.
+            </span>
+          </span>
+        </button>
+
+        <button
+          type="button"
+          role="radio"
+          aria-checked={dossierBuildStrategy === "predefined"}
+          disabled={readOnly}
+          onClick={() => onDossierBuildStrategyChange("predefined")}
+          className={cn(
+            "flex min-h-32 items-start gap-4 rounded-2xl border p-4 text-left transition-all focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-100",
+            dossierBuildStrategy === "predefined"
+              ? "border-[#0052FF] bg-[#EEF4FF] shadow-[0_8px_24px_rgba(0,82,255,0.10)]"
+              : "border-[#D8E1EC] bg-white hover:border-[#0052FF]/40 hover:bg-[#F8FAFC]"
+          )}
+        >
+          <span
+            className={cn(
+              "flex size-11 shrink-0 items-center justify-center rounded-xl",
+              dossierBuildStrategy === "predefined"
+                ? "bg-[#0052FF] text-white"
+                : "bg-[#EEF2F7] text-[#475569]"
+            )}
+          >
+            <FolderTree className="size-5" />
+          </span>
+          <span className="min-w-0">
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="font-semibold text-[#0F172A]">
+                Giữ nguyên hồ sơ theo folder
+              </span>
+              <span className="rounded-full bg-[#DCFCE7] px-2 py-0.5 text-[10px] font-bold tracking-wide text-[#15803D] uppercase">
+                Predefined
+              </span>
+            </span>
+            <span className="mt-1.5 block text-sm leading-6 text-[#64748B]">
+              Mỗi folder nguồn trở thành một hồ sơ; bỏ qua model phân nhóm và
+              quy tắc tập lưu.
             </span>
           </span>
         </button>

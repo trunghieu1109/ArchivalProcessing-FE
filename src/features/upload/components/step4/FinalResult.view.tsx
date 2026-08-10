@@ -285,9 +285,11 @@ export function FinalResultView(props: Record<string, any>) {
               ? "Tiến độ lập lại hồ sơ"
               : clusterJobMode === "file_register"
                 ? "Tiến độ lập hồ sơ theo tập lưu"
-                : clusterJobMode === "update"
-                  ? "Tiến độ cập nhật hồ sơ"
-                  : "Tiến độ lập hồ sơ"
+                : clusterJobMode === "predefined"
+                  ? "Tiến độ lập hồ sơ theo folder"
+                  : clusterJobMode === "update"
+                    ? "Tiến độ cập nhật hồ sơ"
+                    : "Tiến độ lập hồ sơ"
           }
           message={
             clusterProgressMessage ||
@@ -313,6 +315,11 @@ export function FinalResultView(props: Record<string, any>) {
                 Backend đang bỏ qua cách lập hồ sơ của phương án hiện tại và sắp
                 xếp tài liệu theo dạng tập lưu. Nút áp dụng sẽ bật khi phiên bản
                 mới sẵn sàng.
+              </p>
+            ) : clusterJobMode === "predefined" ? (
+              <p className="mt-1 text-sm text-[#475569]">
+                Backend đang bỏ qua model phân nhóm và tập lưu để gom trực tiếp
+                các tài liệu cùng folder nguồn vào cùng một hồ sơ.
               </p>
             ) : (
               <p className="mt-1 text-sm text-[#475569]">
