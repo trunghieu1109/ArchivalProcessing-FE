@@ -1,4 +1,4 @@
-import { Archive, ChevronRight, FolderKanban, FolderTree } from "lucide-react"
+import { Archive, ChevronRight, FolderKanban, Zap } from "lucide-react"
 import { cn } from "@/shared/lib/utils"
 import type { DossierBuildStrategy } from "@/features/upload/api/sessionApi"
 import type {
@@ -113,8 +113,8 @@ export function DossierBuildStrategySection({
               </span>
             </span>
             <span className="mt-1.5 block text-sm leading-6 text-[#64748B]">
-              Gom tài liệu theo chủ đề, nội dung và vụ việc bằng incremental
-              clustering.
+              Phân tích nội dung và mối liên hệ giữa các tài liệu để gom thành
+              từng hồ sơ vụ việc.
             </span>
           </span>
         </button>
@@ -174,20 +174,15 @@ export function DossierBuildStrategySection({
                 : "bg-[#EEF2F7] text-[#475569]"
             )}
           >
-            <FolderTree className="size-5" />
+            <Zap className="size-5" />
           </span>
           <span className="min-w-0">
-            <span className="flex flex-wrap items-center gap-2">
-              <span className="font-semibold text-[#0F172A]">
-                Giữ nguyên hồ sơ theo folder
-              </span>
-              <span className="rounded-full bg-[#DCFCE7] px-2 py-0.5 text-[10px] font-bold tracking-wide text-[#15803D] uppercase">
-                Predefined
-              </span>
+            <span className="font-semibold text-[#0F172A]">
+              Lập hồ sơ nhanh
             </span>
             <span className="mt-1.5 block text-sm leading-6 text-[#64748B]">
-              Mỗi folder nguồn trở thành một hồ sơ; bỏ qua model phân nhóm và
-              quy tắc tập lưu.
+              Tạo kết quả lập hồ sơ nhanh với ít bước xử lý, phù hợp để tiếp tục
+              rà soát và hoàn thiện.
             </span>
           </span>
         </button>

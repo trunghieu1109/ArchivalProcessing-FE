@@ -286,7 +286,7 @@ export function FinalResultView(props: Record<string, any>) {
               : clusterJobMode === "file_register"
                 ? "Tiến độ lập hồ sơ theo tập lưu"
                 : clusterJobMode === "predefined"
-                  ? "Tiến độ lập hồ sơ theo folder"
+                  ? "Tiến độ lập hồ sơ nhanh"
                   : clusterJobMode === "update"
                     ? "Tiến độ cập nhật hồ sơ"
                     : "Tiến độ lập hồ sơ"
@@ -318,8 +318,8 @@ export function FinalResultView(props: Record<string, any>) {
               </p>
             ) : clusterJobMode === "predefined" ? (
               <p className="mt-1 text-sm text-[#475569]">
-                Backend đang bỏ qua model phân nhóm và tập lưu để gom trực tiếp
-                các tài liệu cùng folder nguồn vào cùng một hồ sơ.
+                Hệ thống đang tạo phiên bản hồ sơ theo chế độ xử lý nhanh. Kết
+                quả sẽ sẵn sàng để rà soát ngay sau khi hoàn tất.
               </p>
             ) : (
               <p className="mt-1 text-sm text-[#475569]">

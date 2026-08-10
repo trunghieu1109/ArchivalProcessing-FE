@@ -1072,7 +1072,7 @@ export function FinalResult({
           : clusterJobMode === "file_register"
             ? `Đang lập lại hồ sơ theo tập lưu. ${status}`
             : clusterJobMode === "predefined"
-              ? `Đang lập hồ sơ theo folder nguồn. ${status}`
+              ? `Đang lập hồ sơ nhanh. ${status}`
               : clusterJobMode === "update"
                 ? `Đang cập nhật hồ sơ. ${status}`
                 : `Đang lập hồ sơ mới. ${status}`

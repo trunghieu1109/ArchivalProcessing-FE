@@ -6,7 +6,7 @@ import {
   SHOW_DOCUMENT_DELETION_IN_DOSSIER_STEP,
 } from "../src/features/upload/components/step4/temporaryFeatureVisibility.ts"
 
-test("keeps pre-clustering deletion available while hiding it in dossier step", () => {
-  assert.equal(SHOW_DOCUMENT_DELETION, true)
+test("hides document deletion throughout the workflow", () => {
+  assert.equal(SHOW_DOCUMENT_DELETION, false)
   assert.equal(SHOW_DOCUMENT_DELETION_IN_DOSSIER_STEP, false)
 })
