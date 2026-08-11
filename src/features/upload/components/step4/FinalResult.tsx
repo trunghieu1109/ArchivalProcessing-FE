@@ -789,6 +789,28 @@ export function FinalResult({
     [activePlanVersionId, classificationTree.length]
   )
 
+  const handleCloseManualClassification = useCallback(() => {
+    setManualClassificationGroup(null)
+  }, [])
+
+  const handleSubmitManualClassification = useCallback(
+    (groupIds: string[]) => {
+      if (!manualClassificationGroup || !activePlanVersionId) {
+        return Promise.resolve(false)
+      }
+      return handleApplyManualDossierClassification(
+        manualClassificationGroup,
+        activePlanVersionId,
+        groupIds
+      )
+    },
+    [
+      activePlanVersionId,
+      handleApplyManualDossierClassification,
+      manualClassificationGroup,
+    ]
+  )
+
   const handleCloseGroupInformation = useCallback(() => {
     setSelectedGroupInfoNodeId(null)
     setGroupInformationTable(null)
@@ -1389,14 +1411,8 @@ export function FinalResult({
             manuallyClassifyingDossierId ===
             (manualClassificationGroup.dossierId ?? manualClassificationGroup.id)
           }
-          onClose={() => setManualClassificationGroup(null)}
-          onSubmit={(groupIds) =>
-            handleApplyManualDossierClassification(
-              manualClassificationGroup,
-              activePlanVersionId,
-              groupIds
-            )
-          }
+          onClose={handleCloseManualClassification}
+          onSubmit={handleSubmitManualClassification}
         />
       )}
       <DocumentDeletionDialog

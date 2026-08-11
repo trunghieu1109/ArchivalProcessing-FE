@@ -65,6 +65,13 @@ test("manual dossier classification is wired to a leaf-only tree dialog", async 
   assert.match(dialogSource, /Thời hạn bảo quản\s+hiện tại được giữ nguyên/)
   assert.match(dialogSource, /Dialog\.Overlay className="[^"]*z-50[^"]*"/)
   assert.match(dialogSource, /Dialog\.Content className="[^"]*z-\[51\][^"]*"/)
+  assert.match(
+    dialogSource,
+    /export const ManualClassificationDialog = memo\(/
+  )
+  assert.doesNotMatch(dialogSource, /<ScrollArea/)
+  assert.match(dialogSource, /overflow-y-auto/)
+  assert.match(dialogSource, /name="manual-classification-search"/)
   assert.match(resultNodeSource, /Phân loại thủ công/)
   assert.match(uploadViewSource, /classificationTree=\{activeFolderTree\}/)
   assert.match(
@@ -88,6 +95,10 @@ test("manual dossier classification is wired to a leaf-only tree dialog", async 
   const manualActionSource = actionSource.slice(
     manualActionStart,
     manualActionEnd
+  )
+  assert.match(
+    manualActionSource,
+    /const handleApplyManualDossierClassification = useCallback\(\s*async/
   )
   assert.match(
     manualActionSource,

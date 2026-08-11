@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { memo, useMemo, useState } from "react"
 import {
   Check,
   ChevronDown,
@@ -14,12 +14,11 @@ import {
 import { Dialog } from "radix-ui"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import type { FolderNode } from "@/features/upload/types"
 import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
 import { cn } from "@/shared/lib/utils"
 
-export function ManualClassificationDialog({
+function ManualClassificationDialogComponent({
   dossier,
   tree,
   saving,
@@ -100,16 +99,19 @@ export function ManualClassificationDialog({
             <div className="relative shrink-0">
               <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-[#94A3B8]" />
               <Input
+                name="manual-classification-search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Tìm nhóm phân loại..."
                 className="pl-9"
+                autoComplete="off"
+                spellCheck={false}
                 autoFocus
               />
             </div>
 
             <div className="grid min-h-0 flex-1 gap-3 md:grid-cols-[minmax(0,1fr)_280px]">
-              <ScrollArea className="min-h-0 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-2">
+              <div className="min-h-0 overflow-y-auto rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-2">
                 {visibleTree.length > 0 ? (
                   <div className="space-y-1 pr-2">
                     {visibleTree.map((node) => (
@@ -132,7 +134,7 @@ export function ManualClassificationDialog({
                       : "Không tìm thấy nhóm phân loại phù hợp."}
                   </div>
                 )}
-              </ScrollArea>
+              </div>
 
               <div className="flex min-h-0 flex-col gap-3">
                 <ClassificationPathSummary
@@ -188,6 +190,10 @@ export function ManualClassificationDialog({
     </Dialog.Root>
   )
 }
+
+export const ManualClassificationDialog = memo(
+  ManualClassificationDialogComponent
+)
 
 function ClassificationTreeNode({
   node,

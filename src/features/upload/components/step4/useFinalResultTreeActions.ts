@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -487,64 +488,75 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
     }
   }
 
-  const handleApplyManualDossierClassification = async (
-    group: ClusterGroup,
-    planVersionId: string,
-    groupIds: string[]
-  ): Promise<boolean> => {
-    if (viewingHistoricalClusterVersion) {
-      toast.error(
-        "Bạn đang xem phiên bản cũ. Hãy kích hoạt phiên bản này trước khi phân loại thủ công."
-      )
-      return false
-    }
-    if (!sessionId) {
-      toast.error("Chưa có session để phân loại thủ công hồ sơ.")
-      return false
-    }
-    const dossierId = group.dossierId ?? group.id
-    if (!dossierId || !planVersionId || groupIds.length === 0) {
-      toast.error("Thiếu thông tin hồ sơ hoặc phương án phân loại.")
-      return false
-    }
+  const handleApplyManualDossierClassification = useCallback(
+    async (
+      group: ClusterGroup,
+      planVersionId: string,
+      groupIds: string[]
+    ): Promise<boolean> => {
+      if (viewingHistoricalClusterVersion) {
+        toast.error(
+          "Bạn đang xem phiên bản cũ. Hãy kích hoạt phiên bản này trước khi phân loại thủ công."
+        )
+        return false
+      }
+      if (!sessionId) {
+        toast.error("Chưa có session để phân loại thủ công hồ sơ.")
+        return false
+      }
+      const dossierId = group.dossierId ?? group.id
+      if (!dossierId || !planVersionId || groupIds.length === 0) {
+        toast.error("Thiếu thông tin hồ sơ hoặc phương án phân loại.")
+        return false
+      }
 
-    setManuallyClassifyingDossierId(dossierId)
-    try {
-      const response = await assignSessionDossierClassificationManually(
-        sessionId,
-        dossierId,
-        {
-          plan_version_id: planVersionId,
-          group_ids: groupIds,
-          metadata_revision: group.metadataRevision ?? 0,
-        }
-      )
-      feedbackHydrationRevisionRef.current += 1
-      setGroups((previous: ClusterGroup[]) =>
-        updateDossierGroupFromResponse(previous, group.id, response)
-      )
-      setDisplayedClusterVersion((previous: ClusterVersionResponse | null) =>
-        updateClusterVersionDossier(previous, response)
-      )
-      setPendingFeedbackRefreshKey((key: number) => key + 1)
-      const selectedPath = response.classification?.group_path?.join(" → ")
-      const message = selectedPath
-        ? `Đã phân loại thủ công hồ sơ "${response.title || group.label}" vào ${selectedPath}.`
-        : `Đã cập nhật phân loại thủ công hồ sơ "${response.title || group.label}".`
-      setStatus(message)
-      toast.success(message)
-      return true
-    } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : "Không thể cập nhật phân loại thủ công cho hồ sơ."
-      )
-      return false
-    } finally {
-      setManuallyClassifyingDossierId(null)
-    }
-  }
+      setManuallyClassifyingDossierId(dossierId)
+      try {
+        const response = await assignSessionDossierClassificationManually(
+          sessionId,
+          dossierId,
+          {
+            plan_version_id: planVersionId,
+            group_ids: groupIds,
+            metadata_revision: group.metadataRevision ?? 0,
+          }
+        )
+        feedbackHydrationRevisionRef.current += 1
+        setGroups((previous: ClusterGroup[]) =>
+          updateDossierGroupFromResponse(previous, group.id, response)
+        )
+        setDisplayedClusterVersion((previous: ClusterVersionResponse | null) =>
+          updateClusterVersionDossier(previous, response)
+        )
+        setPendingFeedbackRefreshKey((key: number) => key + 1)
+        const selectedPath = response.classification?.group_path?.join(" → ")
+        const message = selectedPath
+          ? `Đã phân loại thủ công hồ sơ "${response.title || group.label}" vào ${selectedPath}.`
+          : `Đã cập nhật phân loại thủ công hồ sơ "${response.title || group.label}".`
+        setStatus(message)
+        toast.success(message)
+        return true
+      } catch (err) {
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : "Không thể cập nhật phân loại thủ công cho hồ sơ."
+        )
+        return false
+      } finally {
+        setManuallyClassifyingDossierId(null)
+      }
+    },
+    [
+      feedbackHydrationRevisionRef,
+      sessionId,
+      setDisplayedClusterVersion,
+      setGroups,
+      setPendingFeedbackRefreshKey,
+      setStatus,
+      viewingHistoricalClusterVersion,
+    ]
+  )
 
   const handleSaveDocumentMetadata = async (
     document: ClusterDocument,
