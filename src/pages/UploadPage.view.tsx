@@ -768,6 +768,8 @@ export function UploadPageView(props: Record<string, any>) {
                 sessionId={sessionId}
                 groups={clusterGroups}
                 fondsName={sessionMetadata?.fonds_name}
+                activePlanVersionId={activePlanVersionId}
+                classificationTree={activeFolderTree}
                 onFinish={() => {
                   const currentSessionId = sessionId ?? routeSessionId
                   if (!currentSessionId) {

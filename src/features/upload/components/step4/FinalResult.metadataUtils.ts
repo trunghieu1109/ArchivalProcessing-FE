@@ -137,7 +137,18 @@ export function updateDossierGroupFromResponse(
       metadataRevision: dossier.metadata_revision ?? group.metadataRevision,
       classificationStatus:
         dossier.classification_status ?? group.classificationStatus,
+      classificationPath: dossier.classification?.group_path?.length
+        ? dossier.classification.group_path
+        : group.classificationPath,
+      classificationGroupIds: dossier.classification?.group_ids?.length
+        ? dossier.classification.group_ids
+        : group.classificationGroupIds,
+      confidence: dossier.classification?.confidence ?? group.confidence,
+      requiresReview:
+        dossier.classification?.requires_review ?? group.requiresReview,
       retentionPeriod: dossier.retention_period ?? null,
+      retentionRecommendation:
+        dossier.retention_recommendation ?? group.retentionRecommendation,
       createdFromTemporaryFolder:
         typeof dossier.created_from_temporary_folder === "boolean"
           ? dossier.created_from_temporary_folder

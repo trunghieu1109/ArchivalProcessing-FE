@@ -9,7 +9,9 @@ import {
   FolderOpen,
   FolderPlus,
   Loader2,
+  ListTree,
   MoveRight,
+  RefreshCw,
   Table2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -42,6 +44,9 @@ export function ResultNode({
   movingSelectedDocumentsTargetId,
   promotingTemporaryFolder,
   temporaryFolderUpdateDisabled,
+  refreshingClassificationDossierId,
+  manuallyClassifyingDossierId,
+  classificationRefreshDisabled,
   onToggle,
   onToggleDocumentSelection,
   onToggleGroupSelection,
@@ -54,6 +59,8 @@ export function ResultNode({
   onSelectPreview,
   onSelectDossierSuggestions,
   onSelectDossierMetadata,
+  onRefreshDossierClassification,
+  onOpenManualClassification,
   onSaveDocumentMetadata,
   onPromoteTemporaryFolder,
 }: {
@@ -74,6 +81,9 @@ export function ResultNode({
   movingSelectedDocumentsTargetId: string | null
   promotingTemporaryFolder: boolean
   temporaryFolderUpdateDisabled: boolean
+  refreshingClassificationDossierId: string | null
+  manuallyClassifyingDossierId: string | null
+  classificationRefreshDisabled: boolean
   onToggle: (nodeId: string) => void
   onToggleDocumentSelection: (
     sessionDocumentId: number,
@@ -89,6 +99,8 @@ export function ResultNode({
   onSelectPreview: (document: ClusterDocument) => void
   onSelectDossierSuggestions: (document: ClusterDocument) => void
   onSelectDossierMetadata: (group: ClusterGroup) => void
+  onRefreshDossierClassification: (group: ClusterGroup) => void
+  onOpenManualClassification: (group: ClusterGroup) => void
   onSaveDocumentMetadata: (
     document: ClusterDocument,
     clusterId: string,
@@ -127,6 +139,18 @@ export function ResultNode({
     node.documentCount > 0
   const selectedGroupInformation = selectedGroupInfoNodeId === node.id
   const activeFindHit = activeFindNodeId === node.id
+  const classificationStatus = String(group?.classificationStatus ?? "")
+  const classificationRefreshPending =
+    classificationStatus === "pending" || classificationStatus === "running"
+  const classificationRefreshBusy = Boolean(
+    group &&
+    (refreshingClassificationDossierId === (group.dossierId ?? group.id) ||
+      classificationRefreshPending)
+  )
+  const manualClassificationBusy = Boolean(
+    group &&
+      manuallyClassifyingDossierId === (group.dossierId ?? group.id)
+  )
   const nodeRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -376,6 +400,64 @@ export function ResultNode({
               </span>
             </Button>
           )}
+          {isDossier && !isPendingDossier && group && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              title="Chọn thủ công một nhóm cấp thấp nhất trong cây phân loại"
+              disabled={
+                classificationRefreshDisabled ||
+                classificationRefreshBusy ||
+                manualClassificationBusy
+              }
+              onClick={(event) => {
+                event.stopPropagation()
+                onOpenManualClassification(group)
+              }}
+            >
+              {manualClassificationBusy ? (
+                <Loader2 data-icon="inline-start" className="animate-spin" />
+              ) : (
+                <ListTree data-icon="inline-start" />
+              )}
+              <span className={cn(compact && "hidden 2xl:inline")}>
+                {manualClassificationBusy
+                  ? "Đang cập nhật"
+                  : "Phân loại thủ công"}
+              </span>
+            </Button>
+          )}
+          {isDossier && !isPendingDossier && group && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              title={
+                classificationRefreshPending
+                  ? "Hồ sơ đang được phân loại lại"
+                  : "Phân loại lại hồ sơ vào các nhóm"
+              }
+              disabled={
+                classificationRefreshDisabled || classificationRefreshBusy
+              }
+              onClick={(event) => {
+                event.stopPropagation()
+                onRefreshDossierClassification(group)
+              }}
+            >
+              {classificationRefreshBusy ? (
+                <Loader2 data-icon="inline-start" className="animate-spin" />
+              ) : (
+                <RefreshCw data-icon="inline-start" />
+              )}
+              <span className={cn(compact && "hidden 2xl:inline")}>
+                {classificationRefreshBusy
+                  ? "Đang phân loại"
+                  : "Phân loại lại"}
+              </span>
+            </Button>
+          )}
           {isDossier && group && (
             <Button
               type="button"
@@ -462,6 +544,11 @@ export function ResultNode({
               movingSelectedDocumentsTargetId={movingSelectedDocumentsTargetId}
               promotingTemporaryFolder={promotingTemporaryFolder}
               temporaryFolderUpdateDisabled={temporaryFolderUpdateDisabled}
+              refreshingClassificationDossierId={
+                refreshingClassificationDossierId
+              }
+              manuallyClassifyingDossierId={manuallyClassifyingDossierId}
+              classificationRefreshDisabled={classificationRefreshDisabled}
               onToggle={onToggle}
               onToggleDocumentSelection={onToggleDocumentSelection}
               onToggleGroupSelection={onToggleGroupSelection}
@@ -474,6 +561,8 @@ export function ResultNode({
               onSelectPreview={onSelectPreview}
               onSelectDossierSuggestions={onSelectDossierSuggestions}
               onSelectDossierMetadata={onSelectDossierMetadata}
+              onRefreshDossierClassification={onRefreshDossierClassification}
+              onOpenManualClassification={onOpenManualClassification}
               onSaveDocumentMetadata={onSaveDocumentMetadata}
               onPromoteTemporaryFolder={onPromoteTemporaryFolder}
             />

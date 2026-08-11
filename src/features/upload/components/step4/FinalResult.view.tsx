@@ -62,6 +62,8 @@ export function FinalResultView(props: Record<string, any>) {
     handleRebuildClusters,
     handleRestorePreviousClusterVersion,
     handleResultTreeDragOver,
+    handleOpenManualClassification,
+    handleRefreshDossierClassification,
     handleSaveDossierMetadata,
     handleSaveDocumentMetadata,
     handleSelectDossierMetadata,
@@ -107,6 +109,8 @@ export function FinalResultView(props: Record<string, any>) {
     promotingTemporaryFolder,
     rebuildBaselineVersionId,
     rebuildSubmitting,
+    refreshingClassificationDossierId,
+    manuallyClassifyingDossierId,
     resultStatusText,
     resultTreeSearch,
     resultTreeSearchIndex,
@@ -453,6 +457,15 @@ export function FinalResultView(props: Record<string, any>) {
                   }
                   promotingTemporaryFolder={promotingTemporaryFolder}
                   temporaryFolderUpdateDisabled={temporaryFolderUpdateDisabled}
+                  refreshingClassificationDossierId={
+                    refreshingClassificationDossierId
+                  }
+                  manuallyClassifyingDossierId={manuallyClassifyingDossierId}
+                  classificationRefreshDisabled={
+                    temporaryFolderUpdateDisabled ||
+                    Boolean(refreshingClassificationDossierId) ||
+                    Boolean(manuallyClassifyingDossierId)
+                  }
                   onToggle={toggleNode}
                   onToggleDocumentSelection={handleToggleDocumentSelection}
                   onToggleGroupSelection={handleToggleGroupSelection}
@@ -477,6 +490,12 @@ export function FinalResultView(props: Record<string, any>) {
                   onSelectPreview={handleSelectPreviewDocument}
                   onSelectDossierSuggestions={handleSelectDossierSuggestions}
                   onSelectDossierMetadata={handleSelectDossierMetadata}
+                  onRefreshDossierClassification={
+                    handleRefreshDossierClassification
+                  }
+                  onOpenManualClassification={
+                    handleOpenManualClassification
+                  }
                   onSaveDocumentMetadata={handleSaveDocumentMetadata}
                   onPromoteTemporaryFolder={handlePromoteTemporaryFolder}
                 />
