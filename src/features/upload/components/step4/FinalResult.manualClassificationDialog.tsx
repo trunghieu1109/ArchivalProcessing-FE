@@ -70,7 +70,7 @@ export function ManualClassificationDialog({
     <Dialog.Root open onOpenChange={(open) => !open && !saving && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-[#0F172A]/50 backdrop-blur-[2px]" />
-        <Dialog.Content className="fixed top-1/2 left-1/2 z-50 flex h-[min(88svh,760px)] w-[calc(100%-2rem)] max-w-3xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-[#CBD5E1] bg-white shadow-2xl outline-none">
+        <Dialog.Content className="fixed top-1/2 left-1/2 z-[51] flex h-[min(88svh,760px)] w-[calc(100%-2rem)] max-w-3xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-[#CBD5E1] bg-white shadow-2xl outline-none">
           <div className="flex shrink-0 items-start gap-3 border-b border-[#E2E8F0] px-5 py-4">
             <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#EAF1FF] text-[#0052FF]">
               <FolderTree className="size-5" />

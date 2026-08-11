@@ -42,7 +42,9 @@ test("manual dossier classification is wired to a leaf-only tree dialog", async 
     dialogSource,
     /hasChildren \? onToggle\(currentPath\) : onSelect\(currentPath\)/
   )
-  assert.match(dialogSource, /Thời hạn bảo quản hiện tại được giữ nguyên/)
+  assert.match(dialogSource, /Thời hạn bảo quản\s+hiện tại được giữ nguyên/)
+  assert.match(dialogSource, /Dialog\.Overlay className="[^"]*z-50[^"]*"/)
+  assert.match(dialogSource, /Dialog\.Content className="[^"]*z-\[51\][^"]*"/)
   assert.match(resultNodeSource, /Phân loại thủ công/)
   assert.match(uploadViewSource, /classificationTree=\{activeFolderTree\}/)
 })
