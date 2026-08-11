@@ -148,8 +148,6 @@ export function resultTreePath(group: ClusterGroup): string[] {
     .map((segment) => segment.trim())
     .filter(Boolean)
   const yearLabel = dossierYearLabel(group)
-  const hasKnownYear =
-    normalizePathSegment(yearLabel) !== normalizePathSegment(UNKNOWN_YEAR_LABEL)
   const hasClassificationYear = classificationPath.some(isYearPathSegment)
 
   if (hasClassificationYear) {
@@ -158,7 +156,7 @@ export function resultTreePath(group: ClusterGroup): string[] {
       if (!isYearPathSegment(segment)) return [segment]
       if (yearSegmentUsed) return []
       yearSegmentUsed = true
-      return [hasKnownYear ? yearLabel : segment]
+      return [segment]
     })
     return deduped.length > 0 ? deduped : [UNCLASSIFIED_LABEL]
   }

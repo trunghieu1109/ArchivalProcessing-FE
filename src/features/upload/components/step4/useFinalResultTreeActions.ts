@@ -519,12 +519,14 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
           metadata_revision: group.metadataRevision ?? 0,
         }
       )
+      feedbackHydrationRevisionRef.current += 1
       setGroups((previous: ClusterGroup[]) =>
         updateDossierGroupFromResponse(previous, group.id, response)
       )
       setDisplayedClusterVersion((previous: ClusterVersionResponse | null) =>
         updateClusterVersionDossier(previous, response)
       )
+      setPendingFeedbackRefreshKey((key: number) => key + 1)
       const selectedPath = response.classification?.group_path?.join(" → ")
       const message = selectedPath
         ? `Đã phân loại thủ công hồ sơ "${response.title || group.label}" vào ${selectedPath}.`
