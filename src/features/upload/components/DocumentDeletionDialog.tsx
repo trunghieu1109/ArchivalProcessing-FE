@@ -161,6 +161,9 @@ export function DocumentDeletionDialog({
   }
 
   const blockers = preview?.blocking_jobs ?? []
+  const hasClusterHistoryBlocker = blockers.some(
+    (blocker) => blocker.code === "DOCUMENT_ALREADY_CLUSTERED"
+  )
   const jobsToCancel = preview?.jobs_to_cancel ?? []
   const continuingJobs = preview?.continuing_jobs ?? []
   const impact = preview?.impact
@@ -227,8 +230,9 @@ export function DocumentDeletionDialog({
                   ))}
                 </ul>
                 <p className="mt-2 text-xs">
-                  Vui lòng đợi tài liệu được mở khóa hoặc task hoàn thành rồi
-                  kiểm tra lại.
+                  {hasClusterHistoryBlocker
+                    ? "Hãy bỏ chọn các tài liệu đã được lập hồ sơ rồi kiểm tra lại."
+                    : "Vui lòng đợi tài liệu được mở khóa hoặc task hoàn thành rồi kiểm tra lại."}
                 </p>
               </div>
             ) : null}
@@ -416,6 +420,12 @@ function jobTypeLabel(jobType: string): string {
 }
 
 function deletionBlockerLabel(blocker: DocumentDeletionBlocker): string {
+  if (blocker.code === "DOCUMENT_ALREADY_CLUSTERED") {
+    return (
+      blocker.message ||
+      `Tài liệu ${blocker.file_name || `#${blocker.session_document_id ?? ""}`} đã từng được lập hồ sơ và không thể xóa.`
+    )
+  }
   if (
     blocker.code === "DOCUMENT_DELETION_LOCKED_AFTER_CLUSTERING" &&
     blocker.message
@@ -442,7 +452,11 @@ function deletionErrorMessage(caught: unknown, fallback: string): string {
   try {
     const detail = JSON.parse(caught.message) as {
       message?: unknown
-      blocking_jobs?: Array<{ job_type?: unknown; status?: unknown }>
+      blocking_jobs?: Array<{
+        message?: unknown
+        job_type?: unknown
+        status?: unknown
+      }>
     }
     const message =
       typeof detail.message === "string" && detail.message.trim()
@@ -451,6 +465,8 @@ function deletionErrorMessage(caught: unknown, fallback: string): string {
     const blockers = Array.isArray(detail.blocking_jobs)
       ? detail.blocking_jobs
           .map((blocker) => {
+            const blockerMessage = String(blocker.message ?? "").trim()
+            if (blockerMessage) return blockerMessage
             const jobType = String(blocker.job_type ?? "").trim()
             const status = String(blocker.status ?? "").trim()
             return jobType
