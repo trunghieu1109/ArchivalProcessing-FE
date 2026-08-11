@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react"
 import type { DocumentPreviewTarget } from "@/features/upload/components/DocumentPdfPreview"
 import {
   cancelPendingClusterFeedback,
@@ -19,7 +26,6 @@ import {
   type ClusterGroup,
 } from "@/features/upload/lib/clusterGroups"
 import { FinalResultView } from "./FinalResult.view"
-import { ManualClassificationDialog } from "./FinalResult.manualClassificationDialog"
 import {
   DocumentDeletionDialog,
   type DocumentDeletionTarget,
@@ -160,6 +166,8 @@ export function FinalResult({
   const [groupInformationLoading, setGroupInformationLoading] = useState(false)
   const [groupInformationError, setGroupInformationError] = useState("")
   const [previewWidthPercent, setPreviewWidthPercent] = useState(50)
+  const [manualClassificationWidthPercent, setManualClassificationWidthPercent] =
+    useState(30)
   const previewLayoutRef = useRef<HTMLDivElement | null>(null)
   const resultTreeScrollRef = useRef<HTMLDivElement | null>(null)
   const resultTreeDragYRef = useRef<number | null>(null)
@@ -319,7 +327,10 @@ export function FinalResult({
   const selectedGroupInfoDossierKey = selectedGroupInfoDossierIds.join("\u001f")
   const selectedGroupInfoLabel = selectedGroupInfoNode?.label ?? ""
   const sidePreviewOpen = Boolean(
-    previewDocument || selectedMetadataGroup || selectedGroupInfoNode
+    manualClassificationGroup ||
+      previewDocument ||
+      selectedMetadataGroup ||
+      selectedGroupInfoNode
   )
   const pendingClusterGroups = useMemo(
     () => versionToGroups(pendingClusterVersion, metadataItems),
@@ -771,6 +782,7 @@ export function FinalResult({
   })
 
   const handleSelectGroupInformation = useCallback((node: ResultTreeNode) => {
+    setManualClassificationGroup(null)
     setSelectedPreviewDocumentId(null)
     setSelectedMetadataGroupId(null)
     setSelectedGroupInfoNodeId((current) =>
@@ -784,6 +796,11 @@ export function FinalResult({
         toast.error("Phương án đang active chưa có cây phân loại để lựa chọn.")
         return
       }
+      setSelectedPreviewDocumentId(null)
+      setSelectedMetadataGroupId(null)
+      setSelectedGroupInfoNodeId(null)
+      setGroupInformationTable(null)
+      setGroupInformationError("")
       setManualClassificationGroup(group)
     },
     [activePlanVersionId, classificationTree.length]
@@ -792,6 +809,42 @@ export function FinalResult({
   const handleCloseManualClassification = useCallback(() => {
     setManualClassificationGroup(null)
   }, [])
+
+  const handleManualClassificationResizePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      const container = previewLayoutRef.current
+      if (!container) return
+      event.preventDefault()
+
+      const previousCursor = document.body.style.cursor
+      const previousUserSelect = document.body.style.userSelect
+      document.body.style.cursor = "col-resize"
+      document.body.style.userSelect = "none"
+
+      const updatePanelWidth = (clientX: number) => {
+        const rect = container.getBoundingClientRect()
+        const rawPercent = ((rect.right - clientX) / rect.width) * 100
+        setManualClassificationWidthPercent(
+          Math.min(50, Math.max(25, rawPercent))
+        )
+      }
+
+      const handlePointerMove = (moveEvent: PointerEvent) => {
+        updatePanelWidth(moveEvent.clientX)
+      }
+      const handlePointerUp = () => {
+        document.body.style.cursor = previousCursor
+        document.body.style.userSelect = previousUserSelect
+        window.removeEventListener("pointermove", handlePointerMove)
+        window.removeEventListener("pointerup", handlePointerUp)
+      }
+
+      updatePanelWidth(event.clientX)
+      window.addEventListener("pointermove", handlePointerMove)
+      window.addEventListener("pointerup", handlePointerUp)
+    },
+    []
+  )
 
   const handleSubmitManualClassification = useCallback(
     (groupIds: string[]) => {
@@ -819,6 +872,7 @@ export function FinalResult({
 
   const handleSelectPreviewDocumentFromTree = useCallback(
     (document: ClusterDocument) => {
+      setManualClassificationGroup(null)
       setSelectedGroupInfoNodeId(null)
       setGroupInformationTable(null)
       setGroupInformationError("")
@@ -968,6 +1022,7 @@ export function FinalResult({
 
   const handleSelectDossierMetadataFromTree = useCallback(
     (group: ClusterGroup) => {
+      setManualClassificationGroup(null)
       setSelectedGroupInfoNodeId(null)
       setGroupInformationTable(null)
       setGroupInformationError("")
@@ -1357,6 +1412,10 @@ export function FinalResult({
         dossierSuggestionsError={dossierSuggestionsError}
         previewLayoutRef={previewLayoutRef}
         previewWidthPercent={previewWidthPercent}
+        manualClassificationWidthPercent={manualClassificationWidthPercent}
+        handleManualClassificationResizePointerDown={
+          handleManualClassificationResizePointerDown
+        }
         previousDisplayVersion={previousDisplayVersion}
         promotingSelectedDocuments={promotingSelectedDocuments}
         promotingTemporaryFolder={promotingTemporaryFolder}
@@ -1364,6 +1423,10 @@ export function FinalResult({
         rebuildSubmitting={rebuildSubmitting}
         refreshingClassificationDossierId={refreshingClassificationDossierId}
         manuallyClassifyingDossierId={manuallyClassifyingDossierId}
+        manualClassificationGroup={manualClassificationGroup}
+        classificationTree={classificationTree}
+        handleCloseManualClassification={handleCloseManualClassification}
+        handleSubmitManualClassification={handleSubmitManualClassification}
         resultStatusText={resultStatusText}
         resultTreeSearch={resultTreeSearch}
         resultTreeSearchIndex={resultTreeSearchIndex}
@@ -1402,19 +1465,6 @@ export function FinalResult({
         }
         onResultTreeSearchNavigate={handleResultTreeSearchNavigate}
       />
-      {manualClassificationGroup && activePlanVersionId && (
-        <ManualClassificationDialog
-          key={manualClassificationGroup.id}
-          dossier={manualClassificationGroup}
-          tree={classificationTree}
-          saving={
-            manuallyClassifyingDossierId ===
-            (manualClassificationGroup.dossierId ?? manualClassificationGroup.id)
-          }
-          onClose={handleCloseManualClassification}
-          onSubmit={handleSubmitManualClassification}
-        />
-      )}
       <DocumentDeletionDialog
         open={deletionTargets.length > 0}
         sessionId={sessionId}

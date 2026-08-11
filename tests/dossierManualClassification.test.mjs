@@ -2,10 +2,12 @@ import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
 import test from "node:test"
 
-test("manual dossier classification is wired to a leaf-only tree dialog", async () => {
+test("manual dossier classification is wired to a leaf-only side panel", async () => {
   const [
     apiSource,
-    dialogSource,
+    panelSource,
+    finalResultSource,
+    finalResultViewSource,
     resultNodeSource,
     uploadViewSource,
     actionSource,
@@ -21,6 +23,20 @@ test("manual dossier classification is wired to a leaf-only tree dialog", async 
     readFile(
       new URL(
         "../src/features/upload/components/step4/FinalResult.manualClassificationDialog.tsx",
+        import.meta.url
+      ),
+      "utf8"
+    ),
+    readFile(
+      new URL(
+        "../src/features/upload/components/step4/FinalResult.tsx",
+        import.meta.url
+      ),
+      "utf8"
+    ),
+    readFile(
+      new URL(
+        "../src/features/upload/components/step4/FinalResult.view.tsx",
         import.meta.url
       ),
       "utf8"
@@ -57,21 +73,39 @@ test("manual dossier classification is wired to a leaf-only tree dialog", async 
     /dossiers\/\$\{encodeURIComponent\(dossierId\)\}\/classification\/manual/
   )
   assert.match(apiSource, /plan_version_id: string[\s\S]*group_ids: string\[\]/)
-  assert.match(dialogSource, /const hasChildren = node\.children\.length > 0/)
+  assert.match(panelSource, /const hasChildren = node\.children\.length > 0/)
   assert.match(
-    dialogSource,
+    panelSource,
     /hasChildren \? onToggle\(currentPath\) : onSelect\(currentPath\)/
   )
-  assert.match(dialogSource, /Thời hạn bảo quản\s+hiện tại được giữ nguyên/)
-  assert.match(dialogSource, /Dialog\.Overlay className="[^"]*z-50[^"]*"/)
-  assert.match(dialogSource, /Dialog\.Content className="[^"]*z-\[51\][^"]*"/)
+  assert.doesNotMatch(panelSource, /Phân loại hiện tại/)
+  assert.doesNotMatch(panelSource, /Thời hạn bảo quản hiện tại/)
+  assert.match(panelSource, /Nhóm sẽ chuyển đến/)
+  assert.doesNotMatch(panelSource, /Dialog\./)
   assert.match(
-    dialogSource,
-    /export const ManualClassificationDialog = memo\(/
+    panelSource,
+    /export const ManualClassificationPanel = memo\(/
   )
-  assert.doesNotMatch(dialogSource, /<ScrollArea/)
-  assert.match(dialogSource, /overflow-y-auto/)
-  assert.match(dialogSource, /name="manual-classification-search"/)
+  assert.match(panelSource, /h-\[calc\(min\(70svh,560px\)\+65px\)\]/)
+  assert.match(panelSource, /overflow-y-auto/)
+  assert.match(panelSource, /name="manual-classification-search"/)
+  assert.match(panelSource, /Chuyển đến thư mục này/)
+  assert.match(
+    finalResultSource,
+    /manualClassificationGroup \|\|[\s\S]*previewDocument/
+  )
+  assert.match(
+    finalResultSource,
+    /manualClassificationWidthPercent[\s\S]*useState\(30\)/
+  )
+  assert.match(
+    finalResultViewSource,
+    /manualClassificationGroup \? \([\s\S]*<ManualClassificationPanel/
+  )
+  assert.match(
+    finalResultViewSource,
+    /100 - manualClassificationWidthPercent[\s\S]*minmax\(340px, \$\{manualClassificationWidthPercent\}fr\)/
+  )
   assert.match(resultNodeSource, /Phân loại thủ công/)
   assert.match(uploadViewSource, /classificationTree=\{activeFolderTree\}/)
   assert.match(
