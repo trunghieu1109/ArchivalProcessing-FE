@@ -27,7 +27,10 @@ import {
   DocumentDeletionDialog,
   type DocumentDeletionTarget,
 } from "../DocumentDeletionDialog"
-import { SHOW_DOCUMENT_DELETION } from "./temporaryFeatureVisibility"
+import {
+  SHOW_DOCUMENT_DELETION,
+  SHOW_DOCUMENT_DELETION_IN_DOSSIER_STEP,
+} from "./temporaryFeatureVisibility"
 import {
   DocumentTransferDialog,
   type DocumentTransferTarget,
@@ -260,7 +263,10 @@ export function FinalResult({
     .trim()
     .toLowerCase()
   const canManageDocuments = userRole === "admin" || userRole === "coordinator"
-  const canDeleteDocuments = SHOW_DOCUMENT_DELETION && canManageDocuments
+  const canDeleteDocuments =
+    SHOW_DOCUMENT_DELETION &&
+    SHOW_DOCUMENT_DELETION_IN_DOSSIER_STEP &&
+    canManageDocuments
   const canTransferDocuments = canManageDocuments
   const selectedPreviewEntry = useMemo(
     () =>

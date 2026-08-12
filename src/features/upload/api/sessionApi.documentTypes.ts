@@ -715,6 +715,8 @@ export interface BulkVerifyDocumentsResponse {
 export interface DocumentDeletionBlocker {
   type?: string
   code?: string
+  message?: string
+  cluster_version_id?: string | null
   document_id?: number | null
   session_document_id?: number | null
   owner?: DocumentEditLockOwner | null

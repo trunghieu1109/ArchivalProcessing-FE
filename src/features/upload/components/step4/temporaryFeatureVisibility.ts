@@ -12,3 +12,7 @@ export const SHOW_METADATA_COUNT_CONFLICT_WARNING = true
 // Temporarily expose document deletion in the UI while keeping the existing
 // role checks and confirmation flow in place.
 export const SHOW_DOCUMENT_DELETION = true
+
+// Document deletion currently belongs to the pre-clustering workflow only.
+// Re-enable together with the backend deletion-after-clustering policy.
+export const SHOW_DOCUMENT_DELETION_IN_DOSSIER_STEP = false
