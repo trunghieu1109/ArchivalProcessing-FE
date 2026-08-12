@@ -23,6 +23,8 @@ import type {
   SessionInputRemoteChunkedPartsPresignResponse,
   SessionInputRemoteUploadPresignResponse,
   SessionInputUploadResponse,
+  DeleteDossierTitleCatalogResponse,
+  DossierTitleCatalogMappingsResponse,
   UploadSessionInputOptions,
 } from "./sessionApi.types"
 import { globalUploadPutSemaphore } from "@/shared/lib/uploadSemaphore"
@@ -81,6 +83,42 @@ export async function uploadSessionInput(
     form,
     uploadOptions.onProgress,
     uploadOptions.signal
+  )
+}
+
+export async function uploadDossierTitleCatalog(
+  sessionId: string,
+  file: File
+): Promise<SessionInputUploadResponse> {
+  const form = new FormData()
+  form.append("file", file)
+  return requestJson<SessionInputUploadResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/inputs/dossier-title-catalog`,
+    { method: "POST", body: form }
+  )
+}
+
+export async function deleteDossierTitleCatalog(
+  sessionId: string
+): Promise<DeleteDossierTitleCatalogResponse> {
+  return requestJson<DeleteDossierTitleCatalogResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/inputs/dossier-title-catalog`,
+    { method: "DELETE" }
+  )
+}
+
+export async function getDossierTitleCatalogMappings(
+  sessionId: string,
+  options: { offset?: number; limit?: number; query?: string } = {}
+): Promise<DossierTitleCatalogMappingsResponse> {
+  const params = new URLSearchParams({
+    offset: String(options.offset ?? 0),
+    limit: String(options.limit ?? 50),
+  })
+  const query = options.query?.trim()
+  if (query) params.set("q", query)
+  return requestJson<DossierTitleCatalogMappingsResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/inputs/dossier-title-catalog/mappings?${params.toString()}`
   )
 }
 

@@ -3,6 +3,7 @@ import {
   enqueuePlanAnalysis,
   type FolderUploadSummary,
   type SessionInputUploadResponse,
+  uploadDossierTitleCatalog,
   uploadSessionInput,
 } from "@/features/upload/api/sessionApi"
 import { folderUploadManager } from "@/features/upload/lib/folderUploadManager"
@@ -64,6 +65,8 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     setZipSupplementUploaded,
     setLatestUploadInterruption,
     setLatestUploadWarning,
+    setDossierTitleCatalogDraftFile,
+    setDossierTitleCatalogUpload,
   } = context
 
   const sessionIsActive = (candidateSessionId: string): boolean =>
@@ -443,6 +446,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     const retentionFileDrafts = doc2Has ? cache.draftRetentionFiles : []
     const zipFile = zipHas ? cache.draftZipFile : null
     const folderSources = zipHas ? cache.draftFolderSources : []
+    const dossierTitleCatalogFile = cache.draftDossierTitleCatalogFile
     if (
       !arrangementFile &&
       retentionFileDrafts.length === 0 &&
@@ -481,6 +485,8 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
       let zipUploadTask: Promise<
         SessionInputUploadResponse | FolderUploadSummary | null
       > = Promise.resolve(null)
+      let dossierTitleCatalogUploadTask: Promise<SessionInputUploadResponse | null> =
+        Promise.resolve(null)
 
       if (arrangementFile) {
         syncDoc1State("processing")
@@ -514,12 +520,27 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
       if (zipFile || folderSources.length > 0) {
         zipUploadTask = uploadPendingDataInput(currentSessionId)
       }
+      if (dossierTitleCatalogFile) {
+        dossierTitleCatalogUploadTask = uploadDossierTitleCatalog(
+          currentSessionId,
+          dossierTitleCatalogFile
+        ).then((response) => {
+          if (sessionIsActive(currentSessionId)) {
+            cache.dossierTitleCatalogUpload = response
+            cache.draftDossierTitleCatalogFile = null
+            setDossierTitleCatalogDraftFile(null)
+            setDossierTitleCatalogUpload(response)
+          }
+          return response
+        })
+      }
 
       const [[arrangementPlan, retentionPlan, zipInput]] = await Promise.all([
         Promise.all([
           arrangementUploadTask,
           retentionUploadTask,
           zipUploadTask,
+          dossierTitleCatalogUploadTask,
         ]),
         Promise.all(documentTasks),
       ])

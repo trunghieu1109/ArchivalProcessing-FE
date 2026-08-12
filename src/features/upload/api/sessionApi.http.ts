@@ -125,7 +125,13 @@ function naturalDetailMessage(detail: unknown): string {
 
   const record = detail as Record<string, unknown>
   if (typeof record.message === "string" && record.message.trim()) {
-    return record.message.trim()
+    const errors = Array.isArray(record.errors)
+      ? record.errors
+          .filter((item): item is string => typeof item === "string")
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : []
+    return [record.message.trim(), ...errors].join("\n")
   }
   if (typeof record.msg === "string" && record.msg.trim()) {
     return record.msg.trim()
