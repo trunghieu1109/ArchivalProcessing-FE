@@ -148,20 +148,30 @@ function responseTextError(
   }
   try {
     const payload = JSON.parse(text) as Record<string, unknown>
-    if (typeof payload.detail === "string") {
-      return { message: payload.detail, code: null, detail: payload.detail }
+    const detailMessage = naturalDetailMessage(payload.detail)
+    const detailRecord =
+      payload.detail &&
+      typeof payload.detail === "object" &&
+      !Array.isArray(payload.detail)
+        ? (payload.detail as Record<string, unknown>)
+        : null
+    const detailCode =
+      typeof detailRecord?.code === "string" && detailRecord.code.trim()
+        ? detailRecord.code.trim()
+        : null
+    if (detailMessage) {
+      return {
+        message: detailMessage,
+        code: detailCode,
+        detail: payload.detail,
+      }
     }
-    if (payload.detail && typeof payload.detail === "object") {
-      const detail = payload.detail as Record<string, unknown>
-      const code =
-        typeof detail.code === "string" && detail.code.trim()
-          ? detail.code.trim()
-          : null
-      const message =
-        typeof detail.message === "string" && detail.message.trim()
-          ? detail.message.trim()
-          : JSON.stringify(detail)
-      return { message, code, detail }
+    if (payload.detail) {
+      return {
+        message: `Yêu cầu không thể xử lý (lỗi ${status}). Vui lòng kiểm tra dữ liệu và thử lại.`,
+        code: detailCode,
+        detail: payload.detail,
+      }
     }
     const code =
       typeof payload.code === "string" && payload.code.trim()
@@ -182,6 +192,26 @@ function responseTextError(
     return { message: text, code: null, detail: text }
   }
   return { message: text, code: null, detail: text }
+}
+
+function naturalDetailMessage(detail: unknown): string {
+  if (typeof detail === "string") return detail.trim()
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => naturalDetailMessage(item))
+      .filter(Boolean)
+      .join("\n")
+  }
+  if (!detail || typeof detail !== "object") return ""
+
+  const record = detail as Record<string, unknown>
+  if (typeof record.message === "string" && record.message.trim()) {
+    return record.message.trim()
+  }
+  if (typeof record.msg === "string" && record.msg.trim()) {
+    return record.msg.trim()
+  }
+  return ""
 }
 
 export function downloadFileName(contentDisposition: string | null): string {

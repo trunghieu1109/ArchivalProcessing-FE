@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   AlertTriangle,
-  Check,
   ChevronLeft,
   ChevronRight,
   ListChecks,
   Loader2,
-  RotateCcw,
   Search,
   Target,
   X,
@@ -46,6 +44,7 @@ import {
 import {
   DossierNumberingModeToggle,
   DossierMetaChip,
+  MetadataCountConflictCard,
   NumberingDocumentRow,
   NumberingMetadataPanel,
   NumberingStat,
@@ -1976,7 +1975,9 @@ export function NumberingStep({
       {error ? (
         <div className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-          <span>{error}</span>
+          <span className="min-w-0 leading-relaxed break-words whitespace-pre-wrap">
+            {error}
+          </span>
         </div>
       ) : null}
       {viewedNumberingState ? (
@@ -2092,14 +2093,6 @@ export function NumberingStep({
                     firstDocument?.cluster_id ?? ""
                   ) ??
                   []
-                const oldCountChoiceLabel = formatMetadataCountChoiceLabel(
-                  metadataCountConflicts,
-                  "old"
-                )
-                const newCountChoiceLabel = formatMetadataCountChoiceLabel(
-                  metadataCountConflicts,
-                  "new"
-                )
                 return (
                   <section key={group.dossierId} className="px-4 py-3">
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -2117,52 +2110,10 @@ export function NumberingStep({
                             label="Hộp số"
                             value={group.boxNumber}
                           />
-                          {metadataCountConflicts.map((conflict) => (
-                            <span
-                              key={`${conflict.field}:${conflict.old_value}:${conflict.new_value}`}
-                              title={`Cũ: ${conflict.old_value} · Mới: ${conflict.new_value}`}
-                              className="inline-flex shrink-0 items-center rounded-full border border-[#F59E0B] bg-[#FFFBEB] px-2 py-0.5 text-[10px] font-semibold text-[#92400E]"
-                            >
-                              <AlertTriangle className="mr-1 size-3" />
-                              {conflict.tag}
-                            </span>
-                          ))}
                           {metadataCountConflicts.length > 0 ? (
-                            <span className="inline-flex shrink-0 items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  void keepOldMetadataCountsForDossier(
-                                    metadataCountConflicts
-                                  )
-                                }
-                                disabled={metadataBusy || active}
-                                title="Giữ số cũ cho hồ sơ này"
-                                className="inline-flex h-6 items-center gap-1 rounded-md border border-[#F59E0B] bg-white px-2 text-[10px] font-semibold text-[#92400E] transition-colors hover:bg-[#FFFBEB] disabled:pointer-events-none disabled:opacity-50"
-                              >
-                                <RotateCcw className="size-3" />
-                                Giữ số cũ
-                                {oldCountChoiceLabel
-                                  ? ` (${oldCountChoiceLabel})`
-                                  : ""}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  void confirmMetadataCountConflictsForDossier(
-                                    metadataCountConflicts
-                                  )
-                                }
-                                disabled={metadataBusy || active}
-                                title="Dùng số mới cho hồ sơ này"
-                                className="inline-flex h-6 items-center gap-1 rounded-md bg-[#0052FF] px-2 text-[10px] font-semibold text-white transition-colors hover:bg-[#0046D8] disabled:pointer-events-none disabled:opacity-50"
-                              >
-                                <Check className="size-3" />
-                                Dùng số mới
-                                {newCountChoiceLabel
-                                  ? ` (${newCountChoiceLabel})`
-                                  : ""}
-                              </button>
+                            <span className="inline-flex shrink-0 items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                              <AlertTriangle className="mr-1 size-3" />
+                              Cần xác nhận metadata
                             </span>
                           ) : null}
                         </div>
@@ -2180,6 +2131,18 @@ export function NumberingStep({
                         />
                       ) : null}
                     </div>
+                    <MetadataCountConflictCard
+                      conflicts={metadataCountConflicts}
+                      disabled={metadataBusy || active}
+                      onKeepCurrent={() =>
+                        keepOldMetadataCountsForDossier(metadataCountConflicts)
+                      }
+                      onUseImported={() =>
+                        confirmMetadataCountConflictsForDossier(
+                          metadataCountConflicts
+                        )
+                      }
+                    />
                     <div className="grid gap-1.5">
                       {group.documents.map((document) => {
                         const isAddedDocument = isAddedNumberingDocument(
@@ -2587,19 +2550,6 @@ function groupMetadataCountConflicts(
     }
   }
   return grouped
-}
-
-function formatMetadataCountChoiceLabel(
-  conflicts: MetadataCountConflict[],
-  choice: "old" | "new"
-): string {
-  return conflicts
-    .map((conflict) => {
-      const fieldLabel = conflict.field === "sheet_count" ? "tờ" : "trang"
-      const value = choice === "old" ? conflict.old_value : conflict.new_value
-      return `${fieldLabel} ${value}`
-    })
-    .join(", ")
 }
 
 function nextNumberingPrefetchPageIndex(
