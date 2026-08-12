@@ -214,15 +214,11 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     metadataReviewedTotal !== undefined
       ? metadataReviewedTotal
       : reviewedItems.length
-  const autoVerifiedDocumentCount = Math.max(
-    0,
-    readyDocumentCount - warningCount - reviewedDocumentCount
-  )
   const dossierReadyDocumentCount = hasServerPagination
-    ? reviewedDocumentCount + autoVerifiedDocumentCount
+    ? reviewedDocumentCount
     : dossierReadyItems.length
   const pendingReadyDocumentCount = hasServerPagination
-    ? warningCount
+    ? Math.max(0, readyDocumentCount - reviewedDocumentCount)
     : pendingReadyItems.length
   const inferredPendingMetadataCount = Math.max(
     0,

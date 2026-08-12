@@ -20,11 +20,11 @@ describe("ProcessStepFooter metadata warning", () => {
     )
 
     expect(
-      screen.getByText("Còn 24 tài liệu chưa xác minh metadata")
+      screen.getByText("Còn 24 tài liệu cần chuyên gia xác thực")
     ).toBeInTheDocument()
     expect(
       screen.getByText(
-        "6 tài liệu đã đủ điều kiện. Bạn vẫn có thể lập hồ sơ, nhưng nên xác minh trước để dữ liệu đầy đủ hơn."
+        "Có thể lập hồ sơ với 6 tài liệu đã được chuyên gia xác thực; 24 tài liệu còn lại chưa được ghi nhận vào hồ sơ."
       )
     ).toBeInTheDocument()
     expect(

@@ -79,6 +79,7 @@ import {
 import {
   dossierBuildMissingLabels,
   dossierBuildMissingMessage,
+  hasExpertReviewedDocuments,
   missingDossierBuildInputs,
   selectedUploadLabels,
 } from "./UploadPage.requirements"
@@ -971,14 +972,10 @@ export function UploadPage() {
     : ocrPendingIngestionMessage
   const hasPendingDataUpload = pendingDataUpload !== null
   const dataInputHas = zipHas || zipUploadReady || folderUploadReady
-  const hasVerifiedDocuments =
-    (ocr.status?.metadata_verified_documents ?? 0) > 0 ||
-    (ocr.status?.metadata_reviewed_documents ?? 0) > 0 ||
-    ocrMetadataItems.some(
-      (document) =>
-        document.metadata_ready &&
-        (document.review_status === "verified" || document.is_reviewed === true)
-    )
+  const hasVerifiedDocuments = hasExpertReviewedDocuments({
+    reviewedCount: ocr.status?.metadata_reviewed_documents ?? 0,
+    documents: ocrMetadataItems,
+  })
   const hasAnyFile = doc1Has || doc2Has || dataInputHas || hasPendingDataUpload
   const hasActivePlan = Boolean(activePlanVersionId)
   const hasWorkingPlan = Boolean(workingPlanVersionId)

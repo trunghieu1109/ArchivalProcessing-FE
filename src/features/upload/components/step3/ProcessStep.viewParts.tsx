@@ -170,9 +170,9 @@ export function ProcessStepFooter({
             {buildBlockedMessage
               ? "Chưa thể lập hồ sơ"
               : showWarning
-                ? `Còn ${reviewWarningCount} tài liệu chưa xác minh metadata`
+                ? `Còn ${reviewWarningCount} tài liệu cần chuyên gia xác thực`
                 : readyItems.length > 0
-                  ? "Sẵn sàng lập hồ sơ"
+                  ? "Metadata đã được chuyên gia xác thực"
                   : metadataMessage}
           </p>
           {buildBlockedMessage ? (
@@ -182,12 +182,12 @@ export function ProcessStepFooter({
           ) : showWarning ? (
             <p className="mt-0.5 text-xs leading-5 text-[#A16207]">
               {dossierReadyItems.length > 0
-                ? `${dossierReadyItems.length} tài liệu đã đủ điều kiện. Bạn vẫn có thể lập hồ sơ, nhưng nên xác minh trước để dữ liệu đầy đủ hơn.`
-                : "Hãy xác minh metadata trước khi lập hồ sơ."}
+                ? `Có thể lập hồ sơ với ${dossierReadyItems.length} tài liệu đã được chuyên gia xác thực; ${reviewWarningCount} tài liệu còn lại chưa được ghi nhận vào hồ sơ.`
+                : "Hãy để chuyên gia xác thực metadata trước khi lập hồ sơ."}
             </p>
           ) : readyItems.length > 0 ? (
             <p className="mt-0.5 text-xs leading-5 text-[#64748B]">
-              {dossierReadyItems.length} tài liệu đã đủ điều kiện.
+              {dossierReadyItems.length} tài liệu đã được chuyên gia xác thực.
             </p>
           ) : null}
         </div>
