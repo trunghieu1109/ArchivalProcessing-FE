@@ -16,6 +16,10 @@ import type {
   ProcessState,
 } from "@/features/upload/types"
 import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
+import type {
+  PlanAnalysisFailure,
+  PlanAnalysisScope,
+} from "./UploadPage.progress"
 import {
   DEFAULT_DOCUMENT_NUMBERING_MODE,
   DEFAULT_DOCUMENT_NUMBERING_STYLE_PRESET,
@@ -47,6 +51,8 @@ interface UploadPageCache {
   zipState: ProcessState
   planAnalysisState: ProcessState
   planAnalysisJobId: number | null
+  planAnalysisScope: PlanAnalysisScope | null
+  planAnalysisFailure: PlanAnalysisFailure | null
   dossierBuildStrategy: DossierBuildStrategy
   persistedDossierBuildStrategy: DossierBuildStrategy
   documentNumberingMode: DocumentNumberingMode
@@ -110,6 +116,8 @@ export const uploadPageCache: UploadPageCache = {
   zipState: "idle",
   planAnalysisState: "idle",
   planAnalysisJobId: null,
+  planAnalysisScope: null,
+  planAnalysisFailure: null,
   dossierBuildStrategy: DEFAULT_DOSSIER_BUILD_STRATEGY,
   persistedDossierBuildStrategy: DEFAULT_DOSSIER_BUILD_STRATEGY,
   documentNumberingMode: DEFAULT_DOCUMENT_NUMBERING_MODE,

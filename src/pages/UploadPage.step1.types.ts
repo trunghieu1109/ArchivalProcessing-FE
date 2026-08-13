@@ -18,10 +18,12 @@ import type {
   ProcessState,
   SectionHandle,
 } from "@/features/upload/types"
+import type { PlanAnalysisFailure } from "./UploadPage.progress"
 
 export interface UploadPageStepOneProps {
   existingSessionMode: boolean
   planAnalyzing: boolean
+  planAnalysisFailure: PlanAnalysisFailure | null
   planProgressMessage: string
   PLAN_PROGRESS_PHASES: ProgressPhase[]
   planProgressPhase: string | null

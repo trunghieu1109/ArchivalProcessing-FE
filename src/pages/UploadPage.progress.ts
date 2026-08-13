@@ -9,6 +9,7 @@ export const STEP_LABELS = [
 ]
 export const PLAN_ANALYSIS_TIMEOUT_MS = 10 * 60 * 1000
 export const PLAN_ANALYSIS_POLL_INTERVAL_MS = 5_000
+export const PLAN_ANALYSIS_EVENT_PAGE_SIZE = 500
 export const LAST_SESSION_KEY = "archival-processing:last-session-id"
 export const PLAN_PROGRESS_PHASES = [
   { id: "upload_inputs", label: "Nạp dữ liệu đầu vào" },
@@ -54,13 +55,123 @@ export function normalizePlanProgressPhase(value: unknown): string {
   return ""
 }
 
-export function planAnalysisEventBelongsToJob(
-  payload: Record<string, unknown> | undefined,
+export function isPlanAnalysisEventForJob(
+  payload: Record<string, unknown> | null | undefined,
   jobId: number | null
 ): boolean {
-  if (jobId === null || !Number.isFinite(jobId)) return false
-  const eventJobId = Number(payload?.job_id)
-  return Number.isFinite(eventJobId) && eventJobId === jobId
+  if (jobId === null) return false
+  const eventJobId = payload?.job_id
+  if (typeof eventJobId === "number") return eventJobId === jobId
+  if (typeof eventJobId !== "string" || !eventJobId.trim()) return false
+  return eventJobId.trim() === String(jobId)
+}
+
+export const planAnalysisEventBelongsToJob = isPlanAnalysisEventForJob
+
+export function planAnalysisResultVersionId(
+  payload: Record<string, unknown> | null | undefined
+): string {
+  const value = payload?.plan_version_id
+  if (typeof value !== "string" && typeof value !== "number") return ""
+  return String(value).trim()
+}
+
+export type PlanAnalysisTerminalState = "failed" | "superseded" | null
+export type PlanAnalysisScope = "plan" | "retention" | "combined"
+export type PlanAnalysisDomain = "plan" | "retention"
+
+export interface PlanAnalysisFailure {
+  message: string
+  retryCount: number | null
+  maxAttempts: number | null
+  failedPhase: string | null
+  scope: PlanAnalysisScope | null
+}
+
+export function planAnalysisTerminalState(
+  eventType: unknown
+): PlanAnalysisTerminalState {
+  if (eventType === "job.failed") return "failed"
+  if (eventType === "plan.analysis.superseded") return "superseded"
+  return null
+}
+
+export function planAnalysisFailureMessage(
+  payload: Record<string, unknown> | null | undefined,
+  eventMessage?: string | null
+): string {
+  const error = payload?.error
+  if (typeof error === "string" && error.trim()) return error.trim()
+  if (typeof eventMessage === "string" && eventMessage.trim()) {
+    return eventMessage.trim()
+  }
+  return "Không thể phân tích phương án chỉnh lý. Vui lòng kiểm tra file và thử lại."
+}
+
+export function planAnalysisFailureFromEvent(
+  payload: Record<string, unknown> | null | undefined,
+  eventMessage?: string | null,
+  failedPhase?: string | null,
+  scope?: PlanAnalysisScope | null
+): PlanAnalysisFailure {
+  return {
+    message: planAnalysisFailureMessage(payload, eventMessage),
+    retryCount: optionalPositiveInteger(payload?.retry_count),
+    maxAttempts: optionalPositiveInteger(payload?.max_attempts),
+    failedPhase: failedPhase?.trim() || null,
+    scope: scope ?? null,
+  }
+}
+
+export function planAnalysisScopeForInputs({
+  analyzePlan,
+  analyzeRetention,
+}: {
+  analyzePlan: boolean
+  analyzeRetention: boolean
+}): PlanAnalysisScope | null {
+  if (analyzePlan && analyzeRetention) return "combined"
+  if (analyzePlan) return "plan"
+  if (analyzeRetention) return "retention"
+  return null
+}
+
+export function planAnalysisFailureDomain(
+  failure: PlanAnalysisFailure | null | undefined
+): PlanAnalysisDomain | null {
+  if (!failure) return null
+  if (failure.scope === "plan") return "plan"
+  if (failure.scope === "retention") return "retention"
+  return failure.failedPhase === "retention_period" ? "retention" : "plan"
+}
+
+function optionalPositiveInteger(value: unknown): number | null {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim()
+        ? Number(value)
+        : Number.NaN
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+}
+
+export function shouldApplyPlanAnalysisResult({
+  currentPlanVersionId,
+  nextPlanVersionId,
+  completedPlanVersionId,
+}: {
+  currentPlanVersionId: string
+  nextPlanVersionId: string
+  completedPlanVersionId: string
+}): boolean {
+  if (!nextPlanVersionId) return false
+  if (!currentPlanVersionId || nextPlanVersionId !== currentPlanVersionId) {
+    return true
+  }
+  return (
+    Boolean(completedPlanVersionId) &&
+    nextPlanVersionId === completedPlanVersionId
+  )
 }
 
 export function planProgressMessageForPhase(phase: string): string {

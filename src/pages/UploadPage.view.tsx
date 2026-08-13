@@ -4,6 +4,7 @@ import { toast } from "sonner"
 import { FolderTree } from "@/features/upload/components/step2/FolderTree"
 import { RetentionAppendicesPanel } from "@/features/upload/components/step2/FolderTree.nodes"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
+import { PlanAnalysisFailureAlert } from "@/features/upload/components/PlanAnalysisFailureAlert"
 import { ProcessStep } from "@/features/upload/components/step3/ProcessStep"
 import { FinalResult } from "@/features/upload/components/step4/FinalResult"
 import { NumberingStep } from "@/features/upload/components/step5/NumberingStep"
@@ -59,6 +60,7 @@ export function UploadPageView(props: Record<string, any>) {
     doc2State,
     zipState,
     planAnalyzing,
+    planAnalysisFailure,
     planProgressPhase,
     planCompletedPhases,
     planProgressMessage,
@@ -256,6 +258,7 @@ export function UploadPageView(props: Record<string, any>) {
             <UploadPageStepOne
               existingSessionMode={existingSessionMode}
               planAnalyzing={planAnalyzing}
+              planAnalysisFailure={planAnalysisFailure}
               planProgressMessage={planProgressMessage}
               PLAN_PROGRESS_PHASES={PLAN_PROGRESS_PHASES}
               planProgressPhase={planProgressPhase}
@@ -342,6 +345,14 @@ export function UploadPageView(props: Record<string, any>) {
               exit={{ opacity: 0, y: -16 }}
               transition={{ duration: 0.4, ease: easeOut }}
             >
+              {planAnalysisFailure && (
+                <div className="mb-4">
+                  <PlanAnalysisFailureAlert
+                    failure={planAnalysisFailure}
+                    onBackToUpload={() => goTo(1)}
+                  />
+                </div>
+              )}
               {hasPlanReady || hasPersistedPlanVersion ? (
                 <div className="flex flex-col gap-4">
                   {planAnalyzing && (

@@ -1,11 +1,13 @@
 import { motion } from "framer-motion"
 import { ArrowRight, CheckCircle2, Loader2, Play } from "lucide-react"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
+import { PlanAnalysisFailureAlert } from "@/features/upload/components/PlanAnalysisFailureAlert"
 import { DocxSection } from "@/features/upload/components/step1/DocxSection"
 import { UnifiedDataUploadSection } from "@/features/upload/components/step1/UnifiedDataUploadSection"
 import { UploadSessionSetupPanel } from "@/features/upload/components/step1/UploadSessionSetupPanel"
 import { cn } from "@/shared/lib/utils"
 import { easeOut } from "./UploadPage.planUtils"
+import { planAnalysisFailureDomain } from "./UploadPage.progress"
 import type { UploadPageStepOneProps } from "./UploadPage.step1.types"
 import { canNavigateDirectlyToMetadata } from "./UploadPage.workflowPolicy"
 
@@ -17,6 +19,7 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
   const {
     existingSessionMode,
     planAnalyzing,
+    planAnalysisFailure,
     planProgressMessage,
     PLAN_PROGRESS_PHASES,
     planProgressPhase,
@@ -111,6 +114,11 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
     (planReuploadState?.retention && !planReuploadState?.arrangement)
       ? "Phân tích thời hạn bảo quản"
       : "Phân tích phương án"
+  const failureDomain = planAnalysisFailureDomain(planAnalysisFailure)
+  const failureTitle =
+    failureDomain === "retention"
+      ? "Phân tích thời hạn bảo quản thất bại"
+      : "Phân tích phương án phân loại thất bại"
   const hasPlanInputs = doc1Has || doc2Has
   const metadataIsNextStep = canNavigateDirectlyToMetadata(doc1Has, doc2Has)
   const planStepActionLabel = hasPlanReady
@@ -139,7 +147,21 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
         syncUploadMode={syncUploadMode}
       />
 
-      {(planAnalyzing || planProgressMessage) && (
+      {planAnalysisFailure && (
+        <div className="flex flex-col gap-3">
+          <ProgressTimeline
+            phases={PLAN_PROGRESS_PHASES}
+            activePhase={null}
+            failedPhase={planAnalysisFailure.failedPhase}
+            completedPhases={planCompletedPhases}
+            title={failureTitle}
+            message="Job đã dừng sau khi thử lại nhưng vẫn không thành công."
+          />
+          <PlanAnalysisFailureAlert failure={planAnalysisFailure} />
+        </div>
+      )}
+
+      {!planAnalysisFailure && (planAnalyzing || planProgressMessage) && (
         <ProgressTimeline
           phases={PLAN_PROGRESS_PHASES}
           activePhase={planProgressPhase}

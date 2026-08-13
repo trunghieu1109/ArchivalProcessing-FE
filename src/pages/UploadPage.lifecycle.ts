@@ -16,7 +16,10 @@ import {
 import { zipUploadManager } from "@/features/zip-upload"
 import type { SessionMetadataValues } from "@/features/upload/components/SessionMetadataBar"
 import { uploadPageCache as cache } from "./UploadPage.cache"
-import { LAST_SESSION_KEY } from "./UploadPage.progress"
+import {
+  LAST_SESSION_KEY,
+  planAnalysisScopeForInputs,
+} from "./UploadPage.progress"
 import {
   DEFAULT_DOCUMENT_NUMBERING_MODE,
   DEFAULT_DOCUMENT_NUMBERING_STYLE_PRESET,
@@ -95,6 +98,7 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     setZipState,
     setPlanAnalysisState,
     setPlanAnalysisJobId,
+    syncPlanAnalysisFailure,
     setDossierBuildStrategy,
     setDocumentNumberingMode,
     setDocumentNumberingStylePreset,
@@ -144,6 +148,7 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     setZipState(cache.zipState)
     setPlanAnalysisState(cache.planAnalysisState)
     setPlanAnalysisJobId(cache.planAnalysisJobId)
+    syncPlanAnalysisFailure(cache.planAnalysisFailure)
     setDossierBuildStrategy(cache.dossierBuildStrategy)
     setDocumentNumberingMode(cache.documentNumberingMode)
     setDocumentNumberingStylePreset(cache.documentNumberingStylePreset)
@@ -205,6 +210,8 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     cache.zipState = "idle"
     cache.planAnalysisState = "idle"
     cache.planAnalysisJobId = null
+    cache.planAnalysisScope = null
+    cache.planAnalysisFailure = null
     cache.dossierBuildStrategy = DEFAULT_DOSSIER_BUILD_STRATEGY
     cache.persistedDossierBuildStrategy = DEFAULT_DOSSIER_BUILD_STRATEGY
     cache.documentNumberingMode = DEFAULT_DOCUMENT_NUMBERING_MODE
@@ -428,6 +435,14 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
           : false
         const activeJobHasKnownPlanInput =
           activeJobHasArrangementFile || activeJobHasRetentionFile
+        cache.planAnalysisScope = activePlanAnalysisJob
+          ? planAnalysisScopeForInputs({
+              analyzePlan:
+                activeJobHasArrangementFile || !activeJobHasKnownPlanInput,
+              analyzeRetention:
+                activeJobHasRetentionFile || !activeJobHasKnownPlanInput,
+            })
+          : null
         cache.doc1Has = Boolean(arrangementPlanFile)
         cache.doc2Has = Boolean(retentionFile)
         cache.zipHas = Boolean(zipFile)

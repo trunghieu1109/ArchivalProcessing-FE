@@ -59,11 +59,18 @@ import { useUploadPageLifecycle } from "./UploadPage.lifecycle"
 import { uploadPageCache as cache } from "./UploadPage.cache"
 import {
   PLAN_PROGRESS_PHASES,
+  PLAN_ANALYSIS_EVENT_PAGE_SIZE,
   PLAN_ANALYSIS_POLL_INTERVAL_MS,
   STEP_LABELS,
+  isPlanAnalysisEventForJob,
   normalizePlanProgressPhase,
-  planAnalysisEventBelongsToJob,
+  planAnalysisFailureFromEvent,
+  planAnalysisFailureMessage,
+  planAnalysisResultVersionId,
+  planAnalysisTerminalState,
   planProgressMessageForPhase,
+  shouldApplyPlanAnalysisResult,
+  type PlanAnalysisFailure,
 } from "./UploadPage.progress"
 import {
   activePlanBuildStrategy,
@@ -221,6 +228,15 @@ export function UploadPage() {
   const [planAnalysisJobId, setPlanAnalysisJobId] = useState<number | null>(
     cache.planAnalysisJobId
   )
+  const [planAnalysisFailure, setPlanAnalysisFailure] =
+    useState<PlanAnalysisFailure | null>(cache.planAnalysisFailure)
+  const syncPlanAnalysisFailure = useCallback(
+    (failure: PlanAnalysisFailure | null) => {
+      cache.planAnalysisFailure = failure
+      setPlanAnalysisFailure(failure)
+    },
+    []
+  )
   const [dossierBuildStrategy, setDossierBuildStrategy] =
     useState<DossierBuildStrategy>(cache.dossierBuildStrategy)
   const [documentNumberingMode, setDocumentNumberingMode] =
@@ -322,6 +338,7 @@ export function UploadPage() {
     setZipState,
     setPlanAnalysisState,
     setPlanAnalysisJobId,
+    syncPlanAnalysisFailure,
     setDossierBuildStrategy,
     setDocumentNumberingMode,
     setDocumentNumberingStylePreset,
@@ -461,7 +478,10 @@ export function UploadPage() {
 
     let cancelled = false
     let afterId = 0
-    let jobCompleted = false
+    let completedPlanVersionId = ""
+    let latestProgressPhase: string | null = null
+    let terminalState: "failed" | "superseded" | null = null
+    let terminalFailure: PlanAnalysisFailure | null = null
     let timeoutId: number | undefined
     const schedule = () => {
       if (!cancelled) {
@@ -480,19 +500,40 @@ export function UploadPage() {
       try {
         const response = await listSessionEvents(sessionId, {
           afterId,
-          limit: 500,
+          limit: PLAN_ANALYSIS_EVENT_PAGE_SIZE,
         })
         if (cancelled) return
         for (const event of response.events) {
           afterId = Math.max(afterId, event.id)
-          if (
-            !planAnalysisEventBelongsToJob(event.payload, planAnalysisJobId)
-          ) {
+          if (!isPlanAnalysisEventForJob(event.payload, planAnalysisJobId)) {
             continue
+          }
+          const nextTerminalState = planAnalysisTerminalState(event.event_type)
+          if (nextTerminalState) {
+            terminalState = nextTerminalState
+            if (nextTerminalState === "failed") {
+              terminalFailure = planAnalysisFailureFromEvent(
+                event.payload,
+                event.message,
+                latestProgressPhase,
+                cache.planAnalysisScope
+              )
+            }
+            break
+          }
+          if (event.event_type === "job.retrying") {
+            const retryError = planAnalysisFailureMessage(
+              event.payload,
+              event.message
+            )
+            setPlanProgressMessage(
+              `Phân tích chưa thành công và backend đang tự thử lại. ${retryError}`
+            )
           }
           if (event.event_type === "plan.analysis.progress") {
             const phase = normalizePlanProgressPhase(event.payload?.phase)
             if (phase) {
+              latestProgressPhase = phase
               setPlanProgressPhase(phase)
               setPlanCompletedPhases(() => {
                 const next = new Set<string>()
@@ -513,7 +554,9 @@ export function UploadPage() {
             }
           }
           if (event.event_type === "plan.analysis.completed") {
-            jobCompleted = true
+            completedPlanVersionId =
+              planAnalysisResultVersionId(event.payload) ||
+              completedPlanVersionId
             const finalPhase =
               PLAN_PROGRESS_PHASES[PLAN_PROGRESS_PHASES.length - 1]?.id ?? null
             setPlanProgressPhase(finalPhase)
@@ -530,42 +573,41 @@ export function UploadPage() {
       } catch {
         // Progress events are best-effort; the working-plan polling owns errors.
       }
+      if (terminalState) {
+        cancelled = true
+        cache.planAnalysisState = "idle"
+        cache.planAnalysisJobId = null
+        cache.planAnalysisScope = null
+        const { doc1Has: currentDoc1Has, doc2Has: currentDoc2Has } =
+          planInputStateRef.current
+        cache.doc1State = currentDoc1Has ? "done" : "idle"
+        cache.doc2State = currentDoc2Has ? "done" : "idle"
+        setPlanAnalysisState("idle")
+        setPlanAnalysisJobId(null)
+        setDoc1State(cache.doc1State)
+        setDoc2State(cache.doc2State)
+        setPlanProgressPhase(null)
+        if (!terminalFailure) setPlanCompletedPhases(new Set())
+        setPlanProgressMessage("")
+        syncPlanAnalysisFailure(terminalFailure)
+        if (terminalFailure) toast.error(terminalFailure.message)
+        return
+      }
       try {
         const planResponse = await getWorkingPlan(sessionId)
         if (cancelled) return
         const currentPlanVersionId = cache.workingPlanVersionId
         const nextPlanVersionId = planResponse?.id ?? ""
-        const nextPlanSignature = planResponse
-          ? planResponseMaterialSignature(planResponse)
-          : ""
         const nextParsedPlan = planResponse
           ? activePlanToParsedPlan(planResponse)
           : null
-        const cachedPlanHasDisplayData =
-          cache.parsedPlan.groups.length > 0 ||
-          cache.parsedPlan.retention_appendices.length > 0 ||
-          cache.parsedPlan.retention_sources.length > 0
-        const nextPlanHasDisplayData = Boolean(
-          nextParsedPlan &&
-          (nextParsedPlan.groups.length > 0 ||
-            nextParsedPlan.retention_appendices.length > 0 ||
-            nextParsedPlan.retention_sources.length > 0)
-        )
-        const sameVersionNeedsHydration =
-          Boolean(nextPlanVersionId) &&
-          nextPlanVersionId === currentPlanVersionId &&
-          !cachedPlanHasDisplayData &&
-          nextPlanHasDisplayData
-        const planMaterialChanged =
-          Boolean(nextPlanSignature) &&
-          nextPlanSignature !== cache.workingPlanSignature
         const shouldApplyPlan =
           Boolean(planResponse) &&
-          (jobCompleted ||
-            !currentPlanVersionId ||
-            (nextPlanVersionId && nextPlanVersionId !== currentPlanVersionId) ||
-            sameVersionNeedsHydration ||
-            planMaterialChanged)
+          shouldApplyPlanAnalysisResult({
+            currentPlanVersionId,
+            nextPlanVersionId,
+            completedPlanVersionId,
+          })
         if (planResponse && nextParsedPlan && shouldApplyPlan) {
           const plan = nextParsedPlan
           const draftPayload = planResponseToDraftPayload(planResponse)
@@ -590,6 +632,8 @@ export function UploadPage() {
           cache.planViewTab = planIsActive ? "active" : "draft"
           cache.planAnalysisState = "done"
           cache.planAnalysisJobId = null
+          cache.planAnalysisScope = null
+          syncPlanAnalysisFailure(null)
           const { doc1Has: currentDoc1Has, doc2Has: currentDoc2Has } =
             planInputStateRef.current
           cache.doc1State = currentDoc1Has ? "done" : "idle"
@@ -667,7 +711,12 @@ export function UploadPage() {
         window.clearTimeout(timeoutId)
       }
     }
-  }, [planAnalysisJobId, planAnalysisState, sessionId])
+  }, [
+    planAnalysisJobId,
+    planAnalysisState,
+    sessionId,
+    syncPlanAnalysisFailure,
+  ])
 
   const {
     ensureSession,
@@ -713,6 +762,7 @@ export function UploadPage() {
     syncSessionMetadata,
     setSessionId,
     setPlanAnalysisState,
+    syncPlanAnalysisFailure,
     setZipSupplementUploaded,
     setPlanReuploadState,
     setDoc1State,
@@ -988,7 +1038,8 @@ export function UploadPage() {
     hasWorkingPlan &&
     doc1Has &&
     parsedPlan.groups.length > 0
-  const hasPlanReady = hasAnalyzedPlan || hasActivePlan
+  const hasPlanReady =
+    hasAnalyzedPlan || (hasActivePlan && activeParsedPlan.groups.length > 0)
   const missingDossierInputs = missingDossierBuildInputs({
     hasArrangementPlan: doc1Has,
     hasRetentionSchedule: doc2Has,
@@ -1527,7 +1578,6 @@ export function UploadPage() {
     planAnalysisState,
     allDone,
     hasPlanReady,
-    hasWorkingPlan,
     planReuploadState,
     dossierBuildStrategy,
     doc1Has,
@@ -1540,6 +1590,7 @@ export function UploadPage() {
     syncSessionMetadata,
     syncPlanAnalysisState,
     setPlanAnalysisJobId,
+    syncPlanAnalysisFailure,
     syncDoc1State,
     syncDoc2State,
     syncZipState,
@@ -1653,6 +1704,7 @@ export function UploadPage() {
         doc2State={doc2State}
         zipState={effectiveZipState}
         planAnalysisState={planAnalysisState}
+        planAnalysisFailure={planAnalysisFailure}
         planAnalyzing={planAnalyzing}
         planProgressPhase={planProgressPhase}
         planCompletedPhases={planCompletedPhases}
