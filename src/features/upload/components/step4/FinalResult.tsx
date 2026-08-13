@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react"
 import type { DocumentPreviewTarget } from "@/features/upload/components/DocumentPdfPreview"
 import {
   cancelPendingClusterFeedback,
@@ -76,6 +83,8 @@ export function FinalResult({
   sessionId,
   groups: initialGroups,
   fondsName,
+  activePlanVersionId = null,
+  classificationTree = [],
   metadataItems: providedMetadataItems,
   onFinish,
 }: FinalResultProps) {
@@ -162,6 +171,8 @@ export function FinalResult({
   const [selectedMetadataGroupId, setSelectedMetadataGroupId] = useState<
     string | null
   >(null)
+  const [manualClassificationGroup, setManualClassificationGroup] =
+    useState<ClusterGroup | null>(null)
   const [selectedGroupInfoNodeId, setSelectedGroupInfoNodeId] = useState<
     string | null
   >(null)
@@ -170,6 +181,8 @@ export function FinalResult({
   const [groupInformationLoading, setGroupInformationLoading] = useState(false)
   const [groupInformationError, setGroupInformationError] = useState("")
   const [previewWidthPercent, setPreviewWidthPercent] = useState(50)
+  const [manualClassificationWidthPercent, setManualClassificationWidthPercent] =
+    useState(30)
   const previewLayoutRef = useRef<HTMLDivElement | null>(null)
   const resultTreeScrollRef = useRef<HTMLDivElement | null>(null)
   const resultTreeDragYRef = useRef<number | null>(null)
@@ -177,6 +190,7 @@ export function FinalResult({
   const displayedClusterVersionRef = useRef<ClusterVersionResponse | null>(null)
   const metadataItemsRef = useRef(metadataItems)
   const lastFeedbackRequestKeyRef = useRef("")
+  const feedbackHydrationRevisionRef = useRef(0)
   const dossierSuggestionsRequestRef = useRef(0)
   const [clusterJobMode, setClusterJobMode] = useState<ClusterJobMode>("new")
   const [clusterProgressPhase, setClusterProgressPhase] = useState<
@@ -337,7 +351,10 @@ export function FinalResult({
   const selectedGroupInfoDossierKey = selectedGroupInfoDossierIds.join("\u001f")
   const selectedGroupInfoLabel = selectedGroupInfoNode?.label ?? ""
   const sidePreviewOpen = Boolean(
-    previewDocument || selectedMetadataGroup || selectedGroupInfoNode
+    manualClassificationGroup ||
+      previewDocument ||
+      selectedMetadataGroup ||
+      selectedGroupInfoNode
   )
   const pendingClusterGroups = useMemo(
     () => versionToGroups(pendingClusterVersion, metadataItems),
@@ -409,6 +426,7 @@ export function FinalResult({
 
   useEffect(() => {
     let cancelled = false
+    const hydrationRevision = feedbackHydrationRevisionRef.current
     const currentDisplayedClusterVersion = displayedClusterVersionRef.current
     const displayingActiveVersion = Boolean(
       sessionId &&
@@ -424,7 +442,12 @@ export function FinalResult({
     }
     if (!displayingActiveVersion || hasPendingClusterVersion) {
       const timeoutId = window.setTimeout(() => {
-        if (cancelled) return
+        if (
+          cancelled ||
+          hydrationRevision !== feedbackHydrationRevisionRef.current
+        ) {
+          return
+        }
         if (!displayingActiveVersion || hasPendingClusterVersion) {
           setPendingFeedbackCount(0)
         }
@@ -458,7 +481,12 @@ export function FinalResult({
 
     listClusterFeedback(sessionId!, { pendingOnly: true, limit: 500 })
       .then((response) => {
-        if (cancelled) return
+        if (
+          cancelled ||
+          hydrationRevision !== feedbackHydrationRevisionRef.current
+        ) {
+          return
+        }
         const hasServerPendingFeedback = Array.isArray(
           response.pending_feedback
         )
@@ -485,7 +513,12 @@ export function FinalResult({
         )
       })
       .catch(() => {
-        if (!cancelled) setPendingFeedbackCount(0)
+        if (
+          !cancelled &&
+          hydrationRevision === feedbackHydrationRevisionRef.current
+        ) {
+          setPendingFeedbackCount(0)
+        }
       })
 
     return () => {
@@ -756,14 +789,19 @@ export function FinalResult({
     handleMoveSelectionToDossier,
     handlePromoteTemporaryFolder,
     handleResultTreeDragOver,
+    handleApplyManualDossierClassification,
+    handleRefreshDossierClassification,
     handleSaveDossierMetadata,
     handleSaveDocumentMetadata,
     handleToggleDocumentSelection,
     handleToggleGroupSelection,
     stopResultTreeAutoScroll,
     toggleNode,
+    refreshingClassificationDossierId,
+    manuallyClassifyingDossierId,
   } = useFinalResultTreeActions({
     draggedDocument,
+    feedbackHydrationRevisionRef,
     groups,
     handleRebuildClusters,
     loading,
@@ -781,6 +819,7 @@ export function FinalResult({
     sessionId,
     viewingHistoricalClusterVersion,
     setDraggedDocument,
+    setDisplayedClusterVersion,
     setDropTargetId,
     setGroups,
     setMovingSelectedDocumentsTargetId,
@@ -795,12 +834,87 @@ export function FinalResult({
   })
 
   const handleSelectGroupInformation = useCallback((node: ResultTreeNode) => {
+    setManualClassificationGroup(null)
     setSelectedPreviewDocumentId(null)
     setSelectedMetadataGroupId(null)
     setSelectedGroupInfoNodeId((current) =>
       current === node.id ? null : node.id
     )
   }, [])
+
+  const handleOpenManualClassification = useCallback(
+    (group: ClusterGroup) => {
+      if (!activePlanVersionId || classificationTree.length === 0) {
+        toast.error("Phương án đang active chưa có cây phân loại để lựa chọn.")
+        return
+      }
+      setSelectedPreviewDocumentId(null)
+      setSelectedMetadataGroupId(null)
+      setSelectedGroupInfoNodeId(null)
+      setGroupInformationTable(null)
+      setGroupInformationError("")
+      setManualClassificationGroup(group)
+    },
+    [activePlanVersionId, classificationTree.length]
+  )
+
+  const handleCloseManualClassification = useCallback(() => {
+    setManualClassificationGroup(null)
+  }, [])
+
+  const handleManualClassificationResizePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      const container = previewLayoutRef.current
+      if (!container) return
+      event.preventDefault()
+
+      const previousCursor = document.body.style.cursor
+      const previousUserSelect = document.body.style.userSelect
+      document.body.style.cursor = "col-resize"
+      document.body.style.userSelect = "none"
+
+      const updatePanelWidth = (clientX: number) => {
+        const rect = container.getBoundingClientRect()
+        const rawPercent = ((rect.right - clientX) / rect.width) * 100
+        setManualClassificationWidthPercent(
+          Math.min(50, Math.max(25, rawPercent))
+        )
+      }
+
+      const handlePointerMove = (moveEvent: PointerEvent) => {
+        updatePanelWidth(moveEvent.clientX)
+      }
+      const handlePointerUp = () => {
+        document.body.style.cursor = previousCursor
+        document.body.style.userSelect = previousUserSelect
+        window.removeEventListener("pointermove", handlePointerMove)
+        window.removeEventListener("pointerup", handlePointerUp)
+      }
+
+      updatePanelWidth(event.clientX)
+      window.addEventListener("pointermove", handlePointerMove)
+      window.addEventListener("pointerup", handlePointerUp)
+    },
+    []
+  )
+
+  const handleSubmitManualClassification = useCallback(
+    (groupIds: string[]) => {
+      if (!manualClassificationGroup || !activePlanVersionId) {
+        return Promise.resolve(false)
+      }
+      return handleApplyManualDossierClassification(
+        manualClassificationGroup,
+        activePlanVersionId,
+        groupIds
+      )
+    },
+    [
+      activePlanVersionId,
+      handleApplyManualDossierClassification,
+      manualClassificationGroup,
+    ]
+  )
 
   const handleCloseGroupInformation = useCallback(() => {
     setSelectedGroupInfoNodeId(null)
@@ -810,6 +924,7 @@ export function FinalResult({
 
   const handleSelectPreviewDocumentFromTree = useCallback(
     (document: ClusterDocument) => {
+      setManualClassificationGroup(null)
       setSelectedGroupInfoNodeId(null)
       setGroupInformationTable(null)
       setGroupInformationError("")
@@ -1041,6 +1156,7 @@ export function FinalResult({
 
   const handleSelectDossierMetadataFromTree = useCallback(
     (group: ClusterGroup) => {
+      setManualClassificationGroup(null)
       setSelectedGroupInfoNodeId(null)
       setGroupInformationTable(null)
       setGroupInformationError("")
@@ -1535,12 +1651,17 @@ export function FinalResult({
         handleFinish={handleFinish}
         handleMoveSelectionToDossier={handleMoveSelectionToDossier}
         handlePreviewResizePointerDown={handlePreviewResizePointerDown}
+        handleManualClassificationResizePointerDown={
+          handleManualClassificationResizePointerDown
+        }
         handlePromoteTemporaryFolder={handlePromoteTemporaryFolder}
         handleRebuildClusters={handleRebuildClusters}
         handleRestorePreviousClusterVersion={
           handleRestorePreviousClusterVersion
         }
         handleResultTreeDragOver={handleResultTreeDragOver}
+        handleOpenManualClassification={handleOpenManualClassification}
+        handleRefreshDossierClassification={handleRefreshDossierClassification}
         handleSaveDossierMetadata={handleSaveDossierMetadata}
         handleSaveDocumentMetadata={handleSaveDocumentMetadata}
         handleSelectDossierMetadata={handleSelectDossierMetadataFromTree}
@@ -1592,11 +1713,18 @@ export function FinalResult({
         dossierSuggestionsError={dossierSuggestionsError}
         previewLayoutRef={previewLayoutRef}
         previewWidthPercent={previewWidthPercent}
+        manualClassificationWidthPercent={manualClassificationWidthPercent}
         previousDisplayVersion={previousDisplayVersion}
         promotingSelectedDocuments={promotingSelectedDocuments}
         promotingTemporaryFolder={promotingTemporaryFolder}
         rebuildBaselineVersionId={rebuildBaselineVersionId}
         rebuildSubmitting={rebuildSubmitting}
+        refreshingClassificationDossierId={refreshingClassificationDossierId}
+        manuallyClassifyingDossierId={manuallyClassifyingDossierId}
+        manualClassificationGroup={manualClassificationGroup}
+        classificationTree={classificationTree}
+        handleCloseManualClassification={handleCloseManualClassification}
+        handleSubmitManualClassification={handleSubmitManualClassification}
         resultStatusText={resultStatusText}
         resultTreeSearch={resultTreeSearch}
         resultTreeSearchIndex={resultTreeSearchIndex}

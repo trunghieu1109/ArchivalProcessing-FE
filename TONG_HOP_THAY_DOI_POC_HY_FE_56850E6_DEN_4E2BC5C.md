@@ -21,6 +21,13 @@ Báo cáo này tổng hợp repository `ArchivalProcessing-FE`, nhánh `origin/p
 
 Churn cộng từng commit lớn hơn diff đầu-cuối vì UI phân loại thủ công đi qua ba trạng thái: dialog → dialog tối ưu → side panel. Khi tích hợp chỉ nên lấy trạng thái cuối.
 
+### Quyết định triển khai đã chốt
+
+- Khi bấm phân loại thủ công, **không mở modal**. FE thay phần panel bên phải bằng cây folder/cây phân loại để người dùng chọn.
+- Layout mặc định là **70:30**: khu vực kết quả bên trái 70%, panel cây phân loại bên phải 30%. Trạng thái cuối của POC khởi tạo `manualClassificationWidthPercent=30`; nếu giữ resize 25%–50% thì điểm mở ban đầu vẫn phải là 30%.
+- Đối với nhóm năm, `classification.group_path` do BE trả về là nguồn chuẩn. Nếu path đã chứa nhóm năm được chọn thủ công, FE không được thay nó bằng năm suy ra từ metadata dossier.
+- Catalog giữ nguyên thiết kế của `f75f24b`/`4e2bc5c`; không có điều chỉnh thứ tự dependency ngoài việc triển khai BE catalog trước FE catalog.
+
 ## 2. Dòng thời gian commit
 
 | Commit | Thời điểm +07:00 | Thống kê | Nội dung thực tế |
@@ -97,9 +104,14 @@ Thay đổi này không còn trong trạng thái cuối: `c48a558` bỏ Radix Di
 
 #### Cây kết quả theo năm
 
-- Nếu backend classification path đã chứa year node, FE giữ nguyên year segment đó và chỉ dedupe các year lặp.
-- Bỏ hành vi thay year trong classification path bằng year suy từ metadata dossier.
+- Lỗi trước fix nằm ở nhánh `hasClassificationYear`: code cũ trả `hasKnownYear ? yearLabel : segment`. Vì vậy dù người dùng vừa chọn một nhóm năm trong classification tree, FE vẫn có thể thay segment đó bằng `yearLabel` suy từ metadata dossier và đưa hồ sơ về sai folder năm.
+- Trạng thái cuối đổi thành `return [segment]`: nếu backend classification path đã chứa year node, FE giữ nguyên chính year segment người dùng đã chọn và chỉ dedupe các year segment lặp.
+- Bỏ hoàn toàn việc dùng `hasKnownYear` để ghi đè year nằm trong classification path.
 - Nếu classification path không có year, FE vẫn prepend `dossierYearLabel` như trước.
+- `isYearPathSegment` nhận `Năm 19xx/20xx`, `Year 19xx/20xx` và nhãn năm chưa xác định sau khi normalize không dấu/case/whitespace.
+- Manual response đồng bộ cả `classification.group_ids` và `classification.group_path` vào `groups` lẫn `displayedClusterVersion`. Vì vậy fix phải đi cùng snapshot update/hydration guard; chỉ sửa hàm dựng tree là chưa đủ để bảo đảm reload/poll không đưa path cũ trở lại.
+
+Các nhóm phân loại không phải năm tiếp tục giữ nguyên thứ tự/path backend trả về; fix này chỉ thay cách FE xử lý segment được nhận diện là năm.
 
 ### 3.4. `62b8a82` — tối ưu dialog và callback
 
@@ -114,9 +126,10 @@ Phần memo/native scroll/callback vẫn được giữ khi component được �
 ### 3.5. `c48a558` — trạng thái cuối: side panel phân loại thủ công
 
 - Đổi export từ `ManualClassificationDialog` thành `ManualClassificationPanel`; tên file vẫn là `FinalResult.manualClassificationDialog.tsx`.
-- Bỏ hoàn toàn Radix Dialog, overlay và portal. Panel nằm ở cột phải của layout kết quả, cùng vị trí với PDF preview, metadata panel và group information panel.
+- Bỏ hoàn toàn Radix Dialog, overlay và portal. Khi bấm nút, cây folder/cây phân loại được hiển thị trực tiếp ở cột phải của layout kết quả, thay cho PDF preview, metadata panel hoặc group information panel đang mở.
 - Mở manual panel sẽ đóng preview/metadata/group-info đang mở; mở các panel kia cũng đóng manual panel.
-- Panel mặc định chiếm 30% chiều rộng, kéo resize trong khoảng 25%–50%; layout giữ cột panel tối thiểu 340 px.
+- Layout mở mặc định theo tỷ lệ **70% kết quả bên trái : 30% cây phân loại bên phải**. Code dùng `manualClassificationWidthPercent=30` và cột trái là `100 - manualClassificationWidthPercent`.
+- POC cuối cho phép kéo panel phải trong khoảng 25%–50% và giữ cột panel tối thiểu 340 px. Khi port, 70:30 vẫn là tỷ lệ khởi tạo bắt buộc.
 - Dùng cùng resize handle của khu vực preview, nhưng chọn handler theo panel đang mở.
 - UI cuối chỉ hiển thị `Nhóm sẽ chuyển đến`; bỏ block `Phân loại hiện tại` và ghi chú retention của dialog cũ.
 - CTA cuối đổi thành `Chuyển đến thư mục này`; khi đang lưu hiển thị `Đang chuyển...`.
@@ -180,7 +193,7 @@ Các phần cần giữ khi ghép:
 - Snapshot synchronization + hydration revision guard.
 - `resolvedSessionId` ưu tiên route ID.
 - Backend year node là nguồn chuẩn khi classification path đã có year.
-- Manual classification dùng trạng thái side panel cuối của `c48a558`.
+- Manual classification dùng trạng thái side panel cuối của `c48a558`, mở cây phân loại bên phải với tỷ lệ mặc định 70:30; không port modal.
 - Catalog state phải đi đủ cache → lifecycle → workflow → Step 1 → Step 2 preview.
 - Giữ nguyên các action/panel mới của target, đặc biệt deletion/transfer và các feature visibility hiện tại.
 
@@ -188,8 +201,8 @@ Các phần cần giữ khi ghép:
 
 1. Sau khi BE classification API sẵn sàng, thêm API types/client, `classificationGroupIds`, snapshot helper và metadata hydration guard từ `56850e6`.
 2. Port refresh action/polling và manual submit action.
-3. Port `resolvedSessionId`, feedback refresh và year-path fix của `f8e7258`.
-4. Dựng thẳng manual side panel theo final state `c48a558`, đồng thời giữ memo/native scroll/stable callback từ `62b8a82`; bỏ qua z-index của `dcd62de`.
+3. Port `resolvedSessionId`, feedback refresh và **nguyên trạng year-path fix cuối** của `f8e7258`: path có year phải trả chính `segment`, tuyệt đối không khôi phục biểu thức `hasKnownYear ? yearLabel : segment`.
+4. Dựng thẳng manual side panel theo final state `c48a558`: cây phân loại ở bên phải, mặc định 70:30; đồng thời giữ memo/native scroll/stable callback từ `62b8a82`. Bỏ qua modal và z-index của `dcd62de`.
 5. Sau khi BE catalog/migration sẵn sàng, thêm catalog API/types và error-detail formatter.
 6. Nối catalog vào cache/lifecycle/new-session workflow và Step 1.
 7. Thêm lazy mapping preview cho `predefined` ở Step 2.
@@ -200,9 +213,11 @@ Các phần cần giữ khi ghép:
 - Route session ID luôn thắng state/cache ID cũ ở bước 1–7.
 - Refresh chỉ chạy trên active version, poll dừng đúng khi đổi session và cập nhật cả group/snapshot.
 - Manual chỉ chọn leaf, không gửi path rỗng/không đổi; stale plan/revision hiển thị lỗi backend.
-- Manual panel loại trừ preview/metadata/group-info, resize 25%–50%, không còn modal overlay.
+- Nhấn phân loại thủ công thay panel bên phải bằng cây phân loại; layout mở đúng 70:30, không còn modal overlay. Nếu giữ resize, panel phải mở lại ở initial 30% theo policy đã chọn.
 - Sau manual/metadata save, feedback response cũ không ghi đè state mới.
-- Classification path có year của backend không bị thay bằng dossier metadata year.
+- Chọn thủ công năm A trong khi metadata dossier suy ra năm B: hồ sơ phải hiển thị và được group dưới năm A ngay sau submit, sau polling và sau reload.
+- Path có nhiều year segment chỉ giữ occurrence đầu; path không có year mới fallback sang `dossierYearLabel`.
+- Các cấp phân loại không phải năm giữ nguyên path và thứ tự backend trả về.
 - Catalog draft trước khi tạo session được upload và awaited.
 - Invalid XLSX hiển thị message cùng danh sách errors nhiều dòng.
 - Reload session khôi phục catalog name/count; delete clear cả backend và UI.

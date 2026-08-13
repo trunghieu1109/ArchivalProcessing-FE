@@ -1,7 +1,15 @@
-import { useEffect, type DragEvent as ReactDragEvent } from "react"
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type DragEvent as ReactDragEvent,
+} from "react"
 import { toast } from "sonner"
 import {
   addMetadataEditKeepClusterFeedback,
+  assignSessionDossierClassificationManually,
+  listSessionDossiers,
   moveDocumentBetweenClusters,
   moveSelectedDocumentsToCluster,
   patchSessionDossier,
@@ -9,9 +17,11 @@ import {
   patchDocumentMetadata,
   promoteSelectedDocumentsToDossier,
   promoteTemporaryFolderDocuments,
+  refreshSessionDossierClassification,
   suggestSessionDossierRetention,
   suggestSessionDossierTitle,
   type ClusterFeedbackResponse,
+  type ClusterVersionResponse,
   type DossierPromoteResponse,
   type SessionDossierSuggestionPayload,
   type SessionDocumentResponse,
@@ -32,6 +42,7 @@ import {
   updateDossierGroupFromResponse,
 } from "./FinalResult.metadataUtils"
 import { applyPendingDossierDrafts } from "./FinalResult.pendingFeedback"
+import { updateClusterVersionDossier } from "./FinalResult.versionUtils"
 import {
   moveDocumentLocally,
   moveSelectedDocumentsLocally,
@@ -40,9 +51,14 @@ import {
 const RESULT_TREE_AUTO_SCROLL_EDGE_PX = 84
 const RESULT_TREE_AUTO_SCROLL_MAX_STEP_PX = 22
 
+function classificationRefreshDelay(delayMs: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, delayMs))
+}
+
 export function useFinalResultTreeActions(context: Record<string, any>) {
   const {
     draggedDocument,
+    feedbackHydrationRevisionRef,
     groups,
     loading,
     movingSelectedDocumentsTargetId,
@@ -59,6 +75,7 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
     sessionId,
     viewingHistoricalClusterVersion,
     setDraggedDocument,
+    setDisplayedClusterVersion,
     setDropTargetId,
     setGroups,
     setMovingSelectedDocumentsTargetId,
@@ -71,6 +88,23 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
     setSelectedSessionDocumentIds,
     setStatus,
   } = context
+  const [refreshingClassification, setRefreshingClassification] = useState<{
+    sessionId: string
+    dossierId: string
+  } | null>(null)
+  const classificationRefreshRequestRef = useRef(0)
+  const classificationRefreshSessionIdRef = useRef(sessionId)
+  const refreshingClassificationDossierId =
+    refreshingClassification && refreshingClassification.sessionId === sessionId
+      ? refreshingClassification.dossierId
+      : null
+  const [manuallyClassifyingDossierId, setManuallyClassifyingDossierId] =
+    useState<string | null>(null)
+
+  useEffect(() => {
+    classificationRefreshSessionIdRef.current = sessionId
+    classificationRefreshRequestRef.current += 1
+  }, [sessionId])
 
   const toggleNode = (nodeId: string) => {
     setOpenNodeIds((previous: Set<string>) => {
@@ -311,9 +345,11 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
           group.draftId,
           payload
         )
+        feedbackHydrationRevisionRef.current += 1
         setGroups((previous: ClusterGroup[]) =>
           applyPendingDossierDrafts(previous, [response])
         )
+        setPendingFeedbackRefreshKey((key: number) => key + 1)
         setStatus(
           `Đã lưu metadata nháp hồ sơ "${String(response.metadata?.title || group.label)}". Bấm Cập nhật hồ sơ để áp dụng.`
         )
@@ -321,9 +357,14 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
         return
       }
       const response = await patchSessionDossier(sessionId, dossierId, payload)
-      setGroups((previous: any) =>
+      feedbackHydrationRevisionRef.current += 1
+      setGroups((previous: ClusterGroup[]) =>
         updateDossierGroupFromResponse(previous, group.id, response)
       )
+      setDisplayedClusterVersion((previous: ClusterVersionResponse | null) =>
+        updateClusterVersionDossier(previous, response)
+      )
+      setPendingFeedbackRefreshKey((key: number) => key + 1)
       setStatus(
         `Đã cập nhật metadata hồ sơ "${response.title || response.generated_title || group.label}".`
       )
@@ -339,6 +380,184 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
       setSavingDossierMetadataId(null)
     }
   }
+
+  const handleRefreshDossierClassification = async (group: ClusterGroup) => {
+    if (viewingHistoricalClusterVersion) {
+      toast.error(
+        "Bạn đang xem phiên bản cũ. Hãy kích hoạt phiên bản này trước khi phân loại lại hồ sơ."
+      )
+      return
+    }
+    if (!sessionId) {
+      toast.error("Chưa có session để phân loại lại hồ sơ.")
+      return
+    }
+    if (group.isPendingDossier) {
+      toast.error("Hãy cập nhật hồ sơ tạm trước khi phân loại lại.")
+      return
+    }
+    const dossierId = group.dossierId ?? group.id
+    if (!dossierId) {
+      toast.error("Hồ sơ này chưa có mã để phân loại lại.")
+      return
+    }
+
+    const requestId = classificationRefreshRequestRef.current + 1
+    classificationRefreshRequestRef.current = requestId
+    setRefreshingClassification({ sessionId, dossierId })
+    try {
+      const response = await refreshSessionDossierClassification(
+        sessionId,
+        dossierId
+      )
+      setGroups((previous: ClusterGroup[]) =>
+        updateDossierGroupFromResponse(previous, group.id, response)
+      )
+      setDisplayedClusterVersion((previous: ClusterVersionResponse | null) =>
+        updateClusterVersionDossier(previous, response)
+      )
+      const message = response.classification_job.created
+        ? `Đã gửi yêu cầu phân loại lại hồ sơ "${response.title || group.label}".`
+        : `Hồ sơ "${response.title || group.label}" đang được phân loại lại.`
+      setStatus(message)
+      toast.success(message)
+
+      for (let attempt = 0; attempt < 150; attempt += 1) {
+        await classificationRefreshDelay(2_000)
+        if (
+          classificationRefreshRequestRef.current !== requestId ||
+          classificationRefreshSessionIdRef.current !== sessionId
+        ) {
+          return
+        }
+
+        let refreshedDossier
+        try {
+          const dossiersResponse = await listSessionDossiers(sessionId)
+          refreshedDossier = dossiersResponse.dossiers.find(
+            (item) =>
+              item.dossier_id === response.dossier_id ||
+              item.cluster_id === response.cluster_id
+          )
+        } catch {
+          continue
+        }
+        if (!refreshedDossier) continue
+
+        setGroups((previous: ClusterGroup[]) =>
+          updateDossierGroupFromResponse(previous, group.id, refreshedDossier)
+        )
+        setDisplayedClusterVersion((previous: ClusterVersionResponse | null) =>
+          updateClusterVersionDossier(previous, refreshedDossier)
+        )
+
+        const classificationStatus = String(
+          refreshedDossier.classification_status ?? ""
+        )
+        if (classificationStatus === "current") {
+          const completedMessage = `Đã phân loại lại hồ sơ "${refreshedDossier.title || group.label}".`
+          setStatus(completedMessage)
+          toast.success(completedMessage)
+          return
+        }
+        if (classificationStatus === "failed") {
+          const failedMessage = `Phân loại lại hồ sơ "${refreshedDossier.title || group.label}" chưa thành công.`
+          setStatus(failedMessage)
+          toast.error(failedMessage)
+          return
+        }
+      }
+      setStatus(
+        `Yêu cầu phân loại lại hồ sơ "${response.title || group.label}" vẫn đang được xử lý.`
+      )
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Không thể gửi yêu cầu phân loại lại hồ sơ."
+      )
+    } finally {
+      if (classificationRefreshRequestRef.current === requestId) {
+        setRefreshingClassification((current) =>
+          current &&
+          current.sessionId === sessionId &&
+          current.dossierId === dossierId
+            ? null
+            : current
+        )
+      }
+    }
+  }
+
+  const handleApplyManualDossierClassification = useCallback(
+    async (
+      group: ClusterGroup,
+      planVersionId: string,
+      groupIds: string[]
+    ): Promise<boolean> => {
+      if (viewingHistoricalClusterVersion) {
+        toast.error(
+          "Bạn đang xem phiên bản cũ. Hãy kích hoạt phiên bản này trước khi phân loại thủ công."
+        )
+        return false
+      }
+      if (!sessionId) {
+        toast.error("Chưa có session để phân loại thủ công hồ sơ.")
+        return false
+      }
+      const dossierId = group.dossierId ?? group.id
+      if (!dossierId || !planVersionId || groupIds.length === 0) {
+        toast.error("Thiếu thông tin hồ sơ hoặc phương án phân loại.")
+        return false
+      }
+
+      setManuallyClassifyingDossierId(dossierId)
+      try {
+        const response = await assignSessionDossierClassificationManually(
+          sessionId,
+          dossierId,
+          {
+            plan_version_id: planVersionId,
+            group_ids: groupIds,
+            metadata_revision: group.metadataRevision ?? 0,
+          }
+        )
+        feedbackHydrationRevisionRef.current += 1
+        setGroups((previous: ClusterGroup[]) =>
+          updateDossierGroupFromResponse(previous, group.id, response)
+        )
+        setDisplayedClusterVersion((previous: ClusterVersionResponse | null) =>
+          updateClusterVersionDossier(previous, response)
+        )
+        setPendingFeedbackRefreshKey((key: number) => key + 1)
+        const selectedPath = response.classification?.group_path?.join(" → ")
+        const message = selectedPath
+          ? `Đã phân loại thủ công hồ sơ "${response.title || group.label}" vào ${selectedPath}.`
+          : `Đã cập nhật phân loại thủ công hồ sơ "${response.title || group.label}".`
+        setStatus(message)
+        toast.success(message)
+        return true
+      } catch (err) {
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : "Không thể cập nhật phân loại thủ công cho hồ sơ."
+        )
+        return false
+      } finally {
+        setManuallyClassifyingDossierId(null)
+      }
+    },
+    [
+      feedbackHydrationRevisionRef,
+      sessionId,
+      setDisplayedClusterVersion,
+      setGroups,
+      setPendingFeedbackRefreshKey,
+      setStatus,
+      viewingHistoricalClusterVersion,
+    ]
+  )
 
   const handleSaveDocumentMetadata = async (
     document: ClusterDocument,
@@ -812,12 +1031,16 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
     handleMoveSelectionToDossier,
     handlePromoteTemporaryFolder,
     handleResultTreeDragOver,
+    handleApplyManualDossierClassification,
     handleSaveDossierMetadata,
+    handleRefreshDossierClassification,
     handleSaveDocumentMetadata,
     handleToggleDocumentSelection,
     handleToggleGroupSelection,
     stopResultTreeAutoScroll,
     toggleNode,
+    refreshingClassificationDossierId,
+    manuallyClassifyingDossierId,
   }
 }
 

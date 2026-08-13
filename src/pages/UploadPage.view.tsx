@@ -149,6 +149,7 @@ export function UploadPageView(props: Record<string, any>) {
     isWorkerUser,
     navigate,
   } = props
+  const resolvedSessionId = routeSessionId ?? sessionId ?? null
   const hasActivePlanData =
     Boolean(hasActivePlan) &&
     Boolean(activePlanVersionId) &&
@@ -203,10 +204,9 @@ export function UploadPageView(props: Record<string, any>) {
     </div>
   ) : null
   const goToMetadataStep = () => {
-    const targetSessionId = sessionId ?? routeSessionId
-    if (targetSessionId) {
+    if (resolvedSessionId) {
       navigate(
-        `/sessions/${encodeURIComponent(targetSessionId)}/step/3?extract=1`
+        `/sessions/${encodeURIComponent(resolvedSessionId)}/step/3?extract=1`
       )
       return
     }
@@ -257,9 +257,9 @@ export function UploadPageView(props: Record<string, any>) {
           )}
         </div>
 
-        {(sessionId || routeSessionId) && currentStep !== 1 && (
+        {resolvedSessionId && currentStep !== 1 && (
           <SessionMetadataBar
-            sessionId={sessionId ?? routeSessionId ?? null}
+            sessionId={resolvedSessionId}
             metadata={sessionMetadata}
             onSave={saveSessionMetadata}
             readOnly={isWorkerUser}
@@ -350,7 +350,7 @@ export function UploadPageView(props: Record<string, any>) {
               planInputsReuploaded={planInputsReuploaded}
               sessionMetadata={sessionMetadata}
               syncSessionMetadataDraft={syncSessionMetadataDraft}
-              sessionId={sessionId ?? routeSessionId ?? null}
+              sessionId={resolvedSessionId}
               ensureSession={ensureSession}
               openZipUpload={searchParams.get("upload") === "zip"}
               zipUploadFocusKey={
@@ -741,7 +741,7 @@ export function UploadPageView(props: Record<string, any>) {
               transition={{ duration: 0.4, ease: easeOut }}
             >
               <ProcessStep
-                sessionId={sessionId}
+                sessionId={resolvedSessionId}
                 pdfPaths={ocrPdfPaths}
                 metadataTotal={
                   ocr.status?.total_files ?? ocrMetadataItems.length
@@ -832,18 +832,19 @@ export function UploadPageView(props: Record<string, any>) {
               transition={{ duration: 0.4, ease: easeOut }}
             >
               <FinalResult
-                sessionId={sessionId}
+                sessionId={resolvedSessionId}
                 groups={clusterGroups}
                 fondsName={sessionMetadata?.fonds_name}
+                activePlanVersionId={activePlanVersionId}
+                classificationTree={activeFolderTree}
                 metadataItems={ocrMetadataItems}
                 onFinish={() => {
-                  const currentSessionId = sessionId ?? routeSessionId
-                  if (!currentSessionId) {
+                  if (!resolvedSessionId) {
                     toast.error("Chưa có session để đánh số trang.")
                     return
                   }
                   navigate(
-                    `/sessions/${encodeURIComponent(currentSessionId)}/step/5`
+                    `/sessions/${encodeURIComponent(resolvedSessionId)}/step/5`
                   )
                 }}
               />
@@ -860,7 +861,7 @@ export function UploadPageView(props: Record<string, any>) {
               transition={{ duration: 0.4, ease: easeOut }}
             >
               <NumberingStep
-                sessionId={sessionId ?? routeSessionId ?? null}
+                sessionId={resolvedSessionId}
                 documentNumberingMode={activePlanSettings.documentNumberingMode}
                 onDocumentNumberingModeApplied={
                   applyPersistedDocumentNumberingMode
@@ -882,12 +883,11 @@ export function UploadPageView(props: Record<string, any>) {
                     : undefined
                 }
                 onContinue={() => {
-                  const currentSessionId = sessionId ?? routeSessionId
-                  if (!currentSessionId) {
+                  if (!resolvedSessionId) {
                     toast.error("Chưa có session để tạo mục lục.")
                     return
                   }
-                  goTo(6, currentSessionId)
+                  goTo(6, resolvedSessionId)
                 }}
               />
             </motion.div>
@@ -903,19 +903,18 @@ export function UploadPageView(props: Record<string, any>) {
               transition={{ duration: 0.4, ease: easeOut }}
             >
               <FinalizeArtifactsStep
-                sessionId={sessionId ?? routeSessionId ?? null}
+                sessionId={resolvedSessionId}
                 sessionMetadata={sessionMetadata}
                 autoStart={searchParams.get("start") === "1"}
                 onAutoStartHandled={handleFinalizeAutoStartHandled}
                 embedded
                 onContinue={() => {
-                  const currentSessionId = sessionId ?? routeSessionId
-                  if (!currentSessionId) {
+                  if (!resolvedSessionId) {
                     toast.error("Chưa có session để xuất bản.")
                     return
                   }
                   navigate(
-                    `/sessions/${encodeURIComponent(currentSessionId)}/step/7`
+                    `/sessions/${encodeURIComponent(resolvedSessionId)}/step/7`
                   )
                 }}
               />
@@ -931,9 +930,7 @@ export function UploadPageView(props: Record<string, any>) {
               exit={{ opacity: 0, y: -16 }}
               transition={{ duration: 0.4, ease: easeOut }}
             >
-              <PublicationStep
-                sessionId={sessionId ?? routeSessionId ?? null}
-              />
+              <PublicationStep sessionId={resolvedSessionId} />
             </motion.div>
           )}
         </AnimatePresence>

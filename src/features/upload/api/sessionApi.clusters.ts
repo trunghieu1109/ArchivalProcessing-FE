@@ -139,6 +139,86 @@ export async function patchSessionDossier(
   )
 }
 
+export async function refreshSessionDossierClassification(
+  sessionId: string,
+  dossierId: string
+): Promise<
+  SessionDossierSummary & {
+    classification_job: {
+      job_id: number
+      job_type: "refresh_dossier_classification" | string
+      status: string
+      created: boolean
+    }
+  }
+> {
+  return requestJson<
+    SessionDossierSummary & {
+      classification_job: {
+        job_id: number
+        job_type: "refresh_dossier_classification" | string
+        status: string
+        created: boolean
+      }
+    }
+  >(
+    `/sessions/${encodeURIComponent(sessionId)}/dossiers/${encodeURIComponent(dossierId)}/classification/refresh`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ created_by: "ui" }),
+    }
+  )
+}
+
+export async function assignSessionDossierClassificationManually(
+  sessionId: string,
+  dossierId: string,
+  payload: {
+    plan_version_id: string
+    group_ids: string[]
+    metadata_revision: number
+  }
+): Promise<
+  SessionDossierSummary & {
+    classification_source: "manual" | string
+    feedback_event_id?: number
+  }
+> {
+  return requestJson<
+    SessionDossierSummary & {
+      classification_source: "manual" | string
+      feedback_event_id?: number
+    }
+  >(
+    `/sessions/${encodeURIComponent(sessionId)}/dossiers/${encodeURIComponent(dossierId)}/classification/manual`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...payload,
+        created_by: "ui",
+      }),
+    }
+  )
+}
+
+export async function listSessionDossiers(sessionId: string): Promise<{
+  session_id: string
+  cluster_version_id: string
+  version_number: number
+  dossiers: SessionDossierSummary[]
+}> {
+  return requestJson<{
+    session_id: string
+    cluster_version_id: string
+    version_number: number
+    dossiers: SessionDossierSummary[]
+  }>(`/sessions/${encodeURIComponent(sessionId)}/dossiers`, {
+    cache: "no-store",
+  })
+}
+
 export async function listSessionDossierDrafts(
   sessionId: string,
   status = "pending"
