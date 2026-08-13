@@ -1207,9 +1207,11 @@ export function FinalResult({
           ? `Đang lập lại hồ sơ theo phương án mới. ${status}`
           : clusterJobMode === "file_register"
             ? `Đang lập lại hồ sơ theo tập lưu. ${status}`
-            : clusterJobMode === "update"
-              ? `Đang cập nhật hồ sơ. ${status}`
-              : `Đang lập hồ sơ mới. ${status}`
+            : clusterJobMode === "predefined"
+              ? `Đang lập hồ sơ nhanh. ${status}`
+              : clusterJobMode === "update"
+                ? `Đang cập nhật hồ sơ. ${status}`
+                : `Đang lập hồ sơ mới. ${status}`
       : status
   const handleDeleteSelectedDocuments = useCallback(() => {
     const selectedEntries = previewDocuments.filter((entry) =>

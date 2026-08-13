@@ -24,6 +24,7 @@ export type ClusterJobMode =
   | "update"
   | "plan_reanalysis"
   | "file_register"
+  | "predefined"
 
 export function completedClusterPhaseSet(): Set<string> {
   return new Set(CLUSTER_ALL_PHASE_IDS)
@@ -88,6 +89,22 @@ export function clusterProgressMessageForPhase(
   phaseId: string,
   mode: ClusterJobMode
 ): string {
+  if (mode === "predefined") {
+    switch (phaseId) {
+      case "updating_dossiers":
+        return "Đang tạo hồ sơ theo chế độ xử lý nhanh."
+      case "naming_dossiers":
+        return "Đang hoàn thiện tiêu đề cho các hồ sơ được tạo nhanh."
+      case "classifying_dossiers":
+        return "Đang phân loại hồ sơ vào các nhóm lớn, vừa và nhỏ."
+      case "finding_retention":
+        return "Đang tìm thời hạn bảo quản và gợi ý căn cứ phù hợp."
+      case "reviewing_dossiers":
+        return "Đang rà soát kết quả trước khi hiển thị phiên bản mới."
+      default:
+        return "Đang lập hồ sơ nhanh từ các tài liệu đã xác nhận."
+    }
+  }
   switch (phaseId) {
     case "updating_dossiers":
       return mode === "plan_reanalysis"
@@ -136,6 +153,7 @@ export function dossierUiMessage(message: string): string {
 export function clusterJobModeFromPayload(
   payload: Record<string, unknown> | null | undefined
 ): ClusterJobMode {
+  if (payload?.dossier_build_strategy === "predefined") return "predefined"
   return clusterJobModeFromSource(payload?.source)
 }
 

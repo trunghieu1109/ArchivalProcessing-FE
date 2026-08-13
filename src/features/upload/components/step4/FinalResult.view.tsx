@@ -318,9 +318,11 @@ export function FinalResultView(props: Record<string, any>) {
               ? "Tiến độ lập lại hồ sơ"
               : clusterJobMode === "file_register"
                 ? "Tiến độ lập hồ sơ theo tập lưu"
-                : clusterJobMode === "update"
-                  ? "Tiến độ cập nhật hồ sơ"
-                  : "Tiến độ lập hồ sơ"
+                : clusterJobMode === "predefined"
+                  ? "Tiến độ lập hồ sơ nhanh"
+                  : clusterJobMode === "update"
+                    ? "Tiến độ cập nhật hồ sơ"
+                    : "Tiến độ lập hồ sơ"
           }
           message={
             clusterProgressMessage ||
@@ -346,6 +348,11 @@ export function FinalResultView(props: Record<string, any>) {
                 Backend đang bỏ qua cách lập hồ sơ của phương án hiện tại và sắp
                 xếp tài liệu theo dạng tập lưu. Nút áp dụng sẽ bật khi phiên bản
                 mới sẵn sàng.
+              </p>
+            ) : clusterJobMode === "predefined" ? (
+              <p className="mt-1 text-sm text-[#475569]">
+                Hệ thống đang tạo phiên bản hồ sơ theo chế độ xử lý nhanh. Kết
+                quả sẽ sẵn sàng để rà soát ngay sau khi hoàn tất.
               </p>
             ) : (
               <p className="mt-1 text-sm text-[#475569]">

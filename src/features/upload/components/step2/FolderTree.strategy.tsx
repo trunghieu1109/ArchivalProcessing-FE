@@ -1,4 +1,4 @@
-import { Archive, ChevronRight, FolderKanban } from "lucide-react"
+import { Archive, ChevronRight, FolderKanban, Zap } from "lucide-react"
 import { cn } from "@/shared/lib/utils"
 import type { DossierBuildStrategy } from "@/features/upload/api/sessionApi"
 import type {
@@ -76,7 +76,7 @@ export function DossierBuildStrategySection({
         </p>
       </div>
       <div
-        className="mt-4 grid gap-3 md:grid-cols-2"
+        className="mt-4 grid gap-3 md:grid-cols-3"
         role="radiogroup"
         aria-label="Cách thức lập hồ sơ"
       >
@@ -113,8 +113,8 @@ export function DossierBuildStrategySection({
               </span>
             </span>
             <span className="mt-1.5 block text-sm leading-6 text-[#64748B]">
-              Gom tài liệu theo chủ đề, nội dung và vụ việc bằng incremental
-              clustering.
+              Phân tích nội dung và mối liên hệ giữa các tài liệu để gom thành
+              từng hồ sơ vụ việc.
             </span>
           </span>
         </button>
@@ -149,6 +149,40 @@ export function DossierBuildStrategySection({
             <span className="mt-1.5 block text-sm leading-6 text-[#64748B]">
               Gom theo loại văn bản, năm ban hành, sắp xếp theo thời gian và
               chia thành các tập hồ sơ.
+            </span>
+          </span>
+        </button>
+
+        <button
+          type="button"
+          role="radio"
+          aria-checked={dossierBuildStrategy === "predefined"}
+          disabled={readOnly}
+          onClick={() => onDossierBuildStrategyChange("predefined")}
+          className={cn(
+            "flex min-h-32 items-start gap-4 rounded-2xl border p-4 text-left transition-all focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-100",
+            dossierBuildStrategy === "predefined"
+              ? "border-[#0052FF] bg-[#EEF4FF] shadow-[0_8px_24px_rgba(0,82,255,0.10)]"
+              : "border-[#D8E1EC] bg-white hover:border-[#0052FF]/40 hover:bg-[#F8FAFC]"
+          )}
+        >
+          <span
+            className={cn(
+              "flex size-11 shrink-0 items-center justify-center rounded-xl",
+              dossierBuildStrategy === "predefined"
+                ? "bg-[#0052FF] text-white"
+                : "bg-[#EEF2F7] text-[#475569]"
+            )}
+          >
+            <Zap className="size-5" />
+          </span>
+          <span className="min-w-0">
+            <span className="font-semibold text-[#0F172A]">
+              Lập hồ sơ nhanh
+            </span>
+            <span className="mt-1.5 block text-sm leading-6 text-[#64748B]">
+              Tạo kết quả lập hồ sơ nhanh với ít bước xử lý, phù hợp để tiếp tục
+              rà soát và hoàn thiện.
             </span>
           </span>
         </button>
