@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 
+import { ApiRequestError } from "@/features/upload/api/sessionApi.http"
 import {
   deletionBlockerLabel,
   deletionErrorMessage,
@@ -45,6 +46,30 @@ describe("document deletion cluster-history blockers", () => {
 
     expect(deletionErrorMessage(error, "Lỗi")).toBe(
       "Không thể xóa: Tài liệu A đã từng được lập hồ sơ, Tài liệu B đã từng được lập hồ sơ."
+    )
+  })
+
+  it("reads blocker messages from the actual API error detail", () => {
+    const error = new ApiRequestError(
+      "Một hoặc nhiều tài liệu đã từng được lập hồ sơ và không thể xóa.",
+      409,
+      {
+        code: "DOCUMENT_ALREADY_CLUSTERED",
+        detail: {
+          message:
+            "Một hoặc nhiều tài liệu đã từng được lập hồ sơ và không thể xóa.",
+          blocking_jobs: [
+            {
+              code: "DOCUMENT_ALREADY_CLUSTERED",
+              message: 'Tài liệu "bao-cao-a.pdf" đã từng được lập hồ sơ.',
+            },
+          ],
+        },
+      }
+    )
+
+    expect(deletionErrorMessage(error, "Lỗi")).toBe(
+      'Một hoặc nhiều tài liệu đã từng được lập hồ sơ và không thể xóa: Tài liệu "bao-cao-a.pdf" đã từng được lập hồ sơ.'
     )
   })
 

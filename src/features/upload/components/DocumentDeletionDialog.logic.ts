@@ -58,19 +58,12 @@ export function deletionErrorMessage(
   fallback: string
 ): string {
   if (!(caught instanceof Error) || !caught.message) return fallback
-  try {
-    const detail = JSON.parse(caught.message) as {
-      message?: unknown
-      blocking_jobs?: Array<{
-        message?: unknown
-        job_type?: unknown
-        status?: unknown
-      }>
-    }
+  const detail = deletionErrorDetail(caught)
+  if (detail) {
     const message =
       typeof detail.message === "string" && detail.message.trim()
         ? detail.message.trim()
-        : fallback
+        : caught.message || fallback
     const blockers = Array.isArray(detail.blocking_jobs)
       ? detail.blocking_jobs
           .map((blocker) => {
@@ -87,7 +80,30 @@ export function deletionErrorMessage(
     return blockers.length > 0
       ? `${withoutTerminalPunctuation(message)}: ${blockers.join(", ")}.`
       : message
-  } catch {
-    return caught.message
   }
+  return caught.message
+}
+
+interface DeletionErrorDetail {
+  message?: unknown
+  blocking_jobs?: Array<{
+    message?: unknown
+    job_type?: unknown
+    status?: unknown
+  }>
+}
+
+function deletionErrorDetail(caught: Error): DeletionErrorDetail | null {
+  const apiDetail = (caught as Error & { detail?: unknown }).detail
+  if (isRecord(apiDetail)) return apiDetail as DeletionErrorDetail
+  try {
+    const parsed = JSON.parse(caught.message) as unknown
+    return isRecord(parsed) ? (parsed as DeletionErrorDetail) : null
+  } catch {
+    return null
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
 }
