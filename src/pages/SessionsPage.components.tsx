@@ -5,7 +5,6 @@ import {
   Archive,
   ArrowRight,
   CheckCircle2,
-  Download,
   FileText,
   Layers3,
   Loader2,
@@ -16,10 +15,7 @@ import {
 import { motion } from "framer-motion"
 import { cn } from "@/shared/lib/utils"
 import type { ChinhlyUser } from "@/features/auth/api/authApi"
-import type {
-  SessionBackupProgress,
-  SessionSummary,
-} from "@/features/upload/api/sessionApi"
+import type { SessionSummary } from "@/features/upload/api/sessionApi"
 import { chinhlyUserId, type SessionAnalysisStatuses } from "./SessionsPage.utils"
 
 export function SessionCard({
@@ -28,10 +24,6 @@ export function SessionCard({
   onOpen,
   onDelete,
   deleting,
-  canBackup,
-  backupDisabled,
-  onBackup,
-  backupProgress,
   isAdmin,
   coordinators,
   coordinator,
@@ -44,10 +36,6 @@ export function SessionCard({
   onOpen: () => void
   onDelete: () => void
   deleting: boolean
-  canBackup: boolean
-  backupDisabled: boolean
-  onBackup: () => void
-  backupProgress: SessionBackupProgress | null
   isAdmin: boolean
   coordinators: ChinhlyUser[]
   coordinator?: ChinhlyUser
@@ -253,26 +241,6 @@ export function SessionCard({
           <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
         </button>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          {canBackup && (
-            <button
-              type="button"
-              onClick={onBackup}
-              disabled={backupDisabled}
-              title="Xuất dữ liệu backup và URL tải; không tải nội dung PDF"
-              className="flex items-center justify-center gap-1.5 rounded-lg border border-[#B9CCF5] px-2.5 py-1 text-xs font-semibold text-[#0052FF] transition-colors hover:border-[#0052FF]/50 hover:bg-[#EAF1FF] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {backupProgress ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <Download className="size-3.5" />
-              )}
-              {backupProgress
-                ? backupProgress.stage === "documents"
-                  ? `Backup ${backupProgress.processedDocuments}/${backupProgress.totalDocuments}`
-                  : "Đang backup"
-                : "Backup JSON"}
-            </button>
-          )}
           {isAdmin && (
             <button
               type="button"

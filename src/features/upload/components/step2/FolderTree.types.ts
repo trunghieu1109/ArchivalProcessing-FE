@@ -17,6 +17,8 @@ export interface FolderTreeProps {
   fondsName?: string | null
   readOnly?: boolean
   hasRetentionSchedule?: boolean
+  showRetentionSection?: boolean
+  showActions?: boolean
   dossierBuildStrategy: DossierBuildStrategy
   onDossierBuildStrategyChange: (strategy: DossierBuildStrategy) => void
   documentNumberingMode: DocumentNumberingMode

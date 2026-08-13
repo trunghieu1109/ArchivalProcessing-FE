@@ -717,8 +717,11 @@ export interface DocumentDeletionBlocker {
   code?: string
   message?: string
   cluster_version_id?: string | null
-  document_id?: number | null
+  document_id?: string | number | null
   session_document_id?: number | null
+  file_name?: string | null
+  dossier_id?: string | null
+  cluster_membership_count?: number
   owner?: DocumentEditLockOwner | null
   expires_at?: string | null
   job_id?: number | null

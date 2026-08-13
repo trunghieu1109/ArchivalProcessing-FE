@@ -9,9 +9,13 @@ import {
   previewSessionDocumentDeletion,
   retrySessionDocumentDeletion,
   type DocumentDeletionOperationResponse,
-  type DocumentDeletionBlocker,
   type DocumentDeletionPreviewResponse,
 } from "@/features/upload/api/sessionApi"
+import {
+  deletionBlockerLabel,
+  deletionErrorMessage,
+  jobTypeLabel,
+} from "./DocumentDeletionDialog.logic"
 
 export interface DocumentDeletionTarget {
   id: number
@@ -155,6 +159,9 @@ export function DocumentDeletionDialog({
   }
 
   const blockers = preview?.blocking_jobs ?? []
+  const hasClusterHistoryBlocker = blockers.some(
+    (blocker) => blocker.code === "DOCUMENT_ALREADY_CLUSTERED"
+  )
   const jobsToCancel = preview?.jobs_to_cancel ?? []
   const continuingJobs = preview?.continuing_jobs ?? []
   const impact = preview?.impact
@@ -223,8 +230,9 @@ export function DocumentDeletionDialog({
                   ))}
                 </ul>
                 <p className="mt-2 text-xs">
-                  Vui lòng đợi tài liệu được mở khóa hoặc task hoàn thành rồi
-                  kiểm tra lại.
+                  {hasClusterHistoryBlocker
+                    ? "Hãy bỏ chọn các tài liệu đã được lập hồ sơ rồi kiểm tra lại."
+                    : "Vui lòng đợi tài liệu được mở khóa hoặc task hoàn thành rồi kiểm tra lại."}
                 </p>
               </div>
             ) : null}
@@ -393,73 +401,4 @@ export function DocumentDeletionDialog({
       </Dialog.Portal>
     </Dialog.Root>
   )
-}
-
-function jobTypeLabel(jobType: string): string {
-  return (
-    {
-      build_clusters: "Lập hồ sơ",
-      refresh_dossier_classification: "Cập nhật phân loại hồ sơ",
-      number_documents: "Đánh số tài liệu",
-      finalize_artifacts: "Tạo mục lục",
-      build_publication_archive: "Tạo gói xuất bản",
-      poll_ingestion_extract: "Giải nén dữ liệu đầu vào",
-      start_digitization: "Bắt đầu số hóa",
-      poll_digitization: "Theo dõi số hóa",
-      process_digitization_document: "OCR tài liệu",
-      sync_digitization_document_metadata: "Đồng bộ metadata",
-      refresh_final_metadata: "Cập nhật metadata cuối",
-      document_mutation: "Thay đổi tập tài liệu",
-    }[jobType] ?? jobType
-  )
-}
-
-function deletionBlockerLabel(blocker: DocumentDeletionBlocker): string {
-  if (
-    blocker.code === "DOCUMENT_DELETION_LOCKED_AFTER_CLUSTERING" &&
-    blocker.message
-  ) {
-    return blocker.message
-  }
-  if (blocker.type === "document_edit_lock") {
-    const owner =
-      blocker.owner?.name || blocker.owner?.email || blocker.owner?.user_id
-    const documentId = blocker.document_id ?? blocker.session_document_id
-    return [
-      documentId ? `Tài liệu #${documentId}` : "Tài liệu",
-      owner ? `đang được ${owner} chỉnh sửa` : "đang được chỉnh sửa",
-      blocker.expires_at ? `đến ${blocker.expires_at}` : "",
-    ]
-      .filter(Boolean)
-      .join(" ")
-  }
-  return `${jobTypeLabel(blocker.job_type ?? "task")} · ${blocker.status ?? "active"}`
-}
-
-function deletionErrorMessage(caught: unknown, fallback: string): string {
-  if (!(caught instanceof Error) || !caught.message) return fallback
-  try {
-    const detail = JSON.parse(caught.message) as {
-      message?: unknown
-      blocking_jobs?: Array<{ job_type?: unknown; status?: unknown }>
-    }
-    const message =
-      typeof detail.message === "string" && detail.message.trim()
-        ? detail.message.trim()
-        : fallback
-    const blockers = Array.isArray(detail.blocking_jobs)
-      ? detail.blocking_jobs
-          .map((blocker) => {
-            const jobType = String(blocker.job_type ?? "").trim()
-            const status = String(blocker.status ?? "").trim()
-            return jobType
-              ? `${jobTypeLabel(jobType)}${status ? ` (${status})` : ""}`
-              : ""
-          })
-          .filter(Boolean)
-      : []
-    return blockers.length > 0 ? `${message} ${blockers.join(", ")}.` : message
-  } catch {
-    return caught.message
-  }
 }

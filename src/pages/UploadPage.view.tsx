@@ -3,6 +3,7 @@ import { ArrowLeft, BadgeCheck, FileText, Home, PenLine } from "lucide-react"
 import { toast } from "sonner"
 import { FolderTree } from "@/features/upload/components/step2/FolderTree"
 import { RetentionAppendicesPanel } from "@/features/upload/components/step2/FolderTree.nodes"
+import { PlanReviewActions } from "@/features/upload/components/step2/PlanReviewActions"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import { PlanAnalysisFailureAlert } from "@/features/upload/components/PlanAnalysisFailureAlert"
 import { ProcessStep } from "@/features/upload/components/step3/ProcessStep"
@@ -14,8 +15,13 @@ import { SessionMetadataBar } from "@/features/upload/components/SessionMetadata
 import { cn } from "@/shared/lib/utils"
 import type { AppStep } from "@/features/upload/types"
 import { easeOut } from "./UploadPage.planUtils"
+import { planAnalysisFailureDomain } from "./UploadPage.progress"
 import { UploadPageHeader } from "./UploadPage.header"
 import { UploadPageStepOne } from "./UploadPage.step1"
+import {
+  hasArrangementPlanResult,
+  hasRetentionAnalysisResult,
+} from "./UploadPage.workflowPolicy"
 
 export function UploadPageView(props: Record<string, any>) {
   const {
@@ -55,7 +61,6 @@ export function UploadPageView(props: Record<string, any>) {
     doc2Has,
     zipHas,
     hasActivePlan,
-    hasPlanReady,
     doc1State,
     doc2State,
     zipState,
@@ -145,13 +150,10 @@ export function UploadPageView(props: Record<string, any>) {
     navigate,
   } = props
   const hasActivePlanData =
-    Boolean(activePlanVersionId) && activeParsedPlan.groups.length > 0
-  const hasWorkingPlanVersion = Boolean(workingPlanVersionId)
-  const hasDraftPlanData =
-    parsedPlan.groups.length > 0 ||
-    parsedPlan.retention_appendices.length > 0 ||
-    parsedPlan.retention_sources.length > 0
-  const hasPersistedPlanVersion = hasActivePlan || hasWorkingPlanVersion
+    Boolean(hasActivePlan) &&
+    Boolean(activePlanVersionId) &&
+    activeParsedPlan.groups.length > 0
+  const hasDraftPlanData = parsedPlan.groups.length > 0
   const showActivePlanTab = planViewTab === "active"
   const draftIsActiveFallback =
     Boolean(activePlanVersionId) &&
@@ -170,10 +172,36 @@ export function UploadPageView(props: Record<string, any>) {
   const planProcessingMessage =
     planProgressMessage ||
     `${planProcessingTitle}. Kết quả sẽ tự hiển thị khi backend xử lý xong.`
-  const hasAnalyzedRetentionSchedule =
-    doc2Has &&
-    (parsedPlan.retention_appendices.length > 0 ||
-      parsedPlan.retention_sources.length > 0)
+  const hasArrangementPlan = hasArrangementPlanResult({
+    workingGroupCount: parsedPlan.groups.length,
+    activeGroupCount: activeParsedPlan.groups.length,
+  })
+  const hasAnalyzedRetentionSchedule = hasRetentionAnalysisResult({
+    appendixCount: parsedPlan.retention_appendices.length,
+    sourceCount: parsedPlan.retention_sources.length,
+  })
+  const failedDomain = planAnalysisFailureDomain(planAnalysisFailure)
+  const planFailure = failedDomain === "plan" ? planAnalysisFailure : null
+  const retentionFailure =
+    failedDomain === "retention" ? planAnalysisFailure : null
+  const planProcessing = planAnalyzing && doc1State === "processing"
+  const retentionProcessing = planAnalyzing && doc2State === "processing"
+  const planFailurePanel = planFailure ? (
+    <div className="flex flex-col gap-3">
+      <ProgressTimeline
+        phases={PLAN_PROGRESS_PHASES}
+        activePhase={null}
+        failedPhase={planFailure.failedPhase}
+        completedPhases={planCompletedPhases}
+        title="Phân tích phương án thất bại"
+        message="Job đã dừng sau khi thử lại nhưng vẫn không thành công."
+      />
+      <PlanAnalysisFailureAlert
+        failure={planFailure}
+        onBackToUpload={() => handlePlanStepNavigation(1)}
+      />
+    </div>
+  ) : null
   const goToMetadataStep = () => {
     const targetSessionId = sessionId ?? routeSessionId
     if (targetSessionId) {
@@ -308,7 +336,7 @@ export function UploadPageView(props: Record<string, any>) {
               folderUploadWasCancelled={folderUploadWasCancelled}
               folderUploadEffectiveCount={folderUploadEffectiveCount}
               hasAnyFile={hasAnyFile}
-              hasPlanReady={hasPlanReady}
+              hasPlanReady={hasArrangementPlan}
               readyCount={readyCount}
               requiredFileCount={requiredFileCount}
               selectedInputLabels={selectedInputLabels}
@@ -345,25 +373,24 @@ export function UploadPageView(props: Record<string, any>) {
               exit={{ opacity: 0, y: -16 }}
               transition={{ duration: 0.4, ease: easeOut }}
             >
-              {planAnalysisFailure && (
+              {planAnalyzing && !planAnalysisFailure && (
                 <div className="mb-4">
-                  <PlanAnalysisFailureAlert
-                    failure={planAnalysisFailure}
-                    onBackToUpload={() => goTo(1)}
+                  <ProgressTimeline
+                    phases={PLAN_PROGRESS_PHASES}
+                    activePhase={planProgressPhase}
+                    completedPhases={planCompletedPhases}
+                    title={planProcessingTitle}
+                    message={planProcessingMessage}
                   />
                 </div>
               )}
-              {hasPlanReady || hasPersistedPlanVersion ? (
+              {planFailure && (
+                <div className="mb-4">
+                  {planFailurePanel}
+                </div>
+              )}
+              {hasArrangementPlan ? (
                 <div className="flex flex-col gap-4">
-                  {planAnalyzing && (
-                    <ProgressTimeline
-                      phases={PLAN_PROGRESS_PHASES}
-                      activePhase={planProgressPhase}
-                      completedPhases={planCompletedPhases}
-                      title={planProcessingTitle}
-                      message={planProcessingMessage}
-                    />
-                  )}
                   <div className="rounded-2xl border border-[#D8E1EC] bg-white p-3 shadow-sm sm:flex sm:items-center sm:justify-between sm:gap-5">
                     <div className="px-1 pb-2 sm:pb-0">
                       <p className="text-[11px] font-semibold text-[#64748B] uppercase">
@@ -450,6 +477,8 @@ export function UploadPageView(props: Record<string, any>) {
                         fondsName={sessionMetadata?.fonds_name}
                         readOnly
                         hasRetentionSchedule={doc2Has}
+                        showRetentionSection={false}
+                        showActions={false}
                         dossierBuildStrategy={
                           activePlanSettings.dossierBuildStrategy
                         }
@@ -533,6 +562,8 @@ export function UploadPageView(props: Record<string, any>) {
                         fondsName={sessionMetadata?.fonds_name}
                         readOnly={false}
                         hasRetentionSchedule={doc2Has}
+                        showRetentionSection={false}
+                        showActions={false}
                         dossierBuildStrategy={dossierBuildStrategy}
                         onDossierBuildStrategyChange={
                           selectDossierBuildStrategy
@@ -581,15 +612,8 @@ export function UploadPageView(props: Record<string, any>) {
                     </div>
                   )}
                 </div>
-              ) : planAnalyzing ? (
+              ) : planFailure ? null : planProcessing ? (
                 <div className="flex flex-col gap-4">
-                  <ProgressTimeline
-                    phases={PLAN_PROGRESS_PHASES}
-                    activePhase={planProgressPhase}
-                    completedPhases={planCompletedPhases}
-                    title={planProcessingTitle}
-                    message={planProcessingMessage}
-                  />
                   <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-white px-6 py-8 text-center shadow-sm">
                     <FileText className="mx-auto size-9 text-[#94A3B8]" />
                     <h2 className="mt-3 text-xl font-semibold text-[#0F172A]">
@@ -624,16 +648,6 @@ export function UploadPageView(props: Record<string, any>) {
                       ? "Kết quả thời hạn bảo quản đã sẵn sàng. Bạn vẫn có thể upload phương án chỉnh lý ở Step 1 để xem cây phân loại."
                       : "Hãy upload phương án chỉnh lý ở Step 1 để xem cây phân loại và tiêu chí phân tích. Các phần dữ liệu khác vẫn có thể xử lý độc lập."}
                   </p>
-                  {(parsedPlan.retention_appendices.length > 0 ||
-                    parsedPlan.retention_sources.length > 0) && (
-                    <div className="mx-auto mt-6 max-w-4xl text-left">
-                      <RetentionAppendicesPanel
-                        appendices={parsedPlan.retention_appendices}
-                        sources={parsedPlan.retention_sources}
-                        hasRetentionSchedule={doc2Has}
-                      />
-                    </div>
-                  )}
                   {zipHas && (
                     <button
                       type="button"
@@ -645,6 +659,75 @@ export function UploadPageView(props: Record<string, any>) {
                   )}
                 </div>
               )}
+
+              <section className="mt-4 flex flex-col gap-4">
+                {retentionFailure && (
+                  <div className="flex flex-col gap-3">
+                    <ProgressTimeline
+                      phases={PLAN_PROGRESS_PHASES}
+                      activePhase={null}
+                      failedPhase={retentionFailure.failedPhase}
+                      completedPhases={planCompletedPhases}
+                      title="Phân tích thời hạn bảo quản thất bại"
+                      message="Job THBQ đã dừng sau khi thử lại nhưng vẫn không thành công."
+                    />
+                    <PlanAnalysisFailureAlert
+                      failure={retentionFailure}
+                      onBackToUpload={() => handlePlanStepNavigation(1)}
+                    />
+                  </div>
+                )}
+
+                {hasAnalyzedRetentionSchedule ? (
+                  <RetentionAppendicesPanel
+                    appendices={parsedPlan.retention_appendices}
+                    sources={parsedPlan.retention_sources}
+                    hasRetentionSchedule={doc2Has}
+                  />
+                ) : (
+                  !retentionProcessing &&
+                  !retentionFailure && (
+                    <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-white px-6 py-7 text-center shadow-sm">
+                      <FileText className="mx-auto size-8 text-[#94A3B8]" />
+                      <h3 className="mt-3 text-base font-semibold text-[#0F172A]">
+                        {doc2Has
+                          ? "Chưa có kết quả thời hạn bảo quản"
+                          : "Chưa có thời hạn bảo quản"}
+                      </h3>
+                      <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[#64748B]">
+                        {doc2Has
+                          ? "File THBQ đã được upload nhưng chưa có phụ lục hoặc nguồn nào được phân tích thành công."
+                          : "Hãy upload THBQ ở Step 1 để phân tích phụ lục và nguồn thời hạn bảo quản."}
+                      </p>
+                    </div>
+                  )
+                )}
+              </section>
+
+              {hasArrangementPlan &&
+                (!showActivePlanTab || hasActivePlanData) && (
+                  <div className="mt-4">
+                    <PlanReviewActions
+                      readOnly={showActivePlanTab}
+                      treeLength={
+                        showActivePlanTab
+                          ? activeFolderTree.length
+                          : folderTree.length
+                      }
+                      onSaveDraft={
+                        showActivePlanTab ? undefined : handleSaveDraft
+                      }
+                      onConfirm={handleConfirmPlan}
+                      onContinueToMetadata={handleContinueToExtractMetadata}
+                      savingDraft={savingPlanDraft}
+                      confirming={confirmingPlan}
+                      planDraftDirty={planDraftDirty}
+                      hasRetentionSchedule={
+                        doc2Has || hasAnalyzedRetentionSchedule
+                      }
+                    />
+                  </div>
+                )}
             </motion.div>
           )}
 
