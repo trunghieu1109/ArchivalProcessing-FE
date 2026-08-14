@@ -105,6 +105,7 @@ export function FolderTree({
   savingDraft = false,
   confirming = false,
   planDraftDirty = false,
+  draftDiffersActive,
 }: FolderTreeProps) {
   const rootPagination = usePagedItems(tree, {
     defaultPageSize: 50,
@@ -595,6 +596,7 @@ export function FolderTree({
           savingDraft={savingDraft}
           confirming={confirming}
           planDraftDirty={planDraftDirty}
+          draftDiffersActive={draftDiffersActive}
           hasRetentionSchedule={hasRetentionSchedule}
         />
       )}

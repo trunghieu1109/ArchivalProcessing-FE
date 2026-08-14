@@ -143,13 +143,10 @@ export function UploadPageView(props: Record<string, any>) {
     activeGroupCount: activeParsedPlan.groups.length,
   })
   const showActivePlanTab = planViewTab === "active"
-  const draftIsActiveFallback =
-    Boolean(activePlanVersionId) &&
-    workingPlanVersionId === activePlanVersionId &&
-    workingPlanStatus !== "draft"
   const hasPersistedDraft =
     workingPlanStatus === "draft" &&
     Boolean(workingPlanVersionId) &&
+    Boolean(activePlanVersionId) &&
     !draftMatchesActive
   const planProcessingTitle =
     doc1State === "processing" && doc2State === "processing"
@@ -510,28 +507,6 @@ export function UploadPageView(props: Record<string, any>) {
                               để ghi nhận những thay đổi.
                             </div>
                           )}
-                          {draftIsActiveFallback &&
-                            !planDraftDirty &&
-                            !hasPersistedDraft && (
-                              <div className="rounded-xl border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3 text-sm text-[#1E3A8A]">
-                                Chưa có draft riêng. Màn hình đang dùng bản
-                                active gần nhất làm nền chỉnh sửa.
-                              </div>
-                            )}
-                          {false &&
-                            (draftIsActiveFallback ||
-                              hasPersistedDraft ||
-                              planDraftDirty) && (
-                              <div className="rounded-xl border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3 text-sm text-[#1E3A8A]">
-                                {planDraftDirty
-                                  ? draftIsActiveFallback
-                                    ? "Chưa có draft riêng trên hệ thống. Các thay đổi đang được lưu tạm trên trình duyệt và sẽ tạo draft mới khi bạn rời màn hình hoặc xác nhận phương án."
-                                    : "Các thay đổi đang được lưu tạm trên trình duyệt và sẽ tạo draft mới khi bạn rời màn hình hoặc xác nhận phương án."
-                                  : hasPersistedDraft
-                                    ? "Đây là bản nháp chưa được duyệt. Bạn có thể tiếp tục chỉnh sửa hoặc xác nhận phương án."
-                                    : "Chưa có draft riêng. Màn hình đang dùng bản active gần nhất làm nền chỉnh sửa."}
-                              </div>
-                            )}
                           <FolderTree
                             sessionId={resolvedSessionId}
                             tree={folderTree}
@@ -577,7 +552,11 @@ export function UploadPageView(props: Record<string, any>) {
                             savingDraft={savingPlanDraft}
                             confirming={confirmingPlan}
                             planDraftDirty={planDraftDirty}
-                            draftDiffersActive={hasPersistedDraft}
+                            draftDiffersActive={
+                              activePlanVersionId
+                                ? !draftMatchesActive
+                                : undefined
+                            }
                           />
                         </>
                       )}
@@ -672,6 +651,9 @@ export function UploadPageView(props: Record<string, any>) {
                       savingDraft={savingPlanDraft}
                       confirming={confirmingPlan}
                       planDraftDirty={planDraftDirty}
+                      draftDiffersActive={
+                        activePlanVersionId ? !draftMatchesActive : undefined
+                      }
                       hasRetentionSchedule={
                         doc2Has || hasAnalyzedRetentionSchedule
                       }

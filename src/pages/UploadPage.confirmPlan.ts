@@ -1,5 +1,8 @@
 import { toast } from "sonner"
-import { activatePlanVersion } from "@/features/upload/api/sessionApi"
+import {
+  activatePlanVersion,
+  getWorkingPlan,
+} from "@/features/upload/api/sessionApi"
 import { uploadPageCache as cache } from "./UploadPage.cache"
 
 export function createConfirmPlanHandler(context: Record<string, any>) {
@@ -66,8 +69,22 @@ export function createConfirmPlanHandler(context: Record<string, any>) {
         { created_by: "ui" }
       )
       applyActivePlanResponse?.(activePlan)
-      applyWorkingPlanResponse?.(activePlan)
-      cache.workingPlanStatus = "active"
+      // Activation creates a fresh editable draft baseline. Load it explicitly
+      // instead of treating the newly-active response as working state.
+      try {
+        const baselineDraft = await getWorkingPlan(cache.sessionId)
+        if (baselineDraft?.status === "draft") {
+          applyWorkingPlanResponse?.(baselineDraft)
+        } else {
+          toast.warning(
+            "Đã duyệt phương án, nhưng chưa tải được bản draft mới. Hãy tải lại session để tiếp tục chỉnh sửa."
+          )
+        }
+      } catch {
+        toast.warning(
+          "Đã duyệt phương án, nhưng chưa tải được bản draft mới. Hãy tải lại session để tiếp tục chỉnh sửa."
+        )
+      }
       cache.planViewTab = "active"
       if (typeof setPlanViewTab === "function") setPlanViewTab("active")
       toast.success("Đã xác nhận phương án phân loại.")

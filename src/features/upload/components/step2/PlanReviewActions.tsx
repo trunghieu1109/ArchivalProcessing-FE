@@ -10,6 +10,7 @@ interface PlanReviewActionsProps {
   savingDraft?: boolean
   confirming?: boolean
   planDraftDirty?: boolean
+  draftDiffersActive?: boolean
   hasRetentionSchedule?: boolean
 }
 
@@ -22,12 +23,18 @@ export function PlanReviewActions({
   savingDraft = false,
   confirming = false,
   planDraftDirty = false,
+  draftDiffersActive,
   hasRetentionSchedule = false,
 }: PlanReviewActionsProps) {
+  const draftMatchesActive = draftDiffersActive === false
   const handleConfirm = () => {
     if (confirming || savingDraft) return
     if (planDraftDirty) {
       toast.warning("Hãy lưu bản nháp trước khi xác nhận phương án.")
+      return
+    }
+    if (draftMatchesActive) {
+      toast.info("Bản draft hiện tại đã giống với phương án active.")
       return
     }
     if (treeLength === 0) {
@@ -70,7 +77,9 @@ export function PlanReviewActions({
           <button
             type="button"
             onClick={handleConfirm}
-            disabled={confirming || savingDraft || planDraftDirty}
+            disabled={
+              confirming || savingDraft || planDraftDirty || draftMatchesActive
+            }
             className="flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-white transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 sm:mr-auto sm:w-auto"
             style={{
               background: "linear-gradient(to right, #0052FF, #4D7CFF)",
