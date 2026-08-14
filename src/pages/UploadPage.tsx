@@ -20,11 +20,13 @@ import type {
   UnifiedDataUploadHandle,
 } from "@/features/upload/components/step1/PendingDataUpload"
 import {
+  deleteDossierTitleCatalog,
   ensureClusterBuild,
   getActivePlan,
   getSession,
   getWorkingPlan,
   listSessionEvents,
+  uploadDossierTitleCatalog,
   type DossierBuildStrategy,
   type DocumentNumberingMode,
   type DocumentNumberingStylePreset,
@@ -279,6 +281,44 @@ export function UploadPage() {
     cache.planViewTab
   )
   const [sessionId, setSessionId] = useState<string | null>(cache.sessionId)
+  const [dossierTitleCatalogDraftFile, setDossierTitleCatalogDraftFile] =
+    useState<File | null>(cache.draftDossierTitleCatalogFile)
+  const [dossierTitleCatalogUpload, setDossierTitleCatalogUpload] =
+    useState<SessionInputUploadResponse | null>(cache.dossierTitleCatalogUpload)
+  const handleDossierTitleCatalogSelect = async (
+    file: File
+  ): Promise<SessionInputUploadResponse | void> => {
+    const currentSessionId = routeSessionId ?? sessionId ?? cache.sessionId
+    if (!currentSessionId) {
+      cache.draftDossierTitleCatalogFile = file
+      cache.dossierTitleCatalogUpload = null
+      setDossierTitleCatalogDraftFile(file)
+      setDossierTitleCatalogUpload(null)
+      return
+    }
+    const uploaded = await uploadDossierTitleCatalog(currentSessionId, file)
+    if (cache.sessionId && cache.sessionId !== currentSessionId) {
+      return uploaded
+    }
+    cache.draftDossierTitleCatalogFile = null
+    cache.dossierTitleCatalogUpload = uploaded
+    setDossierTitleCatalogDraftFile(null)
+    setDossierTitleCatalogUpload(uploaded)
+    toast.success(
+      `Đã phân tích thành công file tiêu đề hồ sơ: ${uploaded.mapping_count ?? 0} mapping hợp lệ.`
+    )
+    return uploaded
+  }
+  const handleDossierTitleCatalogClear = async () => {
+    const currentSessionId = routeSessionId ?? sessionId ?? cache.sessionId
+    if (currentSessionId && dossierTitleCatalogUpload) {
+      await deleteDossierTitleCatalog(currentSessionId)
+    }
+    cache.draftDossierTitleCatalogFile = null
+    cache.dossierTitleCatalogUpload = null
+    setDossierTitleCatalogDraftFile(null)
+    setDossierTitleCatalogUpload(null)
+  }
   const [sessionMetadata, setSessionMetadata] = useState<SessionMetadataValues>(
     cache.sessionMetadata
   )
@@ -371,6 +411,8 @@ export function UploadPage() {
     setPlanProgressMessage,
     setPlanCompletedPhases,
     setSessionLoading,
+    setDossierTitleCatalogDraftFile,
+    setDossierTitleCatalogUpload,
     restoreFolderUploadSummary: (
       summary: Parameters<typeof folderUploadManager.restoreFromSummary>[0]
     ) => folderUploadManager.restoreFromSummary(summary),
@@ -1608,6 +1650,8 @@ export function UploadPage() {
     setClusterGroups,
     setPlanReuploadState,
     setZipSupplementUploaded,
+    setDossierTitleCatalogDraftFile,
+    setDossierTitleCatalogUpload,
     zipUploadManager,
     onZipUploadAccepted: handleZipUploadAccepted,
   })
@@ -1688,6 +1732,10 @@ export function UploadPage() {
         primaryActionDisabled={primaryActionDisabled}
         primaryActionAvailable={primaryActionAvailable}
         primaryActionPending={primaryActionPending}
+        dossierTitleCatalogDraftFile={dossierTitleCatalogDraftFile}
+        dossierTitleCatalogUpload={dossierTitleCatalogUpload}
+        handleDossierTitleCatalogSelect={handleDossierTitleCatalogSelect}
+        handleDossierTitleCatalogClear={handleDossierTitleCatalogClear}
         handleStartAll={handleStartAllInputs}
         dataUploadRef={dataUploadRef}
         pendingDataUpload={pendingDataUpload}

@@ -12,6 +12,7 @@ import type {
 } from "@/features/upload/types"
 
 export interface FolderTreeProps {
+  sessionId?: string | null
   tree: FolderNode[]
   parsedPlan: ParsedPlan
   fondsName?: string | null
@@ -20,6 +21,7 @@ export interface FolderTreeProps {
   showRetentionSection?: boolean
   showActions?: boolean
   dossierBuildStrategy: DossierBuildStrategy
+  dossierTitleCatalogMappingCount?: number
   onDossierBuildStrategyChange: (strategy: DossierBuildStrategy) => void
   documentNumberingMode: DocumentNumberingMode
   onDocumentNumberingModeChange: (

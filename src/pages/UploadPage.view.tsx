@@ -361,6 +361,16 @@ export function UploadPageView(props: Record<string, any>) {
                 searchParams.get("focus") ?? searchParams.get("folderUpload")
               }
               parsedPlan={parsedPlan}
+              dossierTitleCatalogDraftFile={
+                props.dossierTitleCatalogDraftFile
+              }
+              dossierTitleCatalogUpload={props.dossierTitleCatalogUpload}
+              handleDossierTitleCatalogSelect={
+                props.handleDossierTitleCatalogSelect
+              }
+              handleDossierTitleCatalogClear={
+                props.handleDossierTitleCatalogClear
+              }
             />
           )}
 
@@ -472,6 +482,7 @@ export function UploadPageView(props: Record<string, any>) {
                   {showActivePlanTab ? (
                     hasActivePlanData ? (
                       <FolderTree
+                        sessionId={resolvedSessionId}
                         tree={activeFolderTree}
                         parsedPlan={activeParsedPlan}
                         fondsName={sessionMetadata?.fonds_name}
@@ -481,6 +492,9 @@ export function UploadPageView(props: Record<string, any>) {
                         showActions={false}
                         dossierBuildStrategy={
                           activePlanSettings.dossierBuildStrategy
+                        }
+                        dossierTitleCatalogMappingCount={
+                          props.dossierTitleCatalogUpload?.mapping_count ?? 0
                         }
                         onDossierBuildStrategyChange={() => undefined}
                         documentNumberingMode={
@@ -557,6 +571,7 @@ export function UploadPageView(props: Record<string, any>) {
                           </div>
                         )}
                       <FolderTree
+                        sessionId={resolvedSessionId}
                         tree={folderTree}
                         parsedPlan={parsedPlan}
                         fondsName={sessionMetadata?.fonds_name}
@@ -565,6 +580,9 @@ export function UploadPageView(props: Record<string, any>) {
                         showRetentionSection={false}
                         showActions={false}
                         dossierBuildStrategy={dossierBuildStrategy}
+                        dossierTitleCatalogMappingCount={
+                          props.dossierTitleCatalogUpload?.mapping_count ?? 0
+                        }
                         onDossierBuildStrategyChange={
                           selectDossierBuildStrategy
                         }

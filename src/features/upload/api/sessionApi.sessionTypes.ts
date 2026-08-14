@@ -5,6 +5,7 @@ export type SessionInputFileType =
   | "arrangement_plan"
   | "retention_schedule"
   | "raw_zip"
+  | "dossier_title_catalog"
 
 export type DossierBuildStrategy =
   | "incremental"
@@ -112,6 +113,40 @@ export interface SessionInputUploadResponse {
   cancelled_at?: string | null
   cancel_reason?: string | null
   ingestion_run?: SessionIngestionRun | null
+  catalog_checksum?: string | null
+  mapping_count?: number | null
+  header_mode?: "recognized_headers" | "first_two_columns" | string
+  warnings?: string[]
+}
+
+export interface DeleteDossierTitleCatalogResponse {
+  session_id: string
+  deleted: boolean
+  deleted_storage_paths?: string[]
+}
+
+export interface DossierTitleCatalogMappingItem {
+  id: number
+  temporary_code: string
+  dossier_title: string
+  start_time: string | null
+  end_time: string | null
+  source_row: number
+}
+
+export interface DossierTitleCatalogMappingsResponse {
+  session_id: string
+  catalog_file: {
+    id: number
+    file_name: string | null
+    checksum: string | null
+  } | null
+  mapping_count: number
+  total: number
+  offset: number
+  limit: number
+  query: string
+  items: DossierTitleCatalogMappingItem[]
 }
 
 export interface SessionIngestionRun {

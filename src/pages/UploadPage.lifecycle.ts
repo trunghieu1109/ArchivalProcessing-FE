@@ -132,6 +132,8 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     setPlanCompletedPhases,
     setSessionLoading,
     restoreFolderUploadSummary,
+    setDossierTitleCatalogDraftFile,
+    setDossierTitleCatalogUpload,
   } = context
 
   useEffect(() => {
@@ -179,6 +181,8 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
       retention: cache.retentionReuploaded,
     })
     setZipSupplementUploaded(cache.rawZipReuploaded)
+    setDossierTitleCatalogDraftFile(cache.draftDossierTitleCatalogFile)
+    setDossierTitleCatalogUpload(cache.dossierTitleCatalogUpload)
     if (cache.planAnalysisState !== "processing") {
       setPlanProgressPhase(null)
       setPlanProgressMessage("")
@@ -244,6 +248,7 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     cache.arrangementPlanUpload = null
     cache.retentionUpload = null
     cache.retentionUploads = []
+    cache.dossierTitleCatalogUpload = null
     cache.zipFolderPath = ""
     cache.zipMaxFiles = ""
     cache.uploadMode = "append"
@@ -256,6 +261,7 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     cache.draftRetentionFile = null
     cache.draftRetentionFiles = []
     cache.draftZipFile = null
+    cache.draftDossierTitleCatalogFile = null
     cache.zipUploadProgress = null
     cache.arrangementPlanReuploaded = false
     cache.retentionReuploaded = false
@@ -383,6 +389,9 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
           (file) => file.file_type === "retention_schedule"
         )
         const retentionFile = retentionFiles[retentionFiles.length - 1]
+        const dossierTitleCatalogFile = files.find(
+          (file) => file.file_type === "dossier_title_catalog"
+        )
         const zipFiles = files
           .filter((file) => file.file_type === "raw_zip")
           .sort(
@@ -452,6 +461,7 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
         cache.arrangementPlanUpload = arrangementPlanFile ?? null
         cache.retentionUpload = retentionFile ?? null
         cache.retentionUploads = retentionFiles
+        cache.dossierTitleCatalogUpload = dossierTitleCatalogFile ?? null
         cache.arrangementPlanReuploaded = false
         cache.retentionReuploaded = false
         cache.rawZipReuploaded = false
@@ -461,6 +471,7 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
         cache.draftRetentionFile = null
         cache.draftRetentionFiles = []
         cache.draftZipFile = null
+        cache.draftDossierTitleCatalogFile = null
         cache.zipUploadProgress = null
         setLatestZipUploadAttempt(latestZipAttempt)
         setDoc1Has(cache.doc1Has)
@@ -473,6 +484,8 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
         setZipSupplementUploaded(false)
         setZipFolderPath(cache.zipFolderPath)
         setZipUploadProgress(null)
+        setDossierTitleCatalogDraftFile(null)
+        setDossierTitleCatalogUpload(cache.dossierTitleCatalogUpload)
         if (interruptedAttemptClosure) {
           void interruptedAttemptClosure.then((closed) => {
             if (cancelled) return

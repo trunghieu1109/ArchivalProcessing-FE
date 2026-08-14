@@ -45,6 +45,12 @@ export interface UploadPageStepOneProps {
   uploadRetentionInputs: (
     files: File[]
   ) => Promise<SessionInputUploadResponse[]>
+  dossierTitleCatalogDraftFile: File | null
+  dossierTitleCatalogUpload: SessionInputUploadResponse | null
+  handleDossierTitleCatalogSelect: (
+    file: File
+  ) => Promise<SessionInputUploadResponse | void>
+  handleDossierTitleCatalogClear: () => Promise<void>
   zipUploadProgress: UploadProgressSnapshot | null
   zipUploadFileName?: string
   zipInterruptionNotice?: {

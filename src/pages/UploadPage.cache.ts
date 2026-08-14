@@ -75,6 +75,7 @@ interface UploadPageCache {
   arrangementPlanUpload: SessionInputUploadResponse | null
   retentionUpload: SessionInputUploadResponse | null
   retentionUploads: SessionInputUploadResponse[]
+  dossierTitleCatalogUpload: SessionInputUploadResponse | null
   zipFolderPath: string
   zipMaxFiles: string
   uploadMode: UploadMode
@@ -87,6 +88,7 @@ interface UploadPageCache {
   draftRetentionFile: File | null
   draftRetentionFiles: File[]
   draftZipFile: File | null
+  draftDossierTitleCatalogFile: File | null
   zipUploadProgress: UploadProgressSnapshot | null
   arrangementPlanReuploaded: boolean
   retentionReuploaded: boolean
@@ -148,6 +150,7 @@ export const uploadPageCache: UploadPageCache = {
   arrangementPlanUpload: null,
   retentionUpload: null,
   retentionUploads: [],
+  dossierTitleCatalogUpload: null,
   zipFolderPath: "",
   zipMaxFiles: "",
   uploadMode: "append",
@@ -160,6 +163,7 @@ export const uploadPageCache: UploadPageCache = {
   draftRetentionFile: null,
   draftRetentionFiles: [],
   draftZipFile: null,
+  draftDossierTitleCatalogFile: null,
   zipUploadProgress: null,
   arrangementPlanReuploaded: false,
   retentionReuploaded: false,

@@ -78,6 +78,7 @@ const NUMBERING_STYLE_OPTIONS: Array<{
 ]
 
 export function FolderTree({
+  sessionId = null,
   tree,
   parsedPlan,
   fondsName,
@@ -86,6 +87,7 @@ export function FolderTree({
   showRetentionSection = true,
   showActions = true,
   dossierBuildStrategy,
+  dossierTitleCatalogMappingCount = 0,
   onDossierBuildStrategyChange,
   documentNumberingMode,
   onDocumentNumberingModeChange,
@@ -163,8 +165,10 @@ export function FolderTree({
       />
 
       <DossierBuildStrategySection
+        sessionId={sessionId}
         readOnly={readOnly}
         dossierBuildStrategy={dossierBuildStrategy}
+        dossierTitleCatalogMappingCount={dossierTitleCatalogMappingCount}
         fileRegisterConfig={parsedPlan.file_register_config}
         onDossierBuildStrategyChange={onDossierBuildStrategyChange}
         onFileRegisterConfigChange={onFileRegisterConfigChange}

@@ -5,6 +5,7 @@ import { PlanAnalysisFailureAlert } from "@/features/upload/components/PlanAnaly
 import { DocxSection } from "@/features/upload/components/step1/DocxSection"
 import { UnifiedDataUploadSection } from "@/features/upload/components/step1/UnifiedDataUploadSection"
 import { UploadSessionSetupPanel } from "@/features/upload/components/step1/UploadSessionSetupPanel"
+import { DossierTitleCatalogSection } from "@/features/upload/components/step1/DossierTitleCatalogSection"
 import { cn } from "@/shared/lib/utils"
 import { easeOut } from "./UploadPage.planUtils"
 import { planAnalysisFailureDomain } from "./UploadPage.progress"
@@ -36,6 +37,10 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
     stageZipInput,
     discardStagedZipInput,
     uploadRetentionInputs,
+    dossierTitleCatalogDraftFile,
+    dossierTitleCatalogUpload,
+    handleDossierTitleCatalogSelect,
+    handleDossierTitleCatalogClear,
     zipUploadProgress,
     zipUploadFileName,
     zipInterruptionNotice,
@@ -240,6 +245,14 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
           }
         />
       </div>
+
+      <DossierTitleCatalogSection
+        draftFile={dossierTitleCatalogDraftFile}
+        upload={dossierTitleCatalogUpload}
+        disabled={allProcessing || sessionLoading}
+        onSelect={handleDossierTitleCatalogSelect}
+        onClear={handleDossierTitleCatalogClear}
+      />
 
       {/* Action bar */}
       <motion.div

@@ -35,6 +35,22 @@ describe("responseTextErrorMessage", () => {
     expect(message).toBe("Thiếu file metadata\nSai cấu trúc cột")
   })
 
+  it("includes every catalog parser error returned with a summary message", () => {
+    const message = responseTextErrorMessage(
+      400,
+      JSON.stringify({
+        detail: {
+          message: "File tiêu đề hồ sơ không hợp lệ.",
+          errors: ["Thiếu Mã tạm ở dòng 2.", "Tiêu đề quá dài ở dòng 4."],
+        },
+      })
+    )
+
+    expect(message).toBe(
+      "File tiêu đề hồ sơ không hợp lệ.\nThiếu Mã tạm ở dòng 2.\nTiêu đề quá dài ở dòng 4."
+    )
+  })
+
   it("uses a readable fallback for structured details without a message", () => {
     const message = responseTextErrorMessage(
       400,

@@ -5,10 +5,13 @@ import type {
   FileRegisterConfig,
   FileRegisterTimeGranularity,
 } from "@/features/upload/types"
+import { DossierTitleMappingPreview } from "./DossierTitleMappingPreview"
 
 interface DossierBuildStrategySectionProps {
+  sessionId?: string | null
   readOnly: boolean
   dossierBuildStrategy: DossierBuildStrategy
+  dossierTitleCatalogMappingCount?: number
   fileRegisterConfig: FileRegisterConfig
   onDossierBuildStrategyChange: (strategy: DossierBuildStrategy) => void
   onFileRegisterConfigChange: (
@@ -17,8 +20,10 @@ interface DossierBuildStrategySectionProps {
 }
 
 export function DossierBuildStrategySection({
+  sessionId = null,
   readOnly,
   dossierBuildStrategy,
+  dossierTitleCatalogMappingCount = 0,
   fileRegisterConfig,
   onDossierBuildStrategyChange,
   onFileRegisterConfigChange,
@@ -187,6 +192,13 @@ export function DossierBuildStrategySection({
           </span>
         </button>
       </div>
+
+      {dossierBuildStrategy === "predefined" && (
+        <DossierTitleMappingPreview
+          sessionId={sessionId}
+          mappingCount={dossierTitleCatalogMappingCount}
+        />
+      )}
 
       {dossierBuildStrategy === "file_register" && (
         <div className="mt-4 overflow-hidden rounded-2xl border border-[#BFD3FF] bg-[#F8FAFF]">
