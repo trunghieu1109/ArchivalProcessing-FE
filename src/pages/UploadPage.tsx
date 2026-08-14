@@ -7,9 +7,11 @@ import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import type { SessionMetadataValues } from "@/features/upload/components/SessionMetadataBar"
 import {
   ensureClusterBuild,
+  deleteDossierTitleCatalog,
   getActivePlan,
   getWorkingPlan,
   listSessionEvents,
+  uploadDossierTitleCatalog,
   type DossierBuildStrategy,
   type DocumentNumberingMode,
   type DocumentNumberingStylePreset,
@@ -344,7 +346,45 @@ export function UploadPage() {
     cache.planViewTab
   )
   const [sessionId, setSessionId] = useState<string | null>(cache.sessionId)
+  const [dossierTitleCatalogDraftFile, setDossierTitleCatalogDraftFile] =
+    useState<File | null>(cache.draftDossierTitleCatalogFile)
+  const [dossierTitleCatalogUpload, setDossierTitleCatalogUpload] =
+    useState<SessionInputUploadResponse | null>(cache.dossierTitleCatalogUpload)
   const currentSessionViewScope = createSessionViewScope(routeSessionId)
+  const handleDossierTitleCatalogSelect = async (
+    file: File
+  ): Promise<SessionInputUploadResponse | void> => {
+    const currentSessionId = routeSessionId ?? sessionId ?? cache.sessionId
+    if (!currentSessionId) {
+      cache.draftDossierTitleCatalogFile = file
+      cache.dossierTitleCatalogUpload = null
+      setDossierTitleCatalogDraftFile(file)
+      setDossierTitleCatalogUpload(null)
+      return
+    }
+    const uploaded = await uploadDossierTitleCatalog(currentSessionId, file)
+    if (!isSessionViewActive(currentSessionViewScope, currentSessionId)) {
+      return uploaded
+    }
+    cache.draftDossierTitleCatalogFile = null
+    cache.dossierTitleCatalogUpload = uploaded
+    setDossierTitleCatalogDraftFile(null)
+    setDossierTitleCatalogUpload(uploaded)
+    toast.success(
+      `Đã phân tích thành công file tiêu đề hồ sơ: ${uploaded.mapping_count ?? 0} mapping hợp lệ.`
+    )
+    return uploaded
+  }
+  const handleDossierTitleCatalogClear = async () => {
+    const currentSessionId = routeSessionId ?? sessionId ?? cache.sessionId
+    if (currentSessionId && cache.dossierTitleCatalogUpload) {
+      await deleteDossierTitleCatalog(currentSessionId)
+    }
+    cache.draftDossierTitleCatalogFile = null
+    cache.dossierTitleCatalogUpload = null
+    setDossierTitleCatalogDraftFile(null)
+    setDossierTitleCatalogUpload(null)
+  }
   const folderUploadJobs = useSyncExternalStore(
     folderUploadManager.subscribe,
     folderUploadManager.getSnapshot
@@ -545,6 +585,8 @@ export function UploadPage() {
     setPlanProgressMessage,
     setPlanCompletedPhases,
     setSessionLoading,
+    setDossierTitleCatalogDraftFile,
+    setDossierTitleCatalogUpload,
   })
 
   useEffect(() => {
@@ -1467,6 +1509,8 @@ export function UploadPage() {
       setZipSupplementUploaded,
       setLatestUploadInterruption,
       setLatestUploadWarning,
+      setDossierTitleCatalogDraftFile,
+      setDossierTitleCatalogUpload,
     })
   const handleStartAll = (): Promise<void> => {
     const actionScope = currentSessionViewScope
@@ -1507,6 +1551,10 @@ export function UploadPage() {
         latestUploadWarning={latestUploadWarning}
         partialFolderCount={partialFolderCount}
         folderRunNeedsMetadataStart={folderRunNeedsMetadataStart}
+        dossierTitleCatalogDraftFile={dossierTitleCatalogDraftFile}
+        dossierTitleCatalogUpload={dossierTitleCatalogUpload}
+        handleDossierTitleCatalogSelect={handleDossierTitleCatalogSelect}
+        handleDossierTitleCatalogClear={handleDossierTitleCatalogClear}
         handleStartAll={handleStartAll}
         doc1Ref={doc1Ref}
         doc2Ref={doc2Ref}

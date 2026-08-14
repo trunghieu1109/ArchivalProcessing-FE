@@ -77,6 +77,7 @@ interface UploadPageCache {
   arrangementPlanUpload: SessionInputUploadResponse | null
   retentionUpload: SessionInputUploadResponse | null
   retentionUploads: SessionInputUploadResponse[]
+  dossierTitleCatalogUpload: SessionInputUploadResponse | null
   zipFolderPath: string
   zipMaxFiles: string
   uploadMode: UploadMode
@@ -91,6 +92,7 @@ interface UploadPageCache {
   draftZipFile: File | null
   draftFolderSources: FolderUploadSource[]
   draftFolderRootName: string
+  draftDossierTitleCatalogFile: File | null
   latestZipAttempt: SessionInputUploadResponse | null
   latestFolderUpload:
     | import("@/features/upload/api/sessionApi").FolderUploadSummary
@@ -158,6 +160,7 @@ export const uploadPageCache: UploadPageCache = {
   arrangementPlanUpload: null,
   retentionUpload: null,
   retentionUploads: [],
+  dossierTitleCatalogUpload: null,
   zipFolderPath: "",
   zipMaxFiles: "",
   uploadMode: "append",
@@ -172,6 +175,7 @@ export const uploadPageCache: UploadPageCache = {
   draftZipFile: null,
   draftFolderSources: [],
   draftFolderRootName: "",
+  draftDossierTitleCatalogFile: null,
   latestZipAttempt: null,
   latestFolderUpload: null,
   latestUploadInterruption: null,

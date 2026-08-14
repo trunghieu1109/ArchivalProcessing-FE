@@ -19,6 +19,7 @@ import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import { Metric } from "./FinalResult.documentRow"
 import { FinalResultFeedbackPanel } from "./FinalResult.feedbackPanel"
 import { ClusterGroupInformationPanel } from "./FinalResult.groupInfoPanel"
+import { ManualClassificationPanel } from "./FinalResult.manualClassificationDialog"
 import { DossierMetadataSidePanel } from "./FinalResult.sidePanel"
 import { DossierSuggestionsModal } from "./DossierSuggestionsModal"
 import { ResultNode } from "./FinalResult.resultNode"
@@ -58,10 +59,13 @@ export function FinalResultView(props: Record<string, any>) {
     handleFinish,
     handleMoveSelectionToDossier,
     handlePreviewResizePointerDown,
+    handleManualClassificationResizePointerDown,
     handlePromoteTemporaryFolder,
     handleRebuildClusters,
     handleRestorePreviousClusterVersion,
     handleResultTreeDragOver,
+    handleOpenManualClassification,
+    handleRefreshDossierClassification,
     handleSaveDossierMetadata,
     handleSaveDocumentMetadata,
     handleSelectDossierMetadata,
@@ -102,11 +106,18 @@ export function FinalResultView(props: Record<string, any>) {
     dossierSuggestionsError,
     previewLayoutRef,
     previewWidthPercent,
+    manualClassificationWidthPercent,
     previousDisplayVersion,
     promotingSelectedDocuments,
     promotingTemporaryFolder,
     rebuildBaselineVersionId,
     rebuildSubmitting,
+    refreshingClassificationDossierId,
+    manuallyClassifyingDossierId,
+    manualClassificationGroup,
+    classificationTree,
+    handleCloseManualClassification,
+    handleSubmitManualClassification,
     resultStatusText,
     resultTreeSearch,
     resultTreeSearchIndex,
@@ -142,9 +153,11 @@ export function FinalResultView(props: Record<string, any>) {
     viewingHistoricalClusterVersion,
     onResultTreeSearchNavigate,
   } = props
-  const previewColumns = selectedGroupInfoNode
-    ? "minmax(340px,0.34fr) minmax(760px,0.66fr)"
-    : `minmax(0, ${100 - previewWidthPercent}fr) minmax(460px, ${previewWidthPercent}fr)`
+  const previewColumns = manualClassificationGroup
+    ? `minmax(0, ${100 - manualClassificationWidthPercent}fr) minmax(340px, ${manualClassificationWidthPercent}fr)`
+    : selectedGroupInfoNode
+      ? "minmax(340px,0.34fr) minmax(760px,0.66fr)"
+      : `minmax(0, ${100 - previewWidthPercent}fr) minmax(460px, ${previewWidthPercent}fr)`
 
   return (
     <motion.div
@@ -453,6 +466,15 @@ export function FinalResultView(props: Record<string, any>) {
                   }
                   promotingTemporaryFolder={promotingTemporaryFolder}
                   temporaryFolderUpdateDisabled={temporaryFolderUpdateDisabled}
+                  refreshingClassificationDossierId={
+                    refreshingClassificationDossierId
+                  }
+                  manuallyClassifyingDossierId={manuallyClassifyingDossierId}
+                  classificationRefreshDisabled={
+                    temporaryFolderUpdateDisabled ||
+                    Boolean(refreshingClassificationDossierId) ||
+                    Boolean(manuallyClassifyingDossierId)
+                  }
                   onToggle={toggleNode}
                   onToggleDocumentSelection={handleToggleDocumentSelection}
                   onToggleGroupSelection={handleToggleGroupSelection}
@@ -477,6 +499,12 @@ export function FinalResultView(props: Record<string, any>) {
                   onSelectPreview={handleSelectPreviewDocument}
                   onSelectDossierSuggestions={handleSelectDossierSuggestions}
                   onSelectDossierMetadata={handleSelectDossierMetadata}
+                  onRefreshDossierClassification={
+                    handleRefreshDossierClassification
+                  }
+                  onOpenManualClassification={
+                    handleOpenManualClassification
+                  }
                   onSaveDocumentMetadata={handleSaveDocumentMetadata}
                   onPromoteTemporaryFolder={handlePromoteTemporaryFolder}
                 />
@@ -499,12 +527,29 @@ export function FinalResultView(props: Record<string, any>) {
               type="button"
               aria-label="Kéo để đổi kích thước khung xem"
               title="Kéo để đổi kích thước khung xem"
-              onPointerDown={handlePreviewResizePointerDown}
+              onPointerDown={
+                manualClassificationGroup
+                  ? handleManualClassificationResizePointerDown
+                  : handlePreviewResizePointerDown
+              }
               className="group absolute top-0 bottom-0 -left-3 z-20 hidden w-5 cursor-col-resize items-center justify-center xl:flex"
             >
               <span className="h-16 w-1 rounded-full bg-[#0052FF] opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
             </button>
-            {previewDocument ? (
+            {manualClassificationGroup ? (
+              <ManualClassificationPanel
+                key={manualClassificationGroup.id}
+                dossier={manualClassificationGroup}
+                tree={classificationTree}
+                saving={
+                  manuallyClassifyingDossierId ===
+                  (manualClassificationGroup.dossierId ??
+                    manualClassificationGroup.id)
+                }
+                onClose={handleCloseManualClassification}
+                onSubmit={handleSubmitManualClassification}
+              />
+            ) : previewDocument ? (
               <DocumentPdfPreview
                 sessionId={sessionId}
                 document={previewDocument}

@@ -11,6 +11,7 @@ import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import { PlanAnalysisFailureAlert } from "@/features/upload/components/PlanAnalysisFailureAlert"
 import { DocxSection } from "@/features/upload/components/step1/DocxSection"
 import { ZipSection } from "@/features/upload/components/step1/ZipSection"
+import { DossierTitleCatalogSection } from "@/features/upload/components/step1/DossierTitleCatalogSection"
 import { cn } from "@/shared/lib/utils"
 import type { UploadMode } from "@/features/upload/api/sessionApi"
 import type { SessionMetadataValues } from "@/features/upload/components/SessionMetadataBar"
@@ -79,6 +80,10 @@ export function UploadPageStepOne(props: Record<string, any>) {
     latestUploadWarning,
     partialFolderCount,
     folderRunNeedsMetadataStart,
+    dossierTitleCatalogDraftFile,
+    dossierTitleCatalogUpload,
+    handleDossierTitleCatalogSelect,
+    handleDossierTitleCatalogClear,
   } = props
   const zipUploadStatus = zipUploadProgress
     ? zipUploadProgress.phase === "error"
@@ -358,6 +363,14 @@ export function UploadPageStepOne(props: Record<string, any>) {
           }
         />
       </div>
+
+      <DossierTitleCatalogSection
+        draftFile={dossierTitleCatalogDraftFile}
+        upload={dossierTitleCatalogUpload}
+        disabled={allProcessing || sessionLoading}
+        onSelect={handleDossierTitleCatalogSelect}
+        onClear={handleDossierTitleCatalogClear}
+      />
 
       {/* Action bar */}
       <motion.div

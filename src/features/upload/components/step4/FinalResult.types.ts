@@ -2,12 +2,14 @@ import type {
   ClusterDocument,
   ClusterGroup,
 } from "@/features/upload/lib/clusterGroups"
-import type { PdfMetadata } from "@/features/upload/types"
+import type { FolderNode, PdfMetadata } from "@/features/upload/types"
 
 export interface FinalResultProps {
   sessionId: string | null
   groups: ClusterGroup[]
   fondsName?: string | null
+  activePlanVersionId?: string | null
+  classificationTree?: FolderNode[]
   metadataItems?: PdfMetadata[]
   onFinish: () => void
 }

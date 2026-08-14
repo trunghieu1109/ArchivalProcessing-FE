@@ -50,6 +50,7 @@ export interface ClusterGroup {
   paperDossierId?: string | null
   note?: string | null
   classificationPath?: string[]
+  classificationGroupIds?: string[]
   retentionPeriod?: string | null
   retentionRecommendation?: Record<string, unknown> | null
   confidence?: number | null
@@ -530,6 +531,9 @@ function clusterToGroup(
     files: uniqueStrings(allDocuments.map((document) => document.filePath)),
     documents: allDocuments,
     classificationPath: isTemporary ? [] : classificationPath(classification),
+    classificationGroupIds: isTemporary
+      ? []
+      : (classification?.group_ids ?? []),
     retentionPeriod: dossier?.retention_period ?? null,
     retentionRecommendation: dossier?.retention_recommendation ?? null,
     confidence: classification?.confidence ?? null,
