@@ -12,6 +12,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
+import { WorkflowActionPanel } from "@/features/upload/components/WorkflowActionPanel"
 import { SHOW_DOSSIER_SUGGESTIONS } from "./temporaryFeatureVisibility"
 
 interface FinalResultFeedbackPanelProps {
@@ -104,7 +105,10 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
               : null
 
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-[#D8E1EC] bg-white px-4 py-3 shadow-sm xl:flex-row xl:items-center xl:justify-between">
+    <WorkflowActionPanel
+      sticky
+      className="flex flex-col gap-3 px-4 py-3.5 sm:px-5 xl:flex-row xl:items-center xl:justify-between"
+    >
       <p className="min-w-0 flex-1 text-sm text-[#64748B]">
         {selectedDocumentCount > 0
           ? `Đã chọn ${selectedDocumentCount} tài liệu.`
@@ -271,6 +275,6 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
           ) : null}
         </div>
       </div>
-    </div>
+    </WorkflowActionPanel>
   )
 }

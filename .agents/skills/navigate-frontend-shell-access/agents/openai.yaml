@@ -1,0 +1,4 @@
+interface:
+  display_name: "Navigate Frontend Shell Access"
+  short_description: "Frontend guidance for navigate frontend shell access"
+  default_prompt: "Use $navigate-frontend-shell-access to handle this ArchivalProcessing frontend task with the correct context and verification."

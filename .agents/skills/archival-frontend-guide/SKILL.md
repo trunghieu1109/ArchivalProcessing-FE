@@ -216,3 +216,14 @@ Cập nhật `../../../docs/frontend-capability-architecture.md` khi owner, fold
 API, version model, invariant hoặc test map thay đổi. Cập nhật
 `../../../docs/frontend-system-architecture.md` khi workflow/runtime end-to-end thay đổi. Giữ
 skill này thiên về quy trình; không sao chép chi tiết bền vững từ docs vào nhiều file khác.
+
+<!-- archival-hierarchy -->
+
+## Hierarchical Context
+
+Read `references/context-manifest.yaml` before changing this capability. Its parent is
+`navigate-archival-frontend` and its recommended overlays are none. Use the parent only for routing and use a
+narrower child when the manifest lists one that owns the request.
+
+Update the manifest when ownership, contracts, invariants, or verification evidence changes. Set
+`last_verified` only after checking referenced paths and relevant behavior at the recorded commit.

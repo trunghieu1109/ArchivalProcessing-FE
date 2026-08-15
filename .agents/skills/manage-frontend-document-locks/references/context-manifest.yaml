@@ -1,0 +1,52 @@
+schema_version: 1
+skill:
+  id: manage-frontend-document-locks
+  kind: capability
+  parent: navigate-frontend-workflow
+  children: []
+  status: active
+scope:
+  summary: Maintain document edit-lock acquire, heartbeat, release, late-response handling, bulk-lock
+    behavior, unload cleanup, and conflict feedback.
+  triggers:
+  - document edit lock
+  - lock heartbeat
+  - lock conflict
+  - bulk edit locks
+  - release lock
+  excludes: []
+ownership:
+  workspace_relative_paths:
+  - ArchivalProcessing-FE/src/features/upload/hooks/useDocumentEditLock*
+  - ArchivalProcessing-FE/src/features/upload/lib/documentEditLockErrors.ts
+  - ArchivalProcessing-FE/src/features/upload/components/step3/*editLock*.test.tsx
+  - ArchivalProcessing-FE/src/features/upload/components/step3/ProcessStep.bulkEditLocks.test.ts
+  documentation: []
+relationships:
+  recommended_overlays:
+  - maintain-frontend-errors-downloads
+  backend_skills:
+  - manage-document-edit-locks
+invariants:
+- Release only the lease owned by the current editor and document identity.
+- Ignore or clean up acquire responses that arrive after edit cancellation or unmount.
+change_detection:
+  watched_paths:
+  - ArchivalProcessing-FE/src/features/upload/hooks/useDocumentEditLock*
+  - ArchivalProcessing-FE/src/features/upload/lib/documentEditLockErrors.ts
+  - ArchivalProcessing-FE/src/features/upload/components/step3/*editLock*.test.tsx
+  - ArchivalProcessing-FE/src/features/upload/components/step3/ProcessStep.bulkEditLocks.test.ts
+  watched_terms:
+  - document edit lock
+  - lock heartbeat
+  - lock conflict
+  - bulk edit locks
+  - release lock
+verification:
+  commands: []
+  evidence: []
+catalog: ../../navigate-archival-frontend/references/skill-catalog.yaml
+last_verified:
+  commit: null
+  date: null
+  verified_by: null

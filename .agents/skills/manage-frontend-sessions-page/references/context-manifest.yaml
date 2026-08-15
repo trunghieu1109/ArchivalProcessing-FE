@@ -1,0 +1,53 @@
+schema_version: 1
+skill:
+  id: manage-frontend-sessions-page
+  kind: capability
+  parent: navigate-frontend-shell-access
+  children: []
+  status: active
+scope:
+  summary: Maintain session listing, pagination, open, delete visibility, coordinator assignment, status
+    display, and empty or error states.
+  triggers:
+  - sessions page
+  - session list
+  - pagination
+  - open session
+  - assign coordinator
+  - delete session
+  excludes: []
+ownership:
+  workspace_relative_paths:
+  - ArchivalProcessing-FE/src/pages/SessionsPage*
+  - ArchivalProcessing-FE/src/features/upload/api/sessionApi.core.ts
+  - ArchivalProcessing-FE/src/features/upload/api/sessionApi.sessionTypes.ts
+  documentation: []
+relationships:
+  recommended_overlays:
+  - maintain-frontend-session-api
+  backend_skills:
+  - manage-archival-sessions
+  - manage-archival-access
+invariants:
+- Keep paging and mutations scoped to the current query and actor visibility.
+- Refresh or reconcile the affected row without losing selection or pagination unnecessarily.
+change_detection:
+  watched_paths:
+  - ArchivalProcessing-FE/src/pages/SessionsPage*
+  - ArchivalProcessing-FE/src/features/upload/api/sessionApi.core.ts
+  - ArchivalProcessing-FE/src/features/upload/api/sessionApi.sessionTypes.ts
+  watched_terms:
+  - sessions page
+  - session list
+  - pagination
+  - open session
+  - assign coordinator
+  - delete session
+verification:
+  commands: []
+  evidence: []
+catalog: ../../navigate-archival-frontend/references/skill-catalog.yaml
+last_verified:
+  commit: null
+  date: null
+  verified_by: null

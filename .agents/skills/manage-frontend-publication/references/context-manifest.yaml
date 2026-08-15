@@ -1,0 +1,51 @@
+schema_version: 1
+skill:
+  id: manage-frontend-publication
+  kind: capability
+  parent: navigate-frontend-workflow
+  children: []
+  status: active
+scope:
+  summary: Maintain Step 7 publication manifest, standard-name editing, selection, archive generation,
+    stale state, scoped download, and rollback.
+  triggers:
+  - Step 7
+  - publication UI
+  - manifest
+  - standard name
+  - archive ZIP
+  - scoped download
+  excludes: []
+ownership:
+  workspace_relative_paths:
+  - ArchivalProcessing-FE/src/features/upload/components/step7
+  - ArchivalProcessing-FE/src/features/upload/api/sessionApi.publication.ts
+  documentation: []
+relationships:
+  recommended_overlays:
+  - maintain-frontend-errors-downloads
+  - maintain-frontend-polling
+  backend_skills:
+  - publish-archival-documents
+invariants:
+- Refresh or roll back manifest state when rename or archive actions fail.
+- Rebuild stale archives and preserve download scope.
+change_detection:
+  watched_paths:
+  - ArchivalProcessing-FE/src/features/upload/components/step7
+  - ArchivalProcessing-FE/src/features/upload/api/sessionApi.publication.ts
+  watched_terms:
+  - Step 7
+  - publication UI
+  - manifest
+  - standard name
+  - archive ZIP
+  - scoped download
+verification:
+  commands: []
+  evidence: []
+catalog: ../../navigate-archival-frontend/references/skill-catalog.yaml
+last_verified:
+  commit: null
+  date: null
+  verified_by: null

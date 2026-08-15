@@ -1,0 +1,52 @@
+schema_version: 1
+skill:
+  id: maintain-frontend-errors-downloads
+  kind: cross-cutting
+  parent: navigate-frontend-data-runtime
+  children: []
+  status: active
+scope:
+  summary: Maintain capability error mapping, conflict feedback, Blob and signed-URL downloads, filenames,
+    preview URLs, and cleanup.
+  triggers:
+  - frontend error mapping
+  - conflict message
+  - Blob download
+  - signed URL
+  - filename
+  - object URL cleanup
+  excludes: []
+ownership:
+  workspace_relative_paths:
+  - ArchivalProcessing-FE/src/features/upload/api
+  - ArchivalProcessing-FE/src/features/upload/lib/*Errors.ts
+  - ArchivalProcessing-FE/src/features/upload/components/**/*Download*.tsx
+  - ArchivalProcessing-FE/src/pages/FinalizeArtifactsPage.preview*
+  documentation: []
+relationships:
+  recommended_overlays: []
+  backend_skills: []
+invariants:
+- Preserve actionable backend error categories instead of collapsing every failure into a generic message.
+- Revoke temporary URLs and derive filenames from validated response metadata.
+change_detection:
+  watched_paths:
+  - ArchivalProcessing-FE/src/features/upload/api
+  - ArchivalProcessing-FE/src/features/upload/lib/*Errors.ts
+  - ArchivalProcessing-FE/src/features/upload/components/**/*Download*.tsx
+  - ArchivalProcessing-FE/src/pages/FinalizeArtifactsPage.preview*
+  watched_terms:
+  - frontend error mapping
+  - conflict message
+  - Blob download
+  - signed URL
+  - filename
+  - object URL cleanup
+verification:
+  commands: []
+  evidence: []
+catalog: ../../navigate-archival-frontend/references/skill-catalog.yaml
+last_verified:
+  commit: null
+  date: null
+  verified_by: null

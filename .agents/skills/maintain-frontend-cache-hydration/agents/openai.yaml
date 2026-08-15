@@ -1,0 +1,4 @@
+interface:
+  display_name: "Maintain Frontend Cache Hydration"
+  short_description: "Frontend guidance for maintain frontend cache hydration"
+  default_prompt: "Use $maintain-frontend-cache-hydration to handle this ArchivalProcessing frontend task with the correct context and verification."

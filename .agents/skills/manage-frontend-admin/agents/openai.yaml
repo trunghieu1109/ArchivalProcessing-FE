@@ -1,0 +1,4 @@
+interface:
+  display_name: "Manage Frontend Admin"
+  short_description: "Frontend guidance for manage frontend admin"
+  default_prompt: "Use $manage-frontend-admin to handle this ArchivalProcessing frontend task with the correct context and verification."

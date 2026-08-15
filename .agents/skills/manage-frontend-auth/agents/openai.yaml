@@ -1,0 +1,4 @@
+interface:
+  display_name: "Manage Frontend Auth"
+  short_description: "Frontend guidance for manage frontend auth"
+  default_prompt: "Use $manage-frontend-auth to handle this ArchivalProcessing frontend task with the correct context and verification."

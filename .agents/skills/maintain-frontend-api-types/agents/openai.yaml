@@ -1,0 +1,4 @@
+interface:
+  display_name: "Maintain Frontend Api Types"
+  short_description: "Frontend guidance for maintain frontend api types"
+  default_prompt: "Use $maintain-frontend-api-types to handle this ArchivalProcessing frontend task with the correct context and verification."

@@ -1,0 +1,53 @@
+schema_version: 1
+skill:
+  id: maintain-frontend-app-runtime
+  kind: capability
+  parent: navigate-frontend-shell-access
+  children: []
+  status: active
+scope:
+  summary: Maintain application bootstrap, global providers, theme wiring, PDF worker setup, environment
+    access, and runtime initialization.
+  triggers:
+  - main.tsx
+  - provider
+  - theme provider
+  - PDF.js worker
+  - Vite environment
+  - app bootstrap
+  excludes: []
+ownership:
+  workspace_relative_paths:
+  - ArchivalProcessing-FE/src/main.tsx
+  - ArchivalProcessing-FE/src/app/providers
+  - ArchivalProcessing-FE/src/app/App.tsx
+  - ArchivalProcessing-FE/vite.config.ts
+  documentation: []
+relationships:
+  recommended_overlays:
+  - build-deploy-frontend
+  backend_skills: []
+invariants:
+- Initialize global providers exactly once and preserve their ordering dependencies.
+- Keep environment-dependent URLs and PDF worker setup compatible with production base paths.
+change_detection:
+  watched_paths:
+  - ArchivalProcessing-FE/src/main.tsx
+  - ArchivalProcessing-FE/src/app/providers
+  - ArchivalProcessing-FE/src/app/App.tsx
+  - ArchivalProcessing-FE/vite.config.ts
+  watched_terms:
+  - main.tsx
+  - provider
+  - theme provider
+  - PDF.js worker
+  - Vite environment
+  - app bootstrap
+verification:
+  commands: []
+  evidence: []
+catalog: ../../navigate-archival-frontend/references/skill-catalog.yaml
+last_verified:
+  commit: null
+  date: null
+  verified_by: null

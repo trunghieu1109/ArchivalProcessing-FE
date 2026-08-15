@@ -1,0 +1,54 @@
+schema_version: 1
+skill:
+  id: manage-frontend-routing-layout
+  kind: capability
+  parent: navigate-frontend-shell-access
+  children: []
+  status: active
+scope:
+  summary: Maintain routes, route guards, layouts, session and step URL identity, navigation, and fallback
+    behavior.
+  triggers:
+  - frontend route
+  - route guard
+  - layout
+  - sessionId URL
+  - step route
+  - navigation
+  excludes: []
+ownership:
+  workspace_relative_paths:
+  - ArchivalProcessing-FE/src/app/routes
+  - ArchivalProcessing-FE/src/app/layouts
+  - ArchivalProcessing-FE/src/app/App.tsx
+  - ArchivalProcessing-FE/src/pages/UploadPage.routing*
+  documentation: []
+relationships:
+  recommended_overlays:
+  - manage-frontend-auth
+  - maintain-frontend-cache-hydration
+  backend_skills: []
+invariants:
+- Keep session and step identity recoverable from the URL.
+- Preserve guarded redirects without hiding authorization errors as missing routes.
+change_detection:
+  watched_paths:
+  - ArchivalProcessing-FE/src/app/routes
+  - ArchivalProcessing-FE/src/app/layouts
+  - ArchivalProcessing-FE/src/app/App.tsx
+  - ArchivalProcessing-FE/src/pages/UploadPage.routing*
+  watched_terms:
+  - frontend route
+  - route guard
+  - layout
+  - sessionId URL
+  - step route
+  - navigation
+verification:
+  commands: []
+  evidence: []
+catalog: ../../navigate-archival-frontend/references/skill-catalog.yaml
+last_verified:
+  commit: null
+  date: null
+  verified_by: null

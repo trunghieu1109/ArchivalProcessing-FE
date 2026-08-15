@@ -1,0 +1,615 @@
+schema_version: 1
+catalog_id: archival-processing-frontend-skill-hierarchy
+path_convention: Paths are relative to the parent directory containing ArchivalProcessing and ArchivalProcessing-FE.
+backend_catalog: ArchivalProcessing/.agents/skills/navigate-archival-system/references/skill-catalog.yaml
+rules:
+  primary_skill: Select exactly one frontend capability when a narrow UI owner exists.
+  overlays: Add data/runtime or engineering skills only when their contracts are touched.
+  backend_link: Load the named backend skill only when the task changes or diagnoses the server contract.
+  memory: Keep durable ownership, invariants, tests, and cross-step effects in context manifests.
+
+skills:
+  - id: navigate-archival-frontend
+    kind: router
+    parent: null
+    summary: Route frontend work across shell/access, workflow capabilities, data/runtime concerns, and engineering governance.
+    triggers: [frontend architecture, broad frontend change, unknown UI ownership, end-to-end browser workflow]
+    owners:
+      - ArchivalProcessing-FE/docs/frontend-system-architecture.md
+      - ArchivalProcessing-FE/docs/frontend-capability-architecture.md
+      - ArchivalProcessing-FE/.agents/skills
+    invariants:
+      - Select the narrowest primary frontend capability before changing source files.
+      - Load backend context only when the API or server behavior is part of the task.
+
+  - id: navigate-frontend-shell-access
+    kind: router
+    parent: navigate-archival-frontend
+    summary: Route app bootstrap, routes, layouts, authentication, administration, sessions page, and shared UI-system work.
+    triggers: [app shell, routing, login, admin, sessions page, theme, shared UI]
+    owners:
+      - ArchivalProcessing-FE/src/app
+      - ArchivalProcessing-FE/src/main.tsx
+      - ArchivalProcessing-FE/src/features/auth
+      - ArchivalProcessing-FE/src/features/admin
+      - ArchivalProcessing-FE/src/pages/SessionsPage*
+    invariants:
+      - Keep global providers and route guards outside business-step components.
+      - Treat backend authorization as the security boundary and frontend guards as UX.
+
+  - id: navigate-frontend-workflow
+    kind: router
+    parent: navigate-archival-frontend
+    summary: Route seven-step session workflow work from input setup through publication and backup visibility.
+    triggers: [upload workflow, processing step, step navigation, archival session UI, cross-step behavior]
+    owners:
+      - ArchivalProcessing-FE/src/pages/UploadPage*
+      - ArchivalProcessing-FE/src/features/upload/components
+      - ArchivalProcessing-FE/src/features/folder-upload
+      - ArchivalProcessing-FE/src/features/zip-upload
+    invariants:
+      - Keep backend session and active versions as durable sources of truth.
+      - Reassess downstream stale state when documents, page counts, plans, or dossiers change.
+
+  - id: navigate-frontend-data-runtime
+    kind: router
+    parent: navigate-archival-frontend
+    summary: Route HTTP, API modules, types, polling, cache, upload managers, PDF preview, errors, and download concerns.
+    triggers: [frontend API layer, polling, cache hydration, manager lifecycle, PDF preview, download]
+    owners:
+      - ArchivalProcessing-FE/src/features/upload/api
+      - ArchivalProcessing-FE/src/shared
+      - ArchivalProcessing-FE/src/features/folder-upload
+      - ArchivalProcessing-FE/src/features/zip-upload
+    invariants:
+      - Keep transport and lifecycle logic out of presentation-only components.
+      - Preserve identity, cancellation, stale-response, and cleanup semantics.
+
+  - id: govern-frontend-engineering
+    kind: router
+    parent: navigate-archival-frontend
+    summary: Route frontend verification, refactoring, context maintenance, build/deployment, and cross-step review.
+    triggers: [frontend tests, frontend refactor, context drift, frontend build, cross-step review]
+    owners:
+      - ArchivalProcessing-FE/tests
+      - ArchivalProcessing-FE/src/**/*.test.*
+      - ArchivalProcessing-FE/package.json
+      - ArchivalProcessing-FE/.agents/skills
+    invariants:
+      - Preserve behavior and public contracts during structural cleanup.
+      - Update context memory when ownership, routes, API modules, or tests move.
+
+  - id: archival-frontend-guide
+    kind: legacy-router
+    parent: navigate-archival-frontend
+    summary: Preserve the existing comprehensive frontend capability guide while routing new work to narrower hierarchical skills.
+    triggers: [existing frontend guide, frontend capability map, broad frontend navigation]
+    owners:
+      - ArchivalProcessing-FE/.agents/skills/archival-frontend-guide
+      - ArchivalProcessing-FE/docs/frontend-capability-architecture.md
+    invariants:
+      - Keep detailed architecture in canonical docs rather than duplicating it across routers.
+
+  - id: maintain-frontend-app-runtime
+    kind: capability
+    parent: navigate-frontend-shell-access
+    summary: Maintain application bootstrap, global providers, theme wiring, PDF worker setup, environment access, and runtime initialization.
+    triggers: [main.tsx, provider, theme provider, PDF.js worker, Vite environment, app bootstrap]
+    owners:
+      - ArchivalProcessing-FE/src/main.tsx
+      - ArchivalProcessing-FE/src/app/providers
+      - ArchivalProcessing-FE/src/app/App.tsx
+      - ArchivalProcessing-FE/vite.config.ts
+    invariants:
+      - Initialize global providers exactly once and preserve their ordering dependencies.
+      - Keep environment-dependent URLs and PDF worker setup compatible with production base paths.
+    overlays: [build-deploy-frontend]
+
+  - id: manage-frontend-routing-layout
+    kind: capability
+    parent: navigate-frontend-shell-access
+    summary: Maintain routes, route guards, layouts, session and step URL identity, navigation, and fallback behavior.
+    triggers: [frontend route, route guard, layout, sessionId URL, step route, navigation]
+    owners:
+      - ArchivalProcessing-FE/src/app/routes
+      - ArchivalProcessing-FE/src/app/layouts
+      - ArchivalProcessing-FE/src/app/App.tsx
+      - ArchivalProcessing-FE/src/pages/UploadPage.routing*
+    invariants:
+      - Keep session and step identity recoverable from the URL.
+      - Preserve guarded redirects without hiding authorization errors as missing routes.
+    overlays: [manage-frontend-auth, maintain-frontend-cache-hydration]
+
+  - id: manage-frontend-auth
+    kind: capability
+    parent: navigate-frontend-shell-access
+    summary: Maintain login, token storage, current-user hydration, logout, role visibility, and authenticated request behavior.
+    triggers: [login page, auth token, current user, logout, role guard, auth storage]
+    owners:
+      - ArchivalProcessing-FE/src/pages/LoginPage.tsx
+      - ArchivalProcessing-FE/src/features/auth
+    invariants:
+      - Clear invalid credentials and authenticated state consistently.
+      - Use role checks for UX only; never assume they replace backend authorization.
+    overlays: [maintain-frontend-http-client]
+    backend_skills: [manage-archival-access]
+
+  - id: manage-frontend-admin
+    kind: capability
+    parent: navigate-frontend-shell-access
+    summary: Maintain administrator access, dashboard data, user and role actions, visibility, and error states.
+    triggers: [admin page, admin dashboard, user administration, role assignment, admin visibility]
+    owners:
+      - ArchivalProcessing-FE/src/pages/AdminAccessPage.tsx
+      - ArchivalProcessing-FE/src/features/admin
+    invariants:
+      - Hide admin controls from non-admin users while preserving explicit forbidden feedback.
+      - Refresh current-user or list state after successful role mutations.
+    overlays: [manage-frontend-auth, maintain-frontend-api-types]
+    backend_skills: [manage-archival-access]
+
+  - id: manage-frontend-sessions-page
+    kind: capability
+    parent: navigate-frontend-shell-access
+    summary: Maintain session listing, pagination, open, delete visibility, coordinator assignment, status display, and empty or error states.
+    triggers: [sessions page, session list, pagination, open session, assign coordinator, delete session]
+    owners:
+      - ArchivalProcessing-FE/src/pages/SessionsPage*
+      - ArchivalProcessing-FE/src/features/upload/api/sessionApi.core.ts
+      - ArchivalProcessing-FE/src/features/upload/api/sessionApi.sessionTypes.ts
+    invariants:
+      - Keep paging and mutations scoped to the current query and actor visibility.
+      - Refresh or reconcile the affected row without losing selection or pagination unnecessarily.
+    overlays: [maintain-frontend-session-api]
+    backend_skills: [manage-archival-sessions, manage-archival-access]
+
+  - id: maintain-frontend-ui-system
+    kind: capability
+    parent: navigate-frontend-shell-access
+    summary: Maintain shared UI primitives, global styles, theme tokens, utility composition, accessibility, and presentation-only contracts.
+    triggers: [UI component, shared button, global CSS, theme token, accessibility, shadcn primitive]
+    owners:
+      - ArchivalProcessing-FE/src/components/ui
+      - ArchivalProcessing-FE/src/styles
+      - ArchivalProcessing-FE/src/shared/components
+      - ArchivalProcessing-FE/src/shared/lib/utils.ts
+      - ArchivalProcessing-FE/components.json
+    invariants:
+      - Keep business workflow rules out of shared presentation primitives.
+      - Preserve keyboard, focus, disabled, loading, and accessible-label behavior.
+    overlays: [verify-frontend-changes]
+
+  - id: manage-frontend-workflow-orchestration
+    kind: capability
+    parent: navigate-frontend-workflow
+    summary: Maintain step routing, lifecycle, progress, requirements, workflow policy, action coordination, auto-start, and cross-step navigation.
+    triggers: [UploadPage, step transition, workflow policy, requirements, auto-start, progress timeline]
+    owners:
+      - ArchivalProcessing-FE/src/pages/UploadPage.tsx
+      - ArchivalProcessing-FE/src/pages/UploadPage.view.tsx
+      - ArchivalProcessing-FE/src/pages/UploadPage.lifecycle.ts
+      - ArchivalProcessing-FE/src/pages/UploadPage.routing*
+      - ArchivalProcessing-FE/src/pages/UploadPage.workflow*
+      - ArchivalProcessing-FE/src/pages/UploadPage.requirements.ts
+      - ArchivalProcessing-FE/src/features/upload/components/WorkflowActionPanel.tsx
+    invariants:
+      - Keep transitions derived from durable backend readiness plus explicit local pending state.
+      - Make query-triggered actions idempotent and guard against stale session responses.
+    overlays: [maintain-frontend-cache-hydration, maintain-frontend-polling]
+    backend_skills: [manage-archival-sessions]
+
+  - id: manage-frontend-session-setup
+    kind: capability
+    parent: navigate-frontend-workflow
+    summary: Maintain Step 1 session creation, archive metadata, plan and retention selection, dossier title catalog, staged inputs, and confirmation.
+    triggers: [Step 1, session setup, archive metadata, plan upload selection, title catalog, upload confirmation]
+    owners:
+      - ArchivalProcessing-FE/src/pages/UploadPage.step1*
+      - ArchivalProcessing-FE/src/pages/UploadPage.metadata*
+      - ArchivalProcessing-FE/src/features/upload/components/step1
+      - ArchivalProcessing-FE/tests/dossierTitleCatalog.test.mjs
+    invariants:
+      - Keep staged browser inputs separate from files registered durably for the session.
+      - Preserve metadata and selected inputs across validation failures without duplicating submission.
+    overlays: [manage-frontend-zip-upload, manage-frontend-folder-upload]
+    backend_skills: [manage-archival-sessions, manage-archival-uploads, manage-dossier-title-catalog]
+
+  - id: manage-frontend-zip-upload
+    kind: capability
+    parent: navigate-frontend-workflow
+    summary: Maintain ZIP staging, progress, concurrency, retry, cancellation, completion, interruption display, and ingestion handoff.
+    triggers: [ZIP upload UI, ZipUploadManager, upload progress, retry ZIP, cancel upload, interruption]
+    owners:
+      - ArchivalProcessing-FE/src/features/zip-upload
+      - ArchivalProcessing-FE/src/features/upload/components/step1/ZipSection.tsx
+      - ArchivalProcessing-FE/src/features/upload/components/step1/UploadProgressPanel.tsx
+      - ArchivalProcessing-FE/src/features/upload/api/sessionApi.upload*
+    invariants:
+      - Keep ZIP and folder uploads as distinct state machines.
+      - Reconcile completion with backend state before navigating to processing.
+    overlays: [maintain-frontend-upload-managers, maintain-frontend-polling]
+    backend_skills: [manage-archival-uploads]
+
+  - id: manage-frontend-folder-upload
+    kind: capability
+    parent: navigate-frontend-workflow
+    summary: Maintain folder selection, manifest registration, transfer progress, pause, retry, cancellation, reconciliation, and global dock behavior.
+    triggers: [folder upload UI, folder manifest, upload dock, folder completion, folder reconciliation]
+    owners:
+      - ArchivalProcessing-FE/src/features/folder-upload
+      - ArchivalProcessing-FE/src/features/upload/components/step1/UnifiedDataUploadSection.tsx
+      - ArchivalProcessing-FE/tests/folderUploadCompletion.test.mjs
+    invariants:
+      - Track files by stable manifest identity rather than display order.
+      - Mark completion only after backend reconciliation reaches a terminal state.
+    overlays: [maintain-frontend-upload-managers, maintain-frontend-polling]
+    backend_skills: [manage-folder-uploads]
+
+  - id: manage-frontend-plan-review
+    kind: capability
+    parent: navigate-frontend-workflow
+    summary: Maintain Step 2 plan progress, parsing, tree editing, strategy, save, activation, dirty state, and downstream configuration.
+    triggers: [Step 2, plan review, folder tree, save plan, activate plan, plan strategy]
+    owners:
+      - ArchivalProcessing-FE/src/features/upload/components/step2
+      - ArchivalProcessing-FE/src/pages/UploadPage.plan*.ts
+      - ArchivalProcessing-FE/src/pages/UploadPage.confirmPlan.ts
+      - ArchivalProcessing-FE/tests/uploadPagePlan*.test.mjs
+    invariants:
+      - Distinguish draft, saved, active, and superseded plan versions.
+      - Preserve dirty signature and revision expectations across polling and save responses.
+    overlays: [maintain-frontend-polling, maintain-frontend-api-types]
+    backend_skills: [manage-archival-plans, manage-retention-sources]
+
+  - id: manage-frontend-digitization
+    kind: capability
+    parent: navigate-frontend-workflow
+    summary: Maintain Step 3 digitization start, status, progress, recovery, assignment controls, document listing, and processing actions.
+    triggers: [Step 3, digitization UI, OCR progress, restart processing, batch assignment, review controls]
+    owners:
+      - ArchivalProcessing-FE/src/features/upload/components/step3/ProcessStep*
+      - ArchivalProcessing-FE/src/features/upload/components/step3/useProcessStepModel.ts
+      - ArchivalProcessing-FE/src/features/upload/api/sessionApi.digitization.ts
+      - ArchivalProcessing-FE/src/features/upload/api/ocrApi.ts
+    invariants:
+      - Keep progress bound to the correct session, job, batch, and document identities.
+      - Do not display completion while required document work remains non-terminal.
+    overlays: [maintain-frontend-polling, manage-frontend-document-metadata]
+    backend_skills: [manage-archival-digitization, manage-batching-assignment]
+
+  - id: manage-frontend-document-metadata
+    kind: capability
+    parent: navigate-frontend-workflow
+    summary: Maintain metadata cards, field normalization, edits, bulk actions, review, verification, OCR results, and manual-value ownership.
+    triggers: [metadata card, edit document metadata, bulk metadata, review document, verify document, OCR results]
+    owners:
+      - ArchivalProcessing-FE/src/features/upload/components/step3/MetadataCard*
+      - ArchivalProcessing-FE/src/features/upload/components/step3/*metadata*.ts
+      - ArchivalProcessing-FE/src/features/upload/components/OcrResultsTable.tsx
+      - ArchivalProcessing-FE/src/features/upload/lib/metadata.ts
+    invariants:
+      - Keep extracted, user-edited, reviewed, and verified states distinct.
+      - Preserve user-owned values when refreshed OCR or backend state arrives.
+    overlays: [manage-frontend-document-locks, maintain-frontend-api-types]
+    backend_skills: [manage-document-metadata]
+
+  - id: manage-frontend-document-locks
+    kind: capability
+    parent: navigate-frontend-workflow
+    summary: Maintain document edit-lock acquire, heartbeat, release, late-response handling, bulk-lock behavior, unload cleanup, and conflict feedback.
+    triggers: [document edit lock, lock heartbeat, lock conflict, bulk edit locks, release lock]
+    owners:
+      - ArchivalProcessing-FE/src/features/upload/hooks/useDocumentEditLock*
+      - ArchivalProcessing-FE/src/features/upload/lib/documentEditLockErrors.ts
+      - ArchivalProcessing-FE/src/features/upload/components/step3/*editLock*.test.tsx
+      - ArchivalProcessing-FE/src/features/upload/components/step3/ProcessStep.bulkEditLocks.test.ts
+    invariants:
+      - Release only the lease owned by the current editor and document identity.
+      - Ignore or clean up acquire responses that arrive after edit cancellation or unmount.
+    overlays: [maintain-frontend-errors-downloads]
+    backend_skills: [manage-document-edit-locks]
+
+  - id: manage-frontend-blank-pages
+    kind: capability
+    parent: navigate-frontend-workflow
+    summary: Maintain blank-page warnings, PDF review panel, page selection, removal actions, processed-version refresh, and page-count effects.
+    triggers: [blank page UI, page removal, blank-page review, processed PDF, page count warning]
+    owners:
+      - ArchivalProcessing-FE/src/features/upload/components/DocumentPdfPreview.blankPageReview*
+      - ArchivalProcessing-FE/src/features/upload/components/DocumentPdfPreview.tsx
+      - ArchivalProcessing-FE/src/features/upload/components/step3
+    invariants:
+      - Bind selected page indexes to the source PDF version shown in preview.
+      - Refresh document, dossier, numbering, and freshness warnings after page-count changes.
+    overlays: [maintain-frontend-pdf-preview, review-frontend-cross-step-changes]
+    backend_skills: [manage-blank-page-removal]
+
+  - id: manage-frontend-document-mutations
+    kind: capability
+    parent: navigate-frontend-workflow
+    summary: Maintain document deletion and transfer previews, confirmation, progress, conflicts, visibility, refresh, and downstream warnings.
+    triggers: [delete document UI, transfer dialog, deletion preview, transfer conflict, deleted visibility]
+    owners:
+      - ArchivalProcessing-FE/src/features/upload/components/DocumentDeletionDialog*
+      - ArchivalProcessing-FE/src/features/upload/components/DocumentTransferDialog.tsx
+      - ArchivalProcessing-FE/tests/documentDeletionVisibility.test.mjs
+    invariants:
+      - Preview and execute the same selected document set and expected revisions.
+      - Refresh source and target projections after mutation without resurrecting deleted rows.
+    overlays: [manage-frontend-document-locks, review-frontend-cross-step-changes]
+    backend_skills: [delete-archival-documents, transfer-archival-documents]
+
+  - id: manage-frontend-dossiers
+    kind: capability
+    parent: navigate-frontend-workflow
+    summary: Maintain Step 4 cluster versions, polling, dossier tree, selection, metadata, suggestions, retention, classification, and warnings.
+    triggers: [Step 4, dossier tree, cluster version, dossier suggestion, retention suggestion, manual classification]
+    owners:
+      - ArchivalProcessing-FE/src/features/upload/components/step4
+      - ArchivalProcessing-FE/src/features/upload/components/ClusteringStep.tsx
+      - ArchivalProcessing-FE/src/features/upload/api/sessionApi.clusters.ts
+      - ArchivalProcessing-FE/src/features/upload/lib/cluster*.ts
+      - ArchivalProcessing-FE/tests/dossier*.test.mjs
+    invariants:
+      - Distinguish active, viewed, rebuilding, and historical cluster versions.
+      - Keep stable dossier and document identity through tree normalization and polling.
+    overlays: [maintain-frontend-polling, manage-frontend-dossier-feedback]
+    backend_skills: [manage-archival-dossiers, manage-dossier-classification, suggest-archival-dossiers, suggest-retention-periods]
+
+  - id: manage-frontend-dossier-feedback
+    kind: capability
+    parent: navigate-frontend-workflow
+    summary: Maintain dossier feedback, document moves, manual classification, metadata correction, pending state, refresh, and rebuild actions.
+    triggers: [dossier feedback UI, move document, manual classification dialog, dossier correction, rebuild result]
+    owners:
+      - ArchivalProcessing-FE/src/features/upload/components/step4/FinalResult.feedbackPanel.tsx
+      - ArchivalProcessing-FE/src/features/upload/components/step4/FinalResult.manualClassificationDialog.tsx
+      - ArchivalProcessing-FE/src/features/upload/components/step4/FinalResult.pendingFeedback.ts
+      - ArchivalProcessing-FE/src/features/upload/components/step4/useFinalResultTreeActions.ts
+    invariants:
+      - Apply feedback to the intended cluster version and selected document identity.
+      - Preserve manual metadata and show pending mutation state until backend confirmation.
+    overlays: [review-frontend-cross-step-changes]
+    backend_skills: [manage-dossier-feedback, edit-dossier-metadata]
+
+  - id: manage-frontend-numbering
+    kind: capability
+    parent: navigate-frontend-workflow
+    summary: Maintain Step 5 page or sheet mode, styles, bulk preview, corrections, row status, revision conflicts, and saved-state timeline.
+    triggers: [Step 5, numbering UI, page mode, sheet mode, numbering preview, numbering timeline]
+    owners:
+      - ArchivalProcessing-FE/src/features/upload/components/step5
+      - ArchivalProcessing-FE/src/features/upload/api/sessionApi.artifacts.ts
+    invariants:
+      - Keep working, saved, applied, and historical numbering states distinct.
+      - Bind preview and apply actions to the same configuration and document revisions.
+    overlays: [maintain-frontend-polling, review-frontend-cross-step-changes]
+    backend_skills: [manage-document-numbering, import-dossier-metadata-xlsx]
+
+  - id: manage-frontend-artifacts
+    kind: capability
+    parent: navigate-frontend-workflow
+    summary: Maintain finalization dispatch, polling, artifact freshness, metadata XLSX import, DOCX/XLSX preview, signed downloads, and output state.
+    triggers: [finalize artifacts page, artifact preview, metadata XLSX import, artifact polling, signed artifact URL]
+    owners:
+      - ArchivalProcessing-FE/src/pages/FinalizeArtifactsPage*
+      - ArchivalProcessing-FE/src/features/upload/api/sessionApi.artifacts*
+      - ArchivalProcessing-FE/tests/dossierMetadataSnapshot.test.mjs
+    invariants:
+      - Handle queued, already-running, and not-needed dispatch results explicitly.
+      - Treat signed URLs as refreshable access paths rather than durable artifact identity.
+    overlays: [maintain-frontend-polling, maintain-frontend-errors-downloads]
+    backend_skills: [generate-archival-artifacts, import-dossier-metadata-xlsx]
+
+  - id: manage-frontend-publication
+    kind: capability
+    parent: navigate-frontend-workflow
+    summary: Maintain Step 7 publication manifest, standard-name editing, selection, archive generation, stale state, scoped download, and rollback.
+    triggers: [Step 7, publication UI, manifest, standard name, archive ZIP, scoped download]
+    owners:
+      - ArchivalProcessing-FE/src/features/upload/components/step7
+      - ArchivalProcessing-FE/src/features/upload/api/sessionApi.publication.ts
+    invariants:
+      - Refresh or roll back manifest state when rename or archive actions fail.
+      - Rebuild stale archives and preserve download scope.
+    overlays: [maintain-frontend-errors-downloads, maintain-frontend-polling]
+    backend_skills: [publish-archival-documents]
+
+  - id: manage-frontend-backup
+    kind: capability
+    parent: navigate-frontend-workflow
+    summary: Maintain session-backup visibility, request handling, progress or result presentation, authorization feedback, and backup downloads.
+    triggers: [session backup UI, backup button, backup visibility, backup API, backup download]
+    owners:
+      - ArchivalProcessing-FE/src/features/upload/api/sessionApi.backup*
+      - ArchivalProcessing-FE/tests/sessionBackupVisibility.test.mjs
+      - ArchivalProcessing-FE/src/pages/SessionsPage*
+      - ArchivalProcessing-FE/src/pages/UploadPage*
+    invariants:
+      - Show backup actions only for allowed actors while preserving backend authorization errors.
+      - Keep backup result identity scoped to the requested session.
+    overlays: [maintain-frontend-errors-downloads, manage-frontend-auth]
+    backend_skills: [operate-archival-backup-export]
+
+  - id: maintain-frontend-http-client
+    kind: cross-cutting
+    parent: navigate-frontend-data-runtime
+    summary: Maintain base URL resolution, authentication headers, request encoding, response parsing, aborts, and normalized HTTP errors.
+    triggers: [sessionApi.http, fetch wrapper, base URL, auth header, HTTP error, AbortController]
+    owners:
+      - ArchivalProcessing-FE/src/features/upload/api/sessionApi.http*
+      - ArchivalProcessing-FE/src/shared/api
+      - ArchivalProcessing-FE/src/features/auth/lib/authStorage.ts
+    invariants:
+      - Apply authentication and error normalization consistently across API modules.
+      - Preserve abort semantics and distinguish transport, authorization, conflict, and validation errors.
+    backend_skills: [maintain-archival-api-contracts, configure-archival-runtime]
+
+  - id: maintain-frontend-session-api
+    kind: cross-cutting
+    parent: navigate-frontend-data-runtime
+    summary: Maintain session API facade, domain modules, imports, request helpers, exports, and capability boundaries.
+    triggers: [sessionApi.ts, API module split, session API facade, API helper, public export]
+    owners:
+      - ArchivalProcessing-FE/src/features/upload/api/sessionApi.ts
+      - ArchivalProcessing-FE/src/features/upload/api/sessionApi.*.ts
+      - ArchivalProcessing-FE/src/features/upload/api/ocrApi.ts
+    invariants:
+      - Keep the public facade stable while domain modules own their contracts.
+      - Prevent components from bypassing shared authentication and error handling.
+    overlays: [maintain-frontend-http-client, maintain-frontend-api-types]
+    backend_skills: [maintain-archival-api-contracts]
+
+  - id: maintain-frontend-api-types
+    kind: cross-cutting
+    parent: navigate-frontend-data-runtime
+    summary: Maintain request, response, session, document, cluster, artifact, job, and publication types with runtime normalization.
+    triggers: [TypeScript API type, response type, session type, document type, cluster type, job status]
+    owners:
+      - ArchivalProcessing-FE/src/features/upload/api/sessionApi.*Types.ts
+      - ArchivalProcessing-FE/src/features/upload/api/sessionApi.types.ts
+      - ArchivalProcessing-FE/src/features/upload/types.ts
+      - ArchivalProcessing-FE/src/shared/types
+    invariants:
+      - Keep wire types distinct from normalized UI models when shapes differ.
+      - Update discriminated unions when backend adds a legal state or terminal outcome.
+    backend_skills: [maintain-archival-api-contracts]
+
+  - id: maintain-frontend-polling
+    kind: cross-cutting
+    parent: navigate-frontend-data-runtime
+    summary: Maintain polling intervals, visibility awareness, terminal states, stale-response guards, dedupe, cancellation, and partial snapshots.
+    triggers: [polling hook, job polling, page visibility, terminal state, stale response, polling cleanup]
+    owners:
+      - ArchivalProcessing-FE/src/shared/lib/pageVisibility.ts
+      - ArchivalProcessing-FE/src/pages/*polling*.ts*
+      - ArchivalProcessing-FE/src/pages/UploadPage.progress.ts
+      - ArchivalProcessing-FE/src/features/upload/components/step4/useFinalResultPolling.ts
+    invariants:
+      - Bind every response to the current session, job, and version identity before applying it.
+      - Stop timers and requests on terminal state, identity change, or unmount.
+
+  - id: maintain-frontend-cache-hydration
+    kind: cross-cutting
+    parent: navigate-frontend-data-runtime
+    summary: Maintain same-tab cache, route hydration, session reload, defaults, metadata discovery, and stale-cache rejection.
+    triggers: [UploadPage cache, hydration, page reload, metadata discovery, default state, stale cache]
+    owners:
+      - ArchivalProcessing-FE/src/pages/UploadPage.cache.ts
+      - ArchivalProcessing-FE/src/pages/UploadPage.lifecycle.ts
+      - ArchivalProcessing-FE/src/pages/UploadPage.metadataDiscovery.ts
+      - ArchivalProcessing-FE/src/pages/UploadPage.planDefaults.ts
+    invariants:
+      - Treat local cache as navigation assistance, never durable persistence.
+      - Reject cache entries that do not match the current session or server revisions.
+
+  - id: maintain-frontend-upload-managers
+    kind: cross-cutting
+    parent: navigate-frontend-data-runtime
+    summary: Maintain ZIP and folder upload managers, providers, contexts, concurrency, persistence, events, pause, retry, and global docks.
+    triggers: [upload manager, upload provider, upload context, semaphore, pause upload, retry upload]
+    owners:
+      - ArchivalProcessing-FE/src/features/zip-upload
+      - ArchivalProcessing-FE/src/features/folder-upload
+      - ArchivalProcessing-FE/src/shared/lib/uploadSemaphore.ts
+    invariants:
+      - Keep manager state independent from page mount lifetime when uploads must continue globally.
+      - Clean subscriptions and preserve stable upload identity across retries.
+
+  - id: maintain-frontend-pdf-preview
+    kind: cross-cutting
+    parent: navigate-frontend-data-runtime
+    summary: Maintain PDF.js loading, rendering, resize, page selection, object URLs, cancellation, and preview-resource cleanup.
+    triggers: [PDF preview, PDF.js, object URL, render cancellation, document preview, resize]
+    owners:
+      - ArchivalProcessing-FE/src/features/upload/components/DocumentPdfPreview*
+      - ArchivalProcessing-FE/src/features/upload/components/step3/ProcessStep.resize.ts
+    invariants:
+      - Cancel obsolete renders and revoke object URLs when replaced or unmounted.
+      - Bind rendered pages and actions to the same document version.
+
+  - id: maintain-frontend-errors-downloads
+    kind: cross-cutting
+    parent: navigate-frontend-data-runtime
+    summary: Maintain capability error mapping, conflict feedback, Blob and signed-URL downloads, filenames, preview URLs, and cleanup.
+    triggers: [frontend error mapping, conflict message, Blob download, signed URL, filename, object URL cleanup]
+    owners:
+      - ArchivalProcessing-FE/src/features/upload/api
+      - ArchivalProcessing-FE/src/features/upload/lib/*Errors.ts
+      - ArchivalProcessing-FE/src/features/upload/components/**/*Download*.tsx
+      - ArchivalProcessing-FE/src/pages/FinalizeArtifactsPage.preview*
+    invariants:
+      - Preserve actionable backend error categories instead of collapsing every failure into a generic message.
+      - Revoke temporary URLs and derive filenames from validated response metadata.
+
+  - id: verify-frontend-changes
+    kind: governance
+    parent: govern-frontend-engineering
+    summary: Select and run focused Vitest tests, policy tests, typecheck, lint, production build, and route or role smoke checks.
+    triggers: [verify frontend, run frontend tests, typecheck, lint, Vite build, smoke test]
+    owners:
+      - ArchivalProcessing-FE/src/**/*.test.*
+      - ArchivalProcessing-FE/tests
+      - ArchivalProcessing-FE/package.json
+      - ArchivalProcessing-FE/vitest.config.ts
+      - ArchivalProcessing-FE/eslint.config.js
+    commands: [npm run test, npm run typecheck, npm run lint, npm run build]
+    invariants:
+      - Run the nearest behavior test first and broaden for shared contracts.
+      - Distinguish new failures from repository baseline failures.
+
+  - id: refactor-frontend-by-capability
+    kind: governance
+    parent: govern-frontend-engineering
+    summary: Refactor React and TypeScript by capability while preserving routes, public API modules, state ownership, lifecycle, and behavior.
+    triggers: [frontend refactor, split large component, move hook, API module refactor, TypeScript cleanup]
+    owners:
+      - ArchivalProcessing-FE/src
+      - ArchivalProcessing-FE/docs/refactor-upload-center-catalog.md
+    invariants:
+      - Extract one ownership seam at a time and preserve public component, hook, manager, and API contracts.
+      - Do not mix broad behavioral changes into structural cleanup.
+    overlays: [verify-frontend-changes, review-frontend-cross-step-changes]
+
+  - id: maintain-frontend-context
+    kind: governance
+    parent: govern-frontend-engineering
+    summary: Maintain the frontend skill hierarchy, manifests, catalog, ownership maps, backend links, drift checks, and verification metadata.
+    triggers: [frontend skill, frontend context manifest, skill catalog, stale frontend context, ownership drift]
+    owners:
+      - ArchivalProcessing-FE/.agents/skills
+      - ArchivalProcessing-FE/docs/frontend-capability-architecture.md
+    invariants:
+      - Keep one canonical frontend catalog and generate hierarchy fields from it.
+      - Never record verification without checking referenced paths and relevant behavior.
+
+  - id: build-deploy-frontend
+    kind: governance
+    parent: govern-frontend-engineering
+    summary: Maintain Vite and TypeScript builds, environment injection, Docker and Nginx deployment, static assets, base paths, and production serving.
+    triggers: [Vite build, TypeScript build, frontend Docker, frontend Nginx, environment injection, deploy frontend]
+    owners:
+      - ArchivalProcessing-FE/package.json
+      - ArchivalProcessing-FE/vite.config.ts
+      - ArchivalProcessing-FE/tsconfig*.json
+      - ArchivalProcessing-FE/Dockerfile
+      - ArchivalProcessing-FE/docker-compose.yml
+      - ArchivalProcessing-FE/nginx.conf
+      - ArchivalProcessing-FE/deploy
+      - ArchivalProcessing-FE/public
+    invariants:
+      - Keep runtime API and asset paths valid behind production reverse proxies.
+      - Verify route fallback, static assets, and PDF worker loading in the production build.
+
+  - id: review-frontend-cross-step-changes
+    kind: governance
+    parent: govern-frontend-engineering
+    summary: Review changes that propagate across digitization, dossiers, numbering, artifacts, publication, routing, cache, or API contracts.
+    triggers: [frontend impact analysis, cross-step change, stale downstream UI, workflow review]
+    owners:
+      - ArchivalProcessing-FE/docs/frontend-capability-architecture.md
+      - ArchivalProcessing-FE/docs/frontend-system-architecture.md
+      - ArchivalProcessing-FE/src/pages/UploadPage*
+    invariants:
+      - Trace source changes through every cached, polled, versioned, or previewed projection.
+      - Require explicit refresh, invalidation, read-only, or compatibility behavior for downstream steps.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Maintain Frontend Polling"
+  short_description: "Frontend guidance for maintain frontend polling"
+  default_prompt: "Use $maintain-frontend-polling to handle this ArchivalProcessing frontend task with the correct context and verification."

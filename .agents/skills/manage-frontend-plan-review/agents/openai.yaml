@@ -1,0 +1,4 @@
+interface:
+  display_name: "Manage Frontend Plan Review"
+  short_description: "Frontend guidance for manage frontend plan review"
+  default_prompt: "Use $manage-frontend-plan-review to handle this ArchivalProcessing frontend task with the correct context and verification."

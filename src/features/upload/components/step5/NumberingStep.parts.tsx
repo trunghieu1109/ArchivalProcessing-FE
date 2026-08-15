@@ -29,6 +29,12 @@ import {
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { cn } from "@/shared/lib/utils"
+import {
+  WorkflowActionPanel,
+  WorkflowActionPanelBody,
+  WorkflowActionStatus,
+  type WorkflowActionTone,
+} from "@/features/upload/components/WorkflowActionPanel"
 import type {
   DocumentNumberingMode,
   DocumentNumberingStylePreset,
@@ -1083,49 +1089,52 @@ export function NumberingStepFooter({
   onContinue: () => void
 }) {
   const missingBoxWarning = dossiersWithoutBoxCount > 0
+  const blocked = Boolean(blockedReason) && !active && !metadataBusy
+  const statusTone: WorkflowActionTone =
+    missingBoxWarning || blocked
+      ? "warning"
+      : active || metadataBusy
+        ? "progress"
+        : canContinue
+          ? "success"
+          : "neutral"
+  const statusIcon =
+    active || metadataBusy ? (
+      <Loader2 className="size-4 animate-spin" />
+    ) : missingBoxWarning || blocked ? (
+      <AlertTriangle className="size-4" />
+    ) : (
+      <Check className="size-4" />
+    )
+  const statusTitle = missingBoxWarning
+    ? "Còn thiếu số hộp"
+    : active
+      ? "Đang đánh số tài liệu"
+      : metadataBusy
+        ? "Đang cập nhật metadata"
+        : canContinue
+          ? "Đã sẵn sàng tạo mục lục"
+          : "Hoàn tất đánh số trước khi tạo mục lục"
+  const statusDescription = missingBoxWarning
+    ? `Chưa nhập số hộp cho ${dossiersWithoutBoxCount} hồ sơ.`
+    : `Đã đánh số ${doneCount}/${totalDocuments} tài liệu${
+        failedCount > 0 ? `, ${failedCount} tài liệu lỗi` : ""
+      }${
+        unresolvedCount > 0
+          ? `, còn ${unresolvedCount} tài liệu chưa hoàn tất`
+          : ""
+      }.`
 
   return (
-    <div className="sticky bottom-0 z-20 overflow-hidden rounded-2xl border border-[#CBD5E1] bg-white/95 px-4 py-3 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-w-0 items-start gap-2.5">
-          {missingBoxWarning ? (
-            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" />
-          ) : null}
-          <div className="min-w-0">
-            <p
-              className={cn(
-                "text-sm font-semibold",
-                missingBoxWarning ? "text-[#78350F]" : "text-[#0F172A]"
-              )}
-            >
-              {missingBoxWarning
-                ? "Còn thiếu số hộp"
-                : active
-                  ? "Đang đánh số tài liệu"
-                  : metadataBusy
-                    ? "Đang cập nhật metadata"
-                    : canContinue
-                      ? "Đã sẵn sàng tạo mục lục"
-                      : "Hoàn tất đánh số trước khi tạo mục lục"}
-            </p>
-            <p
-              className={cn(
-                "mt-0.5 text-xs leading-5",
-                missingBoxWarning ? "text-[#A16207]" : "text-[#64748B]"
-              )}
-            >
-              {missingBoxWarning
-                ? `Chưa nhập số hộp cho ${dossiersWithoutBoxCount} hồ sơ.`
-                : `Đã đánh số ${doneCount}/${totalDocuments} tài liệu${
-                    failedCount > 0 ? `, ${failedCount} tài liệu lỗi` : ""
-                  }${
-                    unresolvedCount > 0
-                      ? `, còn ${unresolvedCount} tài liệu chưa hoàn tất`
-                      : ""
-                  }.`}
-            </p>
-          </div>
-        </div>
+    <WorkflowActionPanel sticky>
+      <WorkflowActionPanelBody>
+        <WorkflowActionStatus
+          role={missingBoxWarning || blocked ? "alert" : "status"}
+          tone={statusTone}
+          icon={statusIcon}
+          title={statusTitle}
+          description={statusDescription}
+        />
         <div className="flex w-full shrink-0 flex-wrap items-center justify-end gap-2 lg:ml-auto lg:w-auto">
           {workingActions}
           <div className="relative w-full shrink-0 sm:w-auto">
@@ -1133,7 +1142,7 @@ export function NumberingStepFooter({
               type="button"
               onClick={onContinue}
               disabled={!canContinue || metadataBusy}
-              className="w-full bg-[#0052FF] text-white hover:bg-[#0047D6] sm:w-auto"
+              className="h-10 w-full rounded-xl bg-[#0052FF] px-5 font-semibold text-white hover:bg-[#0047D6] disabled:bg-[#E2E8F0] disabled:text-[#64748B] disabled:opacity-100 sm:w-auto"
             >
               Tạo mục lục
               <ArrowRight data-icon="inline-end" />
@@ -1153,8 +1162,8 @@ export function NumberingStepFooter({
             ) : null}
           </div>
         </div>
-      </div>
-    </div>
+      </WorkflowActionPanelBody>
+    </WorkflowActionPanel>
   )
 }
 

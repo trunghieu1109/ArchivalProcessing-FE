@@ -1,0 +1,4 @@
+interface:
+  display_name: "Maintain Frontend Ui System"
+  short_description: "Frontend guidance for maintain frontend ui system"
+  default_prompt: "Use $maintain-frontend-ui-system to handle this ArchivalProcessing frontend task with the correct context and verification."

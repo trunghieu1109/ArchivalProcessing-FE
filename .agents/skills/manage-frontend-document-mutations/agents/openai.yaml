@@ -1,0 +1,4 @@
+interface:
+  display_name: "Manage Frontend Document Mutations"
+  short_description: "Frontend guidance for manage frontend document mutations"
+  default_prompt: "Use $manage-frontend-document-mutations to handle this ArchivalProcessing frontend task with the correct context and verification."

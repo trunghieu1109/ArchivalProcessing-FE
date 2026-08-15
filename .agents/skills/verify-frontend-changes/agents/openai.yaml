@@ -1,0 +1,4 @@
+interface:
+  display_name: "Verify Frontend Changes"
+  short_description: "Frontend guidance for verify frontend changes"
+  default_prompt: "Use $verify-frontend-changes to handle this ArchivalProcessing frontend task with the correct context and verification."

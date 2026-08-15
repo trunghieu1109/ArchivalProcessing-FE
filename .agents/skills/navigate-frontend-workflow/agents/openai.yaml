@@ -1,0 +1,4 @@
+interface:
+  display_name: "Navigate Frontend Workflow"
+  short_description: "Frontend guidance for navigate frontend workflow"
+  default_prompt: "Use $navigate-frontend-workflow to handle this ArchivalProcessing frontend task with the correct context and verification."

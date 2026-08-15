@@ -1,0 +1,4 @@
+interface:
+  display_name: "Refactor Frontend By Capability"
+  short_description: "Frontend guidance for refactor frontend by capability"
+  default_prompt: "Use $refactor-frontend-by-capability to handle this ArchivalProcessing frontend task with the correct context and verification."

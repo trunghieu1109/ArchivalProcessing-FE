@@ -6,6 +6,7 @@ import { DocxSection } from "@/features/upload/components/step1/DocxSection"
 import { UnifiedDataUploadSection } from "@/features/upload/components/step1/UnifiedDataUploadSection"
 import { UploadSessionSetupPanel } from "@/features/upload/components/step1/UploadSessionSetupPanel"
 import { DossierTitleCatalogSection } from "@/features/upload/components/step1/DossierTitleCatalogSection"
+import { workflowActionPanelClassName } from "@/features/upload/components/WorkflowActionPanel"
 import { cn } from "@/shared/lib/utils"
 import { easeOut } from "./UploadPage.planUtils"
 import { planAnalysisFailureDomain } from "./UploadPage.progress"
@@ -259,7 +260,10 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: easeOut, delay: 0.3 }}
-        className="grid grid-cols-1 items-stretch gap-4 rounded-2xl border border-border bg-card px-4 py-4 shadow-sm sm:px-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
+        className={cn(
+          workflowActionPanelClassName,
+          "grid grid-cols-1 items-stretch gap-4 px-4 py-3.5 sm:px-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
+        )}
       >
         <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center md:gap-4">
           <div className="flex shrink-0 flex-wrap gap-2">
@@ -402,7 +406,7 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
           disabled={primaryActionDisabled}
           onClick={handleStartAll}
           className={cn(
-            "group flex h-12 w-full min-w-0 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold transition-all duration-200 sm:w-auto sm:min-w-44 lg:max-w-[16rem]",
+            "group flex h-10 w-full min-w-0 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold transition-all duration-200 sm:w-auto sm:min-w-44 lg:max-w-[16rem]",
             !primaryActionDisabled
               ? "text-primary-foreground hover:-translate-y-0.5 active:scale-[0.98]"
               : "cursor-not-allowed bg-muted text-muted-foreground"

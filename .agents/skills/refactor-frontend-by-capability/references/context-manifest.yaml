@@ -1,0 +1,48 @@
+schema_version: 1
+skill:
+  id: refactor-frontend-by-capability
+  kind: governance
+  parent: govern-frontend-engineering
+  children: []
+  status: active
+scope:
+  summary: Refactor React and TypeScript by capability while preserving routes, public API modules, state
+    ownership, lifecycle, and behavior.
+  triggers:
+  - frontend refactor
+  - split large component
+  - move hook
+  - API module refactor
+  - TypeScript cleanup
+  excludes: []
+ownership:
+  workspace_relative_paths:
+  - ArchivalProcessing-FE/src
+  - ArchivalProcessing-FE/docs/refactor-upload-center-catalog.md
+  documentation: []
+relationships:
+  recommended_overlays:
+  - verify-frontend-changes
+  - review-frontend-cross-step-changes
+  backend_skills: []
+invariants:
+- Extract one ownership seam at a time and preserve public component, hook, manager, and API contracts.
+- Do not mix broad behavioral changes into structural cleanup.
+change_detection:
+  watched_paths:
+  - ArchivalProcessing-FE/src
+  - ArchivalProcessing-FE/docs/refactor-upload-center-catalog.md
+  watched_terms:
+  - frontend refactor
+  - split large component
+  - move hook
+  - API module refactor
+  - TypeScript cleanup
+verification:
+  commands: []
+  evidence: []
+catalog: ../../navigate-archival-frontend/references/skill-catalog.yaml
+last_verified:
+  commit: null
+  date: null
+  verified_by: null

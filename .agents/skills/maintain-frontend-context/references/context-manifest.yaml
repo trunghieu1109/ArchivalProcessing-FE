@@ -1,0 +1,46 @@
+schema_version: 1
+skill:
+  id: maintain-frontend-context
+  kind: governance
+  parent: govern-frontend-engineering
+  children: []
+  status: active
+scope:
+  summary: Maintain the frontend skill hierarchy, manifests, catalog, ownership maps, backend links, drift
+    checks, and verification metadata.
+  triggers:
+  - frontend skill
+  - frontend context manifest
+  - skill catalog
+  - stale frontend context
+  - ownership drift
+  excludes: []
+ownership:
+  workspace_relative_paths:
+  - ArchivalProcessing-FE/.agents/skills
+  - ArchivalProcessing-FE/docs/frontend-capability-architecture.md
+  documentation: []
+relationships:
+  recommended_overlays: []
+  backend_skills: []
+invariants:
+- Keep one canonical frontend catalog and generate hierarchy fields from it.
+- Never record verification without checking referenced paths and relevant behavior.
+change_detection:
+  watched_paths:
+  - ArchivalProcessing-FE/.agents/skills
+  - ArchivalProcessing-FE/docs/frontend-capability-architecture.md
+  watched_terms:
+  - frontend skill
+  - frontend context manifest
+  - skill catalog
+  - stale frontend context
+  - ownership drift
+verification:
+  commands: []
+  evidence: []
+catalog: ../../navigate-archival-frontend/references/skill-catalog.yaml
+last_verified:
+  commit: null
+  date: null
+  verified_by: null

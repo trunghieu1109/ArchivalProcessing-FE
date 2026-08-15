@@ -1,0 +1,4 @@
+interface:
+  display_name: "Manage Frontend Document Metadata"
+  short_description: "Frontend guidance for manage frontend document metadata"
+  default_prompt: "Use $manage-frontend-document-metadata to handle this ArchivalProcessing frontend task with the correct context and verification."

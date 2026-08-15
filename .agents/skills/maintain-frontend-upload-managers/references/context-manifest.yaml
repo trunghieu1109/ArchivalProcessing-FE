@@ -1,0 +1,50 @@
+schema_version: 1
+skill:
+  id: maintain-frontend-upload-managers
+  kind: cross-cutting
+  parent: navigate-frontend-data-runtime
+  children: []
+  status: active
+scope:
+  summary: Maintain ZIP and folder upload managers, providers, contexts, concurrency, persistence, events,
+    pause, retry, and global docks.
+  triggers:
+  - upload manager
+  - upload provider
+  - upload context
+  - semaphore
+  - pause upload
+  - retry upload
+  excludes: []
+ownership:
+  workspace_relative_paths:
+  - ArchivalProcessing-FE/src/features/zip-upload
+  - ArchivalProcessing-FE/src/features/folder-upload
+  - ArchivalProcessing-FE/src/shared/lib/uploadSemaphore.ts
+  documentation: []
+relationships:
+  recommended_overlays: []
+  backend_skills: []
+invariants:
+- Keep manager state independent from page mount lifetime when uploads must continue globally.
+- Clean subscriptions and preserve stable upload identity across retries.
+change_detection:
+  watched_paths:
+  - ArchivalProcessing-FE/src/features/zip-upload
+  - ArchivalProcessing-FE/src/features/folder-upload
+  - ArchivalProcessing-FE/src/shared/lib/uploadSemaphore.ts
+  watched_terms:
+  - upload manager
+  - upload provider
+  - upload context
+  - semaphore
+  - pause upload
+  - retry upload
+verification:
+  commands: []
+  evidence: []
+catalog: ../../navigate-archival-frontend/references/skill-catalog.yaml
+last_verified:
+  commit: null
+  date: null
+  verified_by: null

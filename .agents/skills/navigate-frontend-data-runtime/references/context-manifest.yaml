@@ -1,0 +1,60 @@
+schema_version: 1
+skill:
+  id: navigate-frontend-data-runtime
+  kind: router
+  parent: navigate-archival-frontend
+  children:
+  - maintain-frontend-api-types
+  - maintain-frontend-cache-hydration
+  - maintain-frontend-errors-downloads
+  - maintain-frontend-http-client
+  - maintain-frontend-pdf-preview
+  - maintain-frontend-polling
+  - maintain-frontend-session-api
+  - maintain-frontend-upload-managers
+  status: active
+scope:
+  summary: Route HTTP, API modules, types, polling, cache, upload managers, PDF preview, errors, and download
+    concerns.
+  triggers:
+  - frontend API layer
+  - polling
+  - cache hydration
+  - manager lifecycle
+  - PDF preview
+  - download
+  excludes: []
+ownership:
+  workspace_relative_paths:
+  - ArchivalProcessing-FE/src/features/upload/api
+  - ArchivalProcessing-FE/src/shared
+  - ArchivalProcessing-FE/src/features/folder-upload
+  - ArchivalProcessing-FE/src/features/zip-upload
+  documentation: []
+relationships:
+  recommended_overlays: []
+  backend_skills: []
+invariants:
+- Keep transport and lifecycle logic out of presentation-only components.
+- Preserve identity, cancellation, stale-response, and cleanup semantics.
+change_detection:
+  watched_paths:
+  - ArchivalProcessing-FE/src/features/upload/api
+  - ArchivalProcessing-FE/src/shared
+  - ArchivalProcessing-FE/src/features/folder-upload
+  - ArchivalProcessing-FE/src/features/zip-upload
+  watched_terms:
+  - frontend API layer
+  - polling
+  - cache hydration
+  - manager lifecycle
+  - PDF preview
+  - download
+verification:
+  commands: []
+  evidence: []
+catalog: ../../navigate-archival-frontend/references/skill-catalog.yaml
+last_verified:
+  commit: null
+  date: null
+  verified_by: null

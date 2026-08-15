@@ -1,0 +1,41 @@
+schema_version: 1
+skill:
+  id: archival-frontend-guide
+  kind: legacy-router
+  parent: navigate-archival-frontend
+  children: []
+  status: active
+scope:
+  summary: Preserve the existing comprehensive frontend capability guide while routing new work to narrower
+    hierarchical skills.
+  triggers:
+  - existing frontend guide
+  - frontend capability map
+  - broad frontend navigation
+  excludes: []
+ownership:
+  workspace_relative_paths:
+  - ArchivalProcessing-FE/.agents/skills/archival-frontend-guide
+  - ArchivalProcessing-FE/docs/frontend-capability-architecture.md
+  documentation: []
+relationships:
+  recommended_overlays: []
+  backend_skills: []
+invariants:
+- Keep detailed architecture in canonical docs rather than duplicating it across routers.
+change_detection:
+  watched_paths:
+  - ArchivalProcessing-FE/.agents/skills/archival-frontend-guide
+  - ArchivalProcessing-FE/docs/frontend-capability-architecture.md
+  watched_terms:
+  - existing frontend guide
+  - frontend capability map
+  - broad frontend navigation
+verification:
+  commands: []
+  evidence: []
+catalog: ../../navigate-archival-frontend/references/skill-catalog.yaml
+last_verified:
+  commit: null
+  date: null
+  verified_by: null

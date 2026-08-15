@@ -1,0 +1,52 @@
+schema_version: 1
+skill:
+  id: maintain-frontend-cache-hydration
+  kind: cross-cutting
+  parent: navigate-frontend-data-runtime
+  children: []
+  status: active
+scope:
+  summary: Maintain same-tab cache, route hydration, session reload, defaults, metadata discovery, and
+    stale-cache rejection.
+  triggers:
+  - UploadPage cache
+  - hydration
+  - page reload
+  - metadata discovery
+  - default state
+  - stale cache
+  excludes: []
+ownership:
+  workspace_relative_paths:
+  - ArchivalProcessing-FE/src/pages/UploadPage.cache.ts
+  - ArchivalProcessing-FE/src/pages/UploadPage.lifecycle.ts
+  - ArchivalProcessing-FE/src/pages/UploadPage.metadataDiscovery.ts
+  - ArchivalProcessing-FE/src/pages/UploadPage.planDefaults.ts
+  documentation: []
+relationships:
+  recommended_overlays: []
+  backend_skills: []
+invariants:
+- Treat local cache as navigation assistance, never durable persistence.
+- Reject cache entries that do not match the current session or server revisions.
+change_detection:
+  watched_paths:
+  - ArchivalProcessing-FE/src/pages/UploadPage.cache.ts
+  - ArchivalProcessing-FE/src/pages/UploadPage.lifecycle.ts
+  - ArchivalProcessing-FE/src/pages/UploadPage.metadataDiscovery.ts
+  - ArchivalProcessing-FE/src/pages/UploadPage.planDefaults.ts
+  watched_terms:
+  - UploadPage cache
+  - hydration
+  - page reload
+  - metadata discovery
+  - default state
+  - stale cache
+verification:
+  commands: []
+  evidence: []
+catalog: ../../navigate-archival-frontend/references/skill-catalog.yaml
+last_verified:
+  commit: null
+  date: null
+  verified_by: null

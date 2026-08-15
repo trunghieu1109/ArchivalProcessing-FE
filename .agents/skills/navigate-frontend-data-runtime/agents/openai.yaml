@@ -1,0 +1,4 @@
+interface:
+  display_name: "Navigate Frontend Data Runtime"
+  short_description: "Frontend guidance for navigate frontend data runtime"
+  default_prompt: "Use $navigate-frontend-data-runtime to handle this ArchivalProcessing frontend task with the correct context and verification."

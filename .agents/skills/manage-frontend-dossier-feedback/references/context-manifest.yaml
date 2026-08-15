@@ -1,0 +1,53 @@
+schema_version: 1
+skill:
+  id: manage-frontend-dossier-feedback
+  kind: capability
+  parent: navigate-frontend-workflow
+  children: []
+  status: active
+scope:
+  summary: Maintain dossier feedback, document moves, manual classification, metadata correction, pending
+    state, refresh, and rebuild actions.
+  triggers:
+  - dossier feedback UI
+  - move document
+  - manual classification dialog
+  - dossier correction
+  - rebuild result
+  excludes: []
+ownership:
+  workspace_relative_paths:
+  - ArchivalProcessing-FE/src/features/upload/components/step4/FinalResult.feedbackPanel.tsx
+  - ArchivalProcessing-FE/src/features/upload/components/step4/FinalResult.manualClassificationDialog.tsx
+  - ArchivalProcessing-FE/src/features/upload/components/step4/FinalResult.pendingFeedback.ts
+  - ArchivalProcessing-FE/src/features/upload/components/step4/useFinalResultTreeActions.ts
+  documentation: []
+relationships:
+  recommended_overlays:
+  - review-frontend-cross-step-changes
+  backend_skills:
+  - manage-dossier-feedback
+  - edit-dossier-metadata
+invariants:
+- Apply feedback to the intended cluster version and selected document identity.
+- Preserve manual metadata and show pending mutation state until backend confirmation.
+change_detection:
+  watched_paths:
+  - ArchivalProcessing-FE/src/features/upload/components/step4/FinalResult.feedbackPanel.tsx
+  - ArchivalProcessing-FE/src/features/upload/components/step4/FinalResult.manualClassificationDialog.tsx
+  - ArchivalProcessing-FE/src/features/upload/components/step4/FinalResult.pendingFeedback.ts
+  - ArchivalProcessing-FE/src/features/upload/components/step4/useFinalResultTreeActions.ts
+  watched_terms:
+  - dossier feedback UI
+  - move document
+  - manual classification dialog
+  - dossier correction
+  - rebuild result
+verification:
+  commands: []
+  evidence: []
+catalog: ../../navigate-archival-frontend/references/skill-catalog.yaml
+last_verified:
+  commit: null
+  date: null
+  verified_by: null

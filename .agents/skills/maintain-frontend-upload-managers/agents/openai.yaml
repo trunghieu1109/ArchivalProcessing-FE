@@ -1,0 +1,4 @@
+interface:
+  display_name: "Maintain Frontend Upload Managers"
+  short_description: "Frontend guidance for maintain frontend upload managers"
+  default_prompt: "Use $maintain-frontend-upload-managers to handle this ArchivalProcessing frontend task with the correct context and verification."

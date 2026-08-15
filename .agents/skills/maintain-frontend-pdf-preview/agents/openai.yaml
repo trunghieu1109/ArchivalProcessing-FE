@@ -1,0 +1,4 @@
+interface:
+  display_name: "Maintain Frontend Pdf Preview"
+  short_description: "Frontend guidance for maintain frontend pdf preview"
+  default_prompt: "Use $maintain-frontend-pdf-preview to handle this ArchivalProcessing frontend task with the correct context and verification."

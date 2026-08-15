@@ -1,0 +1,4 @@
+interface:
+  display_name: "Manage Frontend Artifacts"
+  short_description: "Frontend guidance for manage frontend artifacts"
+  default_prompt: "Use $manage-frontend-artifacts to handle this ArchivalProcessing frontend task with the correct context and verification."

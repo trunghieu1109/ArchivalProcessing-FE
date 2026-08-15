@@ -1,0 +1,46 @@
+schema_version: 1
+skill:
+  id: review-frontend-cross-step-changes
+  kind: governance
+  parent: govern-frontend-engineering
+  children: []
+  status: active
+scope:
+  summary: Review changes that propagate across digitization, dossiers, numbering, artifacts, publication,
+    routing, cache, or API contracts.
+  triggers:
+  - frontend impact analysis
+  - cross-step change
+  - stale downstream UI
+  - workflow review
+  excludes: []
+ownership:
+  workspace_relative_paths:
+  - ArchivalProcessing-FE/docs/frontend-capability-architecture.md
+  - ArchivalProcessing-FE/docs/frontend-system-architecture.md
+  - ArchivalProcessing-FE/src/pages/UploadPage*
+  documentation: []
+relationships:
+  recommended_overlays: []
+  backend_skills: []
+invariants:
+- Trace source changes through every cached, polled, versioned, or previewed projection.
+- Require explicit refresh, invalidation, read-only, or compatibility behavior for downstream steps.
+change_detection:
+  watched_paths:
+  - ArchivalProcessing-FE/docs/frontend-capability-architecture.md
+  - ArchivalProcessing-FE/docs/frontend-system-architecture.md
+  - ArchivalProcessing-FE/src/pages/UploadPage*
+  watched_terms:
+  - frontend impact analysis
+  - cross-step change
+  - stale downstream UI
+  - workflow review
+verification:
+  commands: []
+  evidence: []
+catalog: ../../navigate-archival-frontend/references/skill-catalog.yaml
+last_verified:
+  commit: null
+  date: null
+  verified_by: null

@@ -5,7 +5,12 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom"
-import { AlertCircle, ArrowRight, TriangleAlert } from "lucide-react"
+import {
+  AlertCircle,
+  ArrowRight,
+  CheckCircle2,
+  TriangleAlert,
+} from "lucide-react"
 import { toast } from "sonner"
 import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import { Badge } from "@/components/ui/badge"
@@ -34,6 +39,11 @@ import {
   saveBlob,
 } from "./FinalizeArtifactsPage.utils"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
+import {
+  WorkflowActionPanel,
+  WorkflowActionPanelBody,
+  WorkflowActionStatus,
+} from "@/features/upload/components/WorkflowActionPanel"
 import type { SessionMetadataValues } from "@/features/upload/components/SessionMetadataBar"
 import {
   downloadAllArtifacts,
@@ -773,36 +783,45 @@ export function FinalizeArtifactsStep({
         visibleArtifacts.length > 0 &&
         !finalizing &&
         onContinue ? (
-          <div className="sticky bottom-0 z-20 border-t border-[#CBD5E1] bg-white/95 px-4 py-3 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur">
-            <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:gap-5">
-              {missingPublishMetadataFields.length > 0 ? (
-                <div role="alert" className="min-w-0 flex-1">
-                  <div className="flex items-start gap-2.5">
-                    <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-[#78350F]">
-                        Còn thiếu thông tin xuất bản
-                      </p>
-                      <p
-                        className="mt-0.5 text-xs leading-5 break-words text-[#A16207]"
-                        title={missingPublishMetadataSummary}
-                      >
-                        {missingPublishMetadataSummary}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
+          <WorkflowActionPanel sticky>
+            <WorkflowActionPanelBody>
+              <WorkflowActionStatus
+                role={
+                  missingPublishMetadataFields.length > 0 ? "alert" : "status"
+                }
+                tone={
+                  missingPublishMetadataFields.length > 0
+                    ? "warning"
+                    : "success"
+                }
+                icon={
+                  missingPublishMetadataFields.length > 0 ? (
+                    <TriangleAlert className="size-4" />
+                  ) : (
+                    <CheckCircle2 className="size-4" />
+                  )
+                }
+                title={
+                  missingPublishMetadataFields.length > 0
+                    ? "Còn thiếu thông tin xuất bản"
+                    : "Mục lục đã sẵn sàng để xuất bản"
+                }
+                description={
+                  missingPublishMetadataFields.length > 0
+                    ? missingPublishMetadataSummary
+                    : "Kiểm tra tệp mục lục trước khi chuyển sang bước xuất bản."
+                }
+              />
               <Button
                 type="button"
                 onClick={onContinue}
-                className="w-full shrink-0 sm:ml-auto sm:w-auto"
+                className="h-10 w-full shrink-0 rounded-xl px-5 font-semibold sm:ml-auto sm:w-auto"
               >
                 Xuất bản
                 <ArrowRight data-icon="inline-end" />
               </Button>
-            </div>
-          </div>
+            </WorkflowActionPanelBody>
+          </WorkflowActionPanel>
         ) : null}
       </main>
     </div>

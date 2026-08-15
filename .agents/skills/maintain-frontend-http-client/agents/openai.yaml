@@ -1,0 +1,4 @@
+interface:
+  display_name: "Maintain Frontend Http Client"
+  short_description: "Frontend guidance for maintain frontend http client"
+  default_prompt: "Use $maintain-frontend-http-client to handle this ArchivalProcessing frontend task with the correct context and verification."

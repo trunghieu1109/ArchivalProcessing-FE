@@ -1,0 +1,4 @@
+interface:
+  display_name: "Navigate Archival Frontend"
+  short_description: "Frontend guidance for navigate archival frontend"
+  default_prompt: "Use $navigate-archival-frontend to handle this ArchivalProcessing frontend task with the correct context and verification."

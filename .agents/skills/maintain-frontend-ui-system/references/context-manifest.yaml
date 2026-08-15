@@ -1,0 +1,55 @@
+schema_version: 1
+skill:
+  id: maintain-frontend-ui-system
+  kind: capability
+  parent: navigate-frontend-shell-access
+  children: []
+  status: active
+scope:
+  summary: Maintain shared UI primitives, global styles, theme tokens, utility composition, accessibility,
+    and presentation-only contracts.
+  triggers:
+  - UI component
+  - shared button
+  - global CSS
+  - theme token
+  - accessibility
+  - shadcn primitive
+  excludes: []
+ownership:
+  workspace_relative_paths:
+  - ArchivalProcessing-FE/src/components/ui
+  - ArchivalProcessing-FE/src/styles
+  - ArchivalProcessing-FE/src/shared/components
+  - ArchivalProcessing-FE/src/shared/lib/utils.ts
+  - ArchivalProcessing-FE/components.json
+  documentation: []
+relationships:
+  recommended_overlays:
+  - verify-frontend-changes
+  backend_skills: []
+invariants:
+- Keep business workflow rules out of shared presentation primitives.
+- Preserve keyboard, focus, disabled, loading, and accessible-label behavior.
+change_detection:
+  watched_paths:
+  - ArchivalProcessing-FE/src/components/ui
+  - ArchivalProcessing-FE/src/styles
+  - ArchivalProcessing-FE/src/shared/components
+  - ArchivalProcessing-FE/src/shared/lib/utils.ts
+  - ArchivalProcessing-FE/components.json
+  watched_terms:
+  - UI component
+  - shared button
+  - global CSS
+  - theme token
+  - accessibility
+  - shadcn primitive
+verification:
+  commands: []
+  evidence: []
+catalog: ../../navigate-archival-frontend/references/skill-catalog.yaml
+last_verified:
+  commit: null
+  date: null
+  verified_by: null

@@ -1,0 +1,55 @@
+schema_version: 1
+skill:
+  id: manage-frontend-zip-upload
+  kind: capability
+  parent: navigate-frontend-workflow
+  children: []
+  status: active
+scope:
+  summary: Maintain ZIP staging, progress, concurrency, retry, cancellation, completion, interruption
+    display, and ingestion handoff.
+  triggers:
+  - ZIP upload UI
+  - ZipUploadManager
+  - upload progress
+  - retry ZIP
+  - cancel upload
+  - interruption
+  excludes: []
+ownership:
+  workspace_relative_paths:
+  - ArchivalProcessing-FE/src/features/zip-upload
+  - ArchivalProcessing-FE/src/features/upload/components/step1/ZipSection.tsx
+  - ArchivalProcessing-FE/src/features/upload/components/step1/UploadProgressPanel.tsx
+  - ArchivalProcessing-FE/src/features/upload/api/sessionApi.upload*
+  documentation: []
+relationships:
+  recommended_overlays:
+  - maintain-frontend-upload-managers
+  - maintain-frontend-polling
+  backend_skills:
+  - manage-archival-uploads
+invariants:
+- Keep ZIP and folder uploads as distinct state machines.
+- Reconcile completion with backend state before navigating to processing.
+change_detection:
+  watched_paths:
+  - ArchivalProcessing-FE/src/features/zip-upload
+  - ArchivalProcessing-FE/src/features/upload/components/step1/ZipSection.tsx
+  - ArchivalProcessing-FE/src/features/upload/components/step1/UploadProgressPanel.tsx
+  - ArchivalProcessing-FE/src/features/upload/api/sessionApi.upload*
+  watched_terms:
+  - ZIP upload UI
+  - ZipUploadManager
+  - upload progress
+  - retry ZIP
+  - cancel upload
+  - interruption
+verification:
+  commands: []
+  evidence: []
+catalog: ../../navigate-archival-frontend/references/skill-catalog.yaml
+last_verified:
+  commit: null
+  date: null
+  verified_by: null

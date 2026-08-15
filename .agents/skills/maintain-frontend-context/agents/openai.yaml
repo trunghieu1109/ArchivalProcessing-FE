@@ -1,0 +1,4 @@
+interface:
+  display_name: "Maintain Frontend Context"
+  short_description: "Frontend guidance for maintain frontend context"
+  default_prompt: "Use $maintain-frontend-context to handle this ArchivalProcessing frontend task with the correct context and verification."

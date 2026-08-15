@@ -1,0 +1,53 @@
+schema_version: 1
+skill:
+  id: manage-frontend-backup
+  kind: capability
+  parent: navigate-frontend-workflow
+  children: []
+  status: active
+scope:
+  summary: Maintain session-backup visibility, request handling, progress or result presentation, authorization
+    feedback, and backup downloads.
+  triggers:
+  - session backup UI
+  - backup button
+  - backup visibility
+  - backup API
+  - backup download
+  excludes: []
+ownership:
+  workspace_relative_paths:
+  - ArchivalProcessing-FE/src/features/upload/api/sessionApi.backup*
+  - ArchivalProcessing-FE/tests/sessionBackupVisibility.test.mjs
+  - ArchivalProcessing-FE/src/pages/SessionsPage*
+  - ArchivalProcessing-FE/src/pages/UploadPage*
+  documentation: []
+relationships:
+  recommended_overlays:
+  - maintain-frontend-errors-downloads
+  - manage-frontend-auth
+  backend_skills:
+  - operate-archival-backup-export
+invariants:
+- Show backup actions only for allowed actors while preserving backend authorization errors.
+- Keep backup result identity scoped to the requested session.
+change_detection:
+  watched_paths:
+  - ArchivalProcessing-FE/src/features/upload/api/sessionApi.backup*
+  - ArchivalProcessing-FE/tests/sessionBackupVisibility.test.mjs
+  - ArchivalProcessing-FE/src/pages/SessionsPage*
+  - ArchivalProcessing-FE/src/pages/UploadPage*
+  watched_terms:
+  - session backup UI
+  - backup button
+  - backup visibility
+  - backup API
+  - backup download
+verification:
+  commands: []
+  evidence: []
+catalog: ../../navigate-archival-frontend/references/skill-catalog.yaml
+last_verified:
+  commit: null
+  date: null
+  verified_by: null

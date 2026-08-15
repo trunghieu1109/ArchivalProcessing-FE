@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review Frontend Cross Step Changes"
+  short_description: "Frontend guidance for review frontend cross step changes"
+  default_prompt: "Use $review-frontend-cross-step-changes to handle this ArchivalProcessing frontend task with the correct context and verification."

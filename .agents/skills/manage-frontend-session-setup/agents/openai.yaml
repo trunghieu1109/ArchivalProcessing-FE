@@ -1,0 +1,4 @@
+interface:
+  display_name: "Manage Frontend Session Setup"
+  short_description: "Frontend guidance for manage frontend session setup"
+  default_prompt: "Use $manage-frontend-session-setup to handle this ArchivalProcessing frontend task with the correct context and verification."

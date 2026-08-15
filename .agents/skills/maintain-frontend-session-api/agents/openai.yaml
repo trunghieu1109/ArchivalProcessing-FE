@@ -1,0 +1,4 @@
+interface:
+  display_name: "Maintain Frontend Session Api"
+  short_description: "Frontend guidance for maintain frontend session api"
+  default_prompt: "Use $maintain-frontend-session-api to handle this ArchivalProcessing frontend task with the correct context and verification."

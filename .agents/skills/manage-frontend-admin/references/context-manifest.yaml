@@ -1,0 +1,49 @@
+schema_version: 1
+skill:
+  id: manage-frontend-admin
+  kind: capability
+  parent: navigate-frontend-shell-access
+  children: []
+  status: active
+scope:
+  summary: Maintain administrator access, dashboard data, user and role actions, visibility, and error
+    states.
+  triggers:
+  - admin page
+  - admin dashboard
+  - user administration
+  - role assignment
+  - admin visibility
+  excludes: []
+ownership:
+  workspace_relative_paths:
+  - ArchivalProcessing-FE/src/pages/AdminAccessPage.tsx
+  - ArchivalProcessing-FE/src/features/admin
+  documentation: []
+relationships:
+  recommended_overlays:
+  - manage-frontend-auth
+  - maintain-frontend-api-types
+  backend_skills:
+  - manage-archival-access
+invariants:
+- Hide admin controls from non-admin users while preserving explicit forbidden feedback.
+- Refresh current-user or list state after successful role mutations.
+change_detection:
+  watched_paths:
+  - ArchivalProcessing-FE/src/pages/AdminAccessPage.tsx
+  - ArchivalProcessing-FE/src/features/admin
+  watched_terms:
+  - admin page
+  - admin dashboard
+  - user administration
+  - role assignment
+  - admin visibility
+verification:
+  commands: []
+  evidence: []
+catalog: ../../navigate-archival-frontend/references/skill-catalog.yaml
+last_verified:
+  commit: null
+  date: null
+  verified_by: null
