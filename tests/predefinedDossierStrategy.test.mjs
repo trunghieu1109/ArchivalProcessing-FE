@@ -24,6 +24,10 @@ const planDefaultsSource = await readFile(
   new URL("../src/pages/UploadPage.planDefaults.ts", import.meta.url),
   "utf8"
 )
+const planUtilsSource = await readFile(
+  new URL("../src/pages/UploadPage.planUtils.ts", import.meta.url),
+  "utf8"
+)
 const progressSource = await readFile(
   new URL(
     "../src/features/upload/components/step4/FinalResult.progress.ts",
@@ -46,11 +50,12 @@ const finalResultViewSource = await readFile(
   "utf8"
 )
 
-test("issue-based and quick dossier options use their own strategies", () => {
+test("issue-based mode uses hybrid and quick dossier keeps its own strategy", () => {
   assert.match(sessionTypesSource, /\| "predefined"/)
-  assert.match(strategySource, /onDossierBuildStrategyChange\("incremental"\)/)
+  assert.match(strategySource, /onDossierBuildStrategyChange\("hybrid"\)/)
   assert.match(strategySource, /onDossierBuildStrategyChange\("predefined"\)/)
   assert.match(strategySource, /Lập hồ sơ theo vụ việc/)
+  assert.doesNotMatch(strategySource, /Lập hồ sơ kết hợp/)
   assert.match(strategySource, /Lập hồ sơ nhanh/)
   assert.doesNotMatch(
     strategySource,
@@ -58,13 +63,17 @@ test("issue-based and quick dossier options use their own strategies", () => {
   )
   assert.match(
     planDefaultsSource,
-    /DEFAULT_DOSSIER_BUILD_STRATEGY[\s\S]*"incremental"/
+    /DEFAULT_DOSSIER_BUILD_STRATEGY[\s\S]*"hybrid"/
+  )
+  assert.match(
+    planUtilsSource,
+    /dossierBuildStrategy === "incremental" \? "hybrid"/
   )
 })
 
-test("saved strategies are preserved and predefined is presented as quick mode", () => {
+test("legacy incremental is upgraded and predefined is presented as quick mode", () => {
   assert.match(planParsingSource, /value === "predefined"/)
-  assert.doesNotMatch(planParsingSource, /strategy === "incremental"/)
+  assert.match(planParsingSource, /value === "incremental"\) return "hybrid"/)
   assert.match(
     progressSource,
     /payload\?\.dossier_build_strategy === "predefined"/

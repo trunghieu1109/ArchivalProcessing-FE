@@ -1,6 +1,7 @@
 import type { ReactNode } from "react"
 import { Routes, Route, Navigate, useLocation } from "react-router-dom"
 import { AdminAccessPage } from "@/pages/AdminAccessPage"
+import { PredefinedDocumentsPage } from "@/pages/PredefinedDocumentsPage"
 import { FinalizeArtifactsPage } from "@/pages/FinalizeArtifactsPage"
 import { LoginPage } from "@/pages/LoginPage"
 import { SessionsPage } from "@/pages/SessionsPage"
@@ -17,6 +18,14 @@ export function App() {
         element={
           <RequireAuth>
             <AdminAccessPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/admin/predefined-documents"
+        element={
+          <RequireAuth>
+            <PredefinedDocumentsPage />
           </RequireAuth>
         }
       />

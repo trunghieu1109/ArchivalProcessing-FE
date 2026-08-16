@@ -39,6 +39,8 @@ export function DossierBuildStrategySection({
       : fileRegisterConfig.analysis_status === "ambiguous"
         ? "Cần rà soát"
         : "Mặc định"
+  const isIssueBasedStrategy =
+    dossierBuildStrategy === "hybrid" || dossierBuildStrategy === "incremental"
 
   const updateFileRegisterConfig = (
     patch: Partial<{
@@ -76,8 +78,7 @@ export function DossierBuildStrategySection({
           Cách thức lập hồ sơ
         </p>
         <p className="mt-1 text-sm text-[#64748B]">
-          Lựa chọn này sẽ quyết định cách hệ thống gom nhóm tài liệu khi lập hồ
-          sơ.
+          Chọn cách hệ thống gom nhóm tài liệu.
         </p>
       </div>
       <div
@@ -88,12 +89,12 @@ export function DossierBuildStrategySection({
         <button
           type="button"
           role="radio"
-          aria-checked={dossierBuildStrategy === "incremental"}
+          aria-checked={isIssueBasedStrategy}
           disabled={readOnly}
-          onClick={() => onDossierBuildStrategyChange("incremental")}
+          onClick={() => onDossierBuildStrategyChange("hybrid")}
           className={cn(
             "flex min-h-32 items-start gap-4 rounded-2xl border p-4 text-left transition-all focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-100",
-            dossierBuildStrategy === "incremental"
+            isIssueBasedStrategy
               ? "border-[#0052FF] bg-[#EEF4FF] shadow-[0_8px_24px_rgba(0,82,255,0.10)]"
               : "border-[#D8E1EC] bg-white hover:border-[#0052FF]/40 hover:bg-[#F8FAFC]"
           )}
@@ -101,7 +102,7 @@ export function DossierBuildStrategySection({
           <span
             className={cn(
               "flex size-11 shrink-0 items-center justify-center rounded-xl",
-              dossierBuildStrategy === "incremental"
+              isIssueBasedStrategy
                 ? "bg-[#0052FF] text-white"
                 : "bg-[#EEF2F7] text-[#475569]"
             )}
@@ -118,8 +119,7 @@ export function DossierBuildStrategySection({
               </span>
             </span>
             <span className="mt-1.5 block text-sm leading-6 text-[#64748B]">
-              Phân tích nội dung và mối liên hệ giữa các tài liệu để gom thành
-              từng hồ sơ vụ việc.
+              Ưu tiên tập định nghĩa, sau đó gom phần còn lại theo vụ việc.
             </span>
           </span>
         </button>
@@ -152,8 +152,7 @@ export function DossierBuildStrategySection({
               Lập hồ sơ theo dạng tập lưu
             </span>
             <span className="mt-1.5 block text-sm leading-6 text-[#64748B]">
-              Gom theo loại văn bản, năm ban hành, sắp xếp theo thời gian và
-              chia thành các tập hồ sơ.
+              Gom theo loại, năm ban hành và thứ tự thời gian.
             </span>
           </span>
         </button>
@@ -186,8 +185,7 @@ export function DossierBuildStrategySection({
               Lập hồ sơ nhanh
             </span>
             <span className="mt-1.5 block text-sm leading-6 text-[#64748B]">
-              Tạo kết quả lập hồ sơ nhanh với ít bước xử lý, phù hợp để tiếp tục
-              rà soát và hoàn thiện.
+              Tạo hồ sơ nhanh để tiếp tục rà soát, hoàn thiện.
             </span>
           </span>
         </button>

@@ -10,6 +10,7 @@ export type DossierBuildStrategy =
   | "incremental"
   | "file_register"
   | "predefined"
+  | "hybrid"
 export type DocumentNumberingMode = "page" | "sheet"
 export type DocumentNumberingStylePreset =
   | "pencil_miama"

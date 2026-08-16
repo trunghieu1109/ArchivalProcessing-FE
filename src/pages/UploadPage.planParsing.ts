@@ -552,16 +552,18 @@ export function activeClusterBuildStrategy(
   const executedStrategy = stringValue(summary.dossier_build_strategy)
   if (executedStrategy === "chronological_page_split") return "file_register"
   if (executedStrategy === "predefined") return "predefined"
-  if (executedStrategy === "clustering") return "incremental"
+  if (executedStrategy === "hybrid") return "hybrid"
+  if (executedStrategy === "clustering") return "hybrid"
   return null
 }
 
 export function dossierBuildStrategyValue(
   value: unknown
 ): DossierBuildStrategy | null {
-  return value === "incremental" ||
-    value === "file_register" ||
-    value === "predefined"
+  if (value === "incremental") return "hybrid"
+  return value === "file_register" ||
+    value === "predefined" ||
+    value === "hybrid"
     ? value
     : null
 }

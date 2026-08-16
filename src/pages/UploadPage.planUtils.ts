@@ -144,7 +144,8 @@ export function buildPlanDraftPayload({
     flat_groups: treeToFlatGroups(folderTree),
     criterias: parsedPlan.criterias,
     file_register_config: parsedPlan.file_register_config,
-    dossier_build_strategy: dossierBuildStrategy,
+    dossier_build_strategy:
+      dossierBuildStrategy === "incremental" ? "hybrid" : dossierBuildStrategy,
     document_numbering_mode: documentNumberingMode,
     document_numbering_style_preset: documentNumberingStylePreset,
     document_numbering_style_overrides: documentNumberingStyleOverrides,
