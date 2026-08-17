@@ -79,10 +79,7 @@ export function dossierPatchPayloadFromDraft(
     ],
     dossierCode: ["dossier_code", trimmedOrNull(draft.dossierCode)],
     title: ["title", trimmedOrNull(draft.title)],
-    retentionPeriod: [
-      "retention_period",
-      trimmedOrNull(draft.retentionPeriod),
-    ],
+    retentionPeriod: ["retention_period", trimmedOrNull(draft.retentionPeriod)],
     language: ["language", trimmedOrNull(draft.language)],
     startDate: ["start_date", trimmedOrNull(draft.startDate)],
     endDate: ["end_date", trimmedOrNull(draft.endDate)],
@@ -111,7 +108,10 @@ export function updateDossierGroupFromResponse(
     return {
       ...group,
       dossierId: dossier.dossier_id ?? group.dossierId,
-      dossierStorageId: dossier.dossier_storage_id ?? group.dossierStorageId ?? null,
+      titleCandidates:
+        dossier.title_candidates ?? group.titleCandidates ?? null,
+      dossierStorageId:
+        dossier.dossier_storage_id ?? group.dossierStorageId ?? null,
       dossierNumber: dossier.dossier_number ?? null,
       dossierCode: dossier.dossier_code ?? null,
       boxNumber: dossier.box_number ?? null,
@@ -124,10 +124,8 @@ export function updateDossierGroupFromResponse(
       startDate: dossier.start_date ?? group.startDate,
       endDate: dossier.end_date ?? group.endDate,
       language: dossier.language ?? null,
-      sheetCount:
-        numericValue(dossier.sheet_count) ?? group.sheetCount,
-      pageCount:
-        numericValue(dossier.page_count) ?? group.pageCount,
+      sheetCount: numericValue(dossier.sheet_count) ?? group.sheetCount,
+      pageCount: numericValue(dossier.page_count) ?? group.pageCount,
       usageMode: dossier.usage_mode ?? null,
       physicalCondition: dossier.physical_condition ?? null,
       paperDossierId: dossier.paper_dossier_id ?? group.paperDossierId ?? null,
@@ -166,9 +164,8 @@ function numericValue(value: unknown): number | null {
 }
 
 export function regularDossierCount(groups: ClusterGroup[]): number {
-  return groups.filter(
-    (group) => !group.isTemporary && !group.isPendingDossier
-  ).length
+  return groups.filter((group) => !group.isTemporary && !group.isPendingDossier)
+    .length
 }
 
 export function temporaryDocumentCount(groups: ClusterGroup[]): number {

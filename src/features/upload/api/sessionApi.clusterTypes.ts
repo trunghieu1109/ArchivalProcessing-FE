@@ -115,6 +115,15 @@ export interface DossierClassification {
   metadata_revision?: number | null
 }
 
+export interface DossierTitleCandidate {
+  title: string
+  kind: string
+  selected: boolean
+  source?: string
+  notes?: string[]
+  slots?: Record<string, unknown>
+}
+
 export interface SessionDossierSummary {
   id?: number
   dossier_id: string
@@ -122,6 +131,7 @@ export interface SessionDossierSummary {
   generated_title: string
   title: string
   title_override: string | null
+  title_candidates?: DossierTitleCandidate[] | null
   dossier_number: string | null
   dossier_code?: string | null
   box_number: string | null

@@ -7,6 +7,7 @@ import {
   FolderOpen,
   ListChecks,
   Loader2,
+  Sparkles,
   X,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -14,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/shared/lib/utils"
 import {
   listSessionDossierRetentionCandidates,
+  type DossierTitleCandidate,
   type RetentionCandidateSummary,
   type RetentionCandidateVersion,
   type RetentionReference,
@@ -26,6 +28,7 @@ import {
   type DossierMetadataDraft,
 } from "./FinalResult.metadataUtils"
 import { SHOW_DOSSIER_CODE } from "./temporaryFeatureVisibility"
+import { DossierTitleCandidatePanel } from "./DossierTitleCandidatePanel"
 
 const LEGACY_RETENTION_VERSION_ID = "__current_retention_candidates__"
 
@@ -62,6 +65,7 @@ export function DossierMetadataSidePanel({
     Set<keyof DossierMetadataDraft>
   >(new Set())
   const [candidatePanelOpen, setCandidatePanelOpen] = useState(false)
+  const [titleCandidatePanelOpen, setTitleCandidatePanelOpen] = useState(false)
   const [candidateVersions, setCandidateVersions] = useState<
     RetentionCandidateVersion[]
   >([])
@@ -97,6 +101,7 @@ export function DossierMetadataSidePanel({
     setDirtyFields(new Set())
     setEditing(false)
     setCandidatePanelOpen(false)
+    setTitleCandidatePanelOpen(false)
     setCandidateVersions([])
     setSelectedCandidateVersionId("")
     setCandidatesError("")
@@ -130,6 +135,7 @@ export function DossierMetadataSidePanel({
   }
 
   const loadRetentionCandidates = async () => {
+    setTitleCandidatePanelOpen(false)
     if (!sessionId) {
       toast.error("Chưa có session để tải gợi ý thời hạn bảo quản.")
       return
@@ -143,9 +149,7 @@ export function DossierMetadataSidePanel({
       setSelectingEntryId("")
       setCandidateVersions(versions)
       setSelectedCandidateVersionId(
-        textValue(
-          group.retentionRecommendation?.active_candidate_version_id
-        ) ||
+        textValue(group.retentionRecommendation?.active_candidate_version_id) ||
           versions[versions.length - 1]?.version_id ||
           ""
       )
@@ -204,7 +208,11 @@ export function DossierMetadataSidePanel({
     }
     setSelectingEntryId(candidate.entry_id)
     try {
-      if (!group.isPendingDossier && onSelectRetentionCandidate && group.dossierId) {
+      if (
+        !group.isPendingDossier &&
+        onSelectRetentionCandidate &&
+        group.dossierId
+      ) {
         await onSelectRetentionCandidate(
           group.dossierId,
           candidate.entry_id,
@@ -221,6 +229,36 @@ export function DossierMetadataSidePanel({
       // The parent handler owns user-facing error messages.
     } finally {
       setSelectingEntryId("")
+    }
+  }
+
+  const openTitleCandidates = () => {
+    setCandidatePanelOpen(false)
+    setTitleCandidatePanelOpen(true)
+  }
+
+  const selectTitleCandidate = async (candidate: DossierTitleCandidate) => {
+    const title = candidate.title.trim()
+    if (!title) {
+      toast.error("Phương án này chưa có tiêu đề hợp lệ.")
+      return
+    }
+    const nextDraft = {
+      ...createDossierMetadataDraft(group),
+      title,
+    }
+    try {
+      await onSave(
+        group,
+        nextDraft,
+        new Set<keyof DossierMetadataDraft>(["title"])
+      )
+      setDraft(nextDraft)
+      setDirtyFields(new Set())
+      setEditing(false)
+      setTitleCandidatePanelOpen(false)
+    } catch {
+      // The parent handler owns user-facing error messages.
     }
   }
 
@@ -272,6 +310,17 @@ export function DossierMetadataSidePanel({
             </>
           ) : (
             <>
+              {Boolean(group.titleCandidates?.length) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={openTitleCandidates}
+                  disabled={saving}
+                >
+                  <Sparkles data-icon="inline-start" />
+                  Gợi ý tiêu đề
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -332,19 +381,17 @@ export function DossierMetadataSidePanel({
                 </span>
                 <textarea
                   value={draft[field.key]}
-                  onChange={(event) =>
-                    {
-                      setDraft((current) => ({
-                        ...current,
-                        [field.key]: event.target.value,
-                      }))
-                      setDirtyFields((current) => {
-                        const next = new Set(current)
-                        next.add(field.key)
-                        return next
-                      })
-                    }
-                  }
+                  onChange={(event) => {
+                    setDraft((current) => ({
+                      ...current,
+                      [field.key]: event.target.value,
+                    }))
+                    setDirtyFields((current) => {
+                      const next = new Set(current)
+                      next.add(field.key)
+                      return next
+                    })
+                  }}
                   rows={field.rows}
                   disabled={saving}
                   className="min-h-9 w-full min-w-0 resize-y rounded-lg border border-[#CBD5E1] bg-transparent px-2.5 py-1.5 text-xs leading-5 [overflow-wrap:anywhere] whitespace-pre-wrap transition-colors outline-none placeholder:text-[#94A3B8] focus-visible:border-[#0052FF] focus-visible:ring-3 focus-visible:ring-[#0052FF]/20 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-[#F8FAFC] disabled:opacity-70"
@@ -367,6 +414,15 @@ export function DossierMetadataSidePanel({
           </div>
         )}
       </div>
+      {titleCandidatePanelOpen && (
+        <DossierTitleCandidatePanel
+          candidates={group.titleCandidates ?? []}
+          currentTitle={group.label}
+          saving={saving}
+          onClose={() => setTitleCandidatePanelOpen(false)}
+          onSelect={(candidate) => void selectTitleCandidate(candidate)}
+        />
+      )}
       {candidatePanelOpen && (
         <RetentionCandidatePanel
           group={group}
