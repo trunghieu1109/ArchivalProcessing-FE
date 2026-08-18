@@ -7,8 +7,10 @@ import type {
   ClusterGroupInformationTableResponse,
   ClusterVersionListResponse,
   ClusterVersionResponse,
+  DossierMembershipExplanationResponse,
   DossierBuildStrategy,
   EnsureClusterBuildResponse,
+  SelectedDocumentsDossierSuggestionsResponse,
   SelectedDocumentsMoveResponse,
   SelectedDocumentsPromoteResponse,
   SessionDossierDraft,
@@ -493,6 +495,45 @@ export async function moveSelectedDocumentsToCluster(
         created_by: "ui",
         ...payload,
       }),
+    }
+  )
+}
+
+export async function suggestSelectedDocumentDossiers(
+  sessionId: string,
+  payload: {
+    session_document_ids: number[]
+    cluster_version_id?: string | null
+    force_refresh?: boolean
+  }
+): Promise<SelectedDocumentsDossierSuggestionsResponse> {
+  return requestJson<SelectedDocumentsDossierSuggestionsResponse>(
+    "/sessions/" +
+      encodeURIComponent(sessionId) +
+      "/clusters/selected-documents/dossier-suggestions",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
+}
+
+export async function explainDocumentDossierMembership(
+  sessionId: string,
+  sessionDocumentId: number,
+  payload: {
+    cluster_version_id?: string | null
+    top_k?: number
+    force_refresh?: boolean
+  } = {}
+): Promise<DossierMembershipExplanationResponse> {
+  return requestJson<DossierMembershipExplanationResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/documents/${encodeURIComponent(String(sessionDocumentId))}/dossier-explanation`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     }
   )
 }

@@ -35,4 +35,8 @@ test("single-dossier classification refresh is wired from API to dossier row", a
   )
   assert.match(rowSource, /Phân loại lại hồ sơ vào các nhóm/)
   assert.match(rowSource, /classificationRefreshBusy/)
+  assert.match(
+    rowSource,
+    /size=\{compact \? "icon-sm" : "sm"\}[\s\S]*?onRefreshDossierClassification/
+  )
 })

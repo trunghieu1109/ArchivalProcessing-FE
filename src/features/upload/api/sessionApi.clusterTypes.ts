@@ -103,6 +103,101 @@ export interface SessionDossierSuggestion {
   document_count: number
 }
 
+export interface SessionDocumentDossierSuggestionResult {
+  session_document_id: number
+  document_id: string
+  current_cluster_id: string
+  current_dossier_id: string
+  source: "cache" | "computed" | string
+  dossier_suggestions: SessionDossierSuggestion[]
+}
+
+export interface SelectedDocumentsDossierSuggestionsResponse {
+  session_id: string
+  cluster_version_id: string
+  version_number: number
+  force_refresh: boolean
+  top_k: number
+  selected_document_count: number
+  cached_document_count: number
+  computed_document_count: number
+  dossier_suggestions: SessionDossierSuggestion[]
+  documents: SessionDocumentDossierSuggestionResult[]
+}
+
+export interface DossierMembershipExplanationDocument {
+  session_document_id: number
+  document_id: string
+  file_name: string
+  title: string
+  document_number: string
+  issued_date: string
+  document_type: string
+  issuing_agency: string
+  mentioned_subjects: string
+  document_summary: string
+}
+
+export interface DossierMembershipExplanationNeighbor extends DossierMembershipExplanationDocument {
+  rank: number
+  similarity: number
+}
+
+export interface DossierMembershipExplanationResponse {
+  session_id: string
+  cluster_version_id: string
+  version_number: number
+  session_document_id: number
+  document_id: string
+  session_dossier_id: number
+  dossier_id: string
+  top_k: number
+  document: DossierMembershipExplanationDocument
+  dossier: {
+    session_dossier_id: number
+    dossier_id: string
+    cluster_id: string
+    title: string
+    dossier_number: string
+    folder_name: string
+    archive_name: string
+    fonds_name: string
+    retention_period: string
+    start_date: string
+    end_date: string
+    annotation: string
+    document_count: number
+    metadata_revision: number
+    classification: {
+      group_path: string[]
+      rationale: string
+    } | null
+  }
+  nearest_documents: DossierMembershipExplanationNeighbor[]
+  explanation: {
+    summary: string
+    dossier_fit: string[]
+    relationships: Array<{
+      neighbor_document_id: string
+      relationship_type: string
+      reason: string
+    }>
+    confidence: "high" | "medium" | "low" | string
+    caveats: string[]
+  }
+  evidence_hash: string
+  prompt_version: string
+  generated_at: string
+  source: "cache" | "computed" | string
+  force_refresh: boolean
+  similarity: {
+    source: string
+    requested: number
+    reused: number
+    computed: number
+  }
+}
+
 export interface DossierClassification {
   group_id: string | null
   group_name: string | null

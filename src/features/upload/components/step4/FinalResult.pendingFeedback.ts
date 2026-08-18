@@ -125,8 +125,7 @@ export function applyPendingDossierDrafts(
       language: textValue(metadata.language),
       sheetCount:
         numericValue(metadata.sheet_count) ?? group.sheetCount ?? null,
-      pageCount:
-        numericValue(metadata.page_count) ?? group.pageCount ?? null,
+      pageCount: numericValue(metadata.page_count) ?? group.pageCount ?? null,
       retentionPeriod: textValue(metadata.retention_period),
       retentionRecommendation: recordValue(metadata.retention_recommendation),
       usageMode: textValue(metadata.usage_mode),
@@ -287,12 +286,12 @@ function feedbackTargetClusterId(
 }
 
 function feedbackAction(feedback: ClusterFeedbackResponse): string {
-  return (
+  const action =
     textValue(feedback.details?.action) ??
     (feedback.target_cluster_id === TEMPORARY_CLUSTER_ID
       ? "move_to_temporary_folder"
       : feedback.feedback_type)
-  )
+  return action === "move_selected_documents" ? "manual_move" : action
 }
 
 function createPendingDossierGroup(

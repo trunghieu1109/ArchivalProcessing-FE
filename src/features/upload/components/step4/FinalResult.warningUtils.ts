@@ -32,7 +32,7 @@ export function clusterWarningMessages(
     .filter(Boolean)
   addMissingClusterWarningReasonMessages(messages, warning)
   if (!messages.length) {
-    messages.push("Tài liệu cần được kiểm tra lại trong hồ sơ hiện tại.")
+    messages.push("Nên xem xét lại vị trí của tài liệu trong hồ sơ hiện tại.")
   }
   return uniqueWarningMessages(messages)
 }
@@ -44,7 +44,7 @@ export function addMissingClusterWarningReasonMessages(
   const combined = messages.join(" ").toLowerCase()
   if (
     warning.reasons.includes("low_similarity_to_cluster") &&
-    !combined.includes("không đồng nhất")
+    !combined.includes("mức tương đồng thấp")
   ) {
     messages.push(
       clusterWarningReasonLabel("low_similarity_to_cluster", warning)
@@ -71,6 +71,16 @@ export function refineClusterWarningMessage(
   warning: ClusterDocumentWarning
 ): string {
   const text = message.trim()
+  const normalized = text.toLowerCase()
+  if (
+    warning.reasons.includes("low_similarity_to_cluster") &&
+    normalized.includes("không đồng nhất")
+  ) {
+    return clusterWarningReasonLabel("low_similarity_to_cluster", warning)
+  }
+  if (normalized.includes("cần được kiểm tra lại")) {
+    return "Nên xem xét lại vị trí của tài liệu trong hồ sơ hiện tại."
+  }
   if (
     clusterWarningHasCloserReason(warning, [text]) &&
     isGenericCloserWarningMessage(text)
@@ -110,9 +120,10 @@ export function clusterWarningReasonLabel(
       : "Tài liệu có độ tương đồng với hồ sơ khác cao hơn."
   }
   const labels: Record<string, string> = {
-    low_similarity_to_cluster: "Tài liệu không đồng nhất với hồ sơ.",
+    low_similarity_to_cluster:
+      "Tài liệu có mức tương đồng thấp hơn so với các tài liệu khác trong hồ sơ.",
     temporal_outlier:
-      "Năm ban hành của tài liệu khác với đa số tài liệu trong hồ sơ.",
+      "Năm ban hành của tài liệu khác với khoảng thời gian phổ biến trong hồ sơ.",
   }
   return labels[reason] ?? reason
 }
@@ -128,23 +139,11 @@ export function uniqueWarningMessages(messages: string[]): string[] {
 }
 
 export function clusterWarningLevelLabel(riskLevel: string): string {
-  const normalized = riskLevel.toLowerCase()
-  if (normalized === "high") return "Cảnh báo cao"
-  if (normalized === "medium") return "Cảnh báo trung bình"
-  if (normalized === "low") return "Cảnh báo thấp"
-  return "Cảnh báo"
+  void riskLevel
+  return "Cần kiểm tra"
 }
 
 export function clusterWarningLevelClass(riskLevel: string): string {
-  const normalized = riskLevel.toLowerCase()
-  if (normalized === "high") {
-    return "border-red-300 bg-red-50 text-red-700 hover:bg-red-100"
-  }
-  if (normalized === "medium") {
-    return "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
-  }
-  if (normalized === "low") {
-    return "border-yellow-300 bg-yellow-50 text-yellow-800 hover:bg-yellow-100"
-  }
-  return "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+  void riskLevel
+  return "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
 }

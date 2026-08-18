@@ -36,6 +36,7 @@ export function DossierSuggestionsModal({
   refreshing,
   creatingDossier,
   moveDisabled,
+  readOnly = false,
   error,
   onClose,
   onRefresh,
@@ -50,6 +51,7 @@ export function DossierSuggestionsModal({
   refreshing: boolean
   creatingDossier: boolean
   moveDisabled: boolean
+  readOnly?: boolean
   error: string
   onClose: () => void
   onRefresh: () => void
@@ -127,8 +129,9 @@ export function DossierSuggestionsModal({
                   Hồ sơ được gợi ý
                 </Dialog.Title>
                 <Dialog.Description className="mt-1 truncate text-sm text-[#64748B]">
-                  Đối chiếu metadata của tài liệu đã chọn với các hồ sơ và tài
-                  liệu đại diện.
+                  {readOnly
+                    ? "Đối chiếu gợi ý đã có mà không thay đổi hay ghi nhận dữ liệu."
+                    : "Đối chiếu metadata của tài liệu đã chọn với các hồ sơ và tài liệu đại diện."}
                 </Dialog.Description>
               </div>
             </div>
@@ -160,45 +163,53 @@ export function DossierSuggestionsModal({
                 </p>
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  className="gap-1.5"
-                  onClick={() => void handleCreateDossier()}
-                  disabled={moveDisabled || loading || refreshing}
-                  title="Ghi nhận hồ sơ mới từ các tài liệu trong modal"
-                >
-                  {creatingDossier ? (
-                    <Loader2
-                      data-icon="inline-start"
-                      className="animate-spin"
-                    />
-                  ) : (
-                    <FolderPlus data-icon="inline-start" />
-                  )}
-                  {creatingDossier
-                    ? "Đang tạo và gợi ý..."
-                    : "Tạo hồ sơ từ tài liệu đã chọn"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5"
-                  onClick={onRefresh}
-                  disabled={moveDisabled || loading || refreshing}
-                  title="Tải lại danh sách gợi ý"
-                >
-                  {refreshing ? (
-                    <Loader2
-                      data-icon="inline-start"
-                      className="animate-spin"
-                    />
-                  ) : (
-                    <RefreshCw data-icon="inline-start" />
-                  )}
-                  {refreshing ? "Đang tính lại..." : "Tải lại gợi ý"}
-                </Button>
+                {readOnly ? (
+                  <span className="rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                    Chỉ xem
+                  </span>
+                ) : (
+                  <>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="gap-1.5"
+                      onClick={() => void handleCreateDossier()}
+                      disabled={moveDisabled || loading || refreshing}
+                      title="Ghi nhận hồ sơ mới từ các tài liệu trong modal"
+                    >
+                      {creatingDossier ? (
+                        <Loader2
+                          data-icon="inline-start"
+                          className="animate-spin"
+                        />
+                      ) : (
+                        <FolderPlus data-icon="inline-start" />
+                      )}
+                      {creatingDossier
+                        ? "Đang tạo và gợi ý..."
+                        : "Tạo hồ sơ từ tài liệu đã chọn"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      onClick={onRefresh}
+                      disabled={moveDisabled || loading || refreshing}
+                      title="Tải lại danh sách gợi ý"
+                    >
+                      {refreshing ? (
+                        <Loader2
+                          data-icon="inline-start"
+                          className="animate-spin"
+                        />
+                      ) : (
+                        <RefreshCw data-icon="inline-start" />
+                      )}
+                      {refreshing ? "Đang tính lại..." : "Tải lại gợi ý"}
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
 
@@ -220,6 +231,7 @@ export function DossierSuggestionsModal({
                 dossiers={dossiers}
                 loading={busy}
                 moveDisabled={moveDisabled || movingSuggestionKey !== null}
+                readOnly={readOnly}
                 movingSuggestionKey={movingSuggestionKey}
                 error={error}
                 onSelect={(suggestion) => {
@@ -335,6 +347,7 @@ function SuggestionList({
   dossiers,
   loading,
   moveDisabled,
+  readOnly,
   movingSuggestionKey,
   error,
   onSelect,
@@ -346,6 +359,7 @@ function SuggestionList({
   dossiers: ClusterGroup[]
   loading: boolean
   moveDisabled: boolean
+  readOnly: boolean
   movingSuggestionKey: string | null
   error: string
   onSelect: (suggestion: SessionDossierSuggestion) => void
@@ -439,33 +453,35 @@ function SuggestionList({
                   />
                 ) : null}
 
-                <div className="flex justify-end border-t border-[#E2E8F0] bg-white px-3 py-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="gap-1.5"
-                    disabled={moveDisabled || !dossier}
-                    title={
-                      dossier
-                        ? "Ghi feedback chuyển tài liệu; cần bấm Cập nhật hồ sơ để áp dụng"
-                        : "Không tìm thấy hồ sơ đích trong phiên bản đang xem"
-                    }
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      onMoveToDossier(suggestion)
-                    }}
-                  >
-                    {moving ? (
-                      <Loader2
-                        data-icon="inline-start"
-                        className="animate-spin"
-                      />
-                    ) : (
-                      <MoveRight data-icon="inline-start" />
-                    )}
-                    {moving ? "Đang ghi feedback..." : "Chuyển tới hồ sơ"}
-                  </Button>
-                </div>
+                {!readOnly ? (
+                  <div className="flex justify-end border-t border-[#E2E8F0] bg-white px-3 py-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="gap-1.5"
+                      disabled={moveDisabled || !dossier}
+                      title={
+                        dossier
+                          ? "Ghi feedback chuyển tài liệu; cần bấm Cập nhật hồ sơ để áp dụng"
+                          : "Không tìm thấy hồ sơ đích trong phiên bản đang xem"
+                      }
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        onMoveToDossier(suggestion)
+                      }}
+                    >
+                      {moving ? (
+                        <Loader2
+                          data-icon="inline-start"
+                          className="animate-spin"
+                        />
+                      ) : (
+                        <MoveRight data-icon="inline-start" />
+                      )}
+                      {moving ? "Đang ghi feedback..." : "Chuyển tới hồ sơ"}
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             )
           })}

@@ -82,10 +82,7 @@ test("manual dossier classification is wired to a leaf-only side panel", async (
   assert.doesNotMatch(panelSource, /Thời hạn bảo quản hiện tại/)
   assert.match(panelSource, /Nhóm sẽ chuyển đến/)
   assert.doesNotMatch(panelSource, /Dialog\./)
-  assert.match(
-    panelSource,
-    /export const ManualClassificationPanel = memo\(/
-  )
+  assert.match(panelSource, /export const ManualClassificationPanel = memo\(/)
   assert.match(panelSource, /h-\[calc\(min\(70svh,560px\)\+65px\)\]/)
   assert.match(panelSource, /overflow-y-auto/)
   assert.match(panelSource, /name="manual-classification-search"/)
@@ -107,6 +104,10 @@ test("manual dossier classification is wired to a leaf-only side panel", async (
     /100 - manualClassificationWidthPercent[\s\S]*minmax\(340px, \$\{manualClassificationWidthPercent\}fr\)/
   )
   assert.match(resultNodeSource, /Chọn phân loại/)
+  assert.match(
+    resultNodeSource,
+    /size=\{compact \? "icon-sm" : "sm"\}[\s\S]*?onOpenManualClassification/
+  )
   assert.match(uploadViewSource, /classificationTree=\{activeFolderTree\}/)
   assert.match(
     uploadViewSource,

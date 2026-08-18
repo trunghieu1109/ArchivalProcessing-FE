@@ -1,11 +1,13 @@
-import type { CSSProperties } from "react"
+import { useState, type CSSProperties } from "react"
 import {
   Check,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  FolderTree,
   Loader2,
+  ListChecks,
   RefreshCw,
   Search,
   X,
@@ -22,7 +24,13 @@ import { ClusterGroupInformationPanel } from "./FinalResult.groupInfoPanel"
 import { ManualClassificationPanel } from "./FinalResult.manualClassificationDialog"
 import { DossierMetadataSidePanel } from "./FinalResult.sidePanel"
 import { DossierSuggestionsModal } from "./DossierSuggestionsModal"
+import { DossierMembershipExplanationPanel } from "./DossierMembershipExplanationPanel"
 import { ResultNode } from "./FinalResult.resultNode"
+import { WarningDocumentsReview } from "./FinalResult.warningReviewView"
+import {
+  isActiveWarningDocument,
+  warningDocumentEntries,
+} from "./FinalResult.warningReview"
 import { SHOW_DOSSIER_SUGGESTIONS } from "./temporaryFeatureVisibility"
 import {
   CLUSTER_PROGRESS_PHASES,
@@ -70,9 +78,11 @@ export function FinalResultView(props: Record<string, any>) {
     handleSaveDocumentMetadata,
     handleSelectDossierMetadata,
     handleSelectDossierSuggestions,
+    handleSelectWarningDossierSuggestions,
     handleSelectDossierSuggestionsFromSelection,
     handleSelectGroupInformation,
     handleSelectPreviewDocument,
+    handleExplainDocumentMembership,
     handleToggleDocumentSelection,
     handleToggleGroupSelection,
     handleViewClusterVersion,
@@ -83,6 +93,7 @@ export function FinalResultView(props: Record<string, any>) {
     handleCloseDossierSuggestions,
     handleRefreshDossierSuggestions,
     handleMoveDossierSuggestion,
+    handleMoveWarningDossierSuggestion,
     handleSelectGroupInfoDossier,
     handleSelectGroupInfoDocument,
     handleSelectRetentionCandidate,
@@ -115,8 +126,14 @@ export function FinalResultView(props: Record<string, any>) {
     refreshingClassificationDossierId,
     manuallyClassifyingDossierId,
     manualClassificationGroup,
+    membershipExplanationDocument,
+    membershipExplanation,
+    membershipExplanationLoading,
+    membershipExplanationError,
     classificationTree,
     handleCloseManualClassification,
+    handleCloseMembershipExplanation,
+    handleRefreshMembershipExplanation,
     handleSubmitManualClassification,
     resultStatusText,
     resultTreeSearch,
@@ -153,6 +170,12 @@ export function FinalResultView(props: Record<string, any>) {
     viewingHistoricalClusterVersion,
     onResultTreeSearchNavigate,
   } = props
+  const [resultViewMode, setResultViewMode] = useState<"default" | "warnings">(
+    "default"
+  )
+  const warningDocumentCount = warningDocumentEntries(
+    dossierSuggestionDossiers
+  ).filter(({ document }) => isActiveWarningDocument(document)).length
   const previewColumns = manualClassificationGroup
     ? `minmax(0, ${100 - manualClassificationWidthPercent}fr) minmax(340px, ${manualClassificationWidthPercent}fr)`
     : selectedGroupInfoNode
@@ -368,9 +391,74 @@ export function FinalResultView(props: Record<string, any>) {
       )}
 
       <div
+        role="tablist"
+        aria-label="Chế độ xem kết quả"
+        className="flex w-fit max-w-full flex-wrap gap-1 rounded-xl border border-[#D8E1EC] bg-[#F8FAFC] p-1"
+      >
+        <Button
+          type="button"
+          role="tab"
+          aria-selected={resultViewMode === "default"}
+          variant={resultViewMode === "default" ? "default" : "ghost"}
+          size="sm"
+          className="gap-1.5"
+          onClick={() => {
+            setResultViewMode("default")
+            handleCloseDossierSuggestions()
+          }}
+        >
+          <FolderTree data-icon="inline-start" />
+          Kết quả hồ sơ
+        </Button>
+        <Button
+          type="button"
+          role="tab"
+          aria-selected={resultViewMode === "warnings"}
+          variant={resultViewMode === "warnings" ? "default" : "ghost"}
+          size="sm"
+          className="gap-1.5"
+          onClick={() => {
+            setResultViewMode("warnings")
+            handleCloseDossierSuggestions()
+            setSelectedPreviewDocumentId(null)
+            setSelectedMetadataGroupId(null)
+          }}
+        >
+          <ListChecks data-icon="inline-start" />
+          Gợi ý điều chỉnh hồ sơ
+          <span
+            className={cn(
+              "rounded-full px-1.5 py-0.5 text-[10px] font-bold",
+              resultViewMode === "warnings"
+                ? "bg-white/20 text-white"
+                : "bg-blue-100 text-blue-800"
+            )}
+          >
+            {warningDocumentCount}
+          </span>
+        </Button>
+      </div>
+
+      {resultViewMode === "warnings" ? (
+        <WarningDocumentsReview
+          groups={dossierSuggestionDossiers}
+          selectedDocumentId={selectedDossierSuggestionsDocumentId}
+          suggestions={selectedDossierSuggestionCandidates}
+          suggestionsLoading={
+            dossierSuggestionsLoading || dossierSuggestionsRefreshing
+          }
+          suggestionsError={dossierSuggestionsError}
+          moveDisabled={temporaryFolderUpdateDisabled}
+          onSelectSuggestions={handleSelectWarningDossierSuggestions}
+          onMoveSuggestion={handleMoveWarningDossierSuggestion}
+        />
+      ) : null}
+
+      <div
         ref={previewLayoutRef}
         className={cn(
           "grid min-w-0 gap-4",
+          resultViewMode === "warnings" && "hidden",
           sidePreviewOpen &&
             "xl:[grid-template-columns:var(--result-preview-columns)]"
         )}
@@ -450,6 +538,9 @@ export function FinalResultView(props: Record<string, any>) {
                   dropTargetId={dropTargetId}
                   compact={sidePreviewOpen}
                   selectedPreviewDocumentId={selectedPreviewDocumentId}
+                  selectedMembershipExplanationDocumentId={
+                    membershipExplanationDocument?.sessionDocumentId ?? null
+                  }
                   selectedDossierSuggestionsDocumentId={
                     selectedDossierSuggestionsDocumentId
                   }
@@ -497,14 +588,13 @@ export function FinalResultView(props: Record<string, any>) {
                   onDropOnDossier={handleDropOnDossier}
                   onSelectGroupInformation={handleSelectGroupInformation}
                   onSelectPreview={handleSelectPreviewDocument}
+                  onExplainMembership={handleExplainDocumentMembership}
                   onSelectDossierSuggestions={handleSelectDossierSuggestions}
                   onSelectDossierMetadata={handleSelectDossierMetadata}
                   onRefreshDossierClassification={
                     handleRefreshDossierClassification
                   }
-                  onOpenManualClassification={
-                    handleOpenManualClassification
-                  }
+                  onOpenManualClassification={handleOpenManualClassification}
                   onSaveDocumentMetadata={handleSaveDocumentMetadata}
                   onPromoteTemporaryFolder={handlePromoteTemporaryFolder}
                 />
@@ -549,12 +639,22 @@ export function FinalResultView(props: Record<string, any>) {
                 onClose={handleCloseManualClassification}
                 onSubmit={handleSubmitManualClassification}
               />
+            ) : membershipExplanationDocument ? (
+              <DossierMembershipExplanationPanel
+                document={membershipExplanationDocument}
+                result={membershipExplanation}
+                loading={membershipExplanationLoading}
+                error={membershipExplanationError}
+                className="h-[calc(min(70svh,560px)+65px)] min-h-[425px] min-w-0"
+                onClose={handleCloseMembershipExplanation}
+                onRefresh={handleRefreshMembershipExplanation}
+              />
             ) : previewDocument ? (
               <DocumentPdfPreview
                 sessionId={sessionId}
                 document={previewDocument}
                 presentation="dossier_review"
-                className="h-[min(70svh,560px)] min-h-[420px] min-w-0"
+                className="h-[calc(min(70svh,560px)+65px)] min-h-[425px] min-w-0"
                 onClose={() => setSelectedPreviewDocumentId(null)}
               />
             ) : selectedMetadataGroup ? (
@@ -588,63 +688,67 @@ export function FinalResultView(props: Record<string, any>) {
           </div>
         )}
       </div>
-      {SHOW_DOSSIER_SUGGESTIONS && selectedDossierSuggestionsDocuments.length > 0 && (
-        <DossierSuggestionsModal
-          key={selectedDossierSuggestionsDocuments
-            .map(
-              (document: { sessionDocumentId: string | number }) =>
-                document.sessionDocumentId
-            )
-            .join(":")}
-          documents={selectedDossierSuggestionsDocuments}
-          suggestions={selectedDossierSuggestionCandidates}
-          dossiers={dossierSuggestionDossiers}
-          representativeDocuments={dossierSuggestionRepresentativeDocuments}
-          loading={dossierSuggestionsLoading}
-          refreshing={dossierSuggestionsRefreshing}
-          creatingDossier={promotingSelectedDocuments}
-          moveDisabled={temporaryFolderUpdateDisabled}
-          error={dossierSuggestionsError}
-          onClose={handleCloseDossierSuggestions}
-          onRefresh={handleRefreshDossierSuggestions}
-          onCreateDossier={handleCreateDossierFromSuggestions}
-          onMoveToDossier={handleMoveDossierSuggestion}
+      {SHOW_DOSSIER_SUGGESTIONS &&
+        resultViewMode === "default" &&
+        selectedDossierSuggestionsDocuments.length > 0 && (
+          <DossierSuggestionsModal
+            key={selectedDossierSuggestionsDocuments
+              .map(
+                (document: { sessionDocumentId: string | number }) =>
+                  document.sessionDocumentId
+              )
+              .join(":")}
+            documents={selectedDossierSuggestionsDocuments}
+            suggestions={selectedDossierSuggestionCandidates}
+            dossiers={dossierSuggestionDossiers}
+            representativeDocuments={dossierSuggestionRepresentativeDocuments}
+            loading={dossierSuggestionsLoading}
+            refreshing={dossierSuggestionsRefreshing}
+            creatingDossier={promotingSelectedDocuments}
+            moveDisabled={temporaryFolderUpdateDisabled}
+            error={dossierSuggestionsError}
+            onClose={handleCloseDossierSuggestions}
+            onRefresh={handleRefreshDossierSuggestions}
+            onCreateDossier={handleCreateDossierFromSuggestions}
+            onMoveToDossier={handleMoveDossierSuggestion}
+          />
+        )}
+      {resultViewMode === "default" ? (
+        <FinalResultFeedbackPanel
+          canDeleteDocuments={canDeleteDocuments}
+          canRestoreFileRegisterVersion={canRestoreFileRegisterVersion}
+          cancelingPendingFeedback={cancelingPendingFeedback}
+          clusterJobMode={clusterJobMode}
+          clusterVersionStale={clusterVersionStale}
+          deleteSelectedDocumentsDisabled={deleteSelectedDocumentsDisabled}
+          handleCancelPendingFeedback={handleCancelPendingFeedback}
+          handleCreateDossierFromSelection={handleCreateDossierFromSelection}
+          handleDeleteSelectedDocuments={handleDeleteSelectedDocuments}
+          handleSelectDossierSuggestionsFromSelection={
+            handleSelectDossierSuggestionsFromSelection
+          }
+          handleFinish={handleFinish}
+          handleRebuildClusters={handleRebuildClusters}
+          handleRestorePreviousClusterVersion={
+            handleRestorePreviousClusterVersion
+          }
+          loading={loading}
+          movingSelectedDocumentsTargetId={movingSelectedDocumentsTargetId}
+          pendingClusterVersion={pendingClusterVersion}
+          pendingFeedbackCount={pendingFeedbackCount}
+          promotingSelectedDocuments={promotingSelectedDocuments}
+          promotingTemporaryFolder={promotingTemporaryFolder}
+          rebuildBaselineVersionId={rebuildBaselineVersionId}
+          rebuildSubmitting={rebuildSubmitting}
+          restoringClusterVersion={restoringClusterVersion}
+          selectedDocumentCount={selectedDocumentCount}
+          selectedDocumentsActionDisabled={selectedDocumentsActionDisabled}
+          sessionId={sessionId}
+          totalDossiers={totalDossiers}
+          totalFiles={totalFiles}
+          viewingHistoricalClusterVersion={viewingHistoricalClusterVersion}
         />
-      )}
-      <FinalResultFeedbackPanel
-        canDeleteDocuments={canDeleteDocuments}
-        canRestoreFileRegisterVersion={canRestoreFileRegisterVersion}
-        cancelingPendingFeedback={cancelingPendingFeedback}
-        clusterJobMode={clusterJobMode}
-        clusterVersionStale={clusterVersionStale}
-        deleteSelectedDocumentsDisabled={deleteSelectedDocumentsDisabled}
-        handleCancelPendingFeedback={handleCancelPendingFeedback}
-        handleCreateDossierFromSelection={handleCreateDossierFromSelection}
-        handleDeleteSelectedDocuments={handleDeleteSelectedDocuments}
-        handleSelectDossierSuggestionsFromSelection={
-          handleSelectDossierSuggestionsFromSelection
-        }
-        handleFinish={handleFinish}
-        handleRebuildClusters={handleRebuildClusters}
-        handleRestorePreviousClusterVersion={
-          handleRestorePreviousClusterVersion
-        }
-        loading={loading}
-        movingSelectedDocumentsTargetId={movingSelectedDocumentsTargetId}
-        pendingClusterVersion={pendingClusterVersion}
-        pendingFeedbackCount={pendingFeedbackCount}
-        promotingSelectedDocuments={promotingSelectedDocuments}
-        promotingTemporaryFolder={promotingTemporaryFolder}
-        rebuildBaselineVersionId={rebuildBaselineVersionId}
-        rebuildSubmitting={rebuildSubmitting}
-        restoringClusterVersion={restoringClusterVersion}
-        selectedDocumentCount={selectedDocumentCount}
-        selectedDocumentsActionDisabled={selectedDocumentsActionDisabled}
-        sessionId={sessionId}
-        totalDossiers={totalDossiers}
-        totalFiles={totalFiles}
-        viewingHistoricalClusterVersion={viewingHistoricalClusterVersion}
-      />
+      ) : null}
     </motion.div>
   )
 }

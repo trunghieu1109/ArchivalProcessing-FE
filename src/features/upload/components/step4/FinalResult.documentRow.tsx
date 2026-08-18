@@ -1,8 +1,7 @@
 import { useState } from "react"
 import { motion } from "framer-motion"
 import {
-  AlertTriangle,
-  CalendarDays,
+  BrainCircuit,
   Check,
   ChevronDown,
   ChevronRight,
@@ -12,13 +11,11 @@ import {
   GripVertical,
   Loader2,
   ListChecks,
-  Signature,
   X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/shared/lib/utils"
 import type { ClusterDocument } from "@/features/upload/lib/clusterGroups"
-import { signatureTagInfo } from "@/features/upload/lib/signatureStatus"
 import {
   METADATA_FIELDS,
   metadataEditorRows,
@@ -26,18 +23,9 @@ import {
 } from "@/features/upload/components/step3/metadataCardUtils"
 import { ClusterWarningPanel } from "./FinalResult.warningPanel"
 import { SelectionCheckbox } from "./FinalResult.selection"
-import {
-  clusterWarningLevelClass,
-  clusterWarningLevelLabel,
-  clusterWarningTooltip,
-} from "./FinalResult.warningUtils"
 import { PreviewField } from "./FinalResult.sidePanel"
-import {
-  metadataText,
-  signatureTagClass,
-  truncateWithDots,
-} from "./FinalResult.metadataUtils"
-import { pendingFeedbackActionLabel } from "./FinalResult.pendingFeedback"
+import { metadataText, truncateWithDots } from "./FinalResult.metadataUtils"
+import { DocumentStatusTags } from "./FinalResult.documentStatusTags"
 import { SHOW_DOSSIER_SUGGESTIONS } from "./temporaryFeatureVisibility"
 
 export function DocumentRow({
@@ -47,13 +35,16 @@ export function DocumentRow({
   depth,
   compact,
   selected,
+  membershipExplanationSelected,
   selectionChecked,
   selectionDisabled,
+  explanationDisabled,
   selectedDossierSuggestions,
   onToggleSelection,
   onDragStart,
   onDragEnd,
   onSelectPreview,
+  onExplainMembership,
   onSelectDossierSuggestions,
   onSaveMetadata,
 }: {
@@ -63,13 +54,16 @@ export function DocumentRow({
   depth: number
   compact: boolean
   selected: boolean
+  membershipExplanationSelected: boolean
   selectionChecked: boolean
   selectionDisabled: boolean
+  explanationDisabled: boolean
   selectedDossierSuggestions: boolean
   onToggleSelection: (sessionDocumentId: number, checked: boolean) => void
   onDragStart: (document: ClusterDocument, fromClusterId: string) => void
   onDragEnd: () => void
   onSelectPreview: (document: ClusterDocument) => void
+  onExplainMembership: (document: ClusterDocument) => void
   onSelectDossierSuggestions: (document: ClusterDocument) => void
   onSaveMetadata: (
     document: ClusterDocument,
@@ -102,15 +96,10 @@ export function DocumentRow({
     "title",
     "long_summary",
   ])
-  const issuedDate = metadataText(document.metadata, [
-    "issued_date",
-    "ngay_ban_hanh",
-  ])
   const docType = metadataText(document.metadata, [
     "document_type",
     "loai_van_ban",
   ])
-  const signatureTag = signatureTagInfo(document)
   const displaySummary = compact
     ? truncateWithDots(summary, 108)
     : truncateWithDots(summary, 190)
@@ -233,59 +222,7 @@ export function DocumentRow({
                 {docType}
               </span>
             )}
-            {issuedDate && (
-              <span
-                className={cn(
-                  "flex shrink-0 items-center gap-1 text-[10px] text-[#64748B]",
-                  compact && "hidden"
-                )}
-              >
-                <CalendarDays className="size-3" /> {issuedDate}
-              </span>
-            )}
-            {signatureTag && (
-              <span
-                title={signatureTag.title}
-                className={cn(
-                  "flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold",
-                  signatureTagClass(signatureTag.kind)
-                )}
-              >
-                <Signature className="size-3" />
-                <span
-                  className={cn("max-w-24 truncate", compact && "max-w-20")}
-                >
-                  {signatureTag.label}
-                </span>
-              </span>
-            )}
-            {document.pendingFeedback && (
-              <span
-                title="Feedback đã ghi nhận và đang chờ cập nhật hồ sơ"
-                className="flex shrink-0 items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800"
-              >
-                {pendingFeedbackActionLabel(document.pendingFeedback.action)}
-              </span>
-            )}
-            {clusterWarning && (
-              <span
-                title={clusterWarningTooltip(clusterWarning)}
-                className={cn(
-                  "flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold",
-                  clusterWarningLevelClass(clusterWarning.riskLevel)
-                )}
-              >
-                <AlertTriangle className="size-3" />
-                <span
-                  className={cn(
-                    "max-w-28 truncate",
-                    compact && "hidden 2xl:inline"
-                  )}
-                >
-                  {clusterWarningLevelLabel(clusterWarning.riskLevel)}
-                </span>
-              </span>
-            )}
+            <DocumentStatusTags document={document} compact={compact} />
             {expanded ? (
               <ChevronDown className="ml-auto size-3.5 shrink-0 text-[#64748B]" />
             ) : (
@@ -306,6 +243,28 @@ export function DocumentRow({
             </p>
           )}
         </div>
+        <Button
+          type="button"
+          variant={membershipExplanationSelected ? "default" : "outline"}
+          size="icon-sm"
+          draggable={false}
+          title="Giải thích vì sao tài liệu thuộc hồ sơ này"
+          aria-label="Giải thích vì sao tài liệu thuộc hồ sơ này"
+          className="mt-0.5 shrink-0"
+          onClick={(event) => {
+            event.stopPropagation()
+            if (documentInactive || explanationDisabled) return
+            onExplainMembership(document)
+          }}
+          disabled={
+            documentInactive ||
+            explanationDisabled ||
+            document.sessionDocumentId === null
+          }
+          onDragStart={(event) => event.stopPropagation()}
+        >
+          <BrainCircuit className="size-3.5" />
+        </Button>
         <Button
           type="button"
           variant={expanded ? "default" : "outline"}
@@ -420,7 +379,9 @@ export function DocumentRow({
                   variant="outline"
                   size="icon-sm"
                   title="Sửa metadata"
-                  disabled={document.sessionDocumentId === null || documentInactive}
+                  disabled={
+                    document.sessionDocumentId === null || documentInactive
+                  }
                   onClick={(event) => {
                     event.stopPropagation()
                     startMetadataEdit()

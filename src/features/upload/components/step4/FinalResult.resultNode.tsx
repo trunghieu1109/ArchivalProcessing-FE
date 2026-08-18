@@ -34,6 +34,7 @@ export function ResultNode({
   dropTargetId,
   compact,
   selectedPreviewDocumentId,
+  selectedMembershipExplanationDocumentId,
   selectedDossierSuggestionsDocumentId,
   selectedGroupInfoNodeId,
   selectedMetadataGroupId,
@@ -57,6 +58,7 @@ export function ResultNode({
   onDropOnDossier,
   onSelectGroupInformation,
   onSelectPreview,
+  onExplainMembership,
   onSelectDossierSuggestions,
   onSelectDossierMetadata,
   onRefreshDossierClassification,
@@ -71,6 +73,7 @@ export function ResultNode({
   dropTargetId: string | null
   compact: boolean
   selectedPreviewDocumentId: number | null
+  selectedMembershipExplanationDocumentId: number | null
   selectedDossierSuggestionsDocumentId: number | null
   selectedGroupInfoNodeId: string | null
   selectedMetadataGroupId: string | null
@@ -97,6 +100,7 @@ export function ResultNode({
   onDropOnDossier: (targetClusterId: string) => void
   onSelectGroupInformation: (node: ResultTreeNode) => void
   onSelectPreview: (document: ClusterDocument) => void
+  onExplainMembership: (document: ClusterDocument) => void
   onSelectDossierSuggestions: (document: ClusterDocument) => void
   onSelectDossierMetadata: (group: ClusterGroup) => void
   onRefreshDossierClassification: (group: ClusterGroup) => void
@@ -148,8 +152,7 @@ export function ResultNode({
       classificationRefreshPending)
   )
   const manualClassificationBusy = Boolean(
-    group &&
-      manuallyClassifyingDossierId === (group.dossierId ?? group.id)
+    group && manuallyClassifyingDossierId === (group.dossierId ?? group.id)
   )
   const nodeRef = useRef<HTMLDivElement | null>(null)
 
@@ -264,14 +267,14 @@ export function ResultNode({
             {group?.createdFromTemporaryFolder &&
               !isTemporary &&
               !isPendingDossier && (
-              <span
-                className="flex h-6 shrink-0 items-center gap-1 rounded-full border border-[#0052FF] bg-[#0052FF] px-2.5 text-[11px] font-bold text-white shadow-[0_4px_12px_rgba(0,82,255,0.22)]"
-                title="Hồ sơ được tạo thủ công từ Thư mục tạm"
-              >
-                <FolderPlus className="size-3" />
-                Thủ công
-              </span>
-            )}
+                <span
+                  className="flex h-6 shrink-0 items-center gap-1 rounded-full border border-[#0052FF] bg-[#0052FF] px-2.5 text-[11px] font-bold text-white shadow-[0_4px_12px_rgba(0,82,255,0.22)]"
+                  title="Hồ sơ được tạo thủ công từ Thư mục tạm"
+                >
+                  <FolderPlus className="size-3" />
+                  Thủ công
+                </span>
+              )}
             {group?.hasPendingFeedback && (
               <span
                 className="flex h-6 shrink-0 items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 text-[11px] font-bold text-amber-700"
@@ -346,9 +349,7 @@ export function ResultNode({
               </span>
             </span>
           )}
-          {isDropFolder &&
-            group &&
-            selectedDocumentCount > 0 && (
+          {isDropFolder && group && selectedDocumentCount > 0 && (
             <Button
               type="button"
               variant="outline"
@@ -404,7 +405,7 @@ export function ResultNode({
             <Button
               type="button"
               variant="outline"
-              size="sm"
+              size={compact ? "icon-sm" : "sm"}
               title="Chọn thủ công một nhóm cấp thấp nhất trong cây phân loại"
               disabled={
                 classificationRefreshDisabled ||
@@ -421,10 +422,8 @@ export function ResultNode({
               ) : (
                 <ListTree data-icon="inline-start" />
               )}
-              <span className={cn(compact && "hidden 2xl:inline")}>
-                {manualClassificationBusy
-                  ? "Đang cập nhật"
-                  : "Chọn phân loại"}
+              <span className={cn(compact && "hidden")}>
+                {manualClassificationBusy ? "Đang cập nhật" : "Chọn phân loại"}
               </span>
             </Button>
           )}
@@ -432,7 +431,7 @@ export function ResultNode({
             <Button
               type="button"
               variant="outline"
-              size="sm"
+              size={compact ? "icon-sm" : "sm"}
               title={
                 classificationRefreshPending
                   ? "Hồ sơ đang được phân loại lại"
@@ -451,10 +450,8 @@ export function ResultNode({
               ) : (
                 <RefreshCw data-icon="inline-start" />
               )}
-              <span className={cn(compact && "hidden 2xl:inline")}>
-                {classificationRefreshBusy
-                  ? "Đang phân loại"
-                  : "Phân loại lại"}
+              <span className={cn(compact && "hidden")}>
+                {classificationRefreshBusy ? "Đang phân loại" : "Phân loại lại"}
               </span>
             </Button>
           )}
@@ -505,19 +502,29 @@ export function ResultNode({
                   document.sessionDocumentId !== null &&
                   document.sessionDocumentId === selectedPreviewDocumentId
                 }
+                membershipExplanationSelected={
+                  document.sessionDocumentId !== null &&
+                  document.sessionDocumentId ===
+                    selectedMembershipExplanationDocumentId
+                }
                 selectionChecked={
                   document.sessionDocumentId !== null &&
                   selectedSessionDocumentIds.has(document.sessionDocumentId)
                 }
                 selectionDisabled={document.sessionDocumentId === null}
+                explanationDisabled={
+                  !isDossier || isPendingDossier || isTemporary
+                }
                 selectedDossierSuggestions={
                   document.sessionDocumentId !== null &&
-                  document.sessionDocumentId === selectedDossierSuggestionsDocumentId
+                  document.sessionDocumentId ===
+                    selectedDossierSuggestionsDocumentId
                 }
                 onToggleSelection={onToggleDocumentSelection}
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
                 onSelectPreview={onSelectPreview}
+                onExplainMembership={onExplainMembership}
                 onSelectDossierSuggestions={onSelectDossierSuggestions}
                 onSaveMetadata={onSaveDocumentMetadata}
               />
@@ -532,6 +539,9 @@ export function ResultNode({
               dropTargetId={dropTargetId}
               compact={compact}
               selectedPreviewDocumentId={selectedPreviewDocumentId}
+              selectedMembershipExplanationDocumentId={
+                selectedMembershipExplanationDocumentId
+              }
               selectedDossierSuggestionsDocumentId={
                 selectedDossierSuggestionsDocumentId
               }
@@ -559,6 +569,7 @@ export function ResultNode({
               onDropOnDossier={onDropOnDossier}
               onSelectGroupInformation={onSelectGroupInformation}
               onSelectPreview={onSelectPreview}
+              onExplainMembership={onExplainMembership}
               onSelectDossierSuggestions={onSelectDossierSuggestions}
               onSelectDossierMetadata={onSelectDossierMetadata}
               onRefreshDossierClassification={onRefreshDossierClassification}
