@@ -37,9 +37,11 @@ test("new-session workflow waits for the staged title catalog upload", () => {
 test("upload page renders the optional xlsx title catalog box", () => {
   assert.match(stepOneSource, /DossierTitleCatalogSection/)
   assert.match(componentSource, /accept="\.xlsx"/)
-  assert.match(componentSource, /mã\s+tạm/)
+  assert.match(componentSource, /Upload dữ liệu/)
+  assert.match(componentSource, /Tải file dữ liệu/)
+  assert.doesNotMatch(componentSource, /tiêu đề hồ sơ/i)
   assert.match(componentSource, /mapping_count/)
-  assert.match(componentSource, /Đã phân tích thành công file tiêu đề hồ sơ/)
+  assert.match(componentSource, /Đã phân tích thành công file dữ liệu/)
 })
 
 test("quick dossier mode lazily previews paginated title mappings", () => {

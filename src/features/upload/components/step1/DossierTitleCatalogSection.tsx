@@ -38,7 +38,7 @@ export function DossierTitleCatalogSection({
       setError(
         err instanceof Error
           ? err.message
-          : "Không thể tải lên file tiêu đề hồ sơ."
+          : "Không thể tải lên file dữ liệu."
       )
     } finally {
       setLoading(false)
@@ -53,7 +53,7 @@ export function DossierTitleCatalogSection({
       await onClear()
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Không thể xóa file tiêu đề hồ sơ."
+        err instanceof Error ? err.message : "Không thể xóa file dữ liệu."
       )
     } finally {
       setLoading(false)
@@ -68,10 +68,10 @@ export function DossierTitleCatalogSection({
             <FileSpreadsheet className="size-5" />
           </div>
           <div className="min-w-0">
-            <p className="text-base font-bold text-[#0F172A]">Tiêu đề hồ sơ</p>
+            <p className="text-base font-bold text-[#0F172A]">Upload dữ liệu</p>
             <p className="mt-1 text-sm leading-6 text-[#64748B]">
-              File tùy chọn cho Lập hồ sơ nhanh. Hệ thống ánh xạ tên folder (mã
-              tạm) sang tiêu đề hồ sơ; mã không có trong file vẫn được AI gợi ý.
+              Tải lên file dữ liệu phục vụ Lập hồ sơ nhanh. Hệ thống sẽ phân tích
+              dữ liệu trong file để hỗ trợ quá trình lập hồ sơ.
             </p>
           </div>
         </div>
@@ -89,7 +89,7 @@ export function DossierTitleCatalogSection({
             <DropZone
               accept=".xlsx"
               onFile={(file) => void handleFile(file)}
-              label="Tải file tiêu đề hồ sơ"
+              label="Tải file dữ liệu"
               hint=".xlsx"
               maxSize="10MB"
               compact
@@ -101,8 +101,8 @@ export function DossierTitleCatalogSection({
       {upload?.mapping_count != null && (
         <div className="mt-3 flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
           <Info className="size-3.5 shrink-0" />
-          Đã phân tích thành công file tiêu đề hồ sơ:{" "}
-          {upload.mapping_count.toLocaleString("vi-VN")} mapping hợp lệ.
+          Đã phân tích thành công file dữ liệu:{" "}
+          {upload.mapping_count.toLocaleString("vi-VN")} bản ghi hợp lệ.
         </div>
       )}
       {(upload?.warnings ?? []).map((warning, index) => (

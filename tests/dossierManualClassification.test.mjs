@@ -106,7 +106,7 @@ test("manual dossier classification is wired to a leaf-only side panel", async (
     finalResultViewSource,
     /100 - manualClassificationWidthPercent[\s\S]*minmax\(340px, \$\{manualClassificationWidthPercent\}fr\)/
   )
-  assert.match(resultNodeSource, /Phân loại thủ công/)
+  assert.match(resultNodeSource, /Chọn phân loại/)
   assert.match(uploadViewSource, /classificationTree=\{activeFolderTree\}/)
   assert.match(
     uploadViewSource,

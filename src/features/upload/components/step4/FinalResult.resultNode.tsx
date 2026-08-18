@@ -424,7 +424,7 @@ export function ResultNode({
               <span className={cn(compact && "hidden 2xl:inline")}>
                 {manualClassificationBusy
                   ? "Đang cập nhật"
-                  : "Phân loại thủ công"}
+                  : "Chọn phân loại"}
               </span>
             </Button>
           )}
