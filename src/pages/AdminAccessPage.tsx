@@ -1,10 +1,17 @@
-import { type ComponentType, useEffect, useMemo, useState } from "react"
+import {
+  type ComponentType,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react"
 import { Link } from "react-router-dom"
 import {
   Activity,
   ArrowLeft,
   BarChart3,
   Database,
+  FileKey2,
   FileText,
   Loader2,
   RefreshCw,
@@ -47,7 +54,7 @@ export function AdminAccessPage() {
     [users]
   )
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!isAdmin) return
     setLoading(true)
     setError("")
@@ -68,11 +75,13 @@ export function AdminAccessPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [isAdmin])
 
   useEffect(() => {
+    // Dashboard loading is the external synchronization performed by this effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load()
-  }, [isAdmin])
+  }, [load])
 
   const promoteToCoordinator = async (target: ChinhlyUser) => {
     const targetId = userId(target)
@@ -137,6 +146,13 @@ export function AdminAccessPage() {
             </p>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-end">
+            <Link
+              to="/admin/predefined-documents"
+              className="flex items-center justify-center gap-2 rounded-xl border border-[#BFD3FF] bg-[#EEF4FF] px-4 py-2 text-sm font-semibold text-[#0052FF] transition-colors hover:bg-[#E1EBFF]"
+            >
+              <FileKey2 className="size-4" />
+              Predefined
+            </Link>
             <button
               type="button"
               onClick={() => void load()}

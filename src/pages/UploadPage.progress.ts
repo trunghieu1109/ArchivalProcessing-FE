@@ -156,21 +156,18 @@ function optionalPositiveInteger(value: unknown): number | null {
 }
 
 export function shouldApplyPlanAnalysisResult({
-  currentPlanVersionId,
   nextPlanVersionId,
   completedPlanVersionId,
 }: {
-  currentPlanVersionId: string
   nextPlanVersionId: string
   completedPlanVersionId: string
 }): boolean {
-  if (!nextPlanVersionId) return false
-  if (!currentPlanVersionId || nextPlanVersionId !== currentPlanVersionId) {
-    return true
-  }
-  return (
-    Boolean(completedPlanVersionId) &&
-    nextPlanVersionId === completedPlanVersionId
+  // Activating a plan creates another working draft, so an ID change alone
+  // does not prove that the current analysis job produced the response.
+  return Boolean(
+    nextPlanVersionId &&
+      completedPlanVersionId &&
+      nextPlanVersionId === completedPlanVersionId
   )
 }
 

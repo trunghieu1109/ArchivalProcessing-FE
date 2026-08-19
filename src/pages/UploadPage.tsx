@@ -638,7 +638,6 @@ export function UploadPage() {
       try {
         const planResponse = await getWorkingPlan(sessionId)
         if (cancelled) return
-        const currentPlanVersionId = cache.workingPlanVersionId
         const nextPlanVersionId = planResponse?.id ?? ""
         const nextParsedPlan = planResponse
           ? activePlanToParsedPlan(planResponse)
@@ -646,7 +645,6 @@ export function UploadPage() {
         const shouldApplyPlan =
           Boolean(planResponse) &&
           shouldApplyPlanAnalysisResult({
-            currentPlanVersionId,
             nextPlanVersionId,
             completedPlanVersionId,
           })

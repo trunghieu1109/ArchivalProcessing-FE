@@ -11,6 +11,16 @@ import {
 import type { ClusterVersionResponse } from "@/features/upload/api/sessionApi"
 
 describe("predefined dossier strategy", () => {
+  it("normalizes legacy incremental builds to hybrid", () => {
+    expect(dossierBuildStrategyValue("incremental")).toBe("hybrid")
+    expect(dossierBuildStrategyValue("hybrid")).toBe("hybrid")
+
+    const version = {
+      summary: { dossier_build_strategy: "hybrid" },
+    } as unknown as ClusterVersionResponse
+    expect(activeClusterBuildStrategy(version)).toBe("hybrid")
+  })
+
   it("accepts the strategy in plan and cluster summaries", () => {
     expect(dossierBuildStrategyValue("predefined")).toBe("predefined")
     expect(dossierBuildStrategyValue("unknown")).toBeNull()

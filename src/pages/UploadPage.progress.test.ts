@@ -53,19 +53,25 @@ describe("plan analysis scope and stale-result policy", () => {
     expect(planAnalysisFailureDomain(failure)).toBe("plan")
   })
 
-  it("does not apply the unchanged stale working version before completion", () => {
+  it("waits for the current job completion before applying a working plan", () => {
     expect(
       shouldApplyPlanAnalysisResult({
-        currentPlanVersionId: "plan-v1",
-        nextPlanVersionId: "plan-v1",
+        nextPlanVersionId: "plan-active-clone",
         completedPlanVersionId: "",
       })
     ).toBe(false)
+
     expect(
       shouldApplyPlanAnalysisResult({
-        currentPlanVersionId: "plan-v2",
-        nextPlanVersionId: "plan-v2",
-        completedPlanVersionId: "plan-v2",
+        nextPlanVersionId: "plan-unrelated",
+        completedPlanVersionId: "plan-job-result",
+      })
+    ).toBe(false)
+
+    expect(
+      shouldApplyPlanAnalysisResult({
+        nextPlanVersionId: "plan-job-result",
+        completedPlanVersionId: "plan-job-result",
       })
     ).toBe(true)
   })

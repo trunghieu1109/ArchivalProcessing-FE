@@ -40,6 +40,9 @@ export function DossierBuildStrategySection({
         ? "Cần rà soát"
         : "Mặc định"
 
+  const isIssueBasedStrategy =
+    dossierBuildStrategy === "hybrid" || dossierBuildStrategy === "incremental"
+
   const updateFileRegisterConfig = (
     patch: Partial<{
       groupByDocumentType: boolean
@@ -88,12 +91,12 @@ export function DossierBuildStrategySection({
         <button
           type="button"
           role="radio"
-          aria-checked={dossierBuildStrategy === "incremental"}
+          aria-checked={isIssueBasedStrategy}
           disabled={readOnly}
-          onClick={() => onDossierBuildStrategyChange("incremental")}
+          onClick={() => onDossierBuildStrategyChange("hybrid")}
           className={cn(
             "flex min-h-32 items-start gap-4 rounded-2xl border p-4 text-left transition-all focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-100",
-            dossierBuildStrategy === "incremental"
+            isIssueBasedStrategy
               ? "border-[#0052FF] bg-[#EEF4FF] shadow-[0_8px_24px_rgba(0,82,255,0.10)]"
               : "border-[#D8E1EC] bg-white hover:border-[#0052FF]/40 hover:bg-[#F8FAFC]"
           )}
@@ -101,7 +104,7 @@ export function DossierBuildStrategySection({
           <span
             className={cn(
               "flex size-11 shrink-0 items-center justify-center rounded-xl",
-              dossierBuildStrategy === "incremental"
+              isIssueBasedStrategy
                 ? "bg-[#0052FF] text-white"
                 : "bg-[#EEF2F7] text-[#475569]"
             )}
