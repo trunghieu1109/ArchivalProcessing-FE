@@ -370,7 +370,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
               bulkVerifyItems={bulkVerifyItems}
               bulkVerifying={bulkVerifying}
               canBulkSelectMetadata={canBulkSelectMetadata}
-              canDeleteDocuments={SHOW_DOCUMENT_DELETION && isCoordinator}
+              canDeleteDocuments={isCoordinator}
               canManageMetadataBatches={canManageMetadataBatches}
               cancelManualSplit={cancelManualSplit}
               clearBulkReviewSelection={clearBulkReviewSelection}
