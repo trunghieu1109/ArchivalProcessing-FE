@@ -20,6 +20,7 @@ import type {
 import {
   isMetadataFailedItem,
   isMetadataConfirmable,
+  isMetadataExtractionPending,
   metadataSortScore,
   replaceMetadataItem,
   replaceDocument,
@@ -51,6 +52,7 @@ import {
 import { EMPTY_METADATA_ITEMS } from "./ProcessStep.types"
 import type { useProcessStepModel } from "./useProcessStepModel"
 import { resizeProcessPreviewFromPointer } from "./ProcessStep.resize"
+import { canSubmitMetadataReview } from "./manualMetadata"
 
 type ProcessStepActionContext = ReturnType<typeof useProcessStepModel> & {
   sessionId: string | null
@@ -164,11 +166,17 @@ export function createProcessStepActions(context: ProcessStepActionContext) {
       )
     if (!item) throw new Error("Không tìm thấy tài liệu trong session.")
     if (!sessionId) throw new Error("Chưa có session để xác nhận metadata.")
-    const manualFillAllowed =
-      Boolean(meta && Object.keys(meta).length > 0) &&
-      isMetadataFailedItem(item)
-    if (!item.metadata_ready && !manualFillAllowed) {
-      throw new Error("Metadata của tài liệu này chưa sẵn sàng để xác nhận.")
+    if (
+      !canSubmitMetadataReview({
+        metadataReady: item.metadata_ready,
+        metadataPending: isMetadataExtractionPending(item),
+        metadataFailed: isMetadataFailedItem(item),
+        metadata: meta,
+      })
+    ) {
+      throw new Error(
+        "Metadata của tài liệu này chưa sẵn sàng; hãy nhập thủ công trước khi xác nhận."
+      )
     }
     if (!canUserEditMetadataItem(item, currentUserIdentity)) {
       throw new Error(

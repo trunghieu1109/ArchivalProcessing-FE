@@ -139,7 +139,11 @@ export function MetadataCard({
     if (readOnly) return
     try {
       await onApply(item.data_path, metadata)
-      toast.success("Metadata đã được xác nhận.")
+      toast.success(
+        metadataPending && metadata
+          ? "Đã lưu metadata thủ công; kết quả metadata từ job sẽ không ghi đè."
+          : "Metadata đã được xác nhận."
+      )
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Không thể xác nhận metadata."
@@ -307,6 +311,13 @@ export function MetadataCard({
                     hasRemovedBlankPages={hasRemovedBlankPages}
                     removedBlankPages={removedBlankPages}
                   />
+                  {metadataPending && (
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                      Job OCR vẫn đang chạy. Nếu lưu thủ công, dữ liệu này sẽ
+                      được giữ lại và metadata trả về sau đó từ job sẽ không ghi
+                      đè hoặc bổ sung thêm trường cho tài liệu.
+                    </div>
+                  )}
                   {METADATA_FIELDS.map((field) => (
                     <div
                       key={field.key}
@@ -349,7 +360,9 @@ export function MetadataCard({
                             className="animate-spin"
                           />
                         )}
-                        Lưu & xác nhận
+                        {metadataPending
+                          ? "Lưu thủ công & xác nhận"
+                          : "Lưu & xác nhận"}
                       </Button>
                     </div>
                   )}
@@ -365,6 +378,12 @@ export function MetadataCard({
                     hasRemovedBlankPages={hasRemovedBlankPages}
                     removedBlankPages={removedBlankPages}
                   />
+                  {metadataPending && (
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                      Job OCR đang chạy. Bạn có thể chọn Sửa để nhập thủ công;
+                      sau khi lưu, metadata từ job sẽ không ghi đè tài liệu này.
+                    </div>
+                  )}
                   {metadataFailed && (
                     <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
                       {item.error ||
