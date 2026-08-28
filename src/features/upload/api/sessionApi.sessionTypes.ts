@@ -123,6 +123,8 @@ export interface SessionInputUploadResponse {
   updated_at?: string
   catalog_checksum?: string | null
   mapping_count?: number | null
+  classification_group_count?: number | null
+  catalog_row_count?: number | null
   header_mode?: "recognized_headers" | "first_two_columns" | string
   warnings?: string[]
 }
@@ -135,11 +137,16 @@ export interface DeleteDossierTitleCatalogResponse {
 
 export interface DossierTitleCatalogMappingItem {
   id: number
-  temporary_code: string
+  temporary_code: string | null
   dossier_title: string
   start_time: string | null
   end_time: string | null
   retention_period: string | null
+  row_type: "dossier" | "classification_group"
+  classification_level: number | null
+  classification_group_name: string | null
+  classification_path: string[]
+  classification_order: number[]
   source_row: number
 }
 
@@ -151,6 +158,8 @@ export interface DossierTitleCatalogMappingsResponse {
     checksum: string | null
   } | null
   mapping_count: number
+  classification_group_count: number
+  catalog_row_count: number
   total: number
   offset: number
   limit: number
