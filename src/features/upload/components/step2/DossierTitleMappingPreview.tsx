@@ -115,8 +115,9 @@ export function DossierTitleMappingPreview({
               </span>
             </span>
             <span className="mt-1 block text-xs leading-5 text-[#64748B]">
-              Tên folder được đối chiếu với Mã tạm; mã không tìm thấy vẫn được
-              AI gợi ý tiêu đề.
+              Tên folder được đối chiếu với Mã tạm; tiêu đề và thời hạn bảo quản
+              có trong catalog được dùng trực tiếp, trường còn thiếu mới được
+              gợi ý.
             </span>
           </span>
         </span>
@@ -139,7 +140,7 @@ export function DossierTitleMappingPreview({
               <input
                 value={searchInput}
                 onChange={(event) => setSearchInput(event.target.value)}
-                placeholder="Tìm theo mã tạm hoặc tiêu đề hồ sơ"
+                placeholder="Tìm theo mã tạm, tiêu đề hoặc thời hạn bảo quản"
                 aria-label="Tìm mapping tiêu đề hồ sơ"
                 className="h-9 w-full rounded-lg border border-[#CBD5E1] bg-white pr-3 pl-9 text-sm text-[#0F172A] outline-none placeholder:text-[#94A3B8] focus:border-[#0052FF] focus:ring-2 focus:ring-[#0052FF]/10"
               />
@@ -176,7 +177,7 @@ export function DossierTitleMappingPreview({
           ) : result && result.items.length > 0 ? (
             <>
               <div className="overflow-x-auto rounded-xl border border-[#D8E1EC]">
-                <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+                <table className="w-full min-w-[900px] border-collapse text-left text-sm">
                   <thead className="bg-[#F8FAFC] text-xs font-semibold tracking-wide text-[#475569] uppercase">
                     <tr>
                       <th className="w-14 border-b border-[#D8E1EC] px-3 py-2.5">
@@ -187,6 +188,9 @@ export function DossierTitleMappingPreview({
                       </th>
                       <th className="border-b border-[#D8E1EC] px-3 py-2.5">
                         Tiêu đề hồ sơ
+                      </th>
+                      <th className="border-b border-[#D8E1EC] px-3 py-2.5">
+                        Thời hạn bảo quản
                       </th>
                       <th className="border-b border-[#D8E1EC] px-3 py-2.5">
                         Bắt đầu
@@ -210,6 +214,9 @@ export function DossierTitleMappingPreview({
                         </td>
                         <td className="max-w-xl px-3 py-2.5 whitespace-normal">
                           {item.dossier_title}
+                        </td>
+                        <td className="px-3 py-2.5 font-medium whitespace-nowrap text-[#0F172A]">
+                          {item.retention_period || "—"}
                         </td>
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           {item.start_time || "—"}

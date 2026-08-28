@@ -51,5 +51,7 @@ test("quick dossier mode lazily previews paginated title mappings", () => {
   assert.match(strategySource, /DossierTitleMappingPreview/)
   assert.match(previewSource, /Mã tạm/)
   assert.match(previewSource, /Tiêu đề hồ sơ/)
+  assert.match(previewSource, /retention_period/)
+  assert.match(typesSource, /retention_period: string \| null/)
   assert.match(previewSource, /PaginationControls/)
 })

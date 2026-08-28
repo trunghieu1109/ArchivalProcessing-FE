@@ -139,6 +139,7 @@ export interface DossierTitleCatalogMappingItem {
   dossier_title: string
   start_time: string | null
   end_time: string | null
+  retention_period: string | null
   source_row: number
 }
 
