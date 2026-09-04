@@ -47,6 +47,8 @@ export function activePlanToParsedPlan(plan: ActivePlanResponse): ParsedPlan {
     file_register_config: normalizeFileRegisterConfig(
       plan.file_register_config
     ),
+    predefined_use_temporary_code_as_dossier_number:
+      plan.predefined_use_temporary_code_as_dossier_number === true,
     retention_appendices: normalizeRetentionAppendices(
       plan.retention_appendices
     ),
@@ -518,9 +520,8 @@ export function activePlanDocumentNumberingStylePreset(
   plan: ActivePlanResponse
 ): DocumentNumberingStylePreset {
   return (
-    documentNumberingStylePresetValue(
-      plan.document_numbering_style_preset
-    ) ?? DEFAULT_DOCUMENT_NUMBERING_STYLE_PRESET
+    documentNumberingStylePresetValue(plan.document_numbering_style_preset) ??
+    DEFAULT_DOCUMENT_NUMBERING_STYLE_PRESET
   )
 }
 

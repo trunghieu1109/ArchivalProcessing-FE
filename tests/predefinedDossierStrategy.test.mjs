@@ -57,6 +57,8 @@ test("issue-based mode uses hybrid and quick dossier keeps its own strategy", ()
   assert.match(strategySource, /Lập hồ sơ theo vụ việc/)
   assert.doesNotMatch(strategySource, /Lập hồ sơ kết hợp/)
   assert.match(strategySource, /Lập hồ sơ nhanh/)
+  assert.match(strategySource, /Lấy Mã tạm làm Số hồ sơ/)
+  assert.match(strategySource, /role="switch"/)
   assert.doesNotMatch(
     strategySource,
     /folder nguồn|cấu trúc thư mục|giữ nguyên/i
@@ -68,6 +70,10 @@ test("issue-based mode uses hybrid and quick dossier keeps its own strategy", ()
   assert.match(
     planUtilsSource,
     /dossierBuildStrategy === "incremental" \? "hybrid"/
+  )
+  assert.match(
+    planUtilsSource,
+    /predefined_use_temporary_code_as_dossier_number/
   )
 })
 

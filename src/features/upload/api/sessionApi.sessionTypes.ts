@@ -436,6 +436,7 @@ export interface ActivePlanResponse {
   created_at?: string
   summary: string
   dossier_build_strategy?: DossierBuildStrategy
+  predefined_use_temporary_code_as_dossier_number?: boolean
   document_numbering_mode?: DocumentNumberingMode
   document_numbering_style_preset?: DocumentNumberingStylePreset
   document_numbering_style_overrides?: {

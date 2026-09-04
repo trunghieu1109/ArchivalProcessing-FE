@@ -6,8 +6,7 @@ import type {
 import type { FileRegisterConfig, ParsedPlan } from "@/features/upload/types"
 
 export const easeOut = [0.16, 1, 0.3, 1] as const
-export const DEFAULT_DOSSIER_BUILD_STRATEGY: DossierBuildStrategy =
-  "hybrid"
+export const DEFAULT_DOSSIER_BUILD_STRATEGY: DossierBuildStrategy = "hybrid"
 export const DEFAULT_DOCUMENT_NUMBERING_MODE: DocumentNumberingMode = "page"
 export const DEFAULT_DOCUMENT_NUMBERING_STYLE_PRESET: DocumentNumberingStylePreset =
   "pencil_miama"
@@ -37,6 +36,7 @@ export const EMPTY_PARSED_PLAN: ParsedPlan = {
   criterias: [],
   leaf_group_candidates: [],
   file_register_config: DEFAULT_FILE_REGISTER_CONFIG,
+  predefined_use_temporary_code_as_dossier_number: false,
   retention_appendices: [],
   retention_sources: [],
 }

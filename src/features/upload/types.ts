@@ -96,6 +96,7 @@ export interface ParsedPlan {
   criterias: PlanCriterionSet[]
   leaf_group_candidates: PlanLeafGroupCandidates[]
   file_register_config: FileRegisterConfig
+  predefined_use_temporary_code_as_dossier_number: boolean
   retention_appendices: RetentionAppendixNode[]
   retention_sources: RetentionSourceStatus[]
 }

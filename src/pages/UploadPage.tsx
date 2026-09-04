@@ -992,6 +992,7 @@ export function UploadPage() {
     savePlanChanges,
     savePlanCriterias,
     saveFileRegisterConfig,
+    selectPredefinedUseTemporaryCodeAsDossierNumber,
     saveFolderTree,
     syncDoc1State,
     syncDoc2State,
@@ -1610,6 +1611,9 @@ export function UploadPage() {
         setPlanViewTab={setPlanViewTab}
         dossierBuildStrategy={dossierBuildStrategy}
         selectDossierBuildStrategy={selectDossierBuildStrategy}
+        selectPredefinedUseTemporaryCodeAsDossierNumber={
+          selectPredefinedUseTemporaryCodeAsDossierNumber
+        }
         documentNumberingMode={documentNumberingMode}
         applyPersistedDocumentNumberingMode={
           applyPersistedDocumentNumberingMode
