@@ -3,6 +3,7 @@ import { motion } from "framer-motion"
 import { toast } from "sonner"
 import {
   AlertTriangle,
+  BrainCircuit,
   CalendarDays,
   Check,
   ChevronDown,
@@ -51,13 +52,16 @@ export function DocumentRow({
   depth,
   compact,
   selected,
+  membershipExplanationSelected,
   selectionChecked,
   selectionDisabled,
+  explanationDisabled,
   selectedDossierSuggestions,
   onToggleSelection,
   onDragStart,
   onDragEnd,
   onSelectPreview,
+  onExplainMembership,
   onSelectDossierSuggestions,
   onSaveMetadata,
 }: {
@@ -68,13 +72,16 @@ export function DocumentRow({
   depth: number
   compact: boolean
   selected: boolean
+  membershipExplanationSelected: boolean
   selectionChecked: boolean
   selectionDisabled: boolean
+  explanationDisabled: boolean
   selectedDossierSuggestions: boolean
   onToggleSelection: (sessionDocumentId: number, checked: boolean) => void
   onDragStart: (document: ClusterDocument, fromClusterId: string) => void
   onDragEnd: () => void
   onSelectPreview: (document: ClusterDocument) => void
+  onExplainMembership: (document: ClusterDocument) => void
   onSelectDossierSuggestions: (document: ClusterDocument) => void
   onSaveMetadata: (
     document: ClusterDocument,
@@ -380,6 +387,28 @@ export function DocumentRow({
             </p>
           )}
         </div>
+        <Button
+          type="button"
+          variant={membershipExplanationSelected ? "default" : "outline"}
+          size="icon-sm"
+          draggable={false}
+          title="Giải thích vì sao tài liệu thuộc hồ sơ này"
+          aria-label="Giải thích vì sao tài liệu thuộc hồ sơ này"
+          className="mt-0.5 shrink-0"
+          onClick={(event) => {
+            event.stopPropagation()
+            if (documentInactive || explanationDisabled) return
+            onExplainMembership(document)
+          }}
+          disabled={
+            documentInactive ||
+            explanationDisabled ||
+            document.sessionDocumentId === null
+          }
+          onDragStart={(event) => event.stopPropagation()}
+        >
+          <BrainCircuit className="size-3.5" />
+        </Button>
         <Button
           type="button"
           variant={expanded ? "default" : "outline"}

@@ -98,34 +98,12 @@ export class ZipUploadManager {
     this.controllers.get(jobId)?.abort()
     globalUploadSemaphore.cancel(job.id)
     try {
-      const result = await cancelRawZipUpload(
+      await cancelRawZipUpload(
         job.sessionId,
         job.id,
         "user_cancelled"
       )
-      if (result.status === "cancelled") {
-        this.finishCancelled(job)
-        return job
-      }
-      job.status =
-        result.status === "completing" || result.status === "completed"
-          ? "completing"
-          : "attention_required"
-      job.error =
-        job.status === "completing"
-          ? null
-          : `Backend không hủy ZIP ở trạng thái ${result.status}.`
-      job.updatedAt = Date.now()
-      this.publish()
-      if (job.status === "completing") {
-        void this.pollCompleting(job).catch((error) => {
-          if (job.status !== "completing") return
-          job.status = "attention_required"
-          job.error = errorMessage(error)
-          job.updatedAt = Date.now()
-          this.publish()
-        })
-      }
+      this.finishCancelled(job)
     } catch (error) {
       job.status = "attention_required"
       job.error = errorMessage(error)

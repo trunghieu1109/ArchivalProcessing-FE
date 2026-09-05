@@ -35,6 +35,7 @@ export function ResultNode({
   dropTargetId,
   compact,
   selectedPreviewDocumentId,
+  selectedMembershipExplanationDocumentId,
   selectedDossierSuggestionsDocumentId,
   selectedGroupInfoNodeId,
   selectedMetadataGroupId,
@@ -58,6 +59,7 @@ export function ResultNode({
   onDropOnDossier,
   onSelectGroupInformation,
   onSelectPreview,
+  onExplainMembership,
   onSelectDossierSuggestions,
   onSelectDossierMetadata,
   onRefreshDossierClassification,
@@ -73,6 +75,7 @@ export function ResultNode({
   dropTargetId: string | null
   compact: boolean
   selectedPreviewDocumentId: number | null
+  selectedMembershipExplanationDocumentId: number | null
   selectedDossierSuggestionsDocumentId: number | null
   selectedGroupInfoNodeId: string | null
   selectedMetadataGroupId: string | null
@@ -99,6 +102,7 @@ export function ResultNode({
   onDropOnDossier: (targetClusterId: string) => void
   onSelectGroupInformation: (node: ResultTreeNode) => void
   onSelectPreview: (document: ClusterDocument) => void
+  onExplainMembership: (document: ClusterDocument) => void
   onSelectDossierSuggestions: (document: ClusterDocument) => void
   onSelectDossierMetadata: (group: ClusterGroup) => void
   onRefreshDossierClassification: (group: ClusterGroup) => void
@@ -147,8 +151,8 @@ export function ResultNode({
     classificationStatus === "pending" || classificationStatus === "running"
   const classificationRefreshBusy = Boolean(
     group &&
-      (refreshingClassificationDossierId === (group.dossierId ?? group.id) ||
-        classificationRefreshPending)
+    (refreshingClassificationDossierId === (group.dossierId ?? group.id) ||
+      classificationRefreshPending)
   )
   const manualClassificationBusy = Boolean(
     group && manuallyClassifyingDossierId === (group.dossierId ?? group.id)
@@ -348,36 +352,34 @@ export function ResultNode({
               </span>
             </span>
           )}
-          {isDropFolder &&
-            group &&
-            selectedDocumentCount > 0 && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                title={
-                  isTemporary
-                    ? "Chuyển các tài liệu đã chọn vào Thư mục tạm"
-                    : "Chuyển các tài liệu đã chọn tới hồ sơ này"
-                }
-                disabled={selectedDocumentsActionDisabled}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  onMoveSelectionToDossier(group)
-                }}
-              >
-                {movingSelectedDocumentsTargetId === group.id ? (
-                  <Loader2 data-icon="inline-start" className="animate-spin" />
-                ) : (
-                  <MoveRight data-icon="inline-start" />
-                )}
-                <span className={cn(compact && "hidden 2xl:inline")}>
-                  {isTemporary
-                    ? "Chuyển vào thư mục tạm"
-                    : "Chuyển tới hồ sơ này"}
-                </span>
-              </Button>
-            )}
+          {isDropFolder && group && selectedDocumentCount > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              title={
+                isTemporary
+                  ? "Chuyển các tài liệu đã chọn vào Thư mục tạm"
+                  : "Chuyển các tài liệu đã chọn tới hồ sơ này"
+              }
+              disabled={selectedDocumentsActionDisabled}
+              onClick={(event) => {
+                event.stopPropagation()
+                onMoveSelectionToDossier(group)
+              }}
+            >
+              {movingSelectedDocumentsTargetId === group.id ? (
+                <Loader2 data-icon="inline-start" className="animate-spin" />
+              ) : (
+                <MoveRight data-icon="inline-start" />
+              )}
+              <span className={cn(compact && "hidden 2xl:inline")}>
+                {isTemporary
+                  ? "Chuyển vào thư mục tạm"
+                  : "Chuyển tới hồ sơ này"}
+              </span>
+            </Button>
+          )}
           {isTemporary && group && group.documents.length > 0 && (
             <Button
               type="button"
@@ -454,9 +456,7 @@ export function ResultNode({
                 <RefreshCw data-icon="inline-start" />
               )}
               <span className={cn(compact && "hidden 2xl:inline")}>
-                {classificationRefreshBusy
-                  ? "Đang phân loại"
-                  : "Phân loại lại"}
+                {classificationRefreshBusy ? "Đang phân loại" : "Phân loại lại"}
               </span>
             </Button>
           )}
@@ -508,6 +508,11 @@ export function ResultNode({
                   document.sessionDocumentId !== null &&
                   document.sessionDocumentId === selectedPreviewDocumentId
                 }
+                membershipExplanationSelected={
+                  document.sessionDocumentId !== null &&
+                  document.sessionDocumentId ===
+                    selectedMembershipExplanationDocumentId
+                }
                 selectionChecked={
                   document.sessionDocumentId !== null &&
                   selectedSessionDocumentIds.has(document.sessionDocumentId)
@@ -515,6 +520,9 @@ export function ResultNode({
                 selectionDisabled={
                   document.sessionDocumentId === null ||
                   document.editLock?.locked === true
+                }
+                explanationDisabled={
+                  !isDossier || isPendingDossier || isTemporary
                 }
                 selectedDossierSuggestions={
                   document.sessionDocumentId !== null &&
@@ -525,6 +533,7 @@ export function ResultNode({
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
                 onSelectPreview={onSelectPreview}
+                onExplainMembership={onExplainMembership}
                 onSelectDossierSuggestions={onSelectDossierSuggestions}
                 onSaveMetadata={onSaveDocumentMetadata}
               />
@@ -540,6 +549,9 @@ export function ResultNode({
               dropTargetId={dropTargetId}
               compact={compact}
               selectedPreviewDocumentId={selectedPreviewDocumentId}
+              selectedMembershipExplanationDocumentId={
+                selectedMembershipExplanationDocumentId
+              }
               selectedDossierSuggestionsDocumentId={
                 selectedDossierSuggestionsDocumentId
               }
@@ -567,6 +579,7 @@ export function ResultNode({
               onDropOnDossier={onDropOnDossier}
               onSelectGroupInformation={onSelectGroupInformation}
               onSelectPreview={onSelectPreview}
+              onExplainMembership={onExplainMembership}
               onSelectDossierSuggestions={onSelectDossierSuggestions}
               onSelectDossierMetadata={onSelectDossierMetadata}
               onRefreshDossierClassification={onRefreshDossierClassification}

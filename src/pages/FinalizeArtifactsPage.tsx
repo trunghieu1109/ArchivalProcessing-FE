@@ -486,10 +486,7 @@ export function FinalizeArtifactsStep({
 
       let status: FinalizeArtifactStatusResponse
       try {
-        status = await getFinalizeArtifactsStatus(
-          currentSessionId,
-          expectedJobId
-        )
+        status = await getFinalizeArtifactsStatus(currentSessionId)
       } catch {
         scheduleNextPoll()
         return

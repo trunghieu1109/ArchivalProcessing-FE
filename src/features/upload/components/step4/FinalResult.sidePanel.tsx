@@ -7,6 +7,7 @@ import {
   FolderOpen,
   ListChecks,
   Loader2,
+  Sparkles,
   X,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -14,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/shared/lib/utils"
 import {
   listSessionDossierRetentionCandidates,
+  type DossierTitleCandidate,
   type RetentionCandidateSummary,
   type RetentionCandidateVersion,
   type RetentionReference,
@@ -26,6 +28,7 @@ import {
   type DossierMetadataDraft,
 } from "./FinalResult.metadataUtils"
 import { SHOW_DOSSIER_CODE } from "./temporaryFeatureVisibility"
+import { DossierTitleCandidatePanel } from "./DossierTitleCandidatePanel"
 
 const LEGACY_RETENTION_VERSION_ID = "__current_retention_candidates__"
 
@@ -62,6 +65,7 @@ export function DossierMetadataSidePanel({
     Set<keyof DossierMetadataDraft>
   >(new Set())
   const [candidatePanelOpen, setCandidatePanelOpen] = useState(false)
+  const [titleCandidatePanelOpen, setTitleCandidatePanelOpen] = useState(false)
   const [candidateVersions, setCandidateVersions] = useState<
     RetentionCandidateVersion[]
   >([])
@@ -98,6 +102,7 @@ export function DossierMetadataSidePanel({
     setDirtyFields(new Set())
     setEditing(false)
     setCandidatePanelOpen(false)
+    setTitleCandidatePanelOpen(false)
     setCandidateVersions([])
     setSelectedCandidateVersionId("")
     setCandidatesError("")
@@ -131,6 +136,7 @@ export function DossierMetadataSidePanel({
   }
 
   const loadRetentionCandidates = async () => {
+    setTitleCandidatePanelOpen(false)
     if (!sessionId) {
       toast.error("Chưa có session để tải gợi ý thời hạn bảo quản.")
       return
@@ -225,6 +231,36 @@ export function DossierMetadataSidePanel({
     }
   }
 
+  const openTitleCandidates = () => {
+    setCandidatePanelOpen(false)
+    setTitleCandidatePanelOpen(true)
+  }
+
+  const selectTitleCandidate = async (candidate: DossierTitleCandidate) => {
+    const title = candidate.title.trim()
+    if (!title) {
+      toast.error("Phương án này chưa có tiêu đề hợp lệ.")
+      return
+    }
+    const nextDraft = {
+      ...createDossierMetadataDraft(group),
+      title,
+    }
+    try {
+      await onSave(
+        group,
+        nextDraft,
+        new Set<keyof DossierMetadataDraft>(["title"])
+      )
+      setDraft(nextDraft)
+      setDirtyFields(new Set())
+      setEditing(false)
+      setTitleCandidatePanelOpen(false)
+    } catch {
+      // The parent handler owns user-facing error messages.
+    }
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, x: 8 }}
@@ -273,6 +309,17 @@ export function DossierMetadataSidePanel({
             </>
           ) : (
             <>
+              {Boolean(group.titleCandidates?.length) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={openTitleCandidates}
+                  disabled={saving}
+                >
+                  <Sparkles data-icon="inline-start" />
+                  Gợi ý tiêu đề
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -368,6 +415,15 @@ export function DossierMetadataSidePanel({
           </div>
         )}
       </div>
+      {titleCandidatePanelOpen && (
+        <DossierTitleCandidatePanel
+          candidates={group.titleCandidates ?? []}
+          currentTitle={group.label}
+          saving={saving}
+          onClose={() => setTitleCandidatePanelOpen(false)}
+          onSelect={(candidate) => void selectTitleCandidate(candidate)}
+        />
+      )}
       {candidatePanelOpen && (
         <RetentionCandidatePanel
           group={group}

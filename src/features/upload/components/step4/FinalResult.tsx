@@ -9,6 +9,7 @@ import {
 import type { DocumentPreviewTarget } from "@/features/upload/components/DocumentPdfPreview"
 import {
   cancelPendingClusterFeedback,
+  explainDocumentDossierMembership,
   getClusterGroupInformationTable,
   getClusterVersion,
   listClusterFeedback,
@@ -17,6 +18,7 @@ import {
   suggestSelectedDocumentDossiers,
   type ClusterGroupInformationTableResponse,
   type ClusterVersionResponse,
+  type DossierMembershipExplanationResponse,
   type DocumentDeletionOperationResponse,
   type DocumentTransferOperationResponse,
   type SessionDossierSuggestion,
@@ -168,6 +170,14 @@ export function FinalResult({
   const [dossierSuggestionsRefreshing, setDossierSuggestionsRefreshing] =
     useState(false)
   const [dossierSuggestionsError, setDossierSuggestionsError] = useState("")
+  const [membershipExplanationDocument, setMembershipExplanationDocument] =
+    useState<ClusterDocument | null>(null)
+  const [membershipExplanation, setMembershipExplanation] =
+    useState<DossierMembershipExplanationResponse | null>(null)
+  const [membershipExplanationLoading, setMembershipExplanationLoading] =
+    useState(false)
+  const [membershipExplanationError, setMembershipExplanationError] =
+    useState("")
   const [selectedMetadataGroupId, setSelectedMetadataGroupId] = useState<
     string | null
   >(null)
@@ -181,8 +191,10 @@ export function FinalResult({
   const [groupInformationLoading, setGroupInformationLoading] = useState(false)
   const [groupInformationError, setGroupInformationError] = useState("")
   const [previewWidthPercent, setPreviewWidthPercent] = useState(50)
-  const [manualClassificationWidthPercent, setManualClassificationWidthPercent] =
-    useState(30)
+  const [
+    manualClassificationWidthPercent,
+    setManualClassificationWidthPercent,
+  ] = useState(30)
   const previewLayoutRef = useRef<HTMLDivElement | null>(null)
   const resultTreeScrollRef = useRef<HTMLDivElement | null>(null)
   const resultTreeDragYRef = useRef<number | null>(null)
@@ -192,6 +204,7 @@ export function FinalResult({
   const lastFeedbackRequestKeyRef = useRef("")
   const feedbackHydrationRevisionRef = useRef(0)
   const dossierSuggestionsRequestRef = useRef(0)
+  const membershipExplanationRequestIdRef = useRef(0)
   const [clusterJobMode, setClusterJobMode] = useState<ClusterJobMode>("new")
   const [clusterProgressPhase, setClusterProgressPhase] = useState<
     string | null
@@ -352,9 +365,10 @@ export function FinalResult({
   const selectedGroupInfoLabel = selectedGroupInfoNode?.label ?? ""
   const sidePreviewOpen = Boolean(
     manualClassificationGroup ||
-      previewDocument ||
-      selectedMetadataGroup ||
-      selectedGroupInfoNode
+    membershipExplanationDocument ||
+    previewDocument ||
+    selectedMetadataGroup ||
+    selectedGroupInfoNode
   )
   const pendingClusterGroups = useMemo(
     () => versionToGroups(pendingClusterVersion, metadataItems),
@@ -692,6 +706,11 @@ export function FinalResult({
     setDossierSuggestionsLoading(false)
     setDossierSuggestionsRefreshing(false)
     setDossierSuggestionsError("")
+    membershipExplanationRequestIdRef.current += 1
+    setMembershipExplanationDocument(null)
+    setMembershipExplanation(null)
+    setMembershipExplanationLoading(false)
+    setMembershipExplanationError("")
   }, [displayedClusterVersionId])
 
   useFinalResultPolling({
@@ -833,14 +852,26 @@ export function FinalResult({
     setStatus,
   })
 
-  const handleSelectGroupInformation = useCallback((node: ResultTreeNode) => {
-    setManualClassificationGroup(null)
-    setSelectedPreviewDocumentId(null)
-    setSelectedMetadataGroupId(null)
-    setSelectedGroupInfoNodeId((current) =>
-      current === node.id ? null : node.id
-    )
+  const handleCloseMembershipExplanation = useCallback(() => {
+    membershipExplanationRequestIdRef.current += 1
+    setMembershipExplanationDocument(null)
+    setMembershipExplanation(null)
+    setMembershipExplanationLoading(false)
+    setMembershipExplanationError("")
   }, [])
+
+  const handleSelectGroupInformation = useCallback(
+    (node: ResultTreeNode) => {
+      handleCloseMembershipExplanation()
+      setManualClassificationGroup(null)
+      setSelectedPreviewDocumentId(null)
+      setSelectedMetadataGroupId(null)
+      setSelectedGroupInfoNodeId((current) =>
+        current === node.id ? null : node.id
+      )
+    },
+    [handleCloseMembershipExplanation]
+  )
 
   const handleOpenManualClassification = useCallback(
     (group: ClusterGroup) => {
@@ -853,9 +884,14 @@ export function FinalResult({
       setSelectedGroupInfoNodeId(null)
       setGroupInformationTable(null)
       setGroupInformationError("")
+      handleCloseMembershipExplanation()
       setManualClassificationGroup(group)
     },
-    [activePlanVersionId, classificationTree.length]
+    [
+      activePlanVersionId,
+      classificationTree.length,
+      handleCloseMembershipExplanation,
+    ]
   )
 
   const handleCloseManualClassification = useCallback(() => {
@@ -924,13 +960,14 @@ export function FinalResult({
 
   const handleSelectPreviewDocumentFromTree = useCallback(
     (document: ClusterDocument) => {
+      handleCloseMembershipExplanation()
       setManualClassificationGroup(null)
       setSelectedGroupInfoNodeId(null)
       setGroupInformationTable(null)
       setGroupInformationError("")
       handleSelectPreviewDocument(document)
     },
-    [handleSelectPreviewDocument]
+    [handleCloseMembershipExplanation, handleSelectPreviewDocument]
   )
 
   const handleCloseDossierSuggestions = useCallback(() => {
@@ -941,6 +978,73 @@ export function FinalResult({
     setDossierSuggestionsRefreshing(false)
     setDossierSuggestionsError("")
   }, [])
+
+  const handleExplainDocumentMembership = useCallback(
+    async (document: ClusterDocument, forceRefresh = false) => {
+      if (
+        !forceRefresh &&
+        membershipExplanationDocument?.sessionDocumentId ===
+          document.sessionDocumentId
+      ) {
+        handleCloseMembershipExplanation()
+        return
+      }
+      setManualClassificationGroup(null)
+      setSelectedPreviewDocumentId(null)
+      setSelectedMetadataGroupId(null)
+      setSelectedGroupInfoNodeId(null)
+      setGroupInformationTable(null)
+      setGroupInformationError("")
+      handleCloseDossierSuggestions()
+      setMembershipExplanationDocument(document)
+      setMembershipExplanation(null)
+      setMembershipExplanationError("")
+      if (!sessionId || document.sessionDocumentId === null) {
+        setMembershipExplanationLoading(false)
+        setMembershipExplanationError(
+          "Không xác định được session hoặc tài liệu để tạo lời giải thích."
+        )
+        return
+      }
+      const requestId = ++membershipExplanationRequestIdRef.current
+      setMembershipExplanationLoading(true)
+      try {
+        const response = await explainDocumentDossierMembership(
+          sessionId,
+          document.sessionDocumentId,
+          {
+            cluster_version_id: displayedClusterVersionId,
+            force_refresh: forceRefresh,
+          }
+        )
+        if (requestId !== membershipExplanationRequestIdRef.current) return
+        setMembershipExplanation(response)
+      } catch (err) {
+        if (requestId !== membershipExplanationRequestIdRef.current) return
+        setMembershipExplanationError(
+          err instanceof Error
+            ? err.message
+            : "Không thể tạo lời giải thích cho tài liệu."
+        )
+      } finally {
+        if (requestId === membershipExplanationRequestIdRef.current) {
+          setMembershipExplanationLoading(false)
+        }
+      }
+    },
+    [
+      displayedClusterVersionId,
+      handleCloseDossierSuggestions,
+      handleCloseMembershipExplanation,
+      membershipExplanationDocument?.sessionDocumentId,
+      sessionId,
+    ]
+  )
+
+  const handleRefreshMembershipExplanation = useCallback(() => {
+    if (!membershipExplanationDocument) return
+    void handleExplainDocumentMembership(membershipExplanationDocument, true)
+  }, [handleExplainDocumentMembership, membershipExplanationDocument])
 
   const handleSelectDossierSuggestionsForDocuments = useCallback(
     (documents: ClusterDocument[], forceRefresh = false) => {
@@ -1156,13 +1260,14 @@ export function FinalResult({
 
   const handleSelectDossierMetadataFromTree = useCallback(
     (group: ClusterGroup) => {
+      handleCloseMembershipExplanation()
       setManualClassificationGroup(null)
       setSelectedGroupInfoNodeId(null)
       setGroupInformationTable(null)
       setGroupInformationError("")
       handleSelectDossierMetadata(group)
     },
-    [handleSelectDossierMetadata]
+    [handleCloseMembershipExplanation, handleSelectDossierMetadata]
   )
 
   const handleSelectGroupInfoDossier = useCallback(
@@ -1171,13 +1276,14 @@ export function FinalResult({
         (item) => !item.isTemporary && (item.dossierId ?? item.id) === dossierId
       )
       if (!group) return
+      handleCloseMembershipExplanation()
       setSelectedGroupInfoNodeId(null)
       setGroupInformationTable(null)
       setGroupInformationError("")
       setSelectedPreviewDocumentId(null)
       setSelectedMetadataGroupId(group.id)
     },
-    [groups]
+    [groups, handleCloseMembershipExplanation]
   )
 
   const handleSelectGroupInfoDocument = useCallback(
@@ -1186,13 +1292,14 @@ export function FinalResult({
         (item) => item.sessionDocumentId === sessionDocumentId
       )
       if (!hasDocument) return
+      handleCloseMembershipExplanation()
       setSelectedGroupInfoNodeId(null)
       setGroupInformationTable(null)
       setGroupInformationError("")
       setSelectedMetadataGroupId(null)
       setSelectedPreviewDocumentId(sessionDocumentId)
     },
-    [previewDocuments]
+    [handleCloseMembershipExplanation, previewDocuments]
   )
 
   const handleSelectRetentionCandidate = useCallback(
@@ -1674,6 +1781,7 @@ export function FinalResult({
         handleSelectGroupInformation={handleSelectGroupInformation}
         handleSelectRetentionCandidate={handleSelectRetentionCandidate}
         handleSelectPreviewDocument={handleSelectPreviewDocumentFromTree}
+        handleExplainDocumentMembership={handleExplainDocumentMembership}
         handleToggleDocumentSelection={handleToggleDocumentSelection}
         handleToggleGroupSelection={handleToggleGroupSelection}
         handleViewClusterVersion={handleViewClusterVersion}
@@ -1722,8 +1830,14 @@ export function FinalResult({
         refreshingClassificationDossierId={refreshingClassificationDossierId}
         manuallyClassifyingDossierId={manuallyClassifyingDossierId}
         manualClassificationGroup={manualClassificationGroup}
+        membershipExplanationDocument={membershipExplanationDocument}
+        membershipExplanation={membershipExplanation}
+        membershipExplanationLoading={membershipExplanationLoading}
+        membershipExplanationError={membershipExplanationError}
         classificationTree={classificationTree}
         handleCloseManualClassification={handleCloseManualClassification}
+        handleCloseMembershipExplanation={handleCloseMembershipExplanation}
+        handleRefreshMembershipExplanation={handleRefreshMembershipExplanation}
         handleSubmitManualClassification={handleSubmitManualClassification}
         resultStatusText={resultStatusText}
         resultTreeSearch={resultTreeSearch}

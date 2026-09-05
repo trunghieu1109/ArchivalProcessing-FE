@@ -7,6 +7,7 @@ import type {
   ClusterGroupInformationTableResponse,
   ClusterVersionListResponse,
   ClusterVersionResponse,
+  DossierMembershipExplanationResponse,
   DossierBuildStrategy,
   EnsureClusterBuildResponse,
   SelectedDocumentsMoveResponse,
@@ -298,6 +299,25 @@ export async function suggestSelectedDocumentDossiers(
 ): Promise<SelectedDocumentDossierSuggestionsResponse> {
   return requestJson<SelectedDocumentDossierSuggestionsResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/clusters/selected-documents/dossier-suggestions`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
+}
+
+export async function explainDocumentDossierMembership(
+  sessionId: string,
+  sessionDocumentId: number,
+  payload: {
+    cluster_version_id?: string | null
+    top_k?: number
+    force_refresh?: boolean
+  } = {}
+): Promise<DossierMembershipExplanationResponse> {
+  return requestJson<DossierMembershipExplanationResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/documents/${encodeURIComponent(String(sessionDocumentId))}/dossier-explanation`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },

@@ -63,13 +63,10 @@ export async function enqueueFinalizeArtifacts(
 }
 
 export async function getFinalizeArtifactsStatus(
-  sessionId: string,
-  jobId?: number | null
+  sessionId: string
 ): Promise<FinalizeArtifactStatusResponse> {
-  const query =
-    jobId == null ? "" : `?job_id=${encodeURIComponent(String(jobId))}`
   return requestJson<FinalizeArtifactStatusResponse>(
-    `/sessions/${encodeURIComponent(sessionId)}/artifacts/finalize/status${query}`
+    `/sessions/${encodeURIComponent(sessionId)}/artifacts/finalize/status`
   )
 }
 

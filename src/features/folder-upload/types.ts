@@ -37,13 +37,14 @@ export interface FolderUploadCounts {
 
 export interface FolderUploadIngestionRun {
   id: number
+  session_id: string
   ingestion_source: "folder" | "zip" | string
   status: string
-  folder_upload_id: string | null
+  folder_upload_id: string
   total_pdf_files: number | null
   extracted_count?: number
   effective_document_count?: number | null
-  ocr_batch_ids?: number[]
+  ocr_batch_ids: number[]
 }
 
 export interface FolderUploadSummary {
@@ -60,6 +61,7 @@ export interface FolderUploadSummary {
   lease_expires_at: string | null
   cancel_reason: string | null
   cancelled_at: string | null
+  sealed_at?: string | null
   ingestion_run: FolderUploadIngestionRun | null
   error: string | null
   created_at: string
@@ -79,6 +81,8 @@ export interface FolderUploadRemoteFile {
   attempt_count: number
   etag: string | null
   error: { code: string; message: string } | null
+  created_at: string
+  updated_at: string
 }
 
 export interface FolderUploadFileState {

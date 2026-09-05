@@ -124,6 +124,8 @@ export function updateDossierGroupFromResponse(
     return {
       ...group,
       dossierId: dossier.dossier_id ?? group.dossierId,
+      titleCandidates:
+        dossier.title_candidates ?? group.titleCandidates ?? null,
       dossierStorageId: dossier.dossier_storage_id ?? group.dossierStorageId ?? null,
       dossierNumber: dossier.dossier_number ?? null,
       dossierCode: dossier.dossier_code ?? null,

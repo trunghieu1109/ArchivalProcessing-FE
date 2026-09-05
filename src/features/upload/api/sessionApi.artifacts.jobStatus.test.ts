@@ -2,12 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { getFinalizeArtifactsStatus } from "./sessionApi.artifacts"
 
-describe("getFinalizeArtifactsStatus job selection", () => {
+describe("getFinalizeArtifactsStatus compatibility", () => {
   afterEach(() => {
     vi.unstubAllGlobals()
   })
 
-  it("requests the exact job returned by finalize dispatch", async () => {
+  it("requests the latest finalize job without a job_id query", async () => {
     const payload = {
       session_id: "session-1",
       job_type: "finalize_artifacts",
@@ -24,11 +24,11 @@ describe("getFinalizeArtifactsStatus job selection", () => {
     )
     vi.stubGlobal("fetch", fetchMock)
 
-    await expect(getFinalizeArtifactsStatus("session-1", 23)).resolves.toEqual(
+    await expect(getFinalizeArtifactsStatus("session-1")).resolves.toEqual(
       payload
     )
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/sessions/session-1/artifacts/finalize/status?job_id=23",
+      "/api/sessions/session-1/artifacts/finalize/status",
       {}
     )
   })

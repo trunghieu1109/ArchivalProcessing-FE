@@ -552,27 +552,19 @@ async function proxyPresignedRawZipUpload(
   )
 }
 
-export interface CancelRawZipUploadResponse {
-  session_id: string
-  client_upload_id: string
-  status: string
-  session_file_id: number | null
-  cancellable: boolean
-}
-
 export function cancelRawZipUpload(
   sessionId: string,
   clientUploadId: string,
   reason: string,
   options: { keepalive?: boolean } = {}
-): Promise<CancelRawZipUploadResponse> {
+): Promise<SessionInputUploadResponse> {
   const path = `/sessions/${encodeURIComponent(sessionId)}/inputs/remote-upload/cancel`
   const payload = {
     client_upload_id: clientUploadId,
     reason,
   }
   if (!options.keepalive) {
-    return postJson<CancelRawZipUploadResponse>(path, payload)
+    return postJson<SessionInputUploadResponse>(path, payload)
   }
   return fetch(
     apiUrl(path),
@@ -584,7 +576,7 @@ export function cancelRawZipUpload(
     })
   ).then(async (response) => {
     if (!response.ok) throw new Error(await responseErrorMessage(response))
-    return response.json() as Promise<CancelRawZipUploadResponse>
+    return response.json() as Promise<SessionInputUploadResponse>
   })
 }
 

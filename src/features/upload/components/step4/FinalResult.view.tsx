@@ -22,6 +22,7 @@ import { FinalResultFeedbackPanel } from "./FinalResult.feedbackPanel"
 import { ClusterGroupInformationPanel } from "./FinalResult.groupInfoPanel"
 import { ManualClassificationPanel } from "./FinalResult.manualClassificationDialog"
 import { DossierMetadataSidePanel } from "./FinalResult.sidePanel"
+import { DossierMembershipExplanationPanel } from "./DossierMembershipExplanationPanel"
 import { DossierSuggestionsModal } from "./DossierSuggestionsModal"
 import { ResultNode } from "./FinalResult.resultNode"
 import { SHOW_DOSSIER_SUGGESTIONS } from "./temporaryFeatureVisibility"
@@ -77,6 +78,7 @@ export function FinalResultView(props: Record<string, any>) {
     handleSelectDossierSuggestionsFromSelection,
     handleSelectGroupInformation,
     handleSelectPreviewDocument,
+    handleExplainDocumentMembership,
     handleToggleDocumentSelection,
     handleToggleGroupSelection,
     handleViewClusterVersion,
@@ -120,8 +122,14 @@ export function FinalResultView(props: Record<string, any>) {
     refreshingClassificationDossierId,
     manuallyClassifyingDossierId,
     manualClassificationGroup,
+    membershipExplanationDocument,
+    membershipExplanation,
+    membershipExplanationLoading,
+    membershipExplanationError,
     classificationTree,
     handleCloseManualClassification,
+    handleCloseMembershipExplanation,
+    handleRefreshMembershipExplanation,
     handleSubmitManualClassification,
     resultStatusText,
     resultTreeSearch,
@@ -484,6 +492,9 @@ export function FinalResultView(props: Record<string, any>) {
                   dropTargetId={dropTargetId}
                   compact={sidePreviewOpen}
                   selectedPreviewDocumentId={selectedPreviewDocumentId}
+                  selectedMembershipExplanationDocumentId={
+                    membershipExplanationDocument?.sessionDocumentId ?? null
+                  }
                   selectedDossierSuggestionsDocumentId={
                     selectedDossierSuggestionsDocumentId
                   }
@@ -531,6 +542,7 @@ export function FinalResultView(props: Record<string, any>) {
                   onDropOnDossier={handleDropOnDossier}
                   onSelectGroupInformation={handleSelectGroupInformation}
                   onSelectPreview={handleSelectPreviewDocument}
+                  onExplainMembership={handleExplainDocumentMembership}
                   onSelectDossierSuggestions={handleSelectDossierSuggestions}
                   onSelectDossierMetadata={handleSelectDossierMetadata}
                   onRefreshDossierClassification={
@@ -581,12 +593,22 @@ export function FinalResultView(props: Record<string, any>) {
                 onClose={handleCloseManualClassification}
                 onSubmit={handleSubmitManualClassification}
               />
+            ) : membershipExplanationDocument ? (
+              <DossierMembershipExplanationPanel
+                document={membershipExplanationDocument}
+                result={membershipExplanation}
+                loading={membershipExplanationLoading}
+                error={membershipExplanationError}
+                className="h-[calc(min(70svh,560px)+65px)] min-h-[425px] min-w-0"
+                onClose={handleCloseMembershipExplanation}
+                onRefresh={handleRefreshMembershipExplanation}
+              />
             ) : previewDocument ? (
               <DocumentPdfPreview
                 sessionId={sessionId}
                 document={previewDocument}
                 presentation="dossier_review"
-                className="h-[min(70svh,560px)] min-h-[420px] min-w-0"
+                className="h-[calc(min(70svh,560px)+65px)] min-h-[425px] min-w-0"
                 onClose={() => setSelectedPreviewDocumentId(null)}
               />
             ) : selectedMetadataGroup ? (

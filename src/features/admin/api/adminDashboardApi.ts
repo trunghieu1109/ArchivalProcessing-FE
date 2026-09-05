@@ -57,6 +57,28 @@ export interface AdminDashboardResponse {
   }
 }
 
+export interface AdminResponsibilitySession {
+  session_id: string
+  status: string
+  archive_name?: string | null
+  fonds_name?: string | null
+  fonds_creator_code?: string | null
+  document_count: number
+  assigned_document_count?: number
+  created_at: string
+  updated_at: string
+}
+
+export interface AdminUserResponsibilities {
+  coordinator_sessions: AdminResponsibilitySession[]
+  worker_sessions: AdminResponsibilitySession[]
+}
+
+export interface AdminAccessResponsibilitiesResponse {
+  generated_at: string
+  assignments: Record<string, AdminUserResponsibilities>
+}
+
 export async function getAdminDashboard(
   options: { limit?: number } = {}
 ): Promise<AdminDashboardResponse> {
@@ -64,5 +86,11 @@ export async function getAdminDashboard(
   query.set("limit", String(Math.min(Math.max(options.limit ?? 120, 1), 500)))
   return requestJson<AdminDashboardResponse>(
     `/admin/dashboard?${query.toString()}`
+  )
+}
+
+export async function getAdminAccessResponsibilities(): Promise<AdminAccessResponsibilitiesResponse> {
+  return requestJson<AdminAccessResponsibilitiesResponse>(
+    "/admin/access-responsibilities"
   )
 }

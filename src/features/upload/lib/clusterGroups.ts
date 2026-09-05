@@ -1,5 +1,6 @@
 import type {
   ClusterVersionResponse,
+  DossierTitleCandidate,
   DocumentEditLock,
   DocumentNumberingMode,
   SessionDossierSuggestion,
@@ -35,6 +36,7 @@ export interface ClusterGroup {
   classificationStatus?: string | null
   createdFromTemporaryFolder?: boolean
   dossierId?: string | null
+  titleCandidates?: DossierTitleCandidate[] | null
   dossierStorageId?: string | null
   dossierNumber?: string | null
   dossierCode?: string | null
@@ -509,6 +511,7 @@ function clusterToGroup(
       : (dossier?.dossier_id ?? cluster.dossier_id),
     clusterId: cluster.cluster_id,
     dossierId: isTemporary ? null : (dossier?.dossier_id ?? cluster.dossier_id),
+    titleCandidates: isTemporary ? null : (dossier?.title_candidates ?? null),
     dossierStorageId: dossier?.dossier_storage_id ?? null,
     isTemporary,
     createdFromTemporaryFolder:

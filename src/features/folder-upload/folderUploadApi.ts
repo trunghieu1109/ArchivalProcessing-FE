@@ -6,6 +6,7 @@ import {
   withAuth,
 } from "@/features/upload/api/sessionApi.http"
 import type {
+  FolderUploadFileStatus,
   FolderUploadRemoteFile,
   FolderUploadSummary,
   PresignedFolderFilesResponse,
@@ -104,19 +105,29 @@ export function getFolderUpload(
 export function listFolderUploadFiles(
   sessionId: string,
   folderUploadId: string,
-  afterId = 0,
-  limit = 200
+  options: {
+    status?: FolderUploadFileStatus
+    afterId?: number
+    limit?: number
+    signal?: AbortSignal
+  } = {}
 ): Promise<{
   items: FolderUploadRemoteFile[]
   next_after_id: number | null
   has_more: boolean
 }> {
-  const query = new URLSearchParams({
-    after_id: String(afterId),
-    limit: String(limit),
-  })
+  const query = new URLSearchParams()
+  if (options.status) query.set("status", options.status)
+  if (options.afterId !== undefined) {
+    query.set("after_id", String(options.afterId))
+  }
+  if (options.limit !== undefined) {
+    query.set("limit", String(options.limit))
+  }
+  const suffix = query.size > 0 ? `?${query.toString()}` : ""
   return requestJson(
-    `${uploadPath(sessionId, folderUploadId)}/files?${query.toString()}`
+    `${uploadPath(sessionId, folderUploadId)}/files${suffix}`,
+    { signal: options.signal }
   )
 }
 

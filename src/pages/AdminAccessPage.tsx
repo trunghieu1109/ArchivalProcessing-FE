@@ -10,12 +10,17 @@ import {
   Activity,
   ArrowLeft,
   BarChart3,
+  ChevronDown,
+  ChevronRight,
   Database,
   FileKey2,
   FileText,
+  FolderOpen,
   Loader2,
   RefreshCw,
   ShieldCheck,
+  ShieldMinus,
+  Unlink,
   UserCog,
   UserRound,
   Users,
@@ -23,10 +28,13 @@ import {
 import { toast } from "sonner"
 
 import {
+  getAdminAccessResponsibilities,
   getAdminDashboard,
+  type AdminResponsibilitySession,
   type AdminDashboardResponse,
   type AdminDashboardSession,
   type AdminDashboardStatusCount,
+  type AdminUserResponsibilities,
 } from "@/features/admin/api/adminDashboardApi"
 import {
   listChinhlyUsers,
@@ -35,6 +43,7 @@ import {
 } from "@/features/auth/api/authApi"
 import { UserMenu } from "@/features/auth/components/UserMenu"
 import { useAuth } from "@/features/auth/lib/AuthContext"
+import { assignSessionCoordinator } from "@/features/upload/api/sessionApi"
 
 export function AdminAccessPage() {
   const { user } = useAuth()
@@ -45,6 +54,12 @@ export function AdminAccessPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
+  const [removingSessionId, setRemovingSessionId] = useState<string | null>(
+    null
+  )
+  const [responsibilitiesByUserId, setResponsibilitiesByUserId] = useState<
+    Record<string, AdminUserResponsibilities>
+  >({})
   const isAdmin = normalizedRole(user?.role) === "admin"
 
   const accountStats = useMemo(() => buildAccountStats(users), [users])
@@ -59,12 +74,15 @@ export function AdminAccessPage() {
     setLoading(true)
     setError("")
     try {
-      const [userResponse, dashboardResponse] = await Promise.all([
-        listChinhlyUsers({ active: true, limit: 500 }),
-        getAdminDashboard({ limit: 180 }),
-      ])
+      const [userResponse, dashboardResponse, responsibilityResponse] =
+        await Promise.all([
+          listChinhlyUsers({ active: true, limit: 500 }),
+          getAdminDashboard({ limit: 180 }),
+          getAdminAccessResponsibilities(),
+        ])
       setUsers(userResponse)
       setDashboard(dashboardResponse)
+      setResponsibilitiesByUserId(responsibilityResponse.assignments)
     } catch (err) {
       const message =
         err instanceof Error
@@ -78,9 +96,8 @@ export function AdminAccessPage() {
   }, [isAdmin])
 
   useEffect(() => {
-    // Dashboard loading is the external synchronization performed by this effect.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load()
+    const timeoutId = window.setTimeout(() => void load(), 0)
+    return () => window.clearTimeout(timeoutId)
   }, [load])
 
   const promoteToCoordinator = async (target: ChinhlyUser) => {
@@ -107,6 +124,107 @@ export function AdminAccessPage() {
       )
     } finally {
       setUpdatingUserId(null)
+    }
+  }
+
+  const demoteToWorker = async (target: ChinhlyUser) => {
+    const targetId = userId(target)
+    if (!targetId) {
+      toast.error("User này chưa có id hợp lệ.")
+      return
+    }
+    const managedSessions =
+      responsibilitiesByUserId[targetId]?.coordinator_sessions ?? []
+    if (managedSessions.length > 0) {
+      toast.error(
+        "Hãy gỡ toàn bộ session coordinator đang quản lý trước khi hạ quyền."
+      )
+      return
+    }
+    const confirmed = window.confirm(
+      `Hạ quyền ${displayUser(target)} từ coordinator xuống worker?`
+    )
+    if (!confirmed) return
+
+    setUpdatingUserId(targetId)
+    try {
+      const updated = await updateChinhlyUserRole(targetId, {
+        role: "worker",
+        is_active: true,
+      })
+      setUsers((current) =>
+        current.map((item) =>
+          userId(item) === targetId
+            ? { ...item, ...updated, role: "worker" }
+            : item
+        )
+      )
+      toast.success("Đã hạ quyền coordinator xuống worker.")
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Không thể hạ quyền coordinator."
+      )
+    } finally {
+      setUpdatingUserId(null)
+    }
+  }
+
+  const removeCoordinatorSession = async (
+    target: ChinhlyUser,
+    managedSession: AdminResponsibilitySession
+  ) => {
+    const targetId = userId(target)
+    if (!targetId) return
+    const confirmed = window.confirm(
+      `Gỡ quyền quản lý session “${responsibilitySessionName(managedSession)}” của ${displayUser(target)}?`
+    )
+    if (!confirmed) return
+
+    setRemovingSessionId(managedSession.session_id)
+    try {
+      await assignSessionCoordinator(managedSession.session_id, null)
+      setResponsibilitiesByUserId((current) => {
+        const responsibility = current[targetId] ?? EMPTY_USER_RESPONSIBILITIES
+        return {
+          ...current,
+          [targetId]: {
+            ...responsibility,
+            coordinator_sessions: responsibility.coordinator_sessions.filter(
+              (item) => item.session_id !== managedSession.session_id
+            ),
+          },
+        }
+      })
+      setDashboard((current) =>
+        current
+          ? {
+              ...current,
+              sessions: current.sessions.map((item) =>
+                item.session_id === managedSession.session_id
+                  ? { ...item, coordinator_user_id: null }
+                  : item
+              ),
+              summary: {
+                ...current.summary,
+                assigned_session_count: Math.max(
+                  0,
+                  current.summary.assigned_session_count - 1
+                ),
+                unassigned_session_count:
+                  current.summary.unassigned_session_count + 1,
+              },
+            }
+          : current
+      )
+      toast.success("Đã gỡ quyền quản lý session của coordinator.")
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Không thể gỡ quyền quản lý session."
+      )
+    } finally {
+      setRemovingSessionId(null)
     }
   }
 
@@ -224,8 +342,12 @@ export function AdminAccessPage() {
               users={users}
               stats={accountStats}
               coordinators={coordinators.length}
+              responsibilitiesByUserId={responsibilitiesByUserId}
               updatingUserId={updatingUserId}
+              removingSessionId={removingSessionId}
               onPromote={promoteToCoordinator}
+              onDemote={demoteToWorker}
+              onRemoveCoordinatorSession={removeCoordinatorSession}
             />
 
             <section className="grid items-start gap-4 xl:grid-cols-2">
@@ -330,7 +452,9 @@ function StatCard({
             {formatNumber(value)}
           </p>
         </div>
-        <div className={`flex size-10 items-center justify-center rounded-xl ${iconClass}`}>
+        <div
+          className={`flex size-10 items-center justify-center rounded-xl ${iconClass}`}
+        >
           <Icon className="size-5" />
         </div>
       </div>
@@ -356,15 +480,27 @@ function AccessControlPanel({
   users,
   stats,
   coordinators,
+  responsibilitiesByUserId,
   updatingUserId,
+  removingSessionId,
   onPromote,
+  onDemote,
+  onRemoveCoordinatorSession,
 }: {
   users: ChinhlyUser[]
   stats: AccountStats
   coordinators: number
+  responsibilitiesByUserId: Record<string, AdminUserResponsibilities>
   updatingUserId: string | null
+  removingSessionId: string | null
   onPromote: (user: ChinhlyUser) => void | Promise<void>
+  onDemote: (user: ChinhlyUser) => void | Promise<void>
+  onRemoveCoordinatorSession: (
+    user: ChinhlyUser,
+    session: AdminResponsibilitySession
+  ) => void | Promise<void>
 }) {
+  const [expandedUserId, setExpandedUserId] = useState<string | null>(null)
   const sortedUsers = [...users].sort((left, right) => {
     const roleOrder = (role: unknown) => {
       const value = normalizedRole(role)
@@ -375,6 +511,14 @@ function AccessControlPanel({
     }
     return roleOrder(left.role) - roleOrder(right.role)
   })
+  const demotableCoordinators = users.filter((item) => {
+    if (normalizedRole(item.role) !== "coordinator") return false
+    const id = userId(item)
+    return (
+      id.length > 0 &&
+      (responsibilitiesByUserId[id]?.coordinator_sessions.length ?? 0) === 0
+    )
+  }).length
 
   return (
     <section className="overflow-hidden rounded-3xl border border-[#B9CDF5] bg-white shadow-sm">
@@ -384,70 +528,200 @@ function AccessControlPanel({
             Phân quyền
           </p>
           <h3 className="mt-1 text-lg font-semibold text-[#0F172A]">
-            Nâng user thành coordinator
+            Quản lý vai trò và trách nhiệm
           </h3>
           <p className="mt-2 text-sm leading-6 text-[#64748B]">
-            Khu phân quyền được đặt ngay sau KPI để admin thao tác nhanh, không
-            phải cuộn xuống cuối dashboard.
+            Chọn coordinator hoặc worker để xem các session đang phụ trách.
+            Coordinator chỉ có thể hạ xuống worker sau khi đã gỡ toàn bộ session
+            quản lý.
           </p>
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
           <MiniMetric label="Tổng user" value={stats.total} />
           <MiniMetric label="Coordinator" value={coordinators} />
-          <MiniMetric label="Có thể nâng quyền" value={stats.worker} />
+          <MiniMetric label="Có thể hạ quyền" value={demotableCoordinators} />
         </div>
       </div>
 
-      <div className="grid grid-cols-[minmax(0,1fr)_9rem_11rem] gap-3 border-b border-[#EEF2F7] px-4 py-3 text-[11px] font-semibold tracking-[0.12em] text-[#64748B] uppercase max-md:hidden">
+      <div className="grid grid-cols-[minmax(0,1fr)_9rem_18rem] gap-3 border-b border-[#EEF2F7] px-4 py-3 text-[11px] font-semibold tracking-[0.12em] text-[#64748B] uppercase max-md:hidden">
         <span>User</span>
         <span>Role</span>
         <span className="text-right">Thao tác</span>
       </div>
       {sortedUsers.length > 0 ? (
-        <div className="max-h-64 divide-y divide-[#EEF2F7] overflow-y-auto">
+        <div className="max-h-[42rem] divide-y divide-[#EEF2F7] overflow-y-auto">
           {sortedUsers.map((item) => {
             const id = userId(item)
             const role = normalizedRole(item.role)
             const updating = updatingUserId === id
+            const responsibility =
+              responsibilitiesByUserId[id] ?? EMPTY_USER_RESPONSIBILITIES
+            const relatedSessions =
+              role === "coordinator"
+                ? responsibility.coordinator_sessions
+                : role === "worker"
+                  ? responsibility.worker_sessions
+                  : []
+            const canInspect = role === "coordinator" || role === "worker"
+            const expanded = canInspect && expandedUserId === id
             const canPromote = role === "worker"
+            const canDemote =
+              role === "coordinator" &&
+              responsibility.coordinator_sessions.length === 0
             return (
-              <div
-                key={id || displayUser(item)}
-                className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_9rem_11rem] md:items-center"
-              >
-                <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#EAF1FF] text-[#0052FF]">
-                    <UserRound className="size-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-[#0F172A]">
-                      {displayUser(item)}
-                    </p>
-                    <p className="truncate text-xs text-[#64748B]">
-                      {item.email || item.username || id || "Chưa có email"}
-                    </p>
-                  </div>
-                </div>
-                <span className="w-fit rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                  {displayRole(role)}
-                </span>
-                <div className="flex justify-start md:justify-end">
+              <div key={id || displayUser(item)} className="bg-white">
+                <div className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_9rem_18rem] md:items-center">
                   <button
                     type="button"
-                    disabled={!canPromote || updating}
-                    onClick={() => void onPromote(item)}
-                    className="flex items-center justify-center gap-1.5 rounded-lg border border-[#CBD5E1] px-3 py-1.5 text-xs font-semibold text-[#475569] transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF] disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={!canInspect}
+                    aria-expanded={expanded}
+                    onClick={() =>
+                      setExpandedUserId((current) =>
+                        current === id ? null : id
+                      )
+                    }
+                    className="flex min-w-0 items-center gap-3 rounded-xl text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#0052FF]/20 enabled:hover:text-[#0052FF] disabled:cursor-default"
                   >
-                    {updating ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : (
-                      <UserCog className="size-3.5" />
-                    )}
-                    {role === "coordinator"
-                      ? "Đã là coordinator"
-                      : "Nâng quyền"}
+                    <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#EAF1FF] text-[#0052FF]">
+                      <UserRound className="size-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-[#0F172A]">
+                        {displayUser(item)}
+                      </p>
+                      <p className="truncate text-xs text-[#64748B]">
+                        {item.email || item.username || id || "Chưa có email"}
+                      </p>
+                      {canInspect && (
+                        <p className="mt-1 text-xs font-medium text-[#0052FF]">
+                          {formatNumber(relatedSessions.length)} session liên
+                          quan
+                        </p>
+                      )}
+                    </div>
+                    {canInspect &&
+                      (expanded ? (
+                        <ChevronDown className="size-4 shrink-0 text-[#64748B]" />
+                      ) : (
+                        <ChevronRight className="size-4 shrink-0 text-[#64748B]" />
+                      ))}
                   </button>
+                  <span className="w-fit rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                    {displayRole(role)}
+                  </span>
+                  <div className="flex flex-wrap justify-start gap-2 md:justify-end">
+                    {canPromote && (
+                      <button
+                        type="button"
+                        disabled={updating}
+                        onClick={() => void onPromote(item)}
+                        className="flex items-center justify-center gap-1.5 rounded-lg border border-[#CBD5E1] px-3 py-1.5 text-xs font-semibold text-[#475569] transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {updating ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <UserCog className="size-3.5" />
+                        )}
+                        Nâng quyền
+                      </button>
+                    )}
+                    {role === "coordinator" && (
+                      <button
+                        type="button"
+                        disabled={!canDemote || updating}
+                        title={
+                          canDemote
+                            ? "Hạ coordinator xuống worker"
+                            : "Phải gỡ toàn bộ session quản lý trước khi hạ quyền"
+                        }
+                        onClick={() => void onDemote(item)}
+                        className="flex items-center justify-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 transition-colors hover:border-red-300 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {updating ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <ShieldMinus className="size-3.5" />
+                        )}
+                        Hạ quyền
+                      </button>
+                    )}
+                    {role === "admin" && (
+                      <span className="text-xs font-medium text-[#94A3B8]">
+                        Không áp dụng
+                      </span>
+                    )}
+                  </div>
                 </div>
+                {expanded && (
+                  <div className="border-t border-[#E6EEF9] bg-[#F8FAFC] px-4 py-4 md:pl-[4.75rem]">
+                    <p className="mb-3 text-xs font-semibold tracking-[0.08em] text-[#64748B] uppercase">
+                      {role === "coordinator"
+                        ? "Session đang quản lý"
+                        : "Session có tài liệu đang đảm nhiệm"}
+                    </p>
+                    {relatedSessions.length > 0 ? (
+                      <div className="grid gap-2">
+                        {relatedSessions.map((managedSession) => {
+                          const removing =
+                            removingSessionId === managedSession.session_id
+                          return (
+                            <div
+                              key={managedSession.session_id}
+                              className="flex flex-col gap-3 rounded-xl border border-[#D8E1EC] bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                            >
+                              <Link
+                                to={`/sessions/${encodeURIComponent(managedSession.session_id)}/step/1`}
+                                className="flex min-w-0 items-start gap-3 rounded-lg outline-none hover:text-[#0052FF] focus-visible:ring-2 focus-visible:ring-[#0052FF]/20"
+                              >
+                                <FolderOpen className="mt-0.5 size-4 shrink-0 text-[#0052FF]" />
+                                <span className="min-w-0">
+                                  <span className="block truncate text-sm font-semibold text-[#0F172A]">
+                                    {responsibilitySessionName(managedSession)}
+                                  </span>
+                                  <span className="mt-1 block text-xs text-[#64748B]">
+                                    {managedSession.session_id} ·{" "}
+                                    {displayStatus(managedSession.status)}
+                                  </span>
+                                  <span className="mt-1 block text-xs font-medium text-[#475569]">
+                                    {role === "worker"
+                                      ? `${formatNumber(managedSession.assigned_document_count ?? 0)} tài liệu đang đảm nhiệm`
+                                      : `${formatNumber(managedSession.document_count)} tài liệu`}
+                                  </span>
+                                </span>
+                              </Link>
+                              {role === "coordinator" && (
+                                <button
+                                  type="button"
+                                  disabled={removing}
+                                  onClick={() =>
+                                    void onRemoveCoordinatorSession(
+                                      item,
+                                      managedSession
+                                    )
+                                  }
+                                  className="flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 transition-colors hover:border-red-300 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {removing ? (
+                                    <Loader2 className="size-3.5 animate-spin" />
+                                  ) : (
+                                    <Unlink className="size-3.5" />
+                                  )}
+                                  Gỡ quyền quản lý
+                                </button>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-[#CBD5E1] bg-white px-4 py-4 text-sm text-[#64748B]">
+                        {role === "coordinator"
+                          ? "Coordinator không còn quản lý session nào và có thể được hạ xuống worker."
+                          : "Worker chưa có tài liệu được giao trong session nào."}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )
           })}
@@ -523,7 +797,9 @@ function SessionTrendChart({
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth="3"
-                points={points.map((point) => `${point.x},${point.y}`).join(" ")}
+                points={points
+                  .map((point) => `${point.x},${point.y}`)
+                  .join(" ")}
               />
             )}
           </svg>
@@ -638,7 +914,9 @@ function StatusPanel({
         <div className="mt-4 space-y-3">
           {counts.map((item) => {
             const width =
-              total > 0 ? Math.max(4, Math.round((item.count / total) * 100)) : 0
+              total > 0
+                ? Math.max(4, Math.round((item.count / total) * 100))
+                : 0
             return (
               <div key={item.status}>
                 <div className="flex items-center justify-between gap-3 text-sm">
@@ -875,6 +1153,11 @@ interface AccountStats {
   worker: number
 }
 
+const EMPTY_USER_RESPONSIBILITIES: AdminUserResponsibilities = {
+  coordinator_sessions: [],
+  worker_sessions: [],
+}
+
 interface DailySessionTrend {
   key: string
   label: string
@@ -928,15 +1211,13 @@ function buildDailySessionTrend(
   const map = new Map<string, DailySessionTrend>()
   for (const session of sessions) {
     const key = dateKey(session.created_at)
-    const current =
-      map.get(key) ??
-      {
-        key,
-        label: formatDate(`${key}T00:00:00`),
-        shortLabel: formatShortDate(`${key}T00:00:00`),
-        sessionCount: 0,
-        documents: 0,
-      }
+    const current = map.get(key) ?? {
+      key,
+      label: formatDate(`${key}T00:00:00`),
+      shortLabel: formatShortDate(`${key}T00:00:00`),
+      sessionCount: 0,
+      documents: 0,
+    }
     current.sessionCount += 1
     current.documents += session.uploaded_document_count
     map.set(key, current)
@@ -961,7 +1242,8 @@ function buildTrendPoints(
   const barWidth = Math.max(10, Math.min(34, barSlot * 0.46))
 
   return trend.map((item, index) => {
-    const x = trend.length > 1 ? chartLeft + index * step : chartLeft + width / 2
+    const x =
+      trend.length > 1 ? chartLeft + index * step : chartLeft + width / 2
     const ratio = maxDocuments > 0 ? item.documents / maxDocuments : 0
     const barHeight = Math.max(item.documents > 0 ? 8 : 0, ratio * height)
     const y = chartBottom - ratio * height
@@ -1019,6 +1301,17 @@ function displayRole(role: unknown): string {
 }
 
 function sessionName(session: AdminDashboardSession): string {
+  return String(
+    session.fonds_name ||
+      session.archive_name ||
+      session.fonds_creator_code ||
+      session.session_id
+  ).trim()
+}
+
+function responsibilitySessionName(
+  session: AdminResponsibilitySession
+): string {
   return String(
     session.fonds_name ||
       session.archive_name ||

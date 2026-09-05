@@ -40,7 +40,7 @@ describe("FinalizeArtifactsStep polling", () => {
     })
   })
 
-  it("does not poll an old done job before dispatch returns the new job ID", async () => {
+  it("waits for dispatch before polling the latest finalize status", async () => {
     let resolveDispatch: ((value: Record<string, unknown>) => void) | undefined
     api.enqueueFinalizeArtifacts.mockReturnValue(
       new Promise((resolve) => {
@@ -87,10 +87,7 @@ describe("FinalizeArtifactsStep polling", () => {
     })
 
     await waitFor(() =>
-      expect(api.getFinalizeArtifactsStatus).toHaveBeenCalledWith(
-        "session-1",
-        23
-      )
+      expect(api.getFinalizeArtifactsStatus).toHaveBeenCalledWith("session-1")
     )
   })
 })
