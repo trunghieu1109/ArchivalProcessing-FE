@@ -14,7 +14,12 @@ import { useAuth } from "@/features/auth/lib/AuthContext"
 import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import { PaginationControls } from "@/features/upload/components/PaginationControls"
-import { DEFAULT_METADATA_EXPORT_MODE } from "../step4/temporaryFeatureVisibility"
+import {
+  DEFAULT_METADATA_EXPORT_MODE,
+  SHOW_METADATA_COUNT_CONFLICT_WARNING,
+  SHOW_NUMBERING_STATE_HISTORY,
+  SHOW_NUMBERING_STATE_SAVE,
+} from "../step4/temporaryFeatureVisibility"
 import {
   downloadArtifact,
   applyNumberingState,
@@ -67,8 +72,6 @@ import {
   statusBadge,
   textOrNull,
 } from "./NumberingStep.utils"
-import { SHOW_METADATA_COUNT_CONFLICT_WARNING } from "../step4/temporaryFeatureVisibility"
-
 const NUMBERING_POLL_INTERVAL_MS = 5_000
 const NUMBERING_DOCUMENT_REFRESH_EVERY = 3
 const NUMBERING_PAGE_SIZE = 10
@@ -1856,7 +1859,7 @@ export function NumberingStep({
         onStyleChange={changeNumberingStyle}
         onOverridesChange={changeNumberingStyleOverrides}
       />
-      {timelineEnabled ? (
+      {SHOW_NUMBERING_STATE_HISTORY && timelineEnabled ? (
         <NumberingTimelineControls
           applied={
             numberingState?.applied_state?.sequence_number ??
@@ -2275,6 +2278,7 @@ export function NumberingStep({
                 canManageNumbering && Boolean(numberingState?.can_discard)
               }
               canSave={canSaveNumberingState}
+              showSave={SHOW_NUMBERING_STATE_SAVE}
               discardBlockedReason={numberingState?.discard_blocked_reason}
               onDiscard={() => mutateNumberingTimeline("discard")}
               onSave={() => mutateNumberingTimeline("save")}

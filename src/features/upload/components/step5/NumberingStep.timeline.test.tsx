@@ -47,8 +47,7 @@ describe("NumberingTimelineControls", () => {
   })
 
   it("marks an incompatible historical state as read-only", () => {
-    const reason =
-      "Chỉ có thể sử dụng state thuộc kết quả lập hồ sơ hiện hành."
+    const reason = "Chỉ có thể sử dụng state thuộc kết quả lập hồ sơ hiện hành."
 
     render(
       <NumberingTimelineControls
@@ -74,10 +73,7 @@ describe("NumberingTimelineControls", () => {
     ).toBeDisabled()
     expect(
       screen.getByRole("button", { name: "Sử dụng trạng thái" })
-    ).toHaveAttribute(
-      "title",
-      reason
-    )
+    ).toHaveAttribute("title", reason)
     expect(screen.getByRole("button", { name: "Bản đang dùng" })).toBeEnabled()
   })
 
@@ -97,6 +93,24 @@ describe("NumberingTimelineControls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Lưu trạng thái" }))
     expect(onDiscard).toHaveBeenCalledOnce()
     expect(onSave).toHaveBeenCalledOnce()
+  })
+
+  it("can hide the save action while keeping discard available", () => {
+    render(
+      <NumberingTimelineWorkingActions
+        busy={false}
+        canDiscard
+        canSave
+        showSave={false}
+        onDiscard={vi.fn()}
+        onSave={vi.fn()}
+      />
+    )
+
+    expect(screen.getByRole("button", { name: "Bỏ thay đổi" })).toBeEnabled()
+    expect(
+      screen.queryByRole("button", { name: "Lưu trạng thái" })
+    ).not.toBeInTheDocument()
   })
 
   it("keeps the latest timeline metadata when showing a cached document page", () => {

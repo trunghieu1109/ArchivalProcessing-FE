@@ -21,6 +21,11 @@ export const SHOW_DOSSIER_CODE = true
 // Metadata imports warn before replacing the system-calculated sheet/page count.
 export const SHOW_METADATA_COUNT_CONFLICT_WARNING = true
 
+// TEMPORARY_HIDE_TAG: NUMBERING_STATE_HISTORY
+// Keep checkpoint/history APIs available while hiding this optional UI.
+export const SHOW_NUMBERING_STATE_HISTORY = false
+export const SHOW_NUMBERING_STATE_SAVE = false
+
 // Temporarily expose document deletion in the UI while keeping the existing
 // role checks and confirmation flow in place.
 export const SHOW_DOCUMENT_DELETION = true

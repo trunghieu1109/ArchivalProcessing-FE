@@ -199,6 +199,7 @@ export function NumberingTimelineWorkingActions({
   busy,
   canDiscard,
   canSave,
+  showSave = true,
   discardBlockedReason,
   onDiscard,
   onSave,
@@ -207,6 +208,7 @@ export function NumberingTimelineWorkingActions({
   busy: boolean
   canDiscard: boolean
   canSave: boolean
+  showSave?: boolean
   discardBlockedReason?: string | null
   onDiscard: () => void | Promise<unknown>
   onSave: () => void | Promise<unknown>
@@ -230,18 +232,20 @@ export function NumberingTimelineWorkingActions({
         <RotateCcw data-icon="inline-start" />
         Bỏ thay đổi
       </Button>
-      <Button
-        type="button"
-        disabled={busy || !canSave}
-        onClick={() => void onSave()}
-      >
-        {busy ? (
-          <Loader2 data-icon="inline-start" className="animate-spin" />
-        ) : (
-          <Save data-icon="inline-start" />
-        )}
-        Lưu trạng thái
-      </Button>
+      {showSave ? (
+        <Button
+          type="button"
+          disabled={busy || !canSave}
+          onClick={() => void onSave()}
+        >
+          {busy ? (
+            <Loader2 data-icon="inline-start" className="animate-spin" />
+          ) : (
+            <Save data-icon="inline-start" />
+          )}
+          Lưu trạng thái
+        </Button>
+      ) : null}
     </div>
   )
 }
