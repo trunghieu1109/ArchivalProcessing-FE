@@ -17,7 +17,7 @@ export function UploadProgressPanel({
 
   return (
     <section
-      className="mt-5 overflow-hidden rounded-xl border border-[#D8E1EC] bg-[#F8FAFC]"
+      className="mt-4 overflow-hidden rounded-xl border border-[#D8E1EC] bg-[#F8FAFC]"
       aria-live="polite"
     >
       <div className="flex items-start gap-3 border-b border-[#E2E8F0] bg-white px-4 py-3">

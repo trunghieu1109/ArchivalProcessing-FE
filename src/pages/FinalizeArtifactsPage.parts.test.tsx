@@ -15,14 +15,16 @@ describe("FinalizeToolbar", () => {
         finalizing={false}
         visibleArtifactCount={2}
         downloadingAll={false}
-        metadataExportMode="combined"
         onBack={vi.fn()}
         onRefreshArtifacts={vi.fn()}
         onStartFinalize={onStartFinalize}
         onDownloadAll={vi.fn()}
-        onMetadataExportModeChange={vi.fn()}
       />
     )
+
+    expect(
+      screen.queryByRole("radiogroup", { name: /Chế độ xuất metadata/i })
+    ).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "Tạo lại" }))
 

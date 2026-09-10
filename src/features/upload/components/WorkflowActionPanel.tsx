@@ -4,29 +4,29 @@ import { cn } from "@/shared/lib/utils"
 export type WorkflowActionTone = "neutral" | "progress" | "success" | "warning"
 
 export const workflowActionPanelClassName =
-  "overflow-hidden rounded-2xl border border-[#D8E1EC] bg-white/95 shadow-[0_10px_32px_rgba(15,23,42,0.09)] backdrop-blur"
+  "overflow-hidden rounded-2xl border border-[#D8E1EC] bg-white shadow-sm"
 
 const statusToneClassNames: Record<
   WorkflowActionTone,
   { icon: string; title: string; description: string }
 > = {
   neutral: {
-    icon: "border-[#E2E8F0] bg-[#F8FAFC] text-[#64748B]",
+    icon: "text-[#64748B]",
     title: "text-[#0F172A]",
     description: "text-[#64748B]",
   },
   progress: {
-    icon: "border-[#BFD3FF] bg-[#F3F7FF] text-[#0052FF]",
+    icon: "text-[#0052FF]",
     title: "text-[#0F172A]",
     description: "text-[#64748B]",
   },
   success: {
-    icon: "border-emerald-200 bg-emerald-50 text-emerald-600",
+    icon: "text-emerald-600",
     title: "text-[#0F172A]",
     description: "text-[#64748B]",
   },
   warning: {
-    icon: "border-amber-200 bg-amber-50 text-amber-600",
+    icon: "text-amber-600",
     title: "text-[#78350F]",
     description: "text-[#A16207]",
   },
@@ -43,7 +43,8 @@ export function WorkflowActionPanel({
       data-slot="workflow-action-panel"
       className={cn(
         workflowActionPanelClassName,
-        sticky && "sticky bottom-0 z-20",
+        sticky &&
+          "sticky bottom-0 z-20 bg-white/95 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur",
         className
       )}
       {...props}
@@ -60,7 +61,7 @@ export function WorkflowActionPanelBody({
   return (
     <div
       className={cn(
-        "flex flex-col items-stretch gap-3 px-4 py-3.5 sm:px-5 lg:flex-row lg:items-center lg:gap-5",
+        "flex flex-col items-stretch gap-3 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:gap-5",
         className
       )}
       {...props}
@@ -85,19 +86,19 @@ export function WorkflowActionStatus({
 
   return (
     <div
-      className={cn("flex min-w-0 flex-1 items-start gap-3", className)}
+      className={cn("flex min-w-0 flex-1 items-start gap-2", className)}
       {...props}
     >
       <span
         className={cn(
-          "flex size-9 shrink-0 items-center justify-center rounded-xl border",
+          "mt-0.5 flex size-4 shrink-0 items-center justify-center [&>svg]:size-4",
           toneClassNames.icon
         )}
         aria-hidden="true"
       >
         {icon}
       </span>
-      <div className="min-w-0 self-center">
+      <div className="min-w-0">
         <p className={cn("text-sm font-semibold", toneClassNames.title)}>
           {title}
         </p>

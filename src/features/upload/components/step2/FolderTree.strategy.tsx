@@ -5,6 +5,7 @@ import type {
   FileRegisterConfig,
   FileRegisterTimeGranularity,
 } from "@/features/upload/types"
+import { SHOW_QUICK_DOSSIER_BUILD } from "../step4/temporaryFeatureVisibility"
 import { DossierTitleMappingPreview } from "./DossierTitleMappingPreview"
 
 interface DossierBuildStrategySectionProps {
@@ -12,8 +13,10 @@ interface DossierBuildStrategySectionProps {
   readOnly: boolean
   dossierBuildStrategy: DossierBuildStrategy
   dossierTitleCatalogMappingCount?: number
+  useTemporaryCodeAsDossierNumber: boolean
   fileRegisterConfig: FileRegisterConfig
   onDossierBuildStrategyChange: (strategy: DossierBuildStrategy) => void
+  onUseTemporaryCodeAsDossierNumberChange: (enabled: boolean) => void
   onFileRegisterConfigChange: (
     config: FileRegisterConfig
   ) => void | Promise<void>
@@ -24,8 +27,10 @@ export function DossierBuildStrategySection({
   readOnly,
   dossierBuildStrategy,
   dossierTitleCatalogMappingCount = 0,
+  useTemporaryCodeAsDossierNumber,
   fileRegisterConfig,
   onDossierBuildStrategyChange,
+  onUseTemporaryCodeAsDossierNumberChange,
   onFileRegisterConfigChange,
 }: DossierBuildStrategySectionProps) {
   const groupByDocumentType =
@@ -84,7 +89,10 @@ export function DossierBuildStrategySection({
         </p>
       </div>
       <div
-        className="mt-4 grid gap-3 md:grid-cols-3"
+        className={cn(
+          "mt-4 grid gap-3",
+          SHOW_QUICK_DOSSIER_BUILD ? "md:grid-cols-3" : "md:grid-cols-2"
+        )}
         role="radiogroup"
         aria-label="Cách thức lập hồ sơ"
       >
@@ -161,46 +169,100 @@ export function DossierBuildStrategySection({
           </span>
         </button>
 
-        <button
-          type="button"
-          role="radio"
-          aria-checked={dossierBuildStrategy === "predefined"}
-          disabled={readOnly}
-          onClick={() => onDossierBuildStrategyChange("predefined")}
-          className={cn(
-            "flex min-h-32 items-start gap-4 rounded-2xl border p-4 text-left transition-all focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-100",
-            dossierBuildStrategy === "predefined"
-              ? "border-[#0052FF] bg-[#EEF4FF] shadow-[0_8px_24px_rgba(0,82,255,0.10)]"
-              : "border-[#D8E1EC] bg-white hover:border-[#0052FF]/40 hover:bg-[#F8FAFC]"
-          )}
-        >
-          <span
+        {SHOW_QUICK_DOSSIER_BUILD && (
+          <button
+            type="button"
+            role="radio"
+            aria-checked={dossierBuildStrategy === "predefined"}
+            disabled={readOnly}
+            onClick={() => onDossierBuildStrategyChange("predefined")}
             className={cn(
-              "flex size-11 shrink-0 items-center justify-center rounded-xl",
+              "flex min-h-32 items-start gap-4 rounded-2xl border p-4 text-left transition-all focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-100",
               dossierBuildStrategy === "predefined"
-                ? "bg-[#0052FF] text-white"
-                : "bg-[#EEF2F7] text-[#475569]"
+                ? "border-[#0052FF] bg-[#EEF4FF] shadow-[0_8px_24px_rgba(0,82,255,0.10)]"
+                : "border-[#D8E1EC] bg-white hover:border-[#0052FF]/40 hover:bg-[#F8FAFC]"
             )}
           >
-            <Zap className="size-5" />
-          </span>
-          <span className="min-w-0">
-            <span className="font-semibold text-[#0F172A]">
-              Lập hồ sơ nhanh
+            <span
+              className={cn(
+                "flex size-11 shrink-0 items-center justify-center rounded-xl",
+                dossierBuildStrategy === "predefined"
+                  ? "bg-[#0052FF] text-white"
+                  : "bg-[#EEF2F7] text-[#475569]"
+              )}
+            >
+              <Zap className="size-5" />
             </span>
-            <span className="mt-1.5 block text-sm leading-6 text-[#64748B]">
-              Tạo kết quả lập hồ sơ nhanh với ít bước xử lý, phù hợp để tiếp tục
-              rà soát và hoàn thiện.
+            <span className="min-w-0">
+              <span className="font-semibold text-[#0F172A]">
+                Lập hồ sơ nhanh
+              </span>
+              <span className="mt-1.5 block text-sm leading-6 text-[#64748B]">
+                Tạo kết quả lập hồ sơ nhanh với ít bước xử lý, phù hợp để tiếp
+                tục rà soát và hoàn thiện.
+              </span>
             </span>
-          </span>
-        </button>
+          </button>
+        )}
       </div>
 
-      {dossierBuildStrategy === "predefined" && (
-        <DossierTitleMappingPreview
-          sessionId={sessionId}
-          mappingCount={dossierTitleCatalogMappingCount}
-        />
+      {SHOW_QUICK_DOSSIER_BUILD && dossierBuildStrategy === "predefined" && (
+        <>
+          <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-[#BFD3FF] bg-[#F8FAFF] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[#0F172A]">
+                Lấy Mã tạm làm Số hồ sơ
+              </p>
+              <p className="mt-1 text-xs leading-5 text-[#64748B]">
+                Khi bật, hồ sơ khớp dữ liệu XLSX sẽ dùng nguyên giá trị cột Mã
+                tạm làm Số hồ sơ.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={useTemporaryCodeAsDossierNumber}
+              aria-label="Lấy Mã tạm làm Số hồ sơ"
+              disabled={readOnly}
+              onClick={() =>
+                onUseTemporaryCodeAsDossierNumberChange(
+                  !useTemporaryCodeAsDossierNumber
+                )
+              }
+              className={cn(
+                "flex h-9 w-12 shrink-0 items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed",
+                useTemporaryCodeAsDossierNumber
+                  ? "border-[#AFC7FF] bg-[#EEF4FF] text-[#0052FF]"
+                  : "border-[#CBD5E1] bg-white text-[#64748B]"
+              )}
+            >
+              <span
+                className={cn(
+                  "relative h-5 w-9 shrink-0 rounded-full transition-colors",
+                  useTemporaryCodeAsDossierNumber
+                    ? "bg-[#0052FF]"
+                    : "bg-[#CBD5E1]"
+                )}
+              >
+                <span
+                  className={cn(
+                    "absolute top-0.5 left-0.5 size-4 rounded-full bg-white shadow-sm transition-transform",
+                    useTemporaryCodeAsDossierNumber
+                      ? "translate-x-4"
+                      : "translate-x-0"
+                  )}
+                />
+              </span>
+              <span className="sr-only">
+                {useTemporaryCodeAsDossierNumber ? "Bật" : "Tắt"}
+              </span>
+            </button>
+          </div>
+          <DossierTitleMappingPreview
+            sessionId={sessionId}
+            mappingCount={dossierTitleCatalogMappingCount}
+          />
+        </>
       )}
 
       {dossierBuildStrategy === "file_register" && (

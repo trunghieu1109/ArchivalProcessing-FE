@@ -105,10 +105,7 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
               : null
 
   return (
-    <WorkflowActionPanel
-      sticky
-      className="flex flex-col gap-3 px-4 py-3.5 sm:px-5 xl:flex-row xl:items-center xl:justify-between"
-    >
+    <WorkflowActionPanel className="flex flex-col gap-3 px-4 py-4 sm:px-6 xl:flex-row xl:items-center xl:justify-between">
       <p className="min-w-0 flex-1 text-sm text-[#64748B]">
         {selectedDocumentCount > 0
           ? `Đã chọn ${selectedDocumentCount} tài liệu.`

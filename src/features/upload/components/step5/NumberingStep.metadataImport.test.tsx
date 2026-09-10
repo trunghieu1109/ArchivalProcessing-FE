@@ -41,6 +41,31 @@ const conflicts: MetadataCountConflict[] = [
 ]
 
 describe("metadata import review UI", () => {
+  it("exports metadata directly without showing a mode selector", () => {
+    const onExportMetadata = vi.fn()
+
+    render(
+      <NumberingMetadataPanel
+        metadataImportInputRef={createRef<HTMLInputElement>()}
+        sessionId="session-1"
+        active={false}
+        metadataBusy={false}
+        metadataExporting={false}
+        metadataImporting={false}
+        metadataImportReview={null}
+        onExportMetadata={onExportMetadata}
+        onImportMetadataBoxNumbers={() => undefined}
+      />
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "Xuất metadata" }))
+
+    expect(onExportMetadata).toHaveBeenCalledOnce()
+    expect(
+      screen.queryByRole("radiogroup", { name: /Chế độ xuất metadata/i })
+    ).not.toBeInTheDocument()
+  })
+
   it("summarizes imported rows and counts unique dossiers requiring confirmation", () => {
     const review: MetadataBoxNumberImportResponse = {
       session_id: "session-1",

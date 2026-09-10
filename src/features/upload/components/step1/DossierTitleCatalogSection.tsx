@@ -102,7 +102,15 @@ export function DossierTitleCatalogSection({
         <div className="mt-3 flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
           <Info className="size-3.5 shrink-0" />
           Đã phân tích thành công file tiêu đề hồ sơ:{" "}
-          {upload.mapping_count.toLocaleString("vi-VN")} mapping hợp lệ.
+          {upload.mapping_count.toLocaleString("vi-VN")} hồ sơ
+          {(upload.classification_group_count ?? 0) > 0 && (
+            <>
+              {" · "}
+              {upload.classification_group_count?.toLocaleString("vi-VN")} nhóm
+              phân loại
+            </>
+          )}
+          .
         </div>
       )}
       {(upload?.warnings ?? []).map((warning, index) => (

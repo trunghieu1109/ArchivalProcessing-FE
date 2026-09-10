@@ -708,6 +708,18 @@ export function createUploadPageActions(context: Record<string, any>) {
     markPlanDraftDirty()
   }
 
+  const selectPredefinedUseTemporaryCodeAsDossierNumber = (
+    enabled: boolean
+  ) => {
+    cache.parsedPlan = {
+      ...cache.parsedPlan,
+      predefined_use_temporary_code_as_dossier_number: enabled,
+    }
+    setParsedPlan(cache.parsedPlan)
+    markPlanDraftDirty()
+    return true
+  }
+
   const saveFolderTree = async (tree: FolderNode[]) => {
     cache.folderTree = tree
     setFolderTree(tree)
@@ -768,6 +780,7 @@ export function createUploadPageActions(context: Record<string, any>) {
     savePlanChanges,
     savePlanCriterias,
     saveFileRegisterConfig,
+    selectPredefinedUseTemporaryCodeAsDossierNumber,
     saveFolderTree,
     syncDoc1State,
     syncDoc2State,

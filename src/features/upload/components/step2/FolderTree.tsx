@@ -89,6 +89,7 @@ export function FolderTree({
   dossierBuildStrategy,
   dossierTitleCatalogMappingCount = 0,
   onDossierBuildStrategyChange,
+  onPredefinedUseTemporaryCodeAsDossierNumberChange,
   documentNumberingMode,
   onDocumentNumberingModeChange,
   documentNumberingStylePreset,
@@ -169,8 +170,14 @@ export function FolderTree({
         readOnly={readOnly}
         dossierBuildStrategy={dossierBuildStrategy}
         dossierTitleCatalogMappingCount={dossierTitleCatalogMappingCount}
+        useTemporaryCodeAsDossierNumber={
+          parsedPlan.predefined_use_temporary_code_as_dossier_number
+        }
         fileRegisterConfig={parsedPlan.file_register_config}
         onDossierBuildStrategyChange={onDossierBuildStrategyChange}
+        onUseTemporaryCodeAsDossierNumberChange={
+          onPredefinedUseTemporaryCodeAsDossierNumberChange
+        }
         onFileRegisterConfigChange={onFileRegisterConfigChange}
       />
 

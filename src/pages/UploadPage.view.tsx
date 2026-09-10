@@ -113,6 +113,7 @@ export function UploadPageView(props: Record<string, any>) {
     setPlanViewTab,
     dossierBuildStrategy,
     selectDossierBuildStrategy,
+    selectPredefinedUseTemporaryCodeAsDossierNumber,
     documentNumberingMode,
     applyPersistedDocumentNumberingMode,
     selectDocumentNumberingModeDraft,
@@ -497,6 +498,9 @@ export function UploadPageView(props: Record<string, any>) {
                           props.dossierTitleCatalogUpload?.mapping_count ?? 0
                         }
                         onDossierBuildStrategyChange={() => undefined}
+                        onPredefinedUseTemporaryCodeAsDossierNumberChange={() =>
+                          undefined
+                        }
                         documentNumberingMode={
                           activePlanSettings.documentNumberingMode
                         }
@@ -585,6 +589,9 @@ export function UploadPageView(props: Record<string, any>) {
                         }
                         onDossierBuildStrategyChange={
                           selectDossierBuildStrategy
+                        }
+                        onPredefinedUseTemporaryCodeAsDossierNumberChange={
+                          selectPredefinedUseTemporaryCodeAsDossierNumber
                         }
                         documentNumberingMode={documentNumberingMode}
                         onDocumentNumberingModeChange={

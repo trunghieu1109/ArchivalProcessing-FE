@@ -15,6 +15,7 @@ import {
 import { useZipUploadJobs, useZipUploadManager } from "@/features/zip-upload"
 import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import type { SessionMetadataValues } from "@/features/upload/components/SessionMetadataBar"
+import { SHOW_QUICK_DOSSIER_BUILD } from "@/features/upload/components/step4/temporaryFeatureVisibility"
 import type {
   PendingDataUploadSummary,
   UnifiedDataUploadHandle,
@@ -173,6 +174,12 @@ export function UploadPage() {
           // UI hydration is best-effort. The backend remains authoritative for
           // active-plan validation when ensureClusterBuild is called below.
         }
+      }
+      if (!SHOW_QUICK_DOSSIER_BUILD && buildStrategy === "predefined") {
+        toast.error(
+          "Lập hồ sơ nhanh đang tạm ẩn để hoàn thiện xử lý. Vui lòng chọn cách lập hồ sơ khác."
+        )
+        return
       }
       const response = await ensureClusterBuild(currentSessionId, {
         source: "user_view_results",
@@ -789,6 +796,7 @@ export function UploadPage() {
     savePlanChanges,
     savePlanCriterias,
     saveFileRegisterConfig,
+    selectPredefinedUseTemporaryCodeAsDossierNumber,
     saveFolderTree,
     syncDoc1State,
     syncDoc2State,
@@ -1805,6 +1813,9 @@ export function UploadPage() {
         setPlanViewTab={setPlanViewTab}
         dossierBuildStrategy={dossierBuildStrategy}
         selectDossierBuildStrategy={selectDossierBuildStrategy}
+        selectPredefinedUseTemporaryCodeAsDossierNumber={
+          selectPredefinedUseTemporaryCodeAsDossierNumber
+        }
         documentNumberingMode={documentNumberingMode}
         applyPersistedDocumentNumberingMode={
           applyPersistedDocumentNumberingMode

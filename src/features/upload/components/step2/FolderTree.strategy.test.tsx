@@ -10,6 +10,7 @@ describe("DossierBuildStrategySection", () => {
       <DossierBuildStrategySection
         readOnly={false}
         dossierBuildStrategy="hybrid"
+        useTemporaryCodeAsDossierNumber={false}
         fileRegisterConfig={{
           analysis_status: "not_detected",
           summary: "",
@@ -18,6 +19,7 @@ describe("DossierBuildStrategySection", () => {
           merge_small_dossiers: false,
         }}
         onDossierBuildStrategyChange={onStrategyChange}
+        onUseTemporaryCodeAsDossierNumberChange={vi.fn()}
         onFileRegisterConfigChange={vi.fn()}
       />
     )
@@ -28,12 +30,13 @@ describe("DossierBuildStrategySection", () => {
     expect(onStrategyChange).toHaveBeenCalledWith("hybrid")
   })
 
-  it("renders and selects the quick predefined strategy", () => {
+  it("temporarily hides the quick predefined strategy", () => {
     const onStrategyChange = vi.fn()
     render(
       <DossierBuildStrategySection
         readOnly={false}
         dossierBuildStrategy="incremental"
+        useTemporaryCodeAsDossierNumber={false}
         fileRegisterConfig={{
           analysis_status: "not_detected",
           summary: "",
@@ -42,13 +45,15 @@ describe("DossierBuildStrategySection", () => {
           merge_small_dossiers: false,
         }}
         onDossierBuildStrategyChange={onStrategyChange}
+        onUseTemporaryCodeAsDossierNumberChange={vi.fn()}
         onFileRegisterConfigChange={vi.fn()}
       />
     )
 
-    const quickBuild = screen.getByRole("radio", { name: /Lập hồ sơ nhanh/i })
-    expect(quickBuild).toHaveAttribute("aria-checked", "false")
-    fireEvent.click(quickBuild)
-    expect(onStrategyChange).toHaveBeenCalledWith("predefined")
+    expect(screen.getAllByRole("radio")).toHaveLength(2)
+    expect(
+      screen.queryByRole("radio", { name: /Lập hồ sơ nhanh/i })
+    ).not.toBeInTheDocument()
+    expect(onStrategyChange).not.toHaveBeenCalledWith("predefined")
   })
 })

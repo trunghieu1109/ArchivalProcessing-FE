@@ -23,6 +23,7 @@ export interface FolderTreeProps {
   dossierBuildStrategy: DossierBuildStrategy
   dossierTitleCatalogMappingCount?: number
   onDossierBuildStrategyChange: (strategy: DossierBuildStrategy) => void
+  onPredefinedUseTemporaryCodeAsDossierNumberChange: (enabled: boolean) => void
   documentNumberingMode: DocumentNumberingMode
   onDocumentNumberingModeChange: (
     mode: DocumentNumberingMode

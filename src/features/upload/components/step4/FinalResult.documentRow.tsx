@@ -3,6 +3,7 @@ import { motion } from "framer-motion"
 import { toast } from "sonner"
 import {
   AlertTriangle,
+  ArrowRightLeft,
   BrainCircuit,
   CalendarDays,
   Check,
@@ -149,6 +150,9 @@ export function DocumentRow({
     "loai_van_ban",
   ])
   const signatureTag = signatureTagInfo(document)
+  const movedFromWarning = Boolean(
+    clusterWarning && document.pendingFeedback?.action === "manual_move"
+  )
   const displaySummary = compact
     ? truncateWithDots(summary, 108)
     : truncateWithDots(summary, 190)
@@ -340,14 +344,26 @@ export function DocumentRow({
                 </span>
               </span>
             )}
-            {document.pendingFeedback && (
+            {movedFromWarning ? (
+              <span
+                title="Tài liệu đã được chuyển sang hồ sơ mới theo gợi ý và đang chờ cập nhật hồ sơ"
+                className="flex shrink-0 items-center gap-1 rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-800"
+              >
+                <ArrowRightLeft className="size-3" />
+                <span
+                  className={cn("max-w-36 truncate", compact && "max-w-28")}
+                >
+                  Đã chuyển theo gợi ý
+                </span>
+              </span>
+            ) : document.pendingFeedback ? (
               <span
                 title="Feedback đã ghi nhận và đang chờ cập nhật hồ sơ"
                 className="flex shrink-0 items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800"
               >
                 {pendingFeedbackActionLabel(document.pendingFeedback.action)}
               </span>
-            )}
+            ) : null}
             {clusterWarning && (
               <span
                 title={clusterWarningTooltip(clusterWarning)}

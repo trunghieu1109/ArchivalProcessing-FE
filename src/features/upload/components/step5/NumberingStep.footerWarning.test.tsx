@@ -6,13 +6,13 @@ import {
 } from "./NumberingStep.parts"
 
 describe("NumberingStepFooter missing box warning", () => {
-  it("shows the missing dossier box count in the action bar", () => {
+  it("shows the missing dossier box count without blocking continuation", () => {
     render(
       <NumberingStepFooter
         active={false}
         metadataBusy={false}
-        canContinue={false}
-        blockedReason="Chưa nhập số hộp cho 3 hồ sơ."
+        canContinue
+        blockedReason={null}
         dossiersWithoutBoxCount={3}
         doneCount={10}
         totalDocuments={10}
@@ -26,7 +26,7 @@ describe("NumberingStepFooter missing box warning", () => {
     expect(
       screen.getByText("Chưa nhập số hộp cho 3 hồ sơ.")
     ).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Tạo mục lục" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Tạo mục lục" })).toBeEnabled()
     expect(screen.getByText("Còn thiếu số hộp").closest(".sticky")).toHaveClass(
       "rounded-2xl",
       "border"

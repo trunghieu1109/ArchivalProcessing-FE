@@ -1,6 +1,18 @@
 // TEMPORARY_HIDE_TAG: DOSSIER_SUGGESTIONS
-// The dossier-suggestion UI and API flow are ready for users again.
-export const SHOW_DOSSIER_SUGGESTIONS = true
+// Keep the implementation and API flow in place while the backend is stabilized.
+export const SHOW_DOSSIER_SUGGESTIONS = false
+
+// TEMPORARY_HIDE_TAG: QUICK_DOSSIER_BUILD
+export const SHOW_QUICK_DOSSIER_BUILD = false
+
+// TEMPORARY_HIDE_TAG: DOSSIER_TITLE_CATALOG
+export const SHOW_DOSSIER_TITLE_CATALOG = false
+
+// TEMPORARY_HIDE_TAG: DOCUMENT_TRANSFER
+export const SHOW_DOCUMENT_TRANSFER = false
+
+// The public UI currently exports the mixed/combined metadata workbook only.
+export const DEFAULT_METADATA_EXPORT_MODE = "combined" as const
 
 // TEMPORARY_HIDE_TAG: DOSSIER_CODE
 // Dossier code is available in the editor, result tree, and metadata import/export.

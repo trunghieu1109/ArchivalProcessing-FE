@@ -1,5 +1,11 @@
-import { AlertTriangle, ChevronDown, ChevronRight } from "lucide-react"
+import {
+  AlertTriangle,
+  ChevronDown,
+  ChevronRight,
+  ListChecks,
+} from "lucide-react"
 import type { ClusterDocumentWarning } from "@/features/upload/lib/clusterGroups"
+import { cn } from "@/shared/lib/utils"
 import {
   clusterWarningHasCloserReason,
   clusterWarningMessages,
@@ -17,6 +23,8 @@ export function ClusterWarningPanel({
   const messages = clusterWarningMessages(warning)
   const hasCloserWarning = clusterWarningHasCloserReason(warning, messages)
   const hasTemporalWarning = warning.reasons.includes("temporal_outlier")
+  const requiresAttention = warning.riskLevel.trim().toLowerCase() === "high"
+  const StatusIcon = requiresAttention ? AlertTriangle : ListChecks
   const closerDossierTitle = warning.nearestOtherDossierTitle.trim()
   const representativeDocuments = warning.nearestOtherRepresentativeDocuments
     .length
@@ -56,15 +64,24 @@ export function ClusterWarningPanel({
   ].filter((item) => item.value)
 
   return (
-    <div className="col-span-full overflow-hidden rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-2 text-amber-900">
+    <div
+      className={cn(
+        "col-span-full overflow-hidden rounded-lg border px-2.5 py-2",
+        requiresAttention
+          ? "border-amber-300 bg-amber-50 text-amber-900"
+          : "border-[#BFD3FF] bg-[#F8FAFF] text-[#334155]"
+      )}
+    >
       <button
         type="button"
         className="flex w-full items-center justify-between gap-2 text-left"
         onClick={onToggle}
       >
         <span className="flex min-w-0 items-center gap-1.5 text-xs font-semibold">
-          <AlertTriangle className="size-3.5 shrink-0" />
-          <span className="truncate">Cảnh báo hồ sơ</span>
+          <StatusIcon className="size-3.5 shrink-0" />
+          <span className="truncate">
+            {requiresAttention ? "Cảnh báo hồ sơ" : "Gợi ý rà soát hồ sơ"}
+          </span>
         </span>
         {expanded ? (
           <ChevronDown className="size-3.5 shrink-0" />
@@ -84,22 +101,43 @@ export function ClusterWarningPanel({
               key={row.label}
               label={row.label}
               value={row.value}
+              requiresAttention={requiresAttention}
             />
           ))}
         </div>
       )}
       {expanded && hasCloserWarning && (
-        <div className="mt-2 border-t border-amber-200 pt-2">
-          <p className="text-[11px] font-semibold text-amber-900">
+        <div
+          className={cn(
+            "mt-2 border-t pt-2",
+            requiresAttention ? "border-amber-200" : "border-blue-200"
+          )}
+        >
+          <p
+            className={cn(
+              "text-[11px] font-semibold",
+              requiresAttention ? "text-amber-900" : "text-[#334155]"
+            )}
+          >
             Hồ sơ phù hợp hơn
           </p>
-          <p className="mt-1 rounded-md bg-white/70 px-2 py-1 text-[11px] font-medium break-words text-amber-950">
+          <p
+            className={cn(
+              "mt-1 rounded-md bg-white/70 px-2 py-1 text-[11px] font-medium break-words",
+              requiresAttention ? "text-amber-950" : "text-[#1E3A8A]"
+            )}
+          >
             {closerDossierTitle ||
               "Chưa xác định được tên hồ sơ phù hợp hơn từ dữ liệu cảnh báo."}
           </p>
           {representativeDocuments.length > 0 && (
             <>
-              <p className="mt-2 text-[11px] font-semibold text-amber-900">
+              <p
+                className={cn(
+                  "mt-2 text-[11px] font-semibold",
+                  requiresAttention ? "text-amber-900" : "text-[#334155]"
+                )}
+              >
                 Tài liệu đại diện để đối chiếu
               </p>
               <div className="mt-1 grid gap-1.5">
@@ -114,15 +152,34 @@ export function ClusterWarningPanel({
                       key={
                         document.documentId || `${document.fileName}-${index}`
                       }
-                      className="min-w-0 border-t border-amber-100 pt-1 first:border-t-0 first:pt-0"
+                      className={cn(
+                        "min-w-0 border-t pt-1 first:border-t-0 first:pt-0",
+                        requiresAttention
+                          ? "border-amber-100"
+                          : "border-blue-100"
+                      )}
                     >
-                      <p className="text-[11px] font-medium break-words text-amber-950">
+                      <p
+                        className={cn(
+                          "text-[11px] font-medium break-words",
+                          requiresAttention
+                            ? "text-amber-950"
+                            : "text-[#1E3A8A]"
+                        )}
+                      >
                         {document.fileName ||
                           document.documentId ||
                           "Tài liệu đại diện"}
                       </p>
                       {secondary.length > 0 && (
-                        <p className="mt-0.5 line-clamp-2 text-[11px] break-words text-amber-800">
+                        <p
+                          className={cn(
+                            "mt-0.5 line-clamp-2 text-[11px] break-words",
+                            requiresAttention
+                              ? "text-amber-800"
+                              : "text-[#475569]"
+                          )}
+                        >
                           {secondary.join(" · ")}
                         </p>
                       )}
@@ -133,7 +190,12 @@ export function ClusterWarningPanel({
             </>
           )}
           {representativeDocuments.length === 0 && (
-            <p className="mt-2 rounded-md bg-white/50 px-2 py-1 text-[11px] text-amber-800">
+            <p
+              className={cn(
+                "mt-2 rounded-md bg-white/50 px-2 py-1 text-[11px]",
+                requiresAttention ? "text-amber-800" : "text-[#64748B]"
+              )}
+            >
               Chưa có tài liệu đại diện của hồ sơ này trong dữ liệu cảnh báo.
             </p>
           )}
@@ -146,14 +208,25 @@ export function ClusterWarningPanel({
 export function WarningDetail({
   label,
   value,
+  requiresAttention,
 }: {
   label: string
   value: string
+  requiresAttention: boolean
 }) {
   return (
     <div className="min-w-0 rounded-md bg-white/70 px-2 py-1">
-      <span className="text-amber-700">{label}: </span>
-      <span className="font-medium break-words text-amber-950">{value}</span>
+      <span className={requiresAttention ? "text-amber-700" : "text-[#64748B]"}>
+        {label}:{" "}
+      </span>
+      <span
+        className={cn(
+          "font-medium break-words",
+          requiresAttention ? "text-amber-950" : "text-[#1E3A8A]"
+        )}
+      >
+        {value}
+      </span>
     </div>
   )
 }

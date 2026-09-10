@@ -37,6 +37,7 @@ export const EMPTY_PARSED_PLAN: ParsedPlan = {
   criterias: [],
   leaf_group_candidates: [],
   file_register_config: DEFAULT_FILE_REGISTER_CONFIG,
+  predefined_use_temporary_code_as_dossier_number: false,
   retention_appendices: [],
   retention_sources: [],
 }

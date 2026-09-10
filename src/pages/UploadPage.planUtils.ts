@@ -146,6 +146,8 @@ export function buildPlanDraftPayload({
     file_register_config: parsedPlan.file_register_config,
     dossier_build_strategy:
       dossierBuildStrategy === "incremental" ? "hybrid" : dossierBuildStrategy,
+    predefined_use_temporary_code_as_dossier_number:
+      parsedPlan.predefined_use_temporary_code_as_dossier_number,
     document_numbering_mode: documentNumberingMode,
     document_numbering_style_preset: documentNumberingStylePreset,
     document_numbering_style_overrides: documentNumberingStyleOverrides,

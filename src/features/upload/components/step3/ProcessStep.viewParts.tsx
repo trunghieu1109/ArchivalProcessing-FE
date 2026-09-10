@@ -9,6 +9,31 @@ import {
 } from "@/features/upload/components/WorkflowActionPanel"
 import { ProgressMetric } from "./ProcessStep.parts"
 
+interface ProcessStepSummaryPanelProps {
+  warningCount: number
+  pendingMetadataCount: number
+  metadataReloading: boolean
+  readyItems: { length: number }
+  readyCount?: number
+  expectedCount: number | string
+  needsReviewItems: { length: number }
+  autoVerifiedItems: { length: number }
+  reviewedItems: { length: number }
+  reviewedCount?: number
+  failedMetadataItems?: { length: number }
+  failedCount?: number
+  metadataMessage: string
+  metadataStartingMessage?: string
+  signatureStatus: {
+    pending: number
+    failed: number
+    extracted: number
+  }
+  readyPercent: number
+  reviewedPercent: number
+  metadataStartingWithoutCount: boolean
+}
+
 export function ProcessStepSummaryPanel({
   warningCount,
   pendingMetadataCount,
@@ -27,7 +52,7 @@ export function ProcessStepSummaryPanel({
   readyPercent,
   reviewedPercent,
   metadataStartingWithoutCount,
-}: Record<string, any>) {
+}: ProcessStepSummaryPanelProps) {
   const extractedCount = readyCount ?? readyItems.length
   const reviewedDocumentCount = reviewedCount ?? reviewedItems.length
   const failedDocumentCount = failedCount ?? failedMetadataItems.length
@@ -130,6 +155,19 @@ export function ProcessStepSummaryPanel({
   )
 }
 
+interface ProcessStepFooterProps {
+  pendingReadyItems: { length: number }
+  pendingReadyCount?: number
+  dossierReadyItems: { length: number }
+  dossierReadyCount?: number
+  warningCount?: number
+  readyItems: { length: number }
+  metadataMessage: string
+  canContinue: boolean
+  buildBlockedMessage?: string | null
+  onContinue: (selectedItems: never[]) => void
+}
+
 export function ProcessStepFooter({
   pendingReadyItems: pendingReadyPageItems,
   pendingReadyCount,
@@ -141,7 +179,7 @@ export function ProcessStepFooter({
   canContinue,
   buildBlockedMessage,
   onContinue,
-}: Record<string, any>) {
+}: ProcessStepFooterProps) {
   const pendingCount = pendingReadyCount ?? pendingReadyPageItems.length
   const readyForDossierCount = dossierReadyCount ?? dossierReadyPageItems.length
   const dossierReadyItems = { length: readyForDossierCount }
@@ -181,7 +219,7 @@ export function ProcessStepFooter({
         : undefined
 
   return (
-    <WorkflowActionPanel sticky>
+    <WorkflowActionPanel>
       <WorkflowActionPanelBody>
         <WorkflowActionStatus
           role={warningTone ? "alert" : "status"}
@@ -197,7 +235,7 @@ export function ProcessStepFooter({
             onContinue([])
           }}
           className={cn(
-            "group flex h-10 w-full shrink-0 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold transition-all duration-200 sm:ml-auto sm:w-auto",
+            "group flex w-full shrink-0 items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold transition-all duration-200 sm:ml-auto sm:w-auto",
             canContinue
               ? "text-white hover:brightness-95 active:scale-[0.98]"
               : "cursor-not-allowed bg-[#E2E8F0] text-[#64748B]"

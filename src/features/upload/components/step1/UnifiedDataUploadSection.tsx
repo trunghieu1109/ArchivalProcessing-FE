@@ -176,12 +176,22 @@ export const UnifiedDataUploadSection = forwardRef<
   )
   const selectionDisabled =
     disabled || folderRemoteStillOpen || detecting || startingFolder
+  const hasSelectedSource = Boolean(
+    pendingSource ||
+    zipPanelShouldOpen ||
+    (folderUploadEnabled && folderJobNeedsProgress)
+  )
 
   const clearPendingSource = useCallback(() => {
     expectedSessionTransitionRef.current = false
     setPendingSource(null)
     onPendingUploadChange(null)
   }, [onPendingUploadChange])
+
+  const resetPendingSource = useCallback(() => {
+    setSelectedKind(null)
+    clearPendingSource()
+  }, [clearPendingSource])
 
   useEffect(() => {
     if (previousSessionRef.current === sessionId) return
@@ -424,7 +434,7 @@ export const UnifiedDataUploadSection = forwardRef<
               <h3 className="text-base font-bold text-[#0F172A]">
                 Upload dữ liệu tài liệu
               </h3>
-              {selectedKind && (
+              {hasSelectedSource && selectedKind && (
                 <span className="rounded-full border border-[#BFDBFE] bg-[#EFF6FF] px-2.5 py-1 text-[11px] font-semibold text-[#1D4ED8]">
                   Đã nhận diện: {selectedKind === "zip" ? "ZIP" : "Folder PDF"}
                 </span>
@@ -444,57 +454,59 @@ export const UnifiedDataUploadSection = forwardRef<
         folderRemoteStillOpen={folderRemoteStillOpen}
       />
 
-      <div
-        onDragOver={(event) => {
-          event.preventDefault()
-          if (!selectionDisabled) setDragging(true)
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(event) => void handleDrop(event)}
-        className={cn(
-          "mt-4 flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-4 py-8 text-center transition",
-          dragging
-            ? "scale-[1.01] border-[#0052FF] bg-[#EFF6FF]"
-            : "border-[#CBD5E1] bg-[#F8FAFC]",
-          selectionDisabled && "cursor-not-allowed opacity-60"
-        )}
-      >
-        <div className="flex items-center gap-2 text-[#0052FF]">
-          <FileArchive className="size-5" />
-          <span className="text-[#94A3B8]">hoặc</span>
-          <FolderOpen className="size-5" />
-        </div>
-        <p className="text-sm font-semibold text-[#0F172A]">
-          {detecting
-            ? "Đang nhận diện dữ liệu..."
-            : "Kéo thả file ZIP hoặc nguyên folder PDF vào đây"}
-        </p>
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          <button
-            type="button"
-            disabled={selectionDisabled}
-            onClick={() => zipInputRef.current?.click()}
-            className="flex h-10 items-center gap-2 rounded-lg bg-[#0052FF] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#0047DB] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <FileArchive className="size-4" />
-            Upload file ZIP
-          </button>
-          {folderUploadEnabled && (
+      {!hasSelectedSource && (
+        <div
+          onDragOver={(event) => {
+            event.preventDefault()
+            if (!selectionDisabled) setDragging(true)
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(event) => void handleDrop(event)}
+          className={cn(
+            "mt-4 flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-4 py-8 text-center transition",
+            dragging
+              ? "scale-[1.01] border-[#0052FF] bg-[#EFF6FF]"
+              : "border-[#CBD5E1] bg-[#F8FAFC]",
+            selectionDisabled && "cursor-not-allowed opacity-60"
+          )}
+        >
+          <div className="flex items-center gap-2 text-[#0052FF]">
+            <FileArchive className="size-5" />
+            <span className="text-[#94A3B8]">hoặc</span>
+            <FolderOpen className="size-5" />
+          </div>
+          <p className="text-sm font-semibold text-[#0F172A]">
+            {detecting
+              ? "Đang nhận diện dữ liệu..."
+              : "Kéo thả file ZIP hoặc nguyên folder PDF vào đây"}
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
             <button
               type="button"
               disabled={selectionDisabled}
-              onClick={() => folderInputRef.current?.click()}
-              className="flex h-10 items-center gap-2 rounded-lg border border-[#0052FF] bg-white px-4 text-sm font-semibold text-[#0052FF] hover:bg-[#EFF6FF] disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={() => zipInputRef.current?.click()}
+              className="flex h-10 items-center gap-2 rounded-lg bg-[#0052FF] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#0047DB] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <FolderOpen className="size-4" />
-              {startingFolder ? "Đang khởi tạo..." : "Upload folder"}
+              <FileArchive className="size-4" />
+              Upload file ZIP
             </button>
-          )}
+            {folderUploadEnabled && (
+              <button
+                type="button"
+                disabled={selectionDisabled}
+                onClick={() => folderInputRef.current?.click()}
+                className="flex h-10 items-center gap-2 rounded-lg border border-[#0052FF] bg-white px-4 text-sm font-semibold text-[#0052FF] hover:bg-[#EFF6FF] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <FolderOpen className="size-4" />
+                {startingFolder ? "Đang khởi tạo..." : "Upload folder"}
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-[#94A3B8]">
+            ZIP được xử lý theo extract-job; folder giữ nguyên relative path.
+          </p>
         </div>
-        <p className="text-xs text-[#94A3B8]">
-          ZIP được xử lý theo extract-job; folder giữ nguyên relative path.
-        </p>
-      </div>
+      )}
 
       <input
         ref={zipInputRef}
@@ -548,14 +560,17 @@ export const UnifiedDataUploadSection = forwardRef<
             ocr={ocr}
             embedded
             hidePicker
-            onClearFile={clearPendingSource}
+            onClearFile={resetPendingSource}
           />
         </UploadProgressPanel>
       </div>
       {selectedKind === "folder" && (
         <UploadProgressPanel kind="folder">
           {pendingSource?.kind === "folder" && (
-            <PendingDataUploadNotice summary={pendingSource.summary} />
+            <PendingDataUploadNotice
+              summary={pendingSource.summary}
+              onClear={resetPendingSource}
+            />
           )}
           <FolderUploadSection
             sessionId={sessionId}

@@ -6,6 +6,7 @@ import { DocxSection } from "@/features/upload/components/step1/DocxSection"
 import { UnifiedDataUploadSection } from "@/features/upload/components/step1/UnifiedDataUploadSection"
 import { UploadSessionSetupPanel } from "@/features/upload/components/step1/UploadSessionSetupPanel"
 import { DossierTitleCatalogSection } from "@/features/upload/components/step1/DossierTitleCatalogSection"
+import { SHOW_DOSSIER_TITLE_CATALOG } from "@/features/upload/components/step4/temporaryFeatureVisibility"
 import { workflowActionPanelClassName } from "@/features/upload/components/WorkflowActionPanel"
 import { cn } from "@/shared/lib/utils"
 import { easeOut } from "./UploadPage.planUtils"
@@ -247,13 +248,15 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
         />
       </div>
 
-      <DossierTitleCatalogSection
-        draftFile={dossierTitleCatalogDraftFile}
-        upload={dossierTitleCatalogUpload}
-        disabled={allProcessing || sessionLoading}
-        onSelect={handleDossierTitleCatalogSelect}
-        onClear={handleDossierTitleCatalogClear}
-      />
+      {SHOW_DOSSIER_TITLE_CATALOG && (
+        <DossierTitleCatalogSection
+          draftFile={dossierTitleCatalogDraftFile}
+          upload={dossierTitleCatalogUpload}
+          disabled={allProcessing || sessionLoading}
+          onSelect={handleDossierTitleCatalogSelect}
+          onClear={handleDossierTitleCatalogClear}
+        />
+      )}
 
       {/* Action bar */}
       <motion.div

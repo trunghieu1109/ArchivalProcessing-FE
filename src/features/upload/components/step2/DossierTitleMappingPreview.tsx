@@ -111,12 +111,22 @@ export function DossierTitleMappingPreview({
                 Mapping tiêu đề hồ sơ
               </span>
               <span className="rounded-full bg-[#DBEAFE] px-2 py-0.5 text-[11px] font-semibold text-[#1D4ED8]">
-                {mappingCount.toLocaleString("vi-VN")} dòng
+                {(result?.mapping_count ?? mappingCount).toLocaleString(
+                  "vi-VN"
+                )}{" "}
+                hồ sơ
               </span>
+              {(result?.classification_group_count ?? 0) > 0 && (
+                <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-700">
+                  {result?.classification_group_count.toLocaleString("vi-VN")}{" "}
+                  nhóm phân loại
+                </span>
+              )}
             </span>
             <span className="mt-1 block text-xs leading-5 text-[#64748B]">
-              Tên folder được đối chiếu với Mã tạm; mã không tìm thấy vẫn được
-              AI gợi ý tiêu đề.
+              Các dòng I., 1., a. tạo cây nhóm phân loại. Hồ sơ bên dưới kế thừa
+              nhóm hiện hành; nhóm catalog được dùng trực tiếp kể cả khi chưa có
+              trong phương án phân loại.
             </span>
           </span>
         </span>
@@ -139,7 +149,7 @@ export function DossierTitleMappingPreview({
               <input
                 value={searchInput}
                 onChange={(event) => setSearchInput(event.target.value)}
-                placeholder="Tìm theo mã tạm hoặc tiêu đề hồ sơ"
+                placeholder="Tìm theo mã tạm, tiêu đề, nhóm hoặc thời hạn bảo quản"
                 aria-label="Tìm mapping tiêu đề hồ sơ"
                 className="h-9 w-full rounded-lg border border-[#CBD5E1] bg-white pr-3 pl-9 text-sm text-[#0F172A] outline-none placeholder:text-[#94A3B8] focus:border-[#0052FF] focus:ring-2 focus:ring-[#0052FF]/10"
               />
@@ -176,26 +186,70 @@ export function DossierTitleMappingPreview({
           ) : result && result.items.length > 0 ? (
             <>
               <div className="overflow-x-auto rounded-xl border border-[#D8E1EC]">
-                <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+                <table className="w-full min-w-[900px] border-collapse text-left text-sm">
                   <thead className="bg-[#F8FAFC] text-xs font-semibold tracking-wide text-[#475569] uppercase">
                     <tr>
                       <th className="w-14 border-b border-[#D8E1EC] px-3 py-2.5">Dòng</th>
                       <th className="border-b border-[#D8E1EC] px-3 py-2.5">Mã tạm</th>
                       <th className="border-b border-[#D8E1EC] px-3 py-2.5">Tiêu đề hồ sơ</th>
+                      <th className="border-b border-[#D8E1EC] px-3 py-2.5">Thời hạn bảo quản</th>
                       <th className="border-b border-[#D8E1EC] px-3 py-2.5">Bắt đầu</th>
                       <th className="border-b border-[#D8E1EC] px-3 py-2.5">Kết thúc</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#E2E8F0] text-[#334155]">
-                    {result.items.map((item) => (
-                      <tr key={item.id} className="align-top hover:bg-[#F8FAFC]">
-                        <td className="px-3 py-2.5 text-xs text-[#94A3B8] tabular-nums">{item.source_row}</td>
-                        <td className="px-3 py-2.5 font-semibold text-[#0F172A]">{item.temporary_code}</td>
-                        <td className="max-w-xl px-3 py-2.5 whitespace-normal">{item.dossier_title}</td>
-                        <td className="px-3 py-2.5 whitespace-nowrap">{item.start_time || "—"}</td>
-                        <td className="px-3 py-2.5 whitespace-nowrap">{item.end_time || "—"}</td>
-                      </tr>
-                    ))}
+                    {result.items.map((item) =>
+                      item.row_type === "classification_group" ? (
+                        <tr key={item.id} className="bg-violet-50/70 align-top">
+                          <td className="px-3 py-2.5 text-xs text-violet-400 tabular-nums">
+                            {item.source_row}
+                          </td>
+                          <td colSpan={5} className="px-3 py-2.5">
+                            <div
+                              className={cn(
+                                "flex items-center gap-2 font-semibold text-violet-950",
+                                item.classification_level === 2 && "pl-5",
+                                item.classification_level === 3 && "pl-10"
+                              )}
+                            >
+                              <span className="rounded-full bg-violet-200 px-2 py-0.5 text-[10px] font-bold tracking-wide text-violet-800 uppercase">
+                                Level {item.classification_level}
+                              </span>
+                              <span>{item.dossier_title}</span>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        <tr
+                          key={item.id}
+                          className="align-top hover:bg-[#F8FAFC]"
+                        >
+                          <td className="px-3 py-2.5 text-xs text-[#94A3B8] tabular-nums">
+                            {item.source_row}
+                          </td>
+                          <td className="px-3 py-2.5 font-semibold text-[#0F172A]">
+                            {item.temporary_code || "—"}
+                          </td>
+                          <td className="max-w-xl px-3 py-2.5 whitespace-normal">
+                            <div>{item.dossier_title}</div>
+                            {item.classification_path.length > 0 && (
+                              <div className="mt-1 text-[11px] leading-4 text-violet-600">
+                                {item.classification_path.join(" / ")}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-2.5 font-medium whitespace-nowrap text-[#0F172A]">
+                            {item.retention_period || "—"}
+                          </td>
+                          <td className="px-3 py-2.5 whitespace-nowrap">
+                            {item.start_time || "—"}
+                          </td>
+                          <td className="px-3 py-2.5 whitespace-nowrap">
+                            {item.end_time || "—"}
+                          </td>
+                        </tr>
+                      )
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -207,7 +261,7 @@ export function DossierTitleMappingPreview({
                 pageCount={pageCount}
                 startNumber={startNumber}
                 endNumber={endNumber}
-                itemLabel="mapping"
+                itemLabel="dòng catalog"
                 className="mt-3"
                 onPageChange={(nextPageIndex) =>
                   void loadPage(nextPageIndex * PAGE_SIZE, appliedQuery)

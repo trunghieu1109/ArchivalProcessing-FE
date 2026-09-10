@@ -45,6 +45,7 @@ import {
   WorkflowActionStatus,
 } from "@/features/upload/components/WorkflowActionPanel"
 import type { SessionMetadataValues } from "@/features/upload/components/SessionMetadataBar"
+import { DEFAULT_METADATA_EXPORT_MODE } from "@/features/upload/components/step4/temporaryFeatureVisibility"
 import {
   downloadAllArtifacts,
   downloadArtifact,
@@ -54,7 +55,6 @@ import {
   getFinalizeArtifactsStatus,
   listArtifacts,
   type FinalizeArtifactStatusResponse,
-  type MetadataExportMode,
   type SessionArtifact,
 } from "@/features/upload/api/sessionApi"
 
@@ -98,8 +98,6 @@ export function FinalizeArtifactsStep({
     null
   )
   const [finalizeFailed, setFinalizeFailed] = useState(false)
-  const [metadataExportMode, setMetadataExportMode] =
-    useState<MetadataExportMode>("combined")
   const [statusMessage, setStatusMessage] = useState("Đang tải tệp mục lục...")
   const [error, setError] = useState("")
   const [selectedArtifactId, setSelectedArtifactId] = useState<number | null>(
@@ -259,7 +257,7 @@ export function FinalizeArtifactsStep({
         setLoading(false)
         const dispatch = await enqueueFinalizeArtifacts(sessionId, {
           created_by: "ui",
-          metadata_export_mode: metadataExportMode,
+          metadata_export_mode: DEFAULT_METADATA_EXPORT_MODE,
           force: options.force ?? false,
         })
         if (dispatch.status === "not_needed") {
@@ -321,7 +319,7 @@ export function FinalizeArtifactsStep({
         onAutoStartHandled?.()
       }
     },
-    [metadataExportMode, onAutoStartHandled, refreshArtifacts, sessionId]
+    [onAutoStartHandled, refreshArtifacts, sessionId]
   )
 
   useEffect(() => {
@@ -651,12 +649,10 @@ export function FinalizeArtifactsStep({
           finalizing={finalizing}
           visibleArtifactCount={visibleArtifacts.length}
           downloadingAll={downloadingAll}
-          metadataExportMode={metadataExportMode}
           onBack={() => navigate(-1)}
           onRefreshArtifacts={refreshArtifacts}
           onStartFinalize={startFinalize}
           onDownloadAll={handleDownloadAll}
-          onMetadataExportModeChange={setMetadataExportMode}
         />
 
         {(finalizing || finalizeFailed || progressMessage) && (

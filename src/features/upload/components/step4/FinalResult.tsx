@@ -39,6 +39,7 @@ import {
 import {
   SHOW_DOCUMENT_DELETION,
   SHOW_DOCUMENT_DELETION_IN_DOSSIER_STEP,
+  SHOW_DOCUMENT_TRANSFER,
 } from "./temporaryFeatureVisibility"
 import {
   DocumentTransferDialog,
@@ -294,7 +295,7 @@ export function FinalResult({
     SHOW_DOCUMENT_DELETION &&
     SHOW_DOCUMENT_DELETION_IN_DOSSIER_STEP &&
     canManageDocuments
-  const canTransferDocuments = canManageDocuments
+  const canTransferDocuments = SHOW_DOCUMENT_TRANSFER && canManageDocuments
   const selectedPreviewEntry = useMemo(
     () =>
       previewDocuments.find(
@@ -1886,15 +1887,17 @@ export function FinalResult({
         }}
         onMutationCompleted={handleDocumentDeletionCompleted}
       />
-      <DocumentTransferDialog
-        open={transferTargets.length > 0}
-        sourceSessionId={sessionId}
-        targets={transferTargets}
-        onOpenChange={(open) => {
-          if (!open) setTransferTargets([])
-        }}
-        onMutationCompleted={handleDocumentTransferCompleted}
-      />
+      {SHOW_DOCUMENT_TRANSFER && (
+        <DocumentTransferDialog
+          open={transferTargets.length > 0}
+          sourceSessionId={sessionId}
+          targets={transferTargets}
+          onOpenChange={(open) => {
+            if (!open) setTransferTargets([])
+          }}
+          onMutationCompleted={handleDocumentTransferCompleted}
+        />
+      )}
     </>
   )
 }

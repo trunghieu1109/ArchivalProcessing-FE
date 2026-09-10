@@ -14,6 +14,7 @@ import { useAuth } from "@/features/auth/lib/AuthContext"
 import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import { PaginationControls } from "@/features/upload/components/PaginationControls"
+import { DEFAULT_METADATA_EXPORT_MODE } from "../step4/temporaryFeatureVisibility"
 import {
   downloadArtifact,
   applyNumberingState,
@@ -34,7 +35,6 @@ import {
   type DocumentNumberingStylePreset,
   type MetadataBoxNumberImportResponse,
   type MetadataCountConflict,
-  type MetadataExportMode,
   type NumberingDocumentStatus,
   type SessionDossierPatchPayload,
   type NumberingStatusResponse,
@@ -1087,50 +1087,43 @@ export function NumberingStep({
     [refreshStatus, sessionId, starting, status?.active]
   )
 
-  const exportMetadata = useCallback(
-    async (mode: MetadataExportMode) => {
-      if (!sessionId) {
-        toast.error("Chưa có session để xuất metadata.")
-        return
+  const exportMetadata = useCallback(async () => {
+    if (!sessionId) {
+      toast.error("Chưa có session để xuất metadata.")
+      return
+    }
+    setMetadataExporting(true)
+    setError("")
+    try {
+      const result = await exportMetadataSnapshot(sessionId, {
+        created_by: "ui",
+        metadata_export_mode: DEFAULT_METADATA_EXPORT_MODE,
+      })
+      const artifacts =
+        result.artifacts?.length > 0
+          ? result.artifacts
+          : result.artifact
+            ? [result.artifact]
+            : []
+      if (artifacts.length === 0) {
+        throw new Error("Backend chưa trả về artifact metadata.")
       }
-      setMetadataExporting(true)
-      setError("")
-      try {
-        const result = await exportMetadataSnapshot(sessionId, {
-          created_by: "ui",
-          metadata_export_mode: mode,
-        })
-        const artifacts =
-          result.artifacts?.length > 0
-            ? result.artifacts
-            : result.artifact
-              ? [result.artifact]
-              : []
-        if (artifacts.length === 0) {
-          throw new Error("Backend chưa trả về artifact metadata.")
-        }
-        toast.success(
-          mode === "separated"
-            ? "Đã tạo hai file metadata. Đang tải lần lượt."
-            : "Đã tạo snapshot metadata. Đang tải file."
-        )
-        for (const artifact of artifacts) {
-          const download = await downloadArtifact(sessionId, artifact.id)
-          saveBlob(download.blob, download.fileName || artifact.file_name)
-        }
-      } catch (err) {
-        const message =
-          err instanceof Error
-            ? err.message
-            : "Không thể xuất metadata tại thời điểm hiện tại."
-        setError(message)
-        toast.error(message)
-      } finally {
-        setMetadataExporting(false)
+      toast.success("Đã tạo snapshot metadata. Đang tải file.")
+      for (const artifact of artifacts) {
+        const download = await downloadArtifact(sessionId, artifact.id)
+        saveBlob(download.blob, download.fileName || artifact.file_name)
       }
-    },
-    [sessionId]
-  )
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Không thể xuất metadata tại thời điểm hiện tại."
+      setError(message)
+      toast.error(message)
+    } finally {
+      setMetadataExporting(false)
+    }
+  }, [sessionId])
 
   const importMetadataBoxNumbers = useCallback(
     async (
@@ -1769,13 +1762,9 @@ export function NumberingStep({
     if (hasPendingNumberingConfigChanges) {
       reasons.push("Cấu hình đánh số đã thay đổi và chưa được áp dụng.")
     }
-    if (dossiersWithoutBoxCount > 0) {
-      reasons.push(`Chưa nhập số hộp cho ${dossiersWithoutBoxCount} hồ sơ.`)
-    }
     return reasons.join(" ") || null
   }, [
     active,
-    dossiersWithoutBoxCount,
     failedCount,
     hasPendingNumberingConfigChanges,
     metadataBusy,
@@ -1786,8 +1775,7 @@ export function NumberingStep({
     complete &&
     failedCount === 0 &&
     unresolvedCount === 0 &&
-    !hasPendingNumberingConfigChanges &&
-    dossiersWithoutBoxCount === 0
+    !hasPendingNumberingConfigChanges
   const canRestartNumbering = hasNumberingOutput && canManageNumbering
   const timelineEnabled = Boolean(
     status?.numbering_capabilities?.timeline_enabled

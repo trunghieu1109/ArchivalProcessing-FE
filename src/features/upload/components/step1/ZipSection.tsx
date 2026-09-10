@@ -46,6 +46,7 @@ import type {
 } from "@/features/upload/types"
 
 const MAX_FILES_ERROR = "Số lượng tài liệu cần số hóa phải là số nguyên dương."
+const ZIP_ENTRY_PAGE_SIZE = 10
 
 function formatBytes(bytes: number) {
   if (bytes === 0) return "0 B"
@@ -164,7 +165,7 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
       getSortedRowModel: getSortedRowModel(),
       onSortingChange: setSorting,
       state: { sorting },
-      initialState: { pagination: { pageSize: 10 } },
+      initialState: { pagination: { pageSize: ZIP_ENTRY_PAGE_SIZE } },
     })
 
     const handleFile = async (file: File) => {
@@ -399,75 +400,78 @@ export const ZipSection = forwardRef<SectionHandle, ZipSectionProps>(
               </span>
             </div>
 
-            <div className="overflow-hidden rounded-xl border border-border">
-              <Table>
-                <TableHeader>
-                  {table.getHeaderGroups().map((hg) => (
-                    <TableRow
-                      key={hg.id}
-                      className="bg-muted/50 hover:bg-muted/50"
-                    >
-                      {hg.headers.map((header) => (
-                        <TableHead
-                          key={header.id}
-                          style={{
-                            width:
-                              header.getSize() !== 150
-                                ? header.getSize()
-                                : undefined,
-                          }}
-                          className="py-2"
-                        >
-                          {flexRender(
-                            header.column.columnDef.header,
-                            header.getContext()
-                          )}
-                        </TableHead>
-                      ))}
-                    </TableRow>
-                  ))}
-                </TableHeader>
-                <TableBody>
-                  {table.getRowModel().rows.map((row) => (
-                    <TableRow key={row.id} className="hover:bg-muted/30">
-                      {row.getVisibleCells().map((cell) => (
-                        <TableCell key={cell.id} className="py-2">
-                          {flexRender(
-                            cell.column.columnDef.cell,
-                            cell.getContext()
-                          )}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <span className="font-roboto text-[11px] text-muted-foreground/60">
-                Trang {table.getState().pagination.pageIndex + 1} /{" "}
-                {table.getPageCount()}
-              </span>
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-2"
-                  onClick={() => table.previousPage()}
-                  disabled={!table.getCanPreviousPage()}
-                >
-                  <ChevronLeft className="size-3.5" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-2"
-                  onClick={() => table.nextPage()}
-                  disabled={!table.getCanNextPage()}
-                >
-                  <ChevronRight className="size-3.5" />
-                </Button>
+            <div className="overflow-hidden rounded-xl border border-[#E2E8F0] bg-white">
+              <div className="max-h-[34rem] overflow-auto">
+                <Table>
+                  <TableHeader className="sticky top-0 z-10 bg-[#F8FAFC]">
+                    {table.getHeaderGroups().map((hg) => (
+                      <TableRow key={hg.id} className="hover:bg-[#F8FAFC]">
+                        {hg.headers.map((header) => (
+                          <TableHead
+                            key={header.id}
+                            style={{
+                              width:
+                                header.getSize() !== 150
+                                  ? header.getSize()
+                                  : undefined,
+                            }}
+                            className="py-2"
+                          >
+                            {flexRender(
+                              header.column.columnDef.header,
+                              header.getContext()
+                            )}
+                          </TableHead>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableHeader>
+                  <TableBody>
+                    {table.getRowModel().rows.map((row) => (
+                      <TableRow key={row.id} className="hover:bg-[#F8FAFC]">
+                        {row.getVisibleCells().map((cell) => (
+                          <TableCell key={cell.id} className="py-2">
+                            {flexRender(
+                              cell.column.columnDef.cell,
+                              cell.getContext()
+                            )}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2">
+                <span className="font-roboto text-[11px] text-[#64748B]">
+                  Trang {table.getState().pagination.pageIndex + 1} /{" "}
+                  {Math.max(1, table.getPageCount())} · Tối đa{" "}
+                  {ZIP_ENTRY_PAGE_SIZE} file mỗi trang
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1 px-2"
+                    onClick={() => table.previousPage()}
+                    disabled={!table.getCanPreviousPage()}
+                  >
+                    <ChevronLeft className="size-3.5" />
+                    Trang trước
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1 px-2"
+                    onClick={() => table.nextPage()}
+                    disabled={!table.getCanNextPage()}
+                  >
+                    Trang sau
+                    <ChevronRight className="size-3.5" />
+                  </Button>
+                </div>
               </div>
             </div>
           </div>

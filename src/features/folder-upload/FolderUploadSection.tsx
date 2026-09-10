@@ -396,41 +396,43 @@ export function FolderUploadSection({
           </div>
           {currentJob.files.length > 0 ? (
             <div className="mt-3 overflow-hidden rounded-xl border border-[#E2E8F0] bg-white">
-              <Table>
-                <TableHeader className="bg-[#F8FAFC]">
-                  {fileTable.getHeaderGroups().map((headerGroup) => (
-                    <TableRow key={headerGroup.id}>
-                      {headerGroup.headers.map((header) => (
-                        <TableHead
-                          key={header.id}
-                          style={{ width: header.getSize() }}
-                        >
-                          {header.isPlaceholder
-                            ? null
-                            : flexRender(
-                                header.column.columnDef.header,
-                                header.getContext()
-                              )}
-                        </TableHead>
-                      ))}
-                    </TableRow>
-                  ))}
-                </TableHeader>
-                <TableBody>
-                  {fileTable.getRowModel().rows.map((row) => (
-                    <TableRow key={row.original.clientFileId}>
-                      {row.getVisibleCells().map((cell) => (
-                        <TableCell key={cell.id}>
-                          {flexRender(
-                            cell.column.columnDef.cell,
-                            cell.getContext()
-                          )}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <div className="max-h-[34rem] overflow-auto">
+                <Table>
+                  <TableHeader className="sticky top-0 z-10 bg-[#F8FAFC]">
+                    {fileTable.getHeaderGroups().map((headerGroup) => (
+                      <TableRow key={headerGroup.id}>
+                        {headerGroup.headers.map((header) => (
+                          <TableHead
+                            key={header.id}
+                            style={{ width: header.getSize() }}
+                          >
+                            {header.isPlaceholder
+                              ? null
+                              : flexRender(
+                                  header.column.columnDef.header,
+                                  header.getContext()
+                                )}
+                          </TableHead>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableHeader>
+                  <TableBody>
+                    {fileTable.getRowModel().rows.map((row) => (
+                      <TableRow key={row.original.clientFileId}>
+                        {row.getVisibleCells().map((cell) => (
+                          <TableCell key={cell.id}>
+                            {flexRender(
+                              cell.column.columnDef.cell,
+                              cell.getContext()
+                            )}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
               <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2">
                 <span className="text-[11px] text-[#64748B]">
                   Trang {fileTable.getState().pagination.pageIndex + 1} /{" "}

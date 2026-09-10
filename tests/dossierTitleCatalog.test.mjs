@@ -34,20 +34,28 @@ test("new-session workflow waits for the staged title catalog upload", () => {
   assert.match(workflowSource, /uploadDossierTitleCatalog/)
 })
 
-test("upload page renders the optional xlsx title catalog box", () => {
-  assert.match(stepOneSource, /DossierTitleCatalogSection/)
+test("upload page keeps the optional xlsx title catalog behind a visibility flag", () => {
+  assert.match(
+    stepOneSource,
+    /SHOW_DOSSIER_TITLE_CATALOG\s*&&[\s\S]*DossierTitleCatalogSection/
+  )
   assert.match(componentSource, /accept="\.xlsx"/)
   assert.match(componentSource, /mã\s+tạm/)
   assert.match(componentSource, /mapping_count/)
   assert.match(componentSource, /Đã phân tích thành công file tiêu đề hồ sơ/)
 })
 
-test("quick dossier mode lazily previews paginated title mappings", () => {
+test("quick dossier mode keeps its mapping preview behind a visibility flag", () => {
   assert.match(uploadApiSource, /getDossierTitleCatalogMappings/)
   assert.match(uploadApiSource, /dossier-title-catalog\/mappings/)
-  assert.match(strategySource, /dossierBuildStrategy === "predefined"/)
+  assert.match(
+    strategySource,
+    /SHOW_QUICK_DOSSIER_BUILD\s*&&[\s\S]*dossierBuildStrategy === "predefined"/
+  )
   assert.match(strategySource, /DossierTitleMappingPreview/)
   assert.match(previewSource, /Mã tạm/)
   assert.match(previewSource, /Tiêu đề hồ sơ/)
+  assert.match(previewSource, /retention_period/)
+  assert.match(typesSource, /retention_period: string \| null/)
   assert.match(previewSource, /PaginationControls/)
 })
