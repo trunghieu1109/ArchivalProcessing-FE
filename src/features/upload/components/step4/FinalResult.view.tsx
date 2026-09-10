@@ -76,6 +76,7 @@ export function FinalResultView(props: Record<string, any>) {
     handleSelectDossierMetadata,
     handleSelectDossierSuggestions,
     handleSelectDossierSuggestionsFromSelection,
+    handleSelectDossierSuggestionsFromTemporaryFolder,
     handleSelectGroupInformation,
     handleSelectPreviewDocument,
     handleExplainDocumentMembership,
@@ -544,6 +545,9 @@ export function FinalResultView(props: Record<string, any>) {
                   onSelectPreview={handleSelectPreviewDocument}
                   onExplainMembership={handleExplainDocumentMembership}
                   onSelectDossierSuggestions={handleSelectDossierSuggestions}
+                  onSelectDossierSuggestionsFromTemporaryFolder={
+                    handleSelectDossierSuggestionsFromTemporaryFolder
+                  }
                   onSelectDossierMetadata={handleSelectDossierMetadata}
                   onRefreshDossierClassification={
                     handleRefreshDossierClassification

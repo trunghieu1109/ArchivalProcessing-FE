@@ -1,6 +1,6 @@
 // TEMPORARY_HIDE_TAG: DOSSIER_SUGGESTIONS
-// Keep the implementation and API flow in place while the backend is stabilized.
-export const SHOW_DOSSIER_SUGGESTIONS = false
+// The dossier-suggestion API flow is available to users.
+export const SHOW_DOSSIER_SUGGESTIONS = true
 
 // TEMPORARY_HIDE_TAG: QUICK_DOSSIER_BUILD
 export const SHOW_QUICK_DOSSIER_BUILD = false

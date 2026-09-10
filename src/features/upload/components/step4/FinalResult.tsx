@@ -1207,6 +1207,24 @@ export function FinalResult({
     selectedSessionDocumentIds,
   ])
 
+  const handleSelectDossierSuggestionsFromTemporaryFolder = useCallback(
+    (group: ClusterGroup) => {
+      const documents = group.documents.filter(
+        (document) =>
+          document.sessionDocumentId !== null &&
+          selectedSessionDocumentIds.has(document.sessionDocumentId)
+      )
+      if (documents.length === 0) {
+        toast.error(
+          "Hãy chọn ít nhất một tài liệu trong Thư mục tạm để lấy gợi ý hồ sơ."
+        )
+        return
+      }
+      handleSelectDossierSuggestionsForDocuments(documents)
+    },
+    [handleSelectDossierSuggestionsForDocuments, selectedSessionDocumentIds]
+  )
+
   const handleRefreshDossierSuggestions = useCallback(() => {
     if (selectedDossierSuggestionsDocuments.length === 0) return
     toast.info("Đang tải lại gợi ý hồ sơ...")
@@ -1776,6 +1794,9 @@ export function FinalResult({
         handleSelectDossierSuggestions={handleSelectDossierSuggestionsFromTree}
         handleSelectDossierSuggestionsFromSelection={
           handleSelectDossierSuggestionsFromSelection
+        }
+        handleSelectDossierSuggestionsFromTemporaryFolder={
+          handleSelectDossierSuggestionsFromTemporaryFolder
         }
         handleRefreshDossierSuggestions={handleRefreshDossierSuggestions}
         handleMoveDossierSuggestion={handleMoveDossierSuggestion}

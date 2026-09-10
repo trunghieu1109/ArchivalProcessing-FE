@@ -9,6 +9,7 @@ import {
   FolderOpen,
   FolderPlus,
   Loader2,
+  ListChecks,
   ListTree,
   MoveRight,
   RefreshCw,
@@ -24,7 +25,10 @@ import type { DraggedDocument, ResultTreeNode } from "./FinalResult.types"
 import { CountBadge, DocumentRow } from "./FinalResult.documentRow"
 import { SelectionCheckbox } from "./FinalResult.selection"
 import { dossierPageCount, formatDateRange } from "./FinalResult.metadataUtils"
-import { SHOW_DOSSIER_CODE } from "./temporaryFeatureVisibility"
+import {
+  SHOW_DOSSIER_CODE,
+  SHOW_DOSSIER_SUGGESTIONS,
+} from "./temporaryFeatureVisibility"
 
 export function ResultNode({
   node,
@@ -61,6 +65,7 @@ export function ResultNode({
   onSelectPreview,
   onExplainMembership,
   onSelectDossierSuggestions,
+  onSelectDossierSuggestionsFromTemporaryFolder,
   onSelectDossierMetadata,
   onRefreshDossierClassification,
   onOpenManualClassification,
@@ -104,6 +109,7 @@ export function ResultNode({
   onSelectPreview: (document: ClusterDocument) => void
   onExplainMembership: (document: ClusterDocument) => void
   onSelectDossierSuggestions: (document: ClusterDocument) => void
+  onSelectDossierSuggestionsFromTemporaryFolder: (group: ClusterGroup) => void
   onSelectDossierMetadata: (group: ClusterGroup) => void
   onRefreshDossierClassification: (group: ClusterGroup) => void
   onOpenManualClassification: (group: ClusterGroup) => void
@@ -380,6 +386,34 @@ export function ResultNode({
               </span>
             </Button>
           )}
+          {SHOW_DOSSIER_SUGGESTIONS &&
+            isTemporary &&
+            group &&
+            group.documents.length > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                title={
+                  selectedGroupDocumentCount > 0
+                    ? `Gợi ý hồ sơ cho ${selectedGroupDocumentCount} tài liệu đã chọn trong Thư mục tạm`
+                    : "Chọn tài liệu trong Thư mục tạm trước khi lấy gợi ý hồ sơ"
+                }
+                disabled={
+                  temporaryFolderUpdateDisabled ||
+                  selectedGroupDocumentCount === 0
+                }
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onSelectDossierSuggestionsFromTemporaryFolder(group)
+                }}
+              >
+                <ListChecks data-icon="inline-start" />
+                <span className={cn(compact && "hidden 2xl:inline")}>
+                  Gợi ý hồ sơ
+                </span>
+              </Button>
+            )}
           {isTemporary && group && group.documents.length > 0 && (
             <Button
               type="button"
@@ -581,6 +615,9 @@ export function ResultNode({
               onSelectPreview={onSelectPreview}
               onExplainMembership={onExplainMembership}
               onSelectDossierSuggestions={onSelectDossierSuggestions}
+              onSelectDossierSuggestionsFromTemporaryFolder={
+                onSelectDossierSuggestionsFromTemporaryFolder
+              }
               onSelectDossierMetadata={onSelectDossierMetadata}
               onRefreshDossierClassification={onRefreshDossierClassification}
               onOpenManualClassification={onOpenManualClassification}
