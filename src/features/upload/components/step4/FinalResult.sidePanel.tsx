@@ -34,6 +34,7 @@ const LEGACY_RETENTION_VERSION_ID = "__current_retention_candidates__"
 
 export function DossierMetadataSidePanel({
   sessionId,
+  clusterVersionId,
   group,
   saving,
   className,
@@ -42,6 +43,7 @@ export function DossierMetadataSidePanel({
   onClose,
 }: {
   sessionId: string | null
+  clusterVersionId?: string | null
   group: ClusterGroup
   saving: boolean
   className?: string
@@ -107,7 +109,7 @@ export function DossierMetadataSidePanel({
     setSelectedCandidateVersionId("")
     setCandidatesError("")
     setSelectingEntryId("")
-  }, [groupKey])
+  }, [clusterVersionId, groupKey])
 
   useEffect(() => {
     if (!editing) setDraft(createDossierMetadataDraft(group))
@@ -150,9 +152,7 @@ export function DossierMetadataSidePanel({
       setSelectingEntryId("")
       setCandidateVersions(versions)
       setSelectedCandidateVersionId(
-        textValue(
-          group.retentionRecommendation?.active_candidate_version_id
-        ) ||
+        textValue(group.retentionRecommendation?.active_candidate_version_id) ||
           versions[versions.length - 1]?.version_id ||
           ""
       )
@@ -174,7 +174,8 @@ export function DossierMetadataSidePanel({
       const response = await listSessionDossierRetentionCandidates(
         sessionId,
         group.dossierId,
-        10
+        10,
+        clusterVersionId
       )
       const versions = retentionCandidateVersionsFromResponse(response)
       setCandidateVersions(versions)
@@ -211,7 +212,11 @@ export function DossierMetadataSidePanel({
     }
     setSelectingEntryId(candidate.entry_id)
     try {
-      if (!group.isPendingDossier && onSelectRetentionCandidate && group.dossierId) {
+      if (
+        !group.isPendingDossier &&
+        onSelectRetentionCandidate &&
+        group.dossierId
+      ) {
         await onSelectRetentionCandidate(
           group.dossierId,
           candidate.entry_id,
@@ -380,19 +385,17 @@ export function DossierMetadataSidePanel({
                 </span>
                 <textarea
                   value={draft[field.key]}
-                  onChange={(event) =>
-                    {
-                      setDraft((current) => ({
-                        ...current,
-                        [field.key]: event.target.value,
-                      }))
-                      setDirtyFields((current) => {
-                        const next = new Set(current)
-                        next.add(field.key)
-                        return next
-                      })
-                    }
-                  }
+                  onChange={(event) => {
+                    setDraft((current) => ({
+                      ...current,
+                      [field.key]: event.target.value,
+                    }))
+                    setDirtyFields((current) => {
+                      const next = new Set(current)
+                      next.add(field.key)
+                      return next
+                    })
+                  }}
                   rows={field.rows}
                   disabled={saving}
                   className="min-h-9 w-full min-w-0 resize-y rounded-lg border border-[#CBD5E1] bg-transparent px-2.5 py-1.5 text-xs leading-5 [overflow-wrap:anywhere] whitespace-pre-wrap transition-colors outline-none placeholder:text-[#94A3B8] focus-visible:border-[#0052FF] focus-visible:ring-3 focus-visible:ring-[#0052FF]/20 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-[#F8FAFC] disabled:opacity-70"

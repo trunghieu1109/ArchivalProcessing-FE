@@ -252,10 +252,14 @@ export async function patchSessionDossierDraft(
 export async function listSessionDossierRetentionCandidates(
   sessionId: string,
   dossierId: string,
-  limit = 10
+  limit = 10,
+  clusterVersionId?: string | null
 ): Promise<SessionDossierRetentionCandidatesResponse> {
   const searchParams = new URLSearchParams()
   searchParams.set("limit", String(limit))
+  if (clusterVersionId) {
+    searchParams.set("cluster_version_id", clusterVersionId)
+  }
   return requestJson<SessionDossierRetentionCandidatesResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/dossiers/${encodeURIComponent(dossierId)}/retention-candidates?${searchParams.toString()}`
   )

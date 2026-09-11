@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import {
   CheckCircle2,
   Eye,
@@ -64,6 +64,11 @@ export function ClusterGroupInformationPanel({
     selectingEntryId: string
   } | null>(null)
   const countLabel = table?.count_label || "Số tờ/trang"
+  const clusterVersionId = table?.cluster_version_id ?? null
+
+  useEffect(() => {
+    setCandidatePanel(null)
+  }, [clusterVersionId])
 
   const openRetentionCandidates = async (row: ClusterGroupInformationRow) => {
     if (!sessionId) {
@@ -82,7 +87,8 @@ export function ClusterGroupInformationPanel({
       const response = await listSessionDossierRetentionCandidates(
         sessionId,
         row.dossier_id,
-        10
+        10,
+        clusterVersionId
       )
       const versions = retentionCandidateVersionsFromResponse(response)
       setCandidatePanel({
