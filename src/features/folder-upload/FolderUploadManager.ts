@@ -16,6 +16,7 @@ import type {
   PresignedFolderFile,
   RegisteredFolderFilesResponse,
 } from "./types"
+import { createClientId } from "@/shared/lib/clientId"
 import {
   globalUploadSemaphore,
   UploadSemaphore,
@@ -61,7 +62,7 @@ export class FolderUploadManager {
     if (!manifest.files.length) {
       throw new Error("Thư mục không có file PDF hợp lệ để tải lên.")
     }
-    const id = crypto.randomUUID()
+    const id = createClientId()
     const now = Date.now()
     const job: FolderUploadJob = {
       id,
