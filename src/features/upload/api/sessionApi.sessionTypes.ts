@@ -375,3 +375,55 @@ export interface RetentionSourceStatus {
   unit_count?: number | null
   error?: string | null
 }
+
+export interface RemoveRetentionSourceResponse {
+  session_id: string
+  session_file_id: number
+  status: "pending_removal"
+  pending_removal?: {
+    action: "remove"
+    source_session_file_id: number
+    source_file_name?: string | null
+    reason?: string | null
+    requested_by?: string | null
+    requested_at?: string | null
+    base_active_plan_version_id?: string | null
+  }
+  plan: ActivePlanResponse
+}
+
+export interface RetentionIndexStatusResponse {
+  session_id: string
+  plan_version_id: string
+  plan_status?: string
+  source_hash: string
+  source_hash_matches: boolean
+  embedding_model_id: string
+  expected_unit_count: number
+  status: string
+  healthy: boolean
+  rebuild_required: boolean
+  active: boolean
+  queued?: boolean
+  error?: string | null
+  index?: {
+    id: number
+    status: string
+    source_hash: string
+    collection_name?: string | null
+    embedding_dimension?: number | null
+    declared_unit_count?: number
+    actual_unit_count?: number
+    unit_count?: number
+    error?: string | null
+    updated_at?: string | null
+  } | null
+  job?: {
+    id: number
+    status: string
+    retry_count?: number
+    error?: string | null
+    created_at?: string | null
+    updated_at?: string | null
+  } | null
+}

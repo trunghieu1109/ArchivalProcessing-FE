@@ -130,6 +130,7 @@ export function UploadPageView(props: Record<string, any>) {
     handleSaveDraft,
     handleConfirmPlan,
     handleContinueToExtractMetadata,
+    handleRemoveRetentionSource,
     handlePlanStepNavigation,
     handleNavigateToSessions,
     savingPlanDraft,
@@ -522,6 +523,7 @@ export function UploadPageView(props: Record<string, any>) {
                         onConfirm={handleConfirmPlan}
                         onContinueToMetadata={handleContinueToExtractMetadata}
                         confirming={confirmingPlan}
+                        onRemoveRetentionSource={undefined}
                       />
                     ) : (
                       <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-white px-6 py-8 text-center shadow-sm">
@@ -620,6 +622,7 @@ export function UploadPageView(props: Record<string, any>) {
                         confirming={confirmingPlan}
                         planDraftDirty={planDraftDirty}
                         draftDiffersActive={hasPersistedDraft}
+                        onRemoveRetentionSource={handleRemoveRetentionSource}
                       />
                     </>
                   ) : (
@@ -707,7 +710,19 @@ export function UploadPageView(props: Record<string, any>) {
                   <RetentionAppendicesPanel
                     appendices={parsedPlan.retention_appendices}
                     sources={parsedPlan.retention_sources}
+                    sessionId={resolvedSessionId}
+                    planVersionId={
+                      showActivePlanTab
+                        ? activePlanVersionId
+                        : workingPlanVersionId
+                    }
                     hasRetentionSchedule={doc2Has}
+                    readOnly={showActivePlanTab}
+                    onRemoveSource={
+                      showActivePlanTab
+                        ? undefined
+                        : handleRemoveRetentionSource
+                    }
                   />
                 ) : (
                   !retentionProcessing &&

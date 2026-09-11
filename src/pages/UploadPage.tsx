@@ -27,6 +27,7 @@ import {
   getSession,
   getWorkingPlan,
   listSessionEvents,
+  removeRetentionSourceFromDraft,
   uploadDossierTitleCatalog,
   type DossierBuildStrategy,
   type DocumentNumberingMode,
@@ -1586,6 +1587,40 @@ export function UploadPage() {
     }
   }
 
+  const handleRemoveRetentionSource = async (
+    sessionFileId: number,
+    fileName?: string | null
+  ) => {
+    const currentSessionId = sessionId ?? routeSessionId ?? cache.sessionId
+    if (!currentSessionId) {
+      toast.error("Chưa có session để loại nguồn thời hạn bảo quản.")
+      return
+    }
+    try {
+      const response = await removeRetentionSourceFromDraft(
+        currentSessionId,
+        sessionFileId,
+        {
+          created_by: String(user?.id ?? user?.email ?? "ui"),
+          base_plan_version_id: cache.workingPlanVersionId || undefined,
+        }
+      )
+      applyWorkingPlanResponse(response.plan)
+      setPlanViewTab("draft")
+      toast.success(
+        "Đã loại " +
+          (fileName || "nguồn thời hạn bảo quản") +
+          " khỏi bản nháp. File chỉ bị xóa khi bạn duyệt phương án."
+      )
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Không thể loại nguồn thời hạn bảo quản khỏi bản nháp."
+      )
+    }
+  }
+
   const handlePlanStepNavigation = (targetStep: AppStep) => {
     const currentSessionId = sessionId ?? routeSessionId ?? cache.sessionId
     if (targetStep === 3 && currentSessionId) {
@@ -1840,6 +1875,7 @@ export function UploadPage() {
         handleSaveDraft={handleSaveDraft}
         handleConfirmPlan={handleConfirmPlan}
         handleContinueToExtractMetadata={handleContinueToExtractMetadata}
+        handleRemoveRetentionSource={handleRemoveRetentionSource}
         handlePlanStepNavigation={handlePlanStepNavigation}
         handleNavigateToSessions={handleNavigateToSessions}
         savingPlanDraft={savingPlanDraft}

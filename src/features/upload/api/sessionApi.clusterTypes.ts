@@ -391,6 +391,12 @@ export interface RetentionReference {
   source_unit_index?: string | number | null
   retention_period?: string | null
   note?: string | null
+  source_session_file_id?: number | string | null
+  source_deleted?: boolean
+  source_lifecycle_status?: string | null
+  source_deleted_at?: string | null
+  source_deleted_by?: string | null
+  source_delete_reason?: string | null
 }
 
 export interface RetentionCandidateSummary extends RetentionReference {

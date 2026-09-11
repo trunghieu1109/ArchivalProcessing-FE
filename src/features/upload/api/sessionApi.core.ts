@@ -7,6 +7,8 @@ import type {
   DocumentNumberingMode,
   DocumentNumberingStylePreset,
   EnqueuePlanAnalysisResponse,
+  RemoveRetentionSourceResponse,
+  RetentionIndexStatusResponse,
   SessionDetailResponse,
   SessionListResponse,
   SessionProgressEvent,
@@ -178,6 +180,57 @@ export async function patchDraftPlan(
     `/sessions/${encodeURIComponent(sessionId)}/plan`,
     {
       method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
+}
+
+export async function removeRetentionSourceFromDraft(
+  sessionId: string,
+  sessionFileId: number,
+  payload: {
+    reason?: string
+    created_by?: string
+    base_plan_version_id?: string
+  } = {}
+): Promise<RemoveRetentionSourceResponse> {
+  return requestJson<RemoveRetentionSourceResponse>(
+    "/sessions/" +
+      encodeURIComponent(sessionId) +
+      "/plan/retention-sources/" +
+      encodeURIComponent(String(sessionFileId)) +
+      "/remove",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
+}
+
+export async function getRetentionIndexStatus(
+  sessionId: string,
+  planVersionId: string,
+  jobId?: number | null
+): Promise<RetentionIndexStatusResponse> {
+  const query = new URLSearchParams()
+  if (jobId) query.set("job_id", String(jobId))
+  const suffix = query.toString()
+  return requestJson<RetentionIndexStatusResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/plan/versions/${encodeURIComponent(planVersionId)}/retention-index${suffix ? `?${suffix}` : ""}`
+  )
+}
+
+export async function rebuildRetentionIndex(
+  sessionId: string,
+  planVersionId: string,
+  payload: { created_by?: string } = {}
+): Promise<RetentionIndexStatusResponse> {
+  return requestJson<RetentionIndexStatusResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/plan/versions/${encodeURIComponent(planVersionId)}/retention-index/rebuild`,
+    {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }

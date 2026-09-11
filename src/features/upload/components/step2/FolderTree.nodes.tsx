@@ -18,6 +18,11 @@ import { toast } from "sonner"
 import { PaginationControls } from "@/features/upload/components/PaginationControls"
 import { usePagedItems } from "@/features/upload/hooks/usePagedItems"
 import { cn } from "@/shared/lib/utils"
+import {
+  getRetentionIndexStatus,
+  rebuildRetentionIndex,
+  type RetentionIndexStatusResponse,
+} from "@/features/upload/api/sessionApi"
 import type {
   FolderNode,
   ParsedPlan,
@@ -188,14 +193,127 @@ export function PlanSummary({
 interface RetentionAppendicesPanelProps {
   appendices: RetentionAppendixNode[]
   sources?: RetentionSourceStatus[]
+  sessionId?: string | null
+  planVersionId?: string | null
   hasRetentionSchedule?: boolean
+  readOnly?: boolean
+  onRemoveSource?: (
+    sessionFileId: number,
+    fileName?: string | null
+  ) => void | Promise<void>
 }
 
 export function RetentionAppendicesPanel({
   appendices,
   sources = [],
+  sessionId,
+  planVersionId,
   hasRetentionSchedule = true,
+  readOnly = true,
+  onRemoveSource,
 }: RetentionAppendicesPanelProps) {
+  const [indexStatus, setIndexStatus] =
+    useState<RetentionIndexStatusResponse | null>(null)
+  const [checkingIndex, setCheckingIndex] = useState(false)
+  const [indexLoadError, setIndexLoadError] = useState("")
+  const [pollJobId, setPollJobId] = useState<number | null>(null)
+  const canMaintainIndex = Boolean(
+    sessionId && planVersionId && appendices.length > 0
+  )
+
+  useEffect(() => {
+    if (!sessionId || !planVersionId || appendices.length === 0) {
+      return
+    }
+    let cancelled = false
+    let timeoutId: number | undefined
+    const load = async () => {
+      try {
+        const response = await getRetentionIndexStatus(
+          sessionId,
+          planVersionId,
+          pollJobId
+        )
+        if (cancelled) return
+        setIndexStatus(response)
+        setIndexLoadError("")
+        if (!pollJobId && response.active && response.job?.id) {
+          setPollJobId(response.job.id)
+          return
+        }
+        const jobStatus = String(response.job?.status || "").toLowerCase()
+        const stillActive =
+          response.active ||
+          ["scheduled", "queued", "running"].includes(jobStatus)
+        if (pollJobId && stillActive) {
+          timeoutId = window.setTimeout(load, 2_000)
+          return
+        }
+        if (pollJobId) {
+          setPollJobId(null)
+          if (response.healthy) {
+            toast.success(
+              "Chỉ mục thời hạn bảo quản đã sẵn sàng. Gợi ý cho hồ sơ trống đã được tạo lại."
+            )
+          } else {
+            toast.error(
+              response.error ||
+                "Xây dựng lại chỉ mục thời hạn bảo quản không thành công."
+            )
+          }
+        }
+      } catch (error) {
+        if (cancelled) return
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Không kiểm tra được chỉ mục thời hạn bảo quản."
+        setIndexLoadError(message)
+        if (pollJobId) {
+          timeoutId = window.setTimeout(load, 3_000)
+        }
+      }
+    }
+    void load()
+    return () => {
+      cancelled = true
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId)
+    }
+  }, [appendices.length, planVersionId, pollJobId, sessionId])
+
+  const handleCheckAndRebuildIndex = async () => {
+    if (!sessionId || !planVersionId || checkingIndex) return
+    setCheckingIndex(true)
+    setIndexLoadError("")
+    try {
+      const response = await rebuildRetentionIndex(sessionId, planVersionId, {
+        created_by: "ui",
+      })
+      setIndexStatus(response)
+      if (response.healthy && !response.queued) {
+        toast.success(
+          "Source hash và collection thời hạn bảo quản đang khớp, không cần rebuild."
+        )
+      } else if (response.job?.id) {
+        setPollJobId(response.job.id)
+        toast.info(
+          response.status === "already_queued_or_running"
+            ? "Chỉ mục thời hạn bảo quản đang được xử lý."
+            : "Đã gửi task xây dựng lại chỉ mục thời hạn bảo quản."
+        )
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Không gửi được task xây dựng lại chỉ mục thời hạn bảo quản."
+      setIndexLoadError(message)
+      toast.error(message)
+    } finally {
+      setCheckingIndex(false)
+    }
+  }
+
   const hasSources = sources.length > 0
   if (appendices.length === 0 && !hasSources) {
     if (!hasRetentionSchedule) {
@@ -234,7 +352,65 @@ export function RetentionAppendicesPanel({
         <ChevronRight className="size-4 shrink-0 text-[#64748B] transition-transform group-open:rotate-90" />
       </summary>
       <div className="max-h-[420px] overflow-auto border-t border-[#E2E8F0] px-3 py-3">
-        {hasSources && <RetentionSourcesList sources={sources} />}
+        {canMaintainIndex && (
+          <div className="mb-3 rounded-lg border border-[#D7E3F4] bg-[#F8FAFC] px-3 py-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-xs font-semibold text-[#0F172A]">
+                  {indexStatus?.active || checkingIndex ? (
+                    <RotateCcw className="size-3.5 animate-spin text-[#0052FF]" />
+                  ) : indexStatus?.healthy ? (
+                    <Check className="size-3.5 text-emerald-600" />
+                  ) : (
+                    <AlertCircle className="size-3.5 text-amber-600" />
+                  )}
+                  {retentionIndexStatusLabel(
+                    indexStatus,
+                    checkingIndex,
+                    indexLoadError
+                  )}
+                </div>
+                {indexStatus?.source_hash && (
+                  <p
+                    className="mt-1 truncate font-mono text-[10px] text-[#64748B]"
+                    title={indexStatus.source_hash}
+                  >
+                    source hash: {indexStatus.source_hash.slice(0, 16)}… ·{" "}
+                    {indexStatus.expected_unit_count} điều khoản
+                  </p>
+                )}
+                {(indexLoadError || indexStatus?.error) && (
+                  <p className="mt-1 text-xs text-red-600">
+                    {indexLoadError || indexStatus?.error}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 rounded-md border border-[#B8C7DD] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#1E3A5F] transition hover:border-[#0052FF] hover:text-[#0052FF] disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={checkingIndex || indexStatus?.active === true}
+                onClick={() => void handleCheckAndRebuildIndex()}
+              >
+                <RotateCcw
+                  className={cn(
+                    "size-3",
+                    (checkingIndex || indexStatus?.active) && "animate-spin"
+                  )}
+                />
+                {indexStatus?.healthy
+                  ? "Kiểm tra lại chỉ mục"
+                  : "Kiểm tra và rebuild"}
+              </button>
+            </div>
+          </div>
+        )}
+        {hasSources && (
+          <RetentionSourcesList
+            sources={sources}
+            readOnly={readOnly}
+            onRemoveSource={onRemoveSource}
+          />
+        )}
         {appendices.length > 0 ? (
           <div className="flex flex-col gap-2">
             {appendices.map((appendix, index) => (
@@ -255,11 +431,34 @@ export function RetentionAppendicesPanel({
   )
 }
 
-interface RetentionSourcesListProps {
-  sources: RetentionSourceStatus[]
+function retentionIndexStatusLabel(
+  status: RetentionIndexStatusResponse | null,
+  checking: boolean,
+  loadError: string
+): string {
+  if (checking) return "Đang kiểm tra source hash và collection"
+  if (status?.active) return "Đang xây dựng lại chỉ mục"
+  if (status?.healthy) return "Chỉ mục thời hạn bảo quản sẵn sàng"
+  if (loadError) return "Chưa kiểm tra được chỉ mục"
+  if (status?.status === "failed") return "Chỉ mục lỗi, cần xây dựng lại"
+  if (status?.rebuild_required) return "Chỉ mục chưa sẵn sàng"
+  return "Chưa kiểm tra chỉ mục thời hạn bảo quản"
 }
 
-function RetentionSourcesList({ sources }: RetentionSourcesListProps) {
+interface RetentionSourcesListProps {
+  sources: RetentionSourceStatus[]
+  readOnly: boolean
+  onRemoveSource?: (
+    sessionFileId: number,
+    fileName?: string | null
+  ) => void | Promise<void>
+}
+
+function RetentionSourcesList({
+  sources,
+  readOnly,
+  onRemoveSource,
+}: RetentionSourcesListProps) {
   return (
     <div className="mb-3 grid gap-2">
       {sources.map((source, index) => {
@@ -289,6 +488,35 @@ function RetentionSourcesList({ sources }: RetentionSourcesListProps) {
               <span className="min-w-0 text-sm font-semibold text-[#0F172A] [overflow-wrap:anywhere]">
                 {source.file_name || source.source_title || "Thông tư"}
               </span>
+              {!readOnly &&
+                source.session_file_id != null &&
+                source.status === "success" &&
+                onRemoveSource && (
+                  <button
+                    type="button"
+                    className="ml-auto inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-2 py-1 text-[11px] font-semibold text-red-700 transition hover:bg-red-50"
+                    title="Loại nguồn này khỏi bản nháp"
+                    onClick={() => {
+                      const label =
+                        source.file_name || source.source_title || "nguồn này"
+                      if (
+                        window.confirm(
+                          "Loại " +
+                            label +
+                            " khỏi phương án nháp? File chỉ bị xóa khi bạn duyệt phương án."
+                        )
+                      ) {
+                        void onRemoveSource(
+                          Number(source.session_file_id),
+                          source.file_name
+                        )
+                      }
+                    }}
+                  >
+                    <Trash2 className="size-3" />
+                    Loại khỏi nháp
+                  </button>
+                )}
             </div>
             <div className="mt-1 flex flex-wrap gap-2 text-xs text-[#64748B]">
               {!isError && (

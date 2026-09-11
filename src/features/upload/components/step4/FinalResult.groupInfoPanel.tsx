@@ -478,7 +478,9 @@ function RetentionCandidatePanel({
                         key={`${selectedVersion?.version_id ?? ""}-${candidate.entry_id}`}
                         type="button"
                         disabled={
-                          selectionDisabled || Boolean(selectingEntryId)
+                          selectionDisabled ||
+                          Boolean(selectingEntryId) ||
+                          Boolean(candidate.source_deleted)
                         }
                         className={cn(
                           "w-full rounded-lg border bg-white p-2.5 text-left text-[11px] leading-5 shadow-sm transition hover:border-[#0052FF] hover:bg-[#F8FBFF] focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60",
@@ -493,6 +495,11 @@ function RetentionCandidatePanel({
                             #{candidate.rank ?? "?"} ·{" "}
                             {reference.retention_period || "Chưa rõ thời hạn"}
                           </span>
+                          {candidate.source_deleted && (
+                            <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">
+                              Nguồn đã xóa
+                            </span>
+                          )}
                           {saving ? (
                             <Loader2 className="size-4 animate-spin text-[#0052FF]" />
                           ) : selected ? (
