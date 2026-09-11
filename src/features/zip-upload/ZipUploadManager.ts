@@ -12,6 +12,7 @@ import type {
   ZipUploadStartResult,
 } from "./types"
 import { globalUploadSemaphore } from "@/shared/lib/uploadSemaphore"
+import { createClientId } from "@/shared/lib/clientId"
 
 type Listener = () => void
 
@@ -47,7 +48,7 @@ export class ZipUploadManager {
 
     const now = Date.now()
     const job: ZipUploadJob = {
-      id: crypto.randomUUID(),
+      id: createClientId(),
       sessionId: input.sessionId,
       fileName: input.file.name,
       fileSize: input.file.size,

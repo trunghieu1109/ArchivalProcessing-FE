@@ -158,6 +158,12 @@ export function UploadPageView(props: Record<string, any>) {
     activeParsedPlan.groups.length > 0
   const hasDraftPlanData = parsedPlan.groups.length > 0
   const showActivePlanTab = planViewTab === "active"
+  const visibleRetentionPlan = showActivePlanTab
+    ? activeParsedPlan
+    : parsedPlan
+  const visiblePlanVersionId = showActivePlanTab
+    ? activePlanVersionId
+    : workingPlanVersionId
   const draftIsActiveFallback =
     Boolean(activePlanVersionId) &&
     workingPlanVersionId === activePlanVersionId &&
@@ -180,8 +186,8 @@ export function UploadPageView(props: Record<string, any>) {
     activeGroupCount: activeParsedPlan.groups.length,
   })
   const hasAnalyzedRetentionSchedule = hasRetentionAnalysisResult({
-    appendixCount: parsedPlan.retention_appendices.length,
-    sourceCount: parsedPlan.retention_sources.length,
+    appendixCount: visibleRetentionPlan.retention_appendices.length,
+    sourceCount: visibleRetentionPlan.retention_sources.length,
   })
   const failedDomain = planAnalysisFailureDomain(planAnalysisFailure)
   const planFailure = failedDomain === "plan" ? planAnalysisFailure : null
@@ -708,16 +714,14 @@ export function UploadPageView(props: Record<string, any>) {
 
                 {hasAnalyzedRetentionSchedule ? (
                   <RetentionAppendicesPanel
-                    appendices={parsedPlan.retention_appendices}
-                    sources={parsedPlan.retention_sources}
+                    key={visiblePlanVersionId || planViewTab}
+                    appendices={visibleRetentionPlan.retention_appendices}
+                    sources={visibleRetentionPlan.retention_sources}
                     sessionId={resolvedSessionId}
-                    planVersionId={
-                      showActivePlanTab
-                        ? activePlanVersionId
-                        : workingPlanVersionId
-                    }
+                    planVersionId={visiblePlanVersionId}
                     hasRetentionSchedule={doc2Has}
                     readOnly={showActivePlanTab}
+                    isActivePlan={showActivePlanTab}
                     onRemoveSource={
                       showActivePlanTab
                         ? undefined

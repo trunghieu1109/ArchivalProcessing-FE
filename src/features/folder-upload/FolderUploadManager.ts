@@ -20,6 +20,7 @@ import {
   globalUploadSemaphore,
   UploadSemaphore,
 } from "@/shared/lib/uploadSemaphore"
+import { createClientId } from "@/shared/lib/clientId"
 
 const REGISTER_WINDOW_SIZE = 200
 const MAX_UPLOAD_ATTEMPTS = 3
@@ -61,7 +62,7 @@ export class FolderUploadManager {
     if (!manifest.files.length) {
       throw new Error("Thư mục không có file PDF hợp lệ để tải lên.")
     }
-    const id = crypto.randomUUID()
+    const id = createClientId()
     const now = Date.now()
     const job: FolderUploadJob = {
       id,

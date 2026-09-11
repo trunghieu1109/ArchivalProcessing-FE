@@ -197,6 +197,7 @@ interface RetentionAppendicesPanelProps {
   planVersionId?: string | null
   hasRetentionSchedule?: boolean
   readOnly?: boolean
+  isActivePlan?: boolean
   onRemoveSource?: (
     sessionFileId: number,
     fileName?: string | null
@@ -210,6 +211,7 @@ export function RetentionAppendicesPanel({
   planVersionId,
   hasRetentionSchedule = true,
   readOnly = true,
+  isActivePlan = false,
   onRemoveSource,
 }: RetentionAppendicesPanelProps) {
   const [indexStatus, setIndexStatus] =
@@ -253,7 +255,9 @@ export function RetentionAppendicesPanel({
           setPollJobId(null)
           if (response.healthy) {
             toast.success(
-              "Chỉ mục thời hạn bảo quản đã sẵn sàng. Gợi ý cho hồ sơ trống đã được tạo lại."
+              isActivePlan
+                ? "Chỉ mục đã sẵn sàng và gợi ý thời hạn bảo quản đã được cập nhật."
+                : "Chỉ mục thời hạn bảo quản của bản nháp đã sẵn sàng."
             )
           } else {
             toast.error(
@@ -279,7 +283,13 @@ export function RetentionAppendicesPanel({
       cancelled = true
       if (timeoutId !== undefined) window.clearTimeout(timeoutId)
     }
-  }, [appendices.length, planVersionId, pollJobId, sessionId])
+  }, [
+    appendices.length,
+    isActivePlan,
+    planVersionId,
+    pollJobId,
+    sessionId,
+  ])
 
   const handleCheckAndRebuildIndex = async () => {
     if (!sessionId || !planVersionId || checkingIndex) return
@@ -292,7 +302,9 @@ export function RetentionAppendicesPanel({
       setIndexStatus(response)
       if (response.healthy && !response.queued) {
         toast.success(
-          "Source hash và collection thời hạn bảo quản đang khớp, không cần rebuild."
+          isActivePlan
+            ? "Source hash và collection đang khớp; gợi ý hồ sơ đã được kiểm tra."
+            : "Source hash và collection của bản nháp đang khớp."
         )
       } else if (response.job?.id) {
         setPollJobId(response.job.id)
@@ -379,6 +391,11 @@ export function RetentionAppendicesPanel({
                     {indexStatus.expected_unit_count} điều khoản
                   </p>
                 )}
+                <p className="mt-1 text-[11px] text-[#64748B]">
+                  {isActivePlan
+                    ? "Bản đã duyệt · rebuild xong sẽ cập nhật gợi ý hồ sơ"
+                    : "Bản nháp · chỉ chuẩn bị chỉ mục, chưa cập nhật hồ sơ"}
+                </p>
                 {(indexLoadError || indexStatus?.error) && (
                   <p className="mt-1 text-xs text-red-600">
                     {indexLoadError || indexStatus?.error}
@@ -397,9 +414,13 @@ export function RetentionAppendicesPanel({
                     (checkingIndex || indexStatus?.active) && "animate-spin"
                   )}
                 />
-                {indexStatus?.healthy
-                  ? "Kiểm tra lại chỉ mục"
-                  : "Kiểm tra và rebuild"}
+                {isActivePlan
+                  ? indexStatus?.healthy
+                    ? "Kiểm tra và cập nhật gợi ý"
+                    : "Kiểm tra và rebuild"
+                  : indexStatus?.healthy
+                    ? "Kiểm tra chỉ mục bản nháp"
+                    : "Chuẩn bị chỉ mục bản nháp"}
               </button>
             </div>
           </div>

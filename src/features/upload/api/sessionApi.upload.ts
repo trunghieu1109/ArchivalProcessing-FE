@@ -27,6 +27,7 @@ import type {
   DossierTitleCatalogMappingsResponse,
   UploadSessionInputOptions,
 } from "./sessionApi.types"
+import { createClientId } from "@/shared/lib/clientId"
 import { globalUploadSemaphore } from "@/shared/lib/uploadSemaphore"
 
 export const DIRECT_PRESIGNED_UPLOAD_ENABLED = [
@@ -130,7 +131,7 @@ async function uploadRawZipSessionInputDirect(
   if (file.size > RAW_ZIP_CHUNKED_UPLOAD_THRESHOLD_BYTES) {
     return uploadRawZipSessionInputChunked(sessionId, file, options)
   }
-  const clientUploadId = options.uploadJobId ?? crypto.randomUUID()
+  const clientUploadId = options.uploadJobId ?? createClientId()
   const contentType = file.type || defaultContentType(file.name)
   const presign = await postJson<SessionInputRemoteUploadPresignResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/inputs/remote-upload/presign`,
@@ -208,7 +209,7 @@ async function uploadRawZipSessionInputChunked(
   file: File,
   options: UploadSessionInputOptions
 ): Promise<SessionInputUploadResponse> {
-  const clientUploadId = options.uploadJobId ?? crypto.randomUUID()
+  const clientUploadId = options.uploadJobId ?? createClientId()
   const contentType = file.type || defaultContentType(file.name)
   const chunked = await requestJson<SessionInputRemoteChunkedCreateResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/inputs/remote-upload/chunked/create`,
