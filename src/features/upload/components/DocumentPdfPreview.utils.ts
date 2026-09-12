@@ -2,6 +2,7 @@ import type {
   DocumentPreviewUrlResponse,
   DocumentPreviewVariantResponse,
 } from "@/features/upload/api/sessionApi"
+import { rewritePreviewUrl } from "@/shared/lib/previewUrl"
 import type { PreviewVariantState } from "./DocumentPdfPreview.types"
 
 export function normalizePreviewVariants(
@@ -27,7 +28,7 @@ export function normalizePreviewVariants(
     key: String(variant.key || "preview"),
     label: String(variant.label || "Ban xem truoc"),
     dataPath: String(variant.data_path || "").trim(),
-    url: String(variant.download_url || "").trim(),
+    url: rewritePreviewUrl(String(variant.download_url || "").trim()),
     status:
       String(variant.status || "")
         .trim()

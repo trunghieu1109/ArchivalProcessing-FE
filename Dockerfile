@@ -19,7 +19,7 @@ RUN npm run build
 
 FROM nginxinc/nginx-unprivileged:1.27-alpine
 
-ENV ARCHIVAL_API_PROXY_PASS=http://api:8000
+ENV ARCHIVAL_API_PROXY_PASS=http://nginx:80
 
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html

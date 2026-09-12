@@ -51,6 +51,7 @@ npm run preview
 | --- | --- |
 | `VITE_ARCHIVAL_API_BASE_URL` | Browser API base; use `/api` behind Vite/Nginx |
 | `VITE_ARCHIVAL_DEV_API_PROXY_TARGET` | Backend target for the Vite proxy |
+| `ARCHIVAL_API_PROXY_PASS` | Backend Nginx upstream; use `http://nginx:80` on the shared Compose network |
 | `VITE_ARCHIVAL_DIRECT_PRESIGNED_UPLOAD` | Allow direct browser PUT to signed storage URLs |
 | `VITE_ARCHIVAL_CHUNKED_UPLOAD_CHUNK_SIZE_MB` | ZIP multipart chunk size |
 | `VITE_FOLDER_UPLOAD_ENABLED` | Enable folder manifest upload and the global dock |

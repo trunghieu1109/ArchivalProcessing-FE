@@ -12,6 +12,7 @@ import {
 import { toast } from "sonner"
 import { useAuth } from "@/features/auth/lib/AuthContext"
 import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
+import { rewritePreviewUrl } from "@/shared/lib/previewUrl"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import { PaginationControls } from "@/features/upload/components/PaginationControls"
 import {
@@ -1663,7 +1664,7 @@ export function NumberingStep({
         }
         if (cancelled) return
         if (nextPreviewUrl) {
-          const resolvedPreviewUrl = nextPreviewUrl
+          const resolvedPreviewUrl = rewritePreviewUrl(nextPreviewUrl)
           if (previewUrlRef.current !== resolvedPreviewUrl) {
             setPreviewUrl((current) => {
               previewUrlRef.current = resolvedPreviewUrl
