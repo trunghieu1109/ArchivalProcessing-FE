@@ -21,6 +21,7 @@ import { documentEditLockErrorMessage } from "@/features/upload/lib/documentEdit
 import {
   getWarningEntries,
   getWarningFields,
+  hasDossierEmbeddingMetadata,
   hasMetadataWarning,
 } from "@/features/upload/lib/metadata"
 import {
@@ -103,8 +104,26 @@ export function MetadataCard({
     },
   })
   const warningFields = getWarningFields(item.light_metadata)
-  const warningEntries = getWarningEntries(item.light_metadata)
-  const hasWarnings = hasMetadataWarning(item)
+  const missingDossierMetadata =
+    item.metadata_ready &&
+    !hasDossierEmbeddingMetadata(
+      item.light_metadata,
+      item.normalized_metadata,
+      item.raw_metadata
+    )
+  const warningEntries = [
+    ...getWarningEntries(item.light_metadata),
+    ...(missingDossierMetadata
+      ? [
+          {
+            field: "",
+            message:
+              "Cần có trích yếu, cơ quan ban hành, ngày ban hành hoặc loại tài liệu để lập hồ sơ.",
+          },
+        ]
+      : []),
+  ]
+  const hasWarnings = hasMetadataWarning(item) || missingDossierMetadata
   const expertReviewed = item.is_reviewed === true
   const expertReviewerName = reviewerDisplayName(item)
   const metadataPending = isMetadataExtractionPending(item)
@@ -174,6 +193,19 @@ export function MetadataCard({
     metadata?: Record<string, unknown>
   ): Promise<boolean> => {
     if (readOnly) return false
+    if (
+      !hasDossierEmbeddingMetadata(
+        metadata ?? item.light_metadata,
+        item.normalized_metadata,
+        item.raw_metadata
+      )
+    ) {
+      setExpanded(true)
+      toast.warning(
+        "Không thể xác nhận: tài liệu cần có trích yếu, cơ quan ban hành, ngày ban hành hoặc loại tài liệu."
+      )
+      return false
+    }
     try {
       const lockToken = await acquireEditLock()
       await onApply(item.data_path, metadata, lockToken)
@@ -559,7 +591,8 @@ export function MetadataCard({
                             submitting ||
                             retrying ||
                             !item.metadata_ready ||
-                            metadataUnavailable
+                            metadataUnavailable ||
+                            missingDossierMetadata
                           }
                           onClick={() => void applyMetadata()}
                         >

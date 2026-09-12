@@ -4,6 +4,7 @@ import type {
 } from "@/features/upload/api/ocrApi"
 import {
   buildDisplayMetadata,
+  hasDossierEmbeddingMetadata,
   hasMetadataWarning,
 } from "@/features/upload/lib/metadata"
 import {
@@ -246,6 +247,16 @@ export async function getDigitizationStatus(
   const query = searchParams.toString()
   return requestJsonOrNull<DigitizationStatusResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/digitization${query ? `?${query}` : ""}`
+  )
+}
+
+export async function getDocumentMetadataStatus(
+  sessionId: string,
+  documentId: number
+): Promise<SessionDocumentResponse> {
+  return requestJson<SessionDocumentResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/documents/${encodeURIComponent(String(documentId))}/metadata-status`,
+    { cache: "no-store" }
   )
 }
 
@@ -731,6 +742,8 @@ export function normalizeDocumentReviewStatus(
     remote_metadata_status?: string | null
     signature_status?: string | null
     ocr_status?: string | null
+    normalized_metadata?: Record<string, unknown>
+    raw_metadata?: Record<string, unknown>
   },
   lightMetadata: Record<string, unknown>
 ): string {
@@ -743,13 +756,22 @@ export function normalizeDocumentReviewStatus(
   const status = String(document.review_status || "")
     .trim()
     .toLowerCase()
-  if (status === "verified" || status === "rejected") return status
+  const missingDossierMetadata =
+    document.metadata_ready &&
+    !hasDossierEmbeddingMetadata(
+      lightMetadata,
+      document.normalized_metadata,
+      document.raw_metadata
+  )
+  if (status === "rejected") return status
+  if (status === "verified" && !missingDossierMetadata) return status
+  if (status === "verified" && missingDossierMetadata) return "warning"
   const hasWarning = hasMetadataWarning({
     review_status: status,
     light_metadata: lightMetadata,
   })
-  if (status === "warning" && hasWarning) return status
-  if (document.metadata_ready && !hasWarning) {
+  if (status === "warning" && (hasWarning || missingDossierMetadata)) return status
+  if (document.metadata_ready && !hasWarning && !missingDossierMetadata) {
     return "verified"
   }
   return status || "pending"

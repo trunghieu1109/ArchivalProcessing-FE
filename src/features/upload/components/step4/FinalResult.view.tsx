@@ -7,6 +7,7 @@ import {
   ChevronUp,
   Loader2,
   RefreshCw,
+  Sparkles,
   Search,
   TriangleAlert,
   X,
@@ -25,6 +26,7 @@ import { DossierMetadataSidePanel } from "./FinalResult.sidePanel"
 import { DossierMembershipExplanationPanel } from "./DossierMembershipExplanationPanel"
 import { DossierSuggestionsModal } from "./DossierSuggestionsModal"
 import { ResultNode } from "./FinalResult.resultNode"
+import { clusterVersionChangeSummaryText } from "./FinalResult.changes"
 import { SHOW_DOSSIER_SUGGESTIONS } from "./temporaryFeatureVisibility"
 import {
   CLUSTER_PROGRESS_PHASES,
@@ -46,11 +48,15 @@ export function FinalResultView(props: Record<string, any>) {
     clusterProgressMessage,
     clusterProgressPhase,
     clusterVersionNavigationBusy,
+    clusterVersionChanges,
+    clusterVersionChangesError,
+    clusterVersionChangesLoading,
     clusterVersionStale,
     deleteSelectedDocumentsDisabled,
     transferSelectedDocumentsDisabled,
     displayedClusterVersion,
     displayedClusterVersionId,
+    documentChangeTypesById,
     draggedDocument,
     dropTargetId,
     handleActivateDisplayedClusterVersion,
@@ -311,6 +317,51 @@ export function FinalResultView(props: Record<string, any>) {
         </div>
       )}
 
+      {displayedClusterVersionId === activeClusterVersionId &&
+      displayedClusterVersion?.previous_version_id &&
+      (clusterVersionChangesLoading ||
+        clusterVersionChangesError ||
+        clusterVersionChanges) ? (
+        <div
+          className={cn(
+            "rounded-xl border px-4 py-3 text-sm",
+            clusterVersionChangesError
+              ? "border-amber-300 bg-amber-50 text-amber-900"
+              : "border-sky-200 bg-sky-50/80 text-sky-950"
+          )}
+        >
+          {clusterVersionChangesLoading ? (
+            <p className="flex items-center gap-2 font-semibold">
+              <Loader2 className="size-4 animate-spin" />
+              {
+                "\u0110ang \u0111\u1ed1i chi\u1ebfu v\u1edbi phi\u00ean b\u1ea3n tr\u01b0\u1edbc..."
+              }
+            </p>
+          ) : clusterVersionChangesError ? (
+            <p>
+              {"Kh\u00f4ng th\u1ec3 hi\u1ec3n th\u1ecb thay \u0111\u1ed5i:"}{" "}
+              {clusterVersionChangesError}
+            </p>
+          ) : clusterVersionChanges ? (
+            <>
+              <p className="flex items-center gap-2 font-semibold">
+                <Sparkles className="size-4 text-sky-600" />
+                {
+                  "V\u1eeba c\u1eadp nh\u1eadt so v\u1edbi phi\u00ean b\u1ea3n"
+                }{" "}
+                {clusterVersionChanges.from.version_number}
+              </p>
+              <p className="mt-1 text-xs text-sky-800">
+                {clusterVersionChangeSummaryText(clusterVersionChanges)}
+                {clusterVersionChanges.summary.removed_group_count > 0
+                  ? ` \u00b7 ${clusterVersionChanges.summary.removed_group_count} nh\u00f3m \u0111\u00e3 x\u00f3a (kh\u00f4ng c\u00f2n trong c\u00e2y hi\u1ec7n t\u1ea1i)`
+                  : ""}
+              </p>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
       {clusterVersionStale ? (
         <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <p className="font-semibold">
@@ -491,6 +542,7 @@ export function FinalResultView(props: Record<string, any>) {
                   openNodeIds={openNodeIds}
                   draggedDocument={draggedDocument}
                   dropTargetId={dropTargetId}
+                  documentChangeTypesById={documentChangeTypesById}
                   compact={sidePreviewOpen}
                   selectedPreviewDocumentId={selectedPreviewDocumentId}
                   selectedMembershipExplanationDocumentId={

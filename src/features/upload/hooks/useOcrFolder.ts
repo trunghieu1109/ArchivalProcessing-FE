@@ -8,6 +8,7 @@ import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import {
   digitizationToFolderStatus,
   getDigitizationStatus,
+  getDocumentMetadataStatus,
   isDigitizationComplete,
   isMetadataExtractionComplete,
   restartDocumentMetadata,
@@ -603,6 +604,72 @@ export function useOcrFolder(
     ]
   )
 
+  const pollDocumentMetadataUntilReady = useCallback(
+    (token: number, documentId: number) => {
+      const terminalErrorStatuses = new Set([
+        "failed",
+        "final_failed",
+        "signature_failed",
+        "cancelled",
+        "skipped",
+        "missing_task",
+      ])
+      const poll = async () => {
+        if (tokenRef.current !== token) return
+        try {
+          if (!sessionId) return
+          if (document.visibilityState === "hidden") {
+            timeoutRef.current = setTimeout(
+              poll,
+              visibleAwareDelay(OCR_POLL_INTERVAL_MS)
+            )
+            return
+          }
+          const result = await getDocumentMetadataStatus(sessionId, documentId)
+          if (tokenRef.current !== token) return
+          const status = String(
+            result.remote_metadata_status || result.ocr_status || ""
+          )
+            .trim()
+            .toLowerCase()
+          const complete =
+            result.metadata_ready || terminalErrorStatuses.has(status)
+          if (complete) {
+            await refreshDocumentsPageRef.current({ force: true })
+            stop()
+            if (terminalErrorStatuses.has(status)) {
+              setState("error")
+              setError(
+                result.error ||
+                  `Metadata extraction ended with status: ${status}`
+              )
+            } else {
+              setState("done")
+              setError("")
+            }
+            return
+          }
+          setState("polling")
+          timeoutRef.current = setTimeout(
+            poll,
+            visibleAwareDelay(OCR_POLL_INTERVAL_MS)
+          )
+        } catch (err) {
+          if (tokenRef.current !== token) return
+          schedulePollRetry(
+            poll,
+            err instanceof Error
+              ? err.message
+              : "KhÃ´ng thá»ƒ kiá»ƒm tra tráº¡ng thÃ¡i metadata.",
+          )
+        }
+      }
+
+      void poll()
+    },
+    [schedulePollRetry, sessionId, stop]
+  )
+
   const reset = useCallback(() => {
     stop()
     tokenRef.current += 1
@@ -832,7 +899,6 @@ export function useOcrFolder(
       const token = tokenRef.current + 1
       tokenRef.current = token
       manualOperationTokenRef.current = null
-      const fallbackFolderPath = status?.folder_path ?? ""
       setState("polling")
       setError("")
       const restarted = await restartDocumentMetadata(sessionId, documentId, {
@@ -841,14 +907,13 @@ export function useOcrFolder(
       const reextractingDocument =
         sessionDocumentToReextractingDocument(restarted)
       mergeVerifiedDocuments([reextractingDocument])
-      pollUntilComplete(token, fallbackFolderPath || restarted.data_path)
+      pollDocumentMetadataUntilReady(token, documentId)
       return reextractingDocument
     },
     [
       mergeVerifiedDocuments,
-      pollUntilComplete,
+      pollDocumentMetadataUntilReady,
       sessionId,
-      status?.folder_path,
       stop,
     ]
   )

@@ -12,11 +12,13 @@ import {
   explainDocumentDossierMembership,
   getClusterGroupInformationTable,
   getClusterVersion,
+  getClusterVersionChanges,
   listClusterFeedback,
   listClusterVersions,
   patchSessionDossier,
   suggestSelectedDocumentDossiers,
   type ClusterGroupInformationTableResponse,
+  type ClusterVersionChangesResponse,
   type ClusterVersionResponse,
   type DossierMembershipExplanationResponse,
   type DocumentDeletionOperationResponse,
@@ -80,6 +82,7 @@ import {
   applyPendingFeedbackOverlay,
   clearPendingFeedbackMarkers,
 } from "./FinalResult.pendingFeedback"
+import { buildClusterChangeHighlights } from "./FinalResult.changes"
 
 const DOSSIER_SUGGESTION_TOP_K = 5
 export function FinalResult({
@@ -125,6 +128,12 @@ export function FinalResult({
   const [loadingClusterVersionId, setLoadingClusterVersionId] = useState<
     string | null
   >(null)
+  const [clusterVersionChanges, setClusterVersionChanges] =
+    useState<ClusterVersionChangesResponse | null>(null)
+  const [clusterVersionChangesLoading, setClusterVersionChangesLoading] =
+    useState(false)
+  const [clusterVersionChangesError, setClusterVersionChangesError] =
+    useState("")
   const [pendingClusterVersion, setPendingClusterVersion] =
     useState<ClusterVersionResponse | null>(null)
   const [rebuildBaselineVersionId, setRebuildBaselineVersionId] = useState<
@@ -224,9 +233,19 @@ export function FinalResult({
       ),
     [metadataItems]
   )
+  const visibleClusterVersionChanges =
+    displayedClusterVersionId &&
+    displayedClusterVersionId === activeClusterVersionId &&
+    clusterVersionChanges?.to.cluster_version_id === displayedClusterVersionId
+      ? clusterVersionChanges
+      : null
+  const changeHighlights = useMemo(
+    () => buildClusterChangeHighlights(visibleClusterVersionChanges),
+    [visibleClusterVersionChanges]
+  )
   const tree = useMemo(
-    () => buildResultTree(groups, fondsName),
-    [groups, fondsName]
+    () => buildResultTree(groups, fondsName, changeHighlights),
+    [changeHighlights, fondsName, groups]
   )
   const [resultTreeSearch, setResultTreeSearch] = useState("")
   const [resultTreeSearchIndex, setResultTreeSearchIndex] = useState(0)
@@ -411,6 +430,68 @@ export function FinalResult({
     displayedClusterVersionRef.current = displayedClusterVersion
     metadataItemsRef.current = metadataItems
   }, [displayedClusterVersion, metadataItems])
+
+  useEffect(() => {
+    let cancelled = false
+    let requestTimeoutId: number | null = null
+    const previousVersionId =
+      displayedClusterVersion?.previous_version_id ?? null
+    const showingActiveVersion = Boolean(
+      sessionId &&
+      displayedClusterVersionId &&
+      displayedClusterVersionId === activeClusterVersionId
+    )
+
+    requestTimeoutId = window.setTimeout(() => {
+      if (cancelled) return
+      if (!showingActiveVersion || !previousVersionId) {
+        setClusterVersionChanges(null)
+        setClusterVersionChangesLoading(false)
+        setClusterVersionChangesError("")
+        return
+      }
+
+      setClusterVersionChanges(null)
+      setClusterVersionChangesLoading(true)
+      setClusterVersionChangesError("")
+      getClusterVersionChanges(
+        sessionId!,
+        displayedClusterVersionId!,
+        previousVersionId
+      )
+        .then((response) => {
+          if (!cancelled) {
+            setClusterVersionChanges(response)
+          }
+        })
+        .catch((error: unknown) => {
+          if (!cancelled) {
+            setClusterVersionChangesError(
+              error instanceof Error
+                ? error.message
+                : "Kh\u00f4ng th\u1ec3 t\u1ea3i thay \u0111\u1ed5i c\u1ee7a phi\u00ean b\u1ea3n."
+            )
+          }
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setClusterVersionChangesLoading(false)
+          }
+        })
+    }, 0)
+
+    return () => {
+      cancelled = true
+      if (requestTimeoutId !== null) {
+        window.clearTimeout(requestTimeoutId)
+      }
+    }
+  }, [
+    activeClusterVersionId,
+    displayedClusterVersion?.previous_version_id,
+    displayedClusterVersionId,
+    sessionId,
+  ])
 
   useEffect(() => {
     if (metadataItems.length === 0) return
@@ -1757,6 +1838,9 @@ export function FinalResult({
         clusterProgressMessage={clusterProgressMessage}
         clusterProgressPhase={clusterProgressPhase}
         clusterVersionNavigationBusy={clusterVersionNavigationBusy}
+        clusterVersionChanges={visibleClusterVersionChanges}
+        clusterVersionChangesError={clusterVersionChangesError}
+        clusterVersionChangesLoading={clusterVersionChangesLoading}
         clusterVersionStale={clusterVersionStale}
         deleteSelectedDocumentsDisabled={deleteSelectedDocumentsDisabled}
         transferSelectedDocumentsDisabled={transferSelectedDocumentsDisabled}
@@ -1764,6 +1848,7 @@ export function FinalResult({
         displayedClusterVersionId={displayedClusterVersionId}
         draggedDocument={draggedDocument}
         dropTargetId={dropTargetId}
+        documentChangeTypesById={changeHighlights.documents}
         handleActivateDisplayedClusterVersion={
           handleActivateDisplayedClusterVersion
         }

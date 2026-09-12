@@ -7,6 +7,7 @@ import type {
   ClusterGroupInformationTableResponse,
   ClusterVersionListResponse,
   ClusterVersionResponse,
+  ClusterVersionChangesResponse,
   DossierMembershipExplanationResponse,
   DossierBuildStrategy,
   EnsureClusterBuildResponse,
@@ -65,6 +66,22 @@ export async function getClusterVersion(
   const query = searchParams.toString()
   return requestJson<ClusterVersionResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/clusters/versions/${encodeURIComponent(clusterVersionId)}${query ? `?${query}` : ""}`
+  )
+}
+
+export async function getClusterVersionChanges(
+  sessionId: string,
+  clusterVersionId: string,
+  against?: string | null
+): Promise<ClusterVersionChangesResponse> {
+  const searchParams = new URLSearchParams()
+  if (against) {
+    searchParams.set("against", against)
+  }
+  const query = searchParams.toString()
+  return requestJson<ClusterVersionChangesResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/clusters/versions/${encodeURIComponent(clusterVersionId)}/changes${query ? `?${query}` : ""}`,
+    { cache: "no-store" }
   )
 }
 

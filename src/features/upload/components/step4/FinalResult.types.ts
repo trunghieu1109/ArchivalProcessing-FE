@@ -1,4 +1,8 @@
 import type {
+  ClusterDossierChangeType,
+  ClusterGroupChangeType,
+} from "@/features/upload/api/sessionApi"
+import type {
   ClusterDocument,
   ClusterGroup,
 } from "@/features/upload/lib/clusterGroups"
@@ -38,6 +42,7 @@ export interface ResultTreeNode {
     | "temporary"
   children: ResultTreeNode[]
   group?: ClusterGroup
+  changeTypes?: Array<ClusterGroupChangeType | ClusterDossierChangeType>
   documentCount: number
   pageCount: number
 }

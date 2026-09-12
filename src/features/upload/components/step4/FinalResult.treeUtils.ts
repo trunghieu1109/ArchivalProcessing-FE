@@ -10,6 +10,7 @@ import {
   dossierYearLabel,
 } from "./FinalResult.metadataUtils"
 import type { DraggedDocument, ResultTreeNode } from "./FinalResult.types"
+import type { ClusterChangeHighlights } from "./FinalResult.changes"
 import { SHOW_DOSSIER_CODE } from "./temporaryFeatureVisibility"
 
 const UNKNOWN_FONDS_LABEL = "Ch\u01b0a \u0111\u1eb7t t\u00ean ph\u00f4ng"
@@ -26,7 +27,8 @@ const UNCLASSIFIED_LABEL = "Chưa phân loại"
 
 export function buildResultTree(
   groups: ClusterGroup[],
-  fondsName?: string | null
+  fondsName?: string | null,
+  changeHighlights?: ClusterChangeHighlights
 ): ResultTreeNode[] {
   const roots: ResultTreeNode[] = []
   const fondsByLabel = new Map<string, ResultTreeNode>()
@@ -88,12 +90,25 @@ export function buildResultTree(
       const fondsNode = getOrCreateFondsNode(fondsLabel)
 
       const path = resultTreePath(group)
+      const changedGroupIdsByLabel = new Map<string, string[]>()
+      ;(group.classificationPath ?? []).forEach((segment, index) => {
+        const groupId = group.classificationGroupIds?.[index]
+        if (!groupId) return
+        const key = normalizePathSegment(segment)
+        changedGroupIdsByLabel.set(key, [
+          ...(changedGroupIdsByLabel.get(key) ?? []),
+          groupId,
+        ])
+      })
       let current =
         fondsNode.children.find(
           (node) => node.label === resultTreeRetentionLabel(group)
         ) ?? fondsNode.children[1]
       path.forEach((segment) => {
         const label = segment.trim() || UNCLASSIFIED_LABEL
+        const groupId = changedGroupIdsByLabel
+          .get(normalizePathSegment(label))
+          ?.shift()
         const id = `${current.id}/class:${label}`
         let child = current.children.find((candidate) => candidate.id === id)
         if (!child) {
@@ -104,6 +119,12 @@ export function buildResultTree(
           )
           current.children.push(child)
         }
+        if (groupId) {
+          child.changeTypes = mergeChangeTypes(
+            child.changeTypes,
+            changeHighlights?.classificationGroups.get(groupId)
+          )
+        }
         current = child
       })
 
@@ -113,6 +134,9 @@ export function buildResultTree(
         type: "dossier",
         children: [],
         group,
+        changeTypes: changeHighlights?.dossiers.get(
+          group.dossierId ?? group.id
+        ),
         documentCount: group.documents.length,
         pageCount: dossierPageCount(group),
       })
@@ -120,6 +144,14 @@ export function buildResultTree(
 
   roots.forEach(updateTreeCounts)
   return sortResultTreeNodes(roots)
+}
+
+function mergeChangeTypes<T extends string>(
+  current: T[] | undefined,
+  incoming: T[] | undefined
+): T[] | undefined {
+  if (!incoming || incoming.length === 0) return current
+  return [...new Set([...(current ?? []), ...incoming])]
 }
 
 export function resultTreeFondsLabel(

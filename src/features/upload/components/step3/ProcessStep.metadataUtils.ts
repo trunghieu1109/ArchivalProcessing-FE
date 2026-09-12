@@ -5,6 +5,7 @@ import {
 } from "@/features/upload/api/sessionApi"
 import {
   buildDisplayMetadata,
+  hasDossierEmbeddingMetadata,
   hasMetadataWarning,
 } from "@/features/upload/lib/metadata"
 import type { PdfMetadata } from "@/features/upload/types"
@@ -309,7 +310,12 @@ export function isMetadataConfirmable(item: PdfMetadata): boolean {
   return (
     !isMetadataExtractionPending(item) &&
     item.metadata_ready &&
-    item.is_reviewed !== true
+    item.is_reviewed !== true &&
+    hasDossierEmbeddingMetadata(
+      item.light_metadata,
+      item.normalized_metadata,
+      item.raw_metadata
+    )
   )
 }
 

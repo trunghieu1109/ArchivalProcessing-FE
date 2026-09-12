@@ -512,6 +512,107 @@ export interface ClusterVersionResponse extends ApiRevisionMetadata {
   clusters?: SessionClusterSummary[]
 }
 
+export type ClusterGroupChangeType = "created" | "removed" | "updated" | "moved"
+
+export type ClusterDossierChangeType =
+  | "created"
+  | "removed"
+  | "moved"
+  | "updated"
+  | "reordered"
+
+export type ClusterDocumentChangeType =
+  | "added"
+  | "removed"
+  | "moved"
+  | "updated"
+  | "reordered"
+  | "arrangement_status_changed"
+
+export interface ClusterVersionChangeRef {
+  cluster_version_id: string
+  version_number: number
+  plan_version_id: string | null
+}
+
+export interface ClusterVersionChangeField {
+  field: string
+  before: unknown
+  after: unknown
+}
+
+export interface ClusterClassificationGroupSnapshot {
+  name: string
+  type: string
+  parent_group_ids: string[]
+  definition: string | null
+  criteria: unknown[]
+}
+
+export interface ClusterDossierSnapshot {
+  title: string
+  group_ids: string[]
+  group_path: string[]
+  position_index: number
+  has_draft_documents: boolean
+}
+
+export interface ClusterDocumentSnapshot {
+  dossier_id: string
+  position_index: number
+  title: string
+  arrangement_status: string
+  ocr_status: string
+  review_status: string
+}
+
+export interface ClusterClassificationGroupChange {
+  group_id: string
+  change_types: ClusterGroupChangeType[]
+  before: ClusterClassificationGroupSnapshot | null
+  after: ClusterClassificationGroupSnapshot | null
+  changed_fields: ClusterVersionChangeField[]
+}
+
+export interface ClusterDossierChange {
+  dossier_id: string
+  cluster_id: string
+  change_types: ClusterDossierChangeType[]
+  before: ClusterDossierSnapshot | null
+  after: ClusterDossierSnapshot | null
+  changed_fields: ClusterVersionChangeField[]
+}
+
+export interface ClusterDocumentChange {
+  session_document_id: number
+  document_id: string
+  file_name: string
+  change_types: ClusterDocumentChangeType[]
+  before: ClusterDocumentSnapshot | null
+  after: ClusterDocumentSnapshot | null
+  changed_fields: ClusterVersionChangeField[]
+}
+
+export interface ClusterVersionChangesResponse {
+  session_id: string
+  from: ClusterVersionChangeRef
+  to: ClusterVersionChangeRef & { source: string }
+  summary: {
+    created_group_count: number
+    removed_group_count: number
+    changed_dossier_count: number
+    changed_document_count: number
+  }
+  classification_groups: ClusterClassificationGroupChange[]
+  dossiers: ClusterDossierChange[]
+  documents: ClusterDocumentChange[]
+  affected_tree_paths: Array<{
+    group_ids: string[]
+    group_path: string[]
+  }>
+  created_at: string
+}
+
 export interface ClusterVersionListResponse extends ApiRevisionMetadata {
   session_id: string
   versions: ClusterVersionResponse[]

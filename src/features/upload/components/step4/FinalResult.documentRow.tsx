@@ -16,12 +16,14 @@ import {
   Loader2,
   ListChecks,
   Signature,
+  Sparkles,
   X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/shared/lib/utils"
 import { useDocumentEditLock } from "@/features/upload/hooks/useDocumentEditLock"
 import { documentEditLockErrorMessage } from "@/features/upload/lib/documentEditLockErrors"
+import type { ClusterDocumentChangeType } from "@/features/upload/api/sessionApi"
 import type { ClusterDocument } from "@/features/upload/lib/clusterGroups"
 import { signatureTagInfo } from "@/features/upload/lib/signatureStatus"
 import {
@@ -43,6 +45,7 @@ import {
   truncateWithDots,
 } from "./FinalResult.metadataUtils"
 import { pendingFeedbackActionLabel } from "./FinalResult.pendingFeedback"
+import { changeTagPresentation } from "./FinalResult.changes"
 import { SHOW_DOSSIER_SUGGESTIONS } from "./temporaryFeatureVisibility"
 
 export function DocumentRow({
@@ -52,6 +55,7 @@ export function DocumentRow({
   metadataFeedbackClusterId,
   depth,
   compact,
+  changeTypes,
   selected,
   membershipExplanationSelected,
   selectionChecked,
@@ -72,6 +76,7 @@ export function DocumentRow({
   metadataFeedbackClusterId: string
   depth: number
   compact: boolean
+  changeTypes?: ClusterDocumentChangeType[]
   selected: boolean
   membershipExplanationSelected: boolean
   selectionChecked: boolean
@@ -107,6 +112,7 @@ export function DocumentRow({
     },
   })
   const clusterWarning = document.clusterWarning
+  const documentChangeTag = changeTagPresentation("document", changeTypes)
   const documentDeleted = document.lifecycleStatus === "deleted"
   const documentDeletePending = document.lifecycleStatus === "delete_pending"
   const documentTransferred = document.lifecycleStatus === "transferred_out"
@@ -277,6 +283,18 @@ export function DocumentRow({
             <span className="min-w-0 flex-1 truncate font-roboto text-xs font-medium text-[#334155]">
               {document.fileName}
             </span>
+            {documentChangeTag ? (
+              <span
+                title={documentChangeTag.title}
+                className={cn(
+                  "flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                  documentChangeTag.className
+                )}
+              >
+                <Sparkles className="size-3" />
+                {documentChangeTag.label}
+              </span>
+            ) : null}
             {documentInactive ? (
               <span
                 title={inactiveDetails}

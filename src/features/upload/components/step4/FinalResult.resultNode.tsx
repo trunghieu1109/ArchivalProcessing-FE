@@ -13,15 +13,18 @@ import {
   ListTree,
   MoveRight,
   RefreshCw,
+  Sparkles,
   Table2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/shared/lib/utils"
+import type { ClusterDocumentChangeType } from "@/features/upload/api/sessionApi"
 import type {
   ClusterDocument,
   ClusterGroup,
 } from "@/features/upload/lib/clusterGroups"
 import type { DraggedDocument, ResultTreeNode } from "./FinalResult.types"
+import { changeTagPresentation } from "./FinalResult.changes"
 import { CountBadge, DocumentRow } from "./FinalResult.documentRow"
 import { SelectionCheckbox } from "./FinalResult.selection"
 import { dossierPageCount, formatDateRange } from "./FinalResult.metadataUtils"
@@ -37,6 +40,7 @@ export function ResultNode({
   openNodeIds,
   draggedDocument,
   dropTargetId,
+  documentChangeTypesById,
   compact,
   selectedPreviewDocumentId,
   selectedMembershipExplanationDocumentId,
@@ -78,6 +82,7 @@ export function ResultNode({
   openNodeIds: Set<string>
   draggedDocument: DraggedDocument | null
   dropTargetId: string | null
+  documentChangeTypesById: ReadonlyMap<number, ClusterDocumentChangeType[]>
   compact: boolean
   selectedPreviewDocumentId: number | null
   selectedMembershipExplanationDocumentId: number | null
@@ -127,6 +132,10 @@ export function ResultNode({
   const isTemporary = node.type === "temporary"
   const isDropFolder = isDossier || isTemporary
   const group = node.group
+  const nodeChangeTag = changeTagPresentation(
+    isDossier ? "dossier" : "group",
+    node.changeTypes
+  )
   const canDrop = Boolean(
     draggedDocument && group && draggedDocument.fromClusterId !== group.id
   )
@@ -273,6 +282,18 @@ export function ResultNode({
             >
               {displayLabel}
             </span>
+            {nodeChangeTag ? (
+              <span
+                title={nodeChangeTag.title}
+                className={cn(
+                  "flex h-6 shrink-0 items-center gap-1 rounded-full border px-2 text-[10px] font-semibold",
+                  nodeChangeTag.className
+                )}
+              >
+                <Sparkles className="size-3" />
+                {nodeChangeTag.label}
+              </span>
+            ) : null}
             {group?.createdFromTemporaryFolder &&
               !isTemporary &&
               !isPendingDossier && (
@@ -538,6 +559,11 @@ export function ResultNode({
                 metadataFeedbackClusterId={group.clusterId}
                 depth={depth + 1}
                 compact={compact}
+                changeTypes={
+                  document.sessionDocumentId === null
+                    ? undefined
+                    : documentChangeTypesById.get(document.sessionDocumentId)
+                }
                 selected={
                   document.sessionDocumentId !== null &&
                   document.sessionDocumentId === selectedPreviewDocumentId
@@ -581,6 +607,7 @@ export function ResultNode({
               openNodeIds={openNodeIds}
               draggedDocument={draggedDocument}
               dropTargetId={dropTargetId}
+              documentChangeTypesById={documentChangeTypesById}
               compact={compact}
               selectedPreviewDocumentId={selectedPreviewDocumentId}
               selectedMembershipExplanationDocumentId={

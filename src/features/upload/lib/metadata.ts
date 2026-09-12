@@ -22,6 +22,22 @@ interface DisplayMetadataSources {
 }
 
 const WARNING_KEY = "_warnings"
+const DOSSIER_EMBEDDING_METADATA_ALIASES = [
+  "long_summary",
+  "summary",
+  "document_summary",
+  "trich_yeu_tai_lieu",
+  "trich_yeu",
+  "issuing_agency",
+  "co_quan_ban_hanh",
+  "don_vi_ban_hanh",
+  "issued_date",
+  "ngay_ban_hanh",
+  "ngay_thang_van_ban",
+  "document_type",
+  "loai_van_ban",
+  "loai_tai_lieu",
+] as const
 const FIRST_PAGE_GUARD_KEY = "_first_page_guard"
 const DOCUMENT_SCAN_WARNING_KEY = "document_scan_issue"
 const DOCUMENT_SCAN_WARNING_CATEGORIES = new Set([
@@ -223,6 +239,14 @@ export function getWarningEntries(
     return [{ field: "", message: warnings.trim() }]
   }
   return []
+}
+
+export function hasDossierEmbeddingMetadata(
+  ...metadataSources: Array<Record<string, unknown> | null | undefined>
+): boolean {
+  return DOSSIER_EMBEDDING_METADATA_ALIASES.some((field) =>
+    metadataSources.some((metadata) => hasDisplayValue(metadata?.[field]))
+  )
 }
 
 export function hasMetadataWarning(item: {
