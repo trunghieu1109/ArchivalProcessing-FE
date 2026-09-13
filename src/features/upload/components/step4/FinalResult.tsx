@@ -11,10 +11,8 @@ import {
   cancelPendingClusterFeedback,
   explainDocumentDossierMembership,
   getClusterGroupInformationTable,
-  getClusterVersion,
   getClusterVersionChanges,
   listClusterFeedback,
-  listClusterVersions,
   patchSessionDossier,
   suggestSelectedDocumentDossiers,
   type ClusterGroupInformationTableResponse,
@@ -22,7 +20,7 @@ import {
   type ClusterVersionResponse,
   type DossierMembershipExplanationResponse,
   type DocumentDeletionOperationResponse,
-  type DocumentTransferOperationResponse,
+  type DocumentTransferRequestResponse,
   type SessionDossierSuggestion,
 } from "@/features/upload/api/sessionApi"
 import { useAuth } from "@/features/auth/lib/AuthContext"
@@ -72,7 +70,6 @@ import {
   updateDossierGroupFromResponse,
 } from "./FinalResult.metadataUtils"
 import {
-  clusterJobModeFromSource,
   clusterProgressLabel,
   completedClusterPhaseSet,
   type ClusterJobMode,
@@ -83,6 +80,10 @@ import {
   clearPendingFeedbackMarkers,
 } from "./FinalResult.pendingFeedback"
 import { buildClusterChangeHighlights } from "./FinalResult.changes"
+import {
+  isDocumentTransferLocked,
+  transferSelectionError,
+} from "./FinalResult.transferState"
 
 const DOSSIER_SUGGESTION_TOP_K = 5
 export function FinalResult({
@@ -294,6 +295,7 @@ export function FinalResult({
             (entry) =>
               (!entry.document.lifecycleStatus ||
                 entry.document.lifecycleStatus === "active") &&
+              !isDocumentTransferLocked(entry.document) &&
               entry.document.editLock?.locked !== true
           )
           .map((entry) => entry.sessionDocumentId)
@@ -1570,17 +1572,17 @@ export function FinalResult({
       toast.error("Không thể chuyển phông khi có tài liệu đang được chỉnh sửa.")
       return
     }
-    const targets = previewDocuments
-      .filter(
-        (entry) =>
-          selectedSessionDocumentIds.has(entry.sessionDocumentId) &&
-          (!entry.document.lifecycleStatus ||
-            entry.document.lifecycleStatus === "active")
-      )
-      .map((entry) => ({
-        id: entry.sessionDocumentId,
-        name: entry.document.fileName,
-      }))
+    const selectionError = transferSelectionError(
+      selectedEntries.map((entry) => entry.document)
+    )
+    if (selectionError) {
+      toast.error(selectionError)
+      return
+    }
+    const targets = selectedEntries.map((entry) => ({
+      id: entry.sessionDocumentId,
+      name: entry.document.fileName,
+    }))
     if (targets.length === 0) {
       toast.error("Chưa chọn tài liệu active để chuyển phông.")
       return
@@ -1654,18 +1656,42 @@ export function FinalResult({
     [activeClusterVersionId]
   )
 
-  const handleDocumentTransferCompleted = useCallback(
+  const handleDocumentTransferRequestCreated = useCallback(
     async (
-      result: DocumentTransferOperationResponse,
-      _targetedDocumentIds: number[]
+      request: DocumentTransferRequestResponse,
+      targetedDocumentIds: number[]
     ) => {
-      void _targetedDocumentIds
-      const targetedIds = new Set(
-        result.transferred_documents.map(
-          (document) => document.source_session_document_id
+      const targetedIds = new Set(targetedDocumentIds)
+      setSelectedSessionDocumentIds((previous) => {
+        const next = new Set(previous)
+        targetedIds.forEach((id) => next.delete(id))
+        return next
+      })
+      if (request.status === "completed") {
+        setGroups((previous) =>
+          previous.map((group) => ({
+            ...group,
+            documents: group.documents.map((document) =>
+              document.sessionDocumentId !== null &&
+              targetedIds.has(document.sessionDocumentId)
+                ? {
+                    ...document,
+                    lifecycleStatus: "transferred_out",
+                    transferredToSessionId: request.target_session_id,
+                    previewAvailable: false,
+                  }
+                : document
+            ),
+          }))
         )
-      )
-      if (targetedIds.size === 0) return
+        setSelectedPreviewDocumentId((previous) =>
+          previous !== null && targetedIds.has(previous) ? null : previous
+        )
+        setStatus(
+          `Đã chuyển ${request.document_count} tài liệu sang ${request.target_session_id}.`
+        )
+        return
+      }
       setGroups((previous) =>
         previous.map((group) => ({
           ...group,
@@ -1674,105 +1700,18 @@ export function FinalResult({
             targetedIds.has(document.sessionDocumentId)
               ? {
                   ...document,
-                  lifecycleStatus: "transferred_out",
-                  transferredToSessionId: result.target_session_id,
-                  previewAvailable: false,
+                  activeTransferRequestId: request.request_id,
+                  activeTransferRequestStatus: request.status,
                 }
               : document
           ),
         }))
       )
-      setSelectedSessionDocumentIds((previous) => {
-        const next = new Set(previous)
-        targetedIds.forEach((id) => next.delete(id))
-        return next
-      })
-      setSelectedPreviewDocumentId((previous) =>
-        previous !== null && targetedIds.has(previous) ? null : previous
-      )
-      setPendingFeedbackCount(0)
-      const projection = result.source_cluster_projection
-      const projectedVersionId =
-        projection?.new_cluster_version_id ?? projection?.cluster_version_id
-      if (projection?.status === "created" && projectedVersionId && sessionId) {
-        setLoadingClusterVersionId(projectedVersionId)
-        try {
-          const [version, versionsResponse] = await Promise.all([
-            getClusterVersion(sessionId, projectedVersionId),
-            listClusterVersions(sessionId),
-          ])
-          const nextGroups = versionToGroups(version, metadataItems)
-          setGroups(nextGroups)
-          setActiveClusterVersionId(version.id)
-          setDisplayedClusterVersionId(version.id)
-          setDisplayedClusterVersion(version)
-          setClusterVersions(versionsResponse.versions)
-          setPendingClusterVersion(null)
-          setRebuildBaselineVersionId(null)
-          setClusterJobMode(clusterJobModeFromSource(version.source))
-          setClusterProgressPhase(null)
-          setClusterCompletedPhases(completedClusterPhaseSet())
-          setClusterProgressMessage(
-            "Đã tự cập nhật hồ sơ nguồn sau khi chuyển phông."
-          )
-          setPendingFeedbackRefreshKey((key) => key + 1)
-          setStatus(
-            `Đã chuyển ${result.transferred_count} tài liệu sang ${result.target_session_id}. Phông nguồn đã được cập nhật tự động.`
-          )
-          return
-        } catch (caught) {
-          toast.warning(
-            caught instanceof Error
-              ? `Đã chuyển tài liệu nhưng chưa tải lại được phiên bản hồ sơ: ${caught.message}`
-              : "Đã chuyển tài liệu nhưng chưa tải lại được phiên bản hồ sơ nguồn."
-          )
-        } finally {
-          setLoadingClusterVersionId(null)
-        }
-        setStatus(
-          `Đã chuyển ${result.transferred_count} tài liệu sang ${result.target_session_id}. Hãy tải lại màn hình để xem phiên bản hồ sơ nguồn mới.`
-        )
-        return
-      }
-
-      if (projection?.status === "not_applicable") {
-        setStatus(
-          `Đã chuyển ${result.transferred_count} tài liệu sang ${result.target_session_id}. Phông nguồn chưa có phiên bản hồ sơ nên không cần cập nhật lại.`
-        )
-        return
-      }
-
       setStatus(
-        `Đã chuyển ${result.transferred_count} tài liệu sang ${result.target_session_id}. Cần cập nhật lại kết quả lập hồ sơ.`
-      )
-      setDisplayedClusterVersion((previous) =>
-        previous
-          ? {
-              ...previous,
-              status: "stale",
-              is_stale: true,
-              stale_reason: "documents_transferred_out",
-              current_document_set_revision:
-                result.source_document_set_revision,
-            }
-          : previous
-      )
-      setClusterVersions((previous) =>
-        previous.map((version) =>
-          version.id === activeClusterVersionId
-            ? {
-                ...version,
-                status: "stale",
-                is_stale: true,
-                stale_reason: "documents_transferred_out",
-                current_document_set_revision:
-                  result.source_document_set_revision,
-              }
-            : version
-        )
+        `Đã gửi yêu cầu chuyển ${request.document_count} tài liệu tới ${request.target_session_id}. Tài liệu được khóa cho tới khi Phông đích xử lý.`
       )
     },
-    [activeClusterVersionId, metadataItems, sessionId]
+    []
   )
 
   const clusterVersionStale = Boolean(displayedClusterVersion?.is_stale)
@@ -2001,7 +1940,7 @@ export function FinalResult({
           onOpenChange={(open) => {
             if (!open) setTransferTargets([])
           }}
-          onMutationCompleted={handleDocumentTransferCompleted}
+          onRequestCreated={handleDocumentTransferRequestCreated}
         />
       )}
     </>

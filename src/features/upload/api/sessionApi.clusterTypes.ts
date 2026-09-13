@@ -68,6 +68,8 @@ export interface ClusterPlacement {
   dossier_suggestions?: SessionDossierSuggestion[] | null
   metadata: Record<string, unknown>
   lifecycle_status?: "active" | "delete_pending" | "deleted" | string
+  active_transfer_request_id?: string | null
+  active_transfer_request_status?: string | null
   deleted_at?: string | null
   deleted_by_name?: string | null
   transferred_at?: string | null
@@ -265,6 +267,37 @@ export interface SessionDossierSummary {
   created_from_temporary_folder?: boolean
   classification: DossierClassification | null
   updated_at?: string
+}
+
+export interface UnclassifiedSessionDossierDocument {
+  id: number
+  document_id: string
+  file_name: string
+  title: string
+  document_number: string
+  issued_date: string
+  page_count: number | null
+  review_status: string
+  is_reviewed: boolean
+}
+
+export interface UnclassifiedSessionDossierSummary extends Omit<
+  SessionDossierSummary,
+  "cluster_id"
+> {
+  cluster_id: null
+  cluster_version_id: null
+  session_cluster_id: null
+  origin_transfer_request_id?: string | null
+  documents: UnclassifiedSessionDossierDocument[]
+}
+
+export interface UnclassifiedSessionDossierListResponse {
+  session_id: string
+  scope: "unclassified"
+  cluster_version_id: null
+  version_number: null
+  dossiers: UnclassifiedSessionDossierSummary[]
 }
 
 export interface SessionDossierPatchPayload {

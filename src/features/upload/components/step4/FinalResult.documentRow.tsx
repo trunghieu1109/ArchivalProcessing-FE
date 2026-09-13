@@ -47,6 +47,11 @@ import {
 import { pendingFeedbackActionLabel } from "./FinalResult.pendingFeedback"
 import { changeTagPresentation } from "./FinalResult.changes"
 import { SHOW_DOSSIER_SUGGESTIONS } from "./temporaryFeatureVisibility"
+import {
+  documentTransferLockDetails,
+  documentTransferLockLabel,
+  isDocumentTransferLocked,
+} from "./FinalResult.transferState"
 
 export function DocumentRow({
   document,
@@ -116,31 +121,37 @@ export function DocumentRow({
   const documentDeleted = document.lifecycleStatus === "deleted"
   const documentDeletePending = document.lifecycleStatus === "delete_pending"
   const documentTransferred = document.lifecycleStatus === "transferred_out"
+  const documentTransferLocked = isDocumentTransferLocked(document)
   const documentInactive =
-    documentDeleted || documentDeletePending || documentTransferred
-  const inactiveDetails = documentTransferred
-    ? [
-        document.transferredToSessionId
-          ? `Đã chuyển sang session ${document.transferredToSessionId}`
-          : "Đã chuyển sang phông khác",
-        document.transferredByName ? `bởi ${document.transferredByName}` : "",
-        document.transferredAt
-          ? `lúc ${formatDeletedAt(document.transferredAt)}`
-          : "",
-      ]
-        .filter(Boolean)
-        .join(" ")
-    : documentDeleted
+    documentDeleted ||
+    documentDeletePending ||
+    documentTransferred ||
+    documentTransferLocked
+  const inactiveDetails = documentTransferLocked
+    ? documentTransferLockDetails(document)
+    : documentTransferred
       ? [
-          "Đã xóa khỏi session",
-          document.deletedByName ? `bởi ${document.deletedByName}` : "",
-          document.deletedAt
-            ? `lúc ${formatDeletedAt(document.deletedAt)}`
+          document.transferredToSessionId
+            ? `Đã chuyển sang session ${document.transferredToSessionId}`
+            : "Đã chuyển sang phông khác",
+          document.transferredByName ? `bởi ${document.transferredByName}` : "",
+          document.transferredAt
+            ? `lúc ${formatDeletedAt(document.transferredAt)}`
             : "",
         ]
           .filter(Boolean)
           .join(" ")
-      : "Đang chờ xác nhận xóa từ Chỉnh Lý"
+      : documentDeleted
+        ? [
+            "Đã xóa khỏi session",
+            document.deletedByName ? `bởi ${document.deletedByName}` : "",
+            document.deletedAt
+              ? `lúc ${formatDeletedAt(document.deletedAt)}`
+              : "",
+          ]
+            .filter(Boolean)
+            .join(" ")
+        : "Đang chờ xác nhận xóa từ Chỉnh Lý"
   const summary = metadataText(document.metadata, [
     "document_summary",
     "trich_yeu_van_ban",
@@ -268,7 +279,11 @@ export function DocumentRow({
           checked={selectionChecked}
           disabled={selectionDisabled || documentInactive}
           ariaLabel={`Chọn tài liệu ${document.fileName}`}
-          title="Chọn tài liệu để tạo hồ sơ mới"
+          title={
+            documentTransferLocked
+              ? documentTransferLockDetails(document)
+              : "Chọn tài liệu để tạo hồ sơ mới"
+          }
           onChange={(checked) => {
             if (document.sessionDocumentId !== null) {
               onToggleSelection(document.sessionDocumentId, checked)
@@ -300,18 +315,22 @@ export function DocumentRow({
                 title={inactiveDetails}
                 className={cn(
                   "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold",
-                  documentTransferred
-                    ? "border-blue-200 bg-blue-50 text-blue-700"
-                    : "border-red-200 bg-red-50 text-red-700"
+                  documentTransferLocked
+                    ? "border-amber-200 bg-amber-50 text-amber-800"
+                    : documentTransferred
+                      ? "border-blue-200 bg-blue-50 text-blue-700"
+                      : "border-red-200 bg-red-50 text-red-700"
                 )}
               >
-                {documentTransferred
-                  ? document.transferredToSessionId
-                    ? `Đã chuyển sang session ${document.transferredToSessionId}`
-                    : "Đã chuyển phông"
-                  : documentDeleted
-                    ? "Đã xóa khỏi session"
-                    : "Đang xóa"}
+                {documentTransferLocked
+                  ? documentTransferLockLabel(document)
+                  : documentTransferred
+                    ? document.transferredToSessionId
+                      ? `Đã chuyển sang session ${document.transferredToSessionId}`
+                      : "Đã chuyển phông"
+                    : documentDeleted
+                      ? "Đã xóa khỏi session"
+                      : "Đang xóa"}
               </span>
             ) : null}
             {document.editLock?.locked || documentLock.held ? (

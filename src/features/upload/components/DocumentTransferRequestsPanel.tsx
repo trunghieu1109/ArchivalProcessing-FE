@@ -1,0 +1,595 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Dialog } from "radix-ui"
+import {
+  Bell,
+  Check,
+  Loader2,
+  RefreshCw,
+  RotateCcw,
+  X,
+  XCircle,
+} from "lucide-react"
+import { toast } from "sonner"
+
+import { Button } from "@/components/ui/button"
+import {
+  acceptSessionDocumentTransferRequest,
+  getSessionDocumentTransferRequest,
+  getSessionDocumentTransferTargetContext,
+  listSessionDocumentTransferRequests,
+  rejectSessionDocumentTransferRequest,
+  resubmitSessionDocumentTransferRequest,
+  type DocumentTransferDossierInput,
+  type DocumentTransferRequestResponse,
+  type DocumentTransferRequestSummary,
+} from "@/features/upload/api/sessionApi"
+
+interface DocumentTransferRequestsPanelProps {
+  sessionId: string | null
+  canManageTarget: boolean
+}
+
+type RequestRole = "target" | "source"
+
+export function DocumentTransferRequestsPanel({
+  sessionId,
+  canManageTarget,
+}: DocumentTransferRequestsPanelProps) {
+  const [open, setOpen] = useState(false)
+  const [role, setRole] = useState<RequestRole>("target")
+  const [items, setItems] = useState<DocumentTransferRequestSummary[]>([])
+  const [detail, setDetail] = useState<DocumentTransferRequestResponse | null>(
+    null
+  )
+  const [pendingCount, setPendingCount] = useState(0)
+  const [rejectReason, setRejectReason] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [acting, setActing] = useState(false)
+  const [error, setError] = useState("")
+  const operationIdsRef = useRef<Map<string, string>>(new Map())
+
+  const loadList = useCallback(
+    async (selectedRole: RequestRole, quiet = false) => {
+      if (!sessionId) return
+      if (!quiet) setLoading(true)
+      try {
+        const response = await listSessionDocumentTransferRequests(sessionId, {
+          role: selectedRole,
+          limit: 50,
+          offset: 0,
+        })
+        setItems(response.items)
+        if (selectedRole === "target") {
+          setPendingCount(
+            response.items.filter(
+              (item) => item.status === "pending_target_approval"
+            ).length
+          )
+        }
+        setError("")
+      } catch (caught) {
+        if (!quiet) setError(errorMessage(caught))
+      } finally {
+        if (!quiet) setLoading(false)
+      }
+    },
+    [sessionId]
+  )
+
+  const loadDetail = useCallback(
+    async (requestId: string, quiet = false) => {
+      if (!sessionId) return
+      if (!quiet) setLoading(true)
+      try {
+        const response = await getSessionDocumentTransferRequest(
+          sessionId,
+          requestId
+        )
+        setDetail(response)
+        setError("")
+      } catch (caught) {
+        if (!quiet) setError(errorMessage(caught))
+      } finally {
+        if (!quiet) setLoading(false)
+      }
+    },
+    [sessionId]
+  )
+
+  useEffect(() => {
+    if (!sessionId) return
+    const initialLoad = window.setTimeout(
+      () => void loadList("target", true),
+      0
+    )
+    const interval = window.setInterval(
+      () => void loadList("target", true),
+      30_000
+    )
+    return () => {
+      window.clearTimeout(initialLoad)
+      window.clearInterval(interval)
+    }
+  }, [loadList, sessionId])
+
+  useEffect(() => {
+    if (!open) return
+    const timeout = window.setTimeout(() => {
+      setDetail(null)
+      setRejectReason("")
+      void loadList(role)
+    }, 0)
+    return () => window.clearTimeout(timeout)
+  }, [loadList, open, role])
+
+  useEffect(() => {
+    if (!open || !detail || detail.status !== "accepting") return
+    const interval = window.setInterval(() => {
+      void loadDetail(detail.request_id, true)
+      void loadList(role, true)
+    }, 3_000)
+    return () => window.clearInterval(interval)
+  }, [detail, loadDetail, loadList, open, role])
+
+  const acceptRequest = async () => {
+    if (!detail) return
+    setActing(true)
+    setError("")
+    try {
+      await acceptSessionDocumentTransferRequest(
+        detail.target_session_id,
+        detail.request_id,
+        clientOperationId(
+          operationIdsRef.current,
+          "accept",
+          detail.request_id,
+          { confirmed: true }
+        )
+      )
+      toast.success("Đã chấp nhận yêu cầu. Hệ thống đang chuyển tài liệu.")
+      await loadDetail(detail.request_id)
+      await loadList(role, true)
+    } catch (caught) {
+      setError(errorMessage(caught))
+    } finally {
+      setActing(false)
+    }
+  }
+
+  const rejectRequest = async () => {
+    if (!detail || !rejectReason.trim()) return
+    setActing(true)
+    setError("")
+    try {
+      await rejectSessionDocumentTransferRequest(
+        detail.target_session_id,
+        detail.request_id,
+        clientOperationId(
+          operationIdsRef.current,
+          "reject",
+          detail.request_id,
+          { reason: rejectReason.trim() }
+        ),
+        rejectReason.trim()
+      )
+      toast.success("Đã từ chối và mở khóa tài liệu tại Phông nguồn.")
+      await loadDetail(detail.request_id)
+      await loadList(role, true)
+    } catch (caught) {
+      setError(errorMessage(caught))
+    } finally {
+      setActing(false)
+    }
+  }
+
+  const resubmitRequest = async () => {
+    if (!detail) return
+    setActing(true)
+    setError("")
+    try {
+      const context = await getSessionDocumentTransferTargetContext(
+        detail.source_session_id,
+        detail.target_session_id
+      )
+      const previousClassification = detail.target_dossier_draft?.classification
+      const sameLeaf = previousClassification
+        ? context.classification_leafs.find(
+            (leaf) =>
+              leaf.group_id === previousClassification.leaf_group_id &&
+              sameStringArray(leaf.group_ids, previousClassification.group_ids)
+          )
+        : undefined
+      if (
+        context.required_form_fields.includes("target_classification") &&
+        !sameLeaf
+      ) {
+        throw new Error(
+          "Nhóm phân loại cũ không còn tồn tại. Hãy tạo yêu cầu mới và chọn lại nhóm đích."
+        )
+      }
+      const replacement = await resubmitSessionDocumentTransferRequest(
+        detail.source_session_id,
+        detail.request_id,
+        {
+          client_operation_id: clientOperationId(
+            operationIdsRef.current,
+            "resubmit",
+            detail.request_id,
+            context.target_snapshot
+          ),
+          expected_target_snapshot: context.target_snapshot,
+          ...(detail.target_dossier_draft?.metadata
+            ? { dossier: detail.target_dossier_draft.metadata }
+            : {}),
+          ...(sameLeaf &&
+          context.target_snapshot.plan_version_id &&
+          context.target_snapshot.cluster_version_id
+            ? {
+                target_classification: {
+                  plan_version_id: context.target_snapshot.plan_version_id,
+                  cluster_version_id:
+                    context.target_snapshot.cluster_version_id,
+                  group_ids: sameLeaf.group_ids,
+                  leaf_group_id: sameLeaf.group_id,
+                },
+              }
+            : {}),
+        }
+      )
+      toast.success("Đã gửi lại yêu cầu theo context mới nhất.")
+      setDetail(replacement)
+      await loadList(role, true)
+    } catch (caught) {
+      setError(errorMessage(caught))
+    } finally {
+      setActing(false)
+    }
+  }
+
+  const title = role === "target" ? "Yêu cầu đến" : "Yêu cầu đã gửi"
+  const canResolve =
+    role === "target" &&
+    canManageTarget &&
+    detail?.status === "pending_target_approval"
+  const canResubmit =
+    role === "source" &&
+    (detail?.status === "rejected" || detail?.status === "auto_rejected") &&
+    !detail.replacement_request_id
+
+  return (
+    <Dialog.Root open={open} onOpenChange={setOpen}>
+      <Dialog.Trigger asChild>
+        <Button className="fixed right-6 bottom-6 z-40 gap-2 shadow-lg">
+          <Bell className="h-4 w-4" />
+          Yêu cầu chuyển
+          {pendingCount > 0 && (
+            <span className="rounded-full bg-rose-500 px-2 py-0.5 text-xs text-white">
+              {pendingCount}
+            </span>
+          )}
+        </Button>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-slate-950/45" />
+        <Dialog.Content className="fixed top-1/2 left-1/2 z-50 max-h-[90vh] w-[min(1040px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+            <div>
+              <Dialog.Title className="text-lg font-semibold text-slate-900">
+                Thông báo chuyển tài liệu
+              </Dialog.Title>
+              <Dialog.Description className="text-sm text-slate-500">
+                Danh sách là nguồn trạng thái chính thức; hệ thống tự làm mới
+                các request đang xử lý.
+              </Dialog.Description>
+            </div>
+            <Dialog.Close asChild>
+              <Button variant="ghost" size="icon">
+                <X className="h-4 w-4" />
+              </Button>
+            </Dialog.Close>
+          </div>
+
+          <div className="flex border-b border-slate-200 px-5">
+            {(["target", "source"] as RequestRole[]).map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setRole(value)}
+                className={`border-b-2 px-4 py-3 text-sm font-medium ${
+                  role === value
+                    ? "border-blue-600 text-blue-700"
+                    : "border-transparent text-slate-500"
+                }`}
+              >
+                {value === "target" ? "Yêu cầu đến" : "Yêu cầu đã gửi"}
+              </button>
+            ))}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto"
+              onClick={() => void loadList(role)}
+            >
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Làm mới
+            </Button>
+          </div>
+
+          <div className="grid h-[65vh] md:grid-cols-[360px_1fr]">
+            <aside className="overflow-y-auto border-r border-slate-200 p-3">
+              <div className="mb-2 px-2 text-sm font-medium text-slate-700">
+                {title}
+              </div>
+              {loading && !detail && (
+                <div className="flex items-center gap-2 p-3 text-sm text-slate-500">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Đang tải...
+                </div>
+              )}
+              {!loading && items.length === 0 && (
+                <div className="p-3 text-sm text-slate-500">
+                  Chưa có yêu cầu.
+                </div>
+              )}
+              <div className="space-y-2">
+                {items.map((item) => (
+                  <button
+                    type="button"
+                    key={item.request_id}
+                    onClick={() => void loadDetail(item.request_id)}
+                    className={`w-full rounded-xl border p-3 text-left ${
+                      detail?.request_id === item.request_id
+                        ? "border-blue-500 bg-blue-50"
+                        : "border-slate-200 hover:border-slate-300"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-sm font-medium text-slate-900">
+                        {item.dossier_title ||
+                          `${item.document_count} tài liệu`}
+                      </span>
+                      <StatusBadge status={item.status} />
+                    </div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {role === "target"
+                        ? `Từ ${item.source_session_id}`
+                        : `Đến ${item.target_session_id}`}
+                      {item.group_path?.length
+                        ? ` · ${item.group_path.join(" / ")}`
+                        : item.leaf_name
+                          ? ` · ${item.leaf_name}`
+                          : ""}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </aside>
+
+            <main className="overflow-y-auto p-5">
+              {!detail && (
+                <div className="grid h-full place-items-center text-sm text-slate-500">
+                  Chọn một yêu cầu để xem thông tin.
+                </div>
+              )}
+              {detail && (
+                <div className="space-y-5">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h3 className="text-lg font-semibold text-slate-900">
+                      {detail.target_dossier_draft?.metadata.title ||
+                        `${detail.document_count} tài liệu rời`}
+                    </h3>
+                    <StatusBadge status={detail.status} />
+                  </div>
+                  <dl className="grid gap-3 text-sm sm:grid-cols-2">
+                    <Info
+                      label="Phông nguồn"
+                      value={detail.source_session_id}
+                    />
+                    <Info label="Phông đích" value={detail.target_session_id} />
+                    <Info
+                      label="Nhóm đích"
+                      value={
+                        detail.target_dossier_draft?.classification?.group_path?.join(
+                          " / "
+                        ) || "Chuyển vào session"
+                      }
+                    />
+                    <Info
+                      label="Số tài liệu"
+                      value={String(detail.document_count)}
+                    />
+                    {detail.approval.reason && (
+                      <Info
+                        label="Lý do từ chối"
+                        value={detail.approval.reason}
+                      />
+                    )}
+                  </dl>
+                  {detail.target_dossier_draft && (
+                    <DossierDetails
+                      metadata={detail.target_dossier_draft.metadata}
+                    />
+                  )}
+                  {detail.error && (
+                    <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                      <div className="font-medium">Nguyên nhân thất bại</div>
+                      <div className="mt-1 break-words">{detail.error}</div>
+                    </div>
+                  )}
+                  <div>
+                    <div className="mb-2 text-sm font-medium text-slate-800">
+                      Tài liệu
+                    </div>
+                    <div className="space-y-2">
+                      {detail.documents?.map((document) => (
+                        <div
+                          key={document.source_session_document_id}
+                          className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                        >
+                          <span>{document.file_name}</span>
+                          <span className="text-xs text-slate-500">
+                            {document.request_item_status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {canResolve && (
+                    <div className="space-y-3 rounded-xl border border-slate-200 p-4">
+                      <textarea
+                        value={rejectReason}
+                        onChange={(event) =>
+                          setRejectReason(event.target.value)
+                        }
+                        placeholder="Nhập lý do nếu từ chối"
+                        rows={2}
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                      />
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <Button
+                          variant="destructive"
+                          disabled={!rejectReason.trim() || acting}
+                          onClick={() => void rejectRequest()}
+                        >
+                          <XCircle className="mr-2 h-4 w-4" />
+                          Từ chối
+                        </Button>
+                        <Button
+                          disabled={acting}
+                          onClick={() => void acceptRequest()}
+                        >
+                          <Check className="mr-2 h-4 w-4" />
+                          Chấp nhận
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {canResubmit && (
+                    <Button
+                      disabled={acting}
+                      onClick={() => void resubmitRequest()}
+                    >
+                      <RotateCcw className="mr-2 h-4 w-4" />
+                      Gửi lại yêu cầu
+                    </Button>
+                  )}
+                  {error && (
+                    <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                      {error}
+                    </div>
+                  )}
+                </div>
+              )}
+            </main>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  )
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const label = useMemo(() => statusLabel(status), [status])
+  return (
+    <span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700">
+      {label}
+    </span>
+  )
+}
+
+function Info({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-xs text-slate-500">{label}</dt>
+      <dd className="mt-0.5 text-slate-800">{value}</dd>
+    </div>
+  )
+}
+
+const DOSSIER_FIELDS: Array<[keyof DocumentTransferDossierInput, string]> = [
+  ["title", "Tiêu đề hồ sơ"],
+  ["dossier_number", "Số hồ sơ"],
+  ["dossier_code", "Mã hồ sơ"],
+  ["retention_period", "Thời hạn bảo quản"],
+  ["start_date", "Từ ngày"],
+  ["end_date", "Đến ngày"],
+  ["language", "Ngôn ngữ"],
+  ["annotation", "Chú giải"],
+  ["note", "Ghi chú"],
+]
+
+function DossierDetails({
+  metadata,
+}: {
+  metadata: DocumentTransferDossierInput
+}) {
+  const rows = DOSSIER_FIELDS.flatMap(([key, label]) => {
+    const value = metadata[key]
+    if (typeof value !== "string" || !value.trim()) return []
+    return [{ key, label, value: value.trim() }]
+  })
+
+  return (
+    <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <h4 className="text-sm font-medium text-slate-800">Thông tin hồ sơ</h4>
+      {rows.length > 0 ? (
+        <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+          {rows.map((row) => (
+            <Info key={row.key} label={row.label} value={row.value} />
+          ))}
+        </dl>
+      ) : (
+        <p className="mt-2 text-sm text-slate-500">
+          Yêu cầu chưa có thông tin hồ sơ.
+        </p>
+      )}
+    </section>
+  )
+}
+
+function sameStringArray(left: string[], right: string[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  )
+}
+
+function statusLabel(status: string): string {
+  return (
+    {
+      pending_target_approval: "Chờ duyệt",
+      accepting: "Đang chuyển",
+      completed: "Hoàn tất",
+      completed_with_errors: "Hoàn tất một phần",
+      rejected: "Đã từ chối",
+      auto_rejected: "Tự động từ chối",
+      failed: "Thất bại",
+    }[status] || status
+  )
+}
+
+function clientOperationId(
+  cache: Map<string, string>,
+  operation: string,
+  requestId: string,
+  payload: unknown
+): string {
+  const key = `${operation}:${requestId}:${JSON.stringify(payload)}`
+  const existing = cache.get(key)
+  if (existing) return existing
+  const created = newClientId()
+  cache.set(key, created)
+  return created
+}
+
+function newClientId(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `operation-${Date.now()}`
+}
+
+function errorMessage(caught: unknown): string {
+  return caught instanceof Error
+    ? caught.message
+    : "Không thể xử lý yêu cầu chuyển tài liệu."
+}

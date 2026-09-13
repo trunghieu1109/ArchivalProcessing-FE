@@ -8,10 +8,13 @@ import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import { PlanAnalysisFailureAlert } from "@/features/upload/components/PlanAnalysisFailureAlert"
 import { ProcessStep } from "@/features/upload/components/step3/ProcessStep"
 import { FinalResult } from "@/features/upload/components/step4/FinalResult"
+import { UnclassifiedDossiersView } from "@/features/upload/components/step4/UnclassifiedDossiersView"
 import { NumberingStep } from "@/features/upload/components/step5/NumberingStep"
 import { PublicationStep } from "@/features/upload/components/step7/PublicationStep"
 import { FinalizeArtifactsStep } from "@/pages/FinalizeArtifactsPage"
 import { SessionMetadataBar } from "@/features/upload/components/SessionMetadataBar"
+import { DocumentTransferRequestsPanel } from "@/features/upload/components/DocumentTransferRequestsPanel"
+import { SHOW_DOCUMENT_TRANSFER } from "@/features/upload/components/step4/temporaryFeatureVisibility"
 import { cn } from "@/shared/lib/utils"
 import type { AppStep } from "@/features/upload/types"
 import { easeOut } from "./UploadPage.planUtils"
@@ -144,6 +147,7 @@ export function UploadPageView(props: Record<string, any>) {
     ocrMessage,
     ocrSignatureStatus,
     handleContinueToResults,
+    handleViewUnclassifiedDossiers,
     dossierBuildBlockedMessage,
     clusterGroups,
     handleFinalizeAutoStartHandled,
@@ -862,6 +866,11 @@ export function UploadPageView(props: Record<string, any>) {
                 onDocumentsVerified={ocr.mergeVerifiedDocuments}
                 onRetryMetadata={ocr.restartMetadata}
                 onContinue={handleContinueToResults}
+                onViewUnclassifiedDossiers={
+                  resolvedSessionId && !isWorkerUser
+                    ? handleViewUnclassifiedDossiers
+                    : undefined
+                }
               />
             </motion.div>
           )}
@@ -875,23 +884,30 @@ export function UploadPageView(props: Record<string, any>) {
               exit={{ opacity: 0, y: -16 }}
               transition={{ duration: 0.4, ease: easeOut }}
             >
-              <FinalResult
-                sessionId={resolvedSessionId}
-                groups={clusterGroups}
-                fondsName={sessionMetadata?.fonds_name}
-                activePlanVersionId={activePlanVersionId}
-                classificationTree={activeFolderTree}
-                metadataItems={ocrMetadataItems}
-                onFinish={() => {
-                  if (!resolvedSessionId) {
-                    toast.error("Chưa có session để đánh số trang.")
-                    return
-                  }
-                  navigate(
-                    `/sessions/${encodeURIComponent(resolvedSessionId)}/step/5`
-                  )
-                }}
-              />
+              {searchParams.get("view") === "unclassified" ? (
+                <UnclassifiedDossiersView
+                  sessionId={resolvedSessionId}
+                  onBack={() => goTo(3, resolvedSessionId)}
+                />
+              ) : (
+                <FinalResult
+                  sessionId={resolvedSessionId}
+                  groups={clusterGroups}
+                  fondsName={sessionMetadata?.fonds_name}
+                  activePlanVersionId={activePlanVersionId}
+                  classificationTree={activeFolderTree}
+                  metadataItems={ocrMetadataItems}
+                  onFinish={() => {
+                    if (!resolvedSessionId) {
+                      toast.error("Chưa có session để đánh số trang.")
+                      return
+                    }
+                    navigate(
+                      `/sessions/${encodeURIComponent(resolvedSessionId)}/step/5`
+                    )
+                  }}
+                />
+              )}
             </motion.div>
           )}
 
@@ -979,6 +995,12 @@ export function UploadPageView(props: Record<string, any>) {
           )}
         </AnimatePresence>
       </div>
+      {SHOW_DOCUMENT_TRANSFER && resolvedSessionId && !isWorkerUser && (
+        <DocumentTransferRequestsPanel
+          sessionId={resolvedSessionId}
+          canManageTarget={!isWorkerUser}
+        />
+      )}
     </div>
   )
 }

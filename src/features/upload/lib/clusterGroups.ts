@@ -87,6 +87,8 @@ export interface ClusterDocument {
   pendingFeedback?: PendingClusterFeedbackMarker | null
   editLock?: DocumentEditLock | null
   lifecycleStatus?: "active" | "delete_pending" | "deleted" | string
+  activeTransferRequestId?: string | null
+  activeTransferRequestStatus?: string | null
   deletedAt?: string | null
   deletedByName?: string | null
   transferredAt?: string | null
@@ -430,6 +432,9 @@ function clusterToGroup(
         editLock: item?.edit_lock ?? null,
         lifecycleStatus:
           placement.lifecycle_status ?? item?.lifecycle_status ?? "active",
+        activeTransferRequestId: placement.active_transfer_request_id ?? null,
+        activeTransferRequestStatus:
+          placement.active_transfer_request_status ?? null,
         deletedAt: placement.deleted_at ?? item?.deleted_at ?? null,
         deletedByName:
           placement.deleted_by_name ?? item?.deleted_by_name ?? null,

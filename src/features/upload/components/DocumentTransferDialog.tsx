@@ -1,57 +1,40 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Dialog } from "radix-ui"
 import {
   AlertTriangle,
   ArrowRightLeft,
-  Bot,
   CheckCircle2,
-  FolderPlus,
+  FolderTree,
   Loader2,
-  RefreshCw,
   Search,
-  Sparkles,
   X,
 } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import {
+  createSessionDocumentTransferRequest,
+  getSessionDocumentTransferTargetContext,
   listSessionDocumentTransferTargets,
   previewSessionDocumentTransfer,
-  promoteTemporaryFolderDocuments,
-  retrySessionDocumentTransfer,
-  suggestSessionDossierRetention,
-  suggestSessionDossierTitle,
-  transferSessionDocuments,
-  type DocumentTransferOperationResponse,
-  type DocumentTransferBlocker,
+  type DocumentTransferClassificationLeaf,
+  type DocumentTransferDossierInput,
   type DocumentTransferPreviewResponse,
+  type DocumentTransferRequestResponse,
+  type DocumentTransferTargetClassification,
+  type DocumentTransferTargetContext,
   type DocumentTransferTargetSession,
-  type RetentionCandidateSummary,
-  type SessionDossierRetentionSuggestionResponse,
 } from "@/features/upload/api/sessionApi"
-import { cn } from "@/shared/lib/utils"
+import { transferValidationMessages } from "./documentTransferValidation"
+import {
+  buildClassificationTree,
+  classificationLeafKey,
+  type ClassificationTreeNode,
+} from "./documentTransferClassificationTree"
 
 export interface DocumentTransferTarget {
   id: number
   name: string
-}
-
-type TransferMode = "automatic" | "temporary_dossier"
-
-interface TemporaryDossierDraft {
-  title: string
-  startDate: string
-  endDate: string
-  retentionPeriod: string
-  retentionBasis: string
-}
-
-interface RetentionCandidateOption {
-  key: string
-  candidate: RetentionCandidateSummary
-  label: string
-  basis: string
 }
 
 interface DocumentTransferDialogProps {
@@ -59,18 +42,20 @@ interface DocumentTransferDialogProps {
   sourceSessionId: string | null
   targets: DocumentTransferTarget[]
   onOpenChange: (open: boolean) => void
-  onMutationCompleted: (
-    result: DocumentTransferOperationResponse,
+  onRequestCreated: (
+    request: DocumentTransferRequestResponse,
     targetedDocumentIds: number[]
   ) => void | Promise<void>
 }
 
-const EMPTY_DOSSIER_DRAFT: TemporaryDossierDraft = {
+const EMPTY_DOSSIER: DocumentTransferDossierInput = {
   title: "",
-  startDate: "",
-  endDate: "",
-  retentionPeriod: "",
-  retentionBasis: "",
+  retention_period: "",
+  start_date: "",
+  end_date: "",
+  annotation: "",
+  language: "",
+  note: "",
 }
 
 export function DocumentTransferDialog({
@@ -78,349 +63,200 @@ export function DocumentTransferDialog({
   sourceSessionId,
   targets,
   onOpenChange,
-  onMutationCompleted,
+  onRequestCreated,
 }: DocumentTransferDialogProps) {
-  const [sessions, setSessions] = useState<DocumentTransferTargetSession[]>([])
-  const [selectedTargetSessionId, setSelectedTargetSessionId] = useState("")
-  const [mode, setMode] = useState<TransferMode>("automatic")
-  const [search, setSearch] = useState("")
-  const [debouncedSearch, setDebouncedSearch] = useState("")
-  const [nextOffset, setNextOffset] = useState<number | null>(null)
-  const [reason, setReason] = useState("")
-  const [preview, setPreview] =
-    useState<DocumentTransferPreviewResponse | null>(null)
-  const [dossierDraft, setDossierDraft] =
-    useState<TemporaryDossierDraft>(EMPTY_DOSSIER_DRAFT)
-  const [retentionRecommendation, setRetentionRecommendation] = useState<
-    Record<string, unknown>
-  >({})
-  const [retentionCandidates, setRetentionCandidates] = useState<
-    RetentionCandidateOption[]
-  >([])
-  const [selectedRetentionCandidateKey, setSelectedRetentionCandidateKey] =
-    useState("")
-  const [completedTransfer, setCompletedTransfer] =
-    useState<DocumentTransferOperationResponse | null>(null)
-  const [retryableTransfer, setRetryableTransfer] =
-    useState<DocumentTransferOperationResponse | null>(null)
-  const [terminalTransfer, setTerminalTransfer] =
-    useState<DocumentTransferOperationResponse | null>(null)
-  const [submissionUncertain, setSubmissionUncertain] = useState(false)
-  const [loadingSessions, setLoadingSessions] = useState(false)
-  const [loadingMoreSessions, setLoadingMoreSessions] = useState(false)
-  const [loadingPreview, setLoadingPreview] = useState(false)
-  const [loadingSuggestions, setLoadingSuggestions] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState("")
-  const [suggestionError, setSuggestionError] = useState("")
-  const loadedSuggestionScopeRef = useRef("")
-  const suggestionRequestRef = useRef(0)
   const documentIds = useMemo(
     () => [...new Set(targets.map((target) => target.id))],
     [targets]
   )
-  const documentScope = documentIds.join(",")
+  const [search, setSearch] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  const [sessions, setSessions] = useState<DocumentTransferTargetSession[]>([])
+  const [selectedTargetId, setSelectedTargetId] = useState("")
+  const [context, setContext] = useState<DocumentTransferTargetContext | null>(
+    null
+  )
+  const [dossier, setDossier] =
+    useState<DocumentTransferDossierInput>(EMPTY_DOSSIER)
+  const [leafKey, setLeafKey] = useState("")
+  const [reason, setReason] = useState("")
+  const [preview, setPreview] =
+    useState<DocumentTransferPreviewResponse | null>(null)
+  const [loadingTargets, setLoadingTargets] = useState(false)
+  const [loadingContext, setLoadingContext] = useState(false)
+  const [checking, setChecking] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState("")
+  const clientRequestIdRef = useRef("")
+
+  useEffect(() => {
+    if (!preview) clientRequestIdRef.current = ""
+  }, [preview])
 
   useEffect(() => {
     if (!open) return
-    const timer = window.setTimeout(() => {
-      setDebouncedSearch(search.trim())
-    }, 300)
-    return () => window.clearTimeout(timer)
+    const timeout = window.setTimeout(
+      () => setDebouncedSearch(search.trim()),
+      300
+    )
+    return () => window.clearTimeout(timeout)
   }, [open, search])
 
   useEffect(() => {
     if (!open || !sourceSessionId) return
     let cancelled = false
-    const loadTargetSessions = async () => {
-      await Promise.resolve()
-      if (cancelled) return
-      setLoadingSessions(true)
-      setSessions([])
-      setSelectedTargetSessionId("")
-      setNextOffset(null)
-      setPreview(null)
-      setError("")
-      try {
-        const response = await listSessionDocumentTransferTargets(
-          sourceSessionId,
-          { q: debouncedSearch, limit: 50, offset: 0 }
-        )
-        if (cancelled) return
-        setSessions(response.targets)
-        setNextOffset(response.pagination.next_offset ?? null)
-      } catch (caught) {
-        if (!cancelled) {
-          setError(
-            transferErrorMessage(caught, "Không thể tải danh sách phông đích.")
-          )
-        }
-      } finally {
-        if (!cancelled) setLoadingSessions(false)
-      }
-    }
-    void loadTargetSessions()
+    const timeout = window.setTimeout(() => {
+      setLoadingTargets(true)
+      listSessionDocumentTransferTargets(sourceSessionId, {
+        q: debouncedSearch,
+        limit: 50,
+        offset: 0,
+      })
+        .then((response) => {
+          if (!cancelled) setSessions(response.targets)
+        })
+        .catch((caught: unknown) => {
+          if (!cancelled) setError(errorMessage(caught))
+        })
+        .finally(() => {
+          if (!cancelled) setLoadingTargets(false)
+        })
+    }, 0)
     return () => {
       cancelled = true
+      window.clearTimeout(timeout)
     }
   }, [debouncedSearch, open, sourceSessionId])
 
   useEffect(() => {
-    if (
-      !open ||
-      !sourceSessionId ||
-      !selectedTargetSessionId ||
-      documentIds.length === 0 ||
-      completedTransfer ||
-      retryableTransfer ||
-      terminalTransfer ||
-      submissionUncertain
-    ) {
-      return
-    }
+    if (!open || !sourceSessionId || !selectedTargetId) return
     let cancelled = false
-    const loadPreview = async () => {
-      await Promise.resolve()
-      if (cancelled) return
-      setLoadingPreview(true)
+    const timeout = window.setTimeout(() => {
+      setLoadingContext(true)
+      setContext(null)
       setPreview(null)
+      setDossier(EMPTY_DOSSIER)
+      setLeafKey("")
       setError("")
-      try {
-        const response = await previewSessionDocumentTransfer(
-          sourceSessionId,
-          selectedTargetSessionId,
-          documentIds
-        )
-        if (!cancelled) setPreview(response)
-      } catch (caught) {
-        if (!cancelled) {
-          setError(
-            transferErrorMessage(
-              caught,
-              "Không thể kiểm tra điều kiện chuyển phông."
-            )
-          )
-        }
-      } finally {
-        if (!cancelled) setLoadingPreview(false)
-      }
-    }
-    void loadPreview()
+      getSessionDocumentTransferTargetContext(sourceSessionId, selectedTargetId)
+        .then((response) => {
+          if (!cancelled) setContext(response)
+        })
+        .catch((caught: unknown) => {
+          if (!cancelled) setError(errorMessage(caught))
+        })
+        .finally(() => {
+          if (!cancelled) setLoadingContext(false)
+        })
+    }, 0)
     return () => {
       cancelled = true
+      window.clearTimeout(timeout)
     }
-  }, [
-    completedTransfer,
-    documentIds,
-    open,
-    retryableTransfer,
-    selectedTargetSessionId,
-    sourceSessionId,
-    submissionUncertain,
-    terminalTransfer,
-  ])
+  }, [open, selectedTargetId, sourceSessionId])
 
-  const loadDossierSuggestions = useCallback(
-    async (force = false) => {
-      if (
-        !sourceSessionId ||
-        !selectedTargetSessionId ||
-        documentIds.length === 0 ||
-        !preview?.allowed
-      ) {
-        return
-      }
-      const scope = `${sourceSessionId}:${documentScope}->${selectedTargetSessionId}`
-      if (!force && loadedSuggestionScopeRef.current === scope) return
-      loadedSuggestionScopeRef.current = scope
-      const requestId = suggestionRequestRef.current + 1
-      suggestionRequestRef.current = requestId
-      setLoadingSuggestions(true)
-      setSuggestionError("")
+  const selectedLeaf = context?.classification_leafs.find(
+    (leaf) => classificationLeafKey(leaf) === leafKey
+  )
+  const requiresDossier =
+    context?.required_form_fields.includes("dossier") ?? false
+  const requiresClassification =
+    context?.required_form_fields.includes("target_classification") ?? false
 
-      const dates = preview.documents
-        .map((document) => textValue(document.issued_date))
-        .filter(Boolean)
-        .sort()
-      setDossierDraft({
-        ...EMPTY_DOSSIER_DRAFT,
-        startDate: dates[0] ?? "",
-        endDate: dates[dates.length - 1] ?? "",
-      })
-      setRetentionRecommendation({})
-      setRetentionCandidates([])
-      setSelectedRetentionCandidateKey("")
+  const targetClassification =
+    context &&
+    selectedLeaf &&
+    context.target_snapshot.plan_version_id &&
+    context.target_snapshot.cluster_version_id
+      ? ({
+          plan_version_id: context.target_snapshot.plan_version_id,
+          cluster_version_id: context.target_snapshot.cluster_version_id,
+          group_ids: selectedLeaf.group_ids,
+          leaf_group_id: selectedLeaf.group_id,
+          group_path: selectedLeaf.group_path,
+        } satisfies DocumentTransferTargetClassification)
+      : undefined
 
-      const failedParts: string[] = []
-      let suggestedTitle = ""
-      try {
-        const response = await suggestSessionDossierTitle(sourceSessionId, {
-          session_document_ids: documentIds,
-        })
-        suggestedTitle = titleSuggestionFromResponse(response)
-        if (suggestionRequestRef.current === requestId && suggestedTitle) {
-          setDossierDraft((current) => ({
-            ...current,
-            title: suggestedTitle,
-          }))
-        }
-      } catch (caught) {
-        failedParts.push("tiêu đề")
-        console.warn("Failed to suggest transfer dossier title", caught)
-      }
-
-      try {
-        const response = await suggestSessionDossierRetention(
-          selectedTargetSessionId,
-          {
-            metadata: {
-              title: suggestedTitle || undefined,
-              start_date: dates[0] || undefined,
-              end_date: dates[dates.length - 1] || undefined,
-            },
-            options: { limit: 10 },
-          }
-        )
-        if (suggestionRequestRef.current === requestId) {
-          applyRetentionSuggestion(
-            response,
-            setRetentionRecommendation,
-            setRetentionCandidates,
-            setSelectedRetentionCandidateKey,
-            setDossierDraft
-          )
-        }
-      } catch (caught) {
-        failedParts.push("thời hạn bảo quản và căn cứ")
-        console.warn("Failed to suggest transfer dossier retention", caught)
-      }
-
-      if (suggestionRequestRef.current === requestId) {
-        setSuggestionError(
-          failedParts.length > 0
-            ? `Chưa gợi ý được ${failedParts.join("; ")}. Bạn vẫn có thể nhập thủ công.`
-            : ""
-        )
-        setLoadingSuggestions(false)
-      }
-    },
-    [
-      documentIds,
-      documentScope,
-      preview,
-      selectedTargetSessionId,
-      sourceSessionId,
-    ]
+  const normalizedDossier = requiresDossier ? cleanDossier(dossier) : undefined
+  const canCheck = Boolean(
+    context?.selectable &&
+    documentIds.length > 0 &&
+    (!requiresDossier || normalizedDossier?.title) &&
+    (!requiresClassification || targetClassification)
+  )
+  const validationMessages = useMemo(
+    () => transferValidationMessages(preview?.validation_errors ?? [], targets),
+    [preview?.validation_errors, targets]
   )
 
-  useEffect(() => {
-    if (open && mode === "temporary_dossier" && preview?.allowed) {
-      const timer = window.setTimeout(() => {
-        void loadDossierSuggestions()
-      }, 0)
-      return () => window.clearTimeout(timer)
+  const requestPayload = () => {
+    if (!context) throw new Error("Chưa có context Phông đích.")
+    return {
+      target_session_id: context.target_session_id,
+      session_document_ids: documentIds,
+      expected_target_snapshot: context.target_snapshot,
+      ...(normalizedDossier ? { dossier: normalizedDossier } : {}),
+      ...(targetClassification
+        ? { target_classification: targetClassification }
+        : {}),
     }
-  }, [loadDossierSuggestions, mode, open, preview?.allowed])
-
-  const selectedSession = sessions.find(
-    (session) => session.session_id === selectedTargetSessionId
-  )
-  const blockers = preview?.blocking_jobs ?? []
-  const duplicates = preview?.duplicates ?? []
-  const validationErrors = preview?.validation_errors ?? []
-  const sourceProjection = preview?.source_cluster_projection
-  const selectedRetentionCandidate = retentionCandidates.find(
-    (candidate) => candidate.key === selectedRetentionCandidateKey
-  )
-  const transferStateLocked = Boolean(
-    completedTransfer ||
-    retryableTransfer ||
-    terminalTransfer ||
-    submissionUncertain
-  )
-
-  const resetDialogState = () => {
-    setSearch("")
-    setDebouncedSearch("")
-    setReason("")
-    setMode("automatic")
-    setCompletedTransfer(null)
-    setRetryableTransfer(null)
-    setTerminalTransfer(null)
-    setSubmissionUncertain(false)
-    setDossierDraft(EMPTY_DOSSIER_DRAFT)
-    setRetentionRecommendation({})
-    setRetentionCandidates([])
-    setSelectedRetentionCandidateKey("")
-    setSuggestionError("")
-    setError("")
-    loadedSuggestionScopeRef.current = ""
-    suggestionRequestRef.current += 1
   }
 
-  const handleOpenChange = (nextOpen: boolean) => {
-    if (!nextOpen) resetDialogState()
-    onOpenChange(nextOpen)
-  }
-
-  const loadMoreTargetSessions = async () => {
-    if (!sourceSessionId || nextOffset === null || loadingMoreSessions) return
-    setLoadingMoreSessions(true)
+  const checkTransfer = async () => {
+    if (!sourceSessionId || !canCheck) return
+    setChecking(true)
+    setPreview(null)
     setError("")
     try {
-      const response = await listSessionDocumentTransferTargets(
+      setPreview(
+        await previewSessionDocumentTransfer(sourceSessionId, requestPayload())
+      )
+    } catch (caught) {
+      setError(errorMessage(caught))
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  const submitRequest = async () => {
+    if (!sourceSessionId || !preview?.allowed) return
+    setSubmitting(true)
+    setError("")
+    try {
+      const clientRequestId = clientRequestIdRef.current || newClientId()
+      clientRequestIdRef.current = clientRequestId
+
+      const created = await createSessionDocumentTransferRequest(
         sourceSessionId,
-        { q: debouncedSearch, limit: 50, offset: nextOffset }
+        {
+          ...requestPayload(),
+          client_request_id: clientRequestId,
+          expected_source_document_set_revision:
+            preview.source_document_set_revision,
+          expected_target_document_set_revision:
+            preview.target_document_set_revision,
+          expected_target_snapshot: preview.current_target_snapshot,
+          ...(preview.normalized_dossier
+            ? { dossier: preview.normalized_dossier }
+            : {}),
+          ...(preview.normalized_target_classification
+            ? {
+                target_classification: preview.normalized_target_classification,
+              }
+            : {}),
+          reason: reason.trim() || null,
+          confirmed: true,
+        }
       )
-      setSessions((current) => [
-        ...current,
-        ...response.targets.filter(
-          (target) =>
-            !current.some(
-              (candidate) => candidate.session_id === target.session_id
-            )
-        ),
-      ])
-      setNextOffset(response.pagination.next_offset ?? null)
-    } catch (caught) {
-      setError(
-        transferErrorMessage(caught, "Không thể tải thêm danh sách phông đích.")
-      )
-    } finally {
-      setLoadingMoreSessions(false)
-    }
-  }
-
-  const createTemporaryDossier = async (
-    result: DocumentTransferOperationResponse
-  ) => {
-    const metadata = temporaryDossierMetadata(
-      dossierDraft,
-      retentionRecommendation,
-      selectedRetentionCandidate?.candidate
-    )
-    await promoteTemporaryFolderDocuments(result.target_session_id, {
-      session_document_ids: result.target_session_document_ids,
-      metadata,
-      created_by: "document_transfer_ui",
-    })
-  }
-
-  const retryTemporaryDossier = async () => {
-    if (!completedTransfer) return
-    setSubmitting(true)
-    setError("")
-    try {
-      await createTemporaryDossier(completedTransfer)
+      await onRequestCreated(created, documentIds)
       toast.success(
-        `Đã tạo hồ sơ tạm từ ${completedTransfer.transferred_count} tài liệu và ghi nhận feedback.`
+        created.status === "completed"
+          ? "Đã chuyển tài liệu sang Phông đích."
+          : "Đã gửi yêu cầu tới người quản lý Phông đích."
       )
-      handleOpenChange(false)
+      closeDialog()
     } catch (caught) {
-      const message = transferErrorMessage(
-        caught,
-        "Tài liệu đã được chuyển nhưng chưa thể tạo hồ sơ tạm."
-      )
+      const message = errorMessage(caught)
       setError(message)
       toast.error(message)
     } finally {
@@ -428,513 +264,219 @@ export function DocumentTransferDialog({
     }
   }
 
-  const submitTransfer = async () => {
-    if (completedTransfer) {
-      await retryTemporaryDossier()
-      return
-    }
-    if (terminalTransfer) return
-    if (
-      !sourceSessionId ||
-      !selectedTargetSessionId ||
-      (!retryableTransfer && !submissionUncertain && !preview?.allowed) ||
-      documentIds.length === 0
-    ) {
-      return
-    }
-    setSubmitting(true)
+  const closeDialog = () => {
+    setSearch("")
+    setSelectedTargetId("")
+    setContext(null)
+    setDossier(EMPTY_DOSSIER)
+    setLeafKey("")
+    setReason("")
+    setPreview(null)
     setError("")
-    let result: DocumentTransferOperationResponse
-    try {
-      result = retryableTransfer
-        ? await retrySessionDocumentTransfer(
-            sourceSessionId,
-            retryableTransfer.operation_id
-          )
-        : await transferSessionDocuments(
-            sourceSessionId,
-            selectedTargetSessionId,
-            documentIds,
-            reason
-          )
-    } catch (caught) {
-      setSubmissionUncertain(true)
-      const message = transferErrorMessage(
-        caught,
-        "Không thể chuyển tài liệu sang phông đích."
-      )
-      setError(message)
-      toast.error(message)
-      try {
-        const nextPreview = await previewSessionDocumentTransfer(
-          sourceSessionId,
-          selectedTargetSessionId,
-          documentIds
-        )
-        setPreview(nextPreview)
-      } catch {
-        // Keep the mutation error; the user can close and reopen to retry preview.
-      }
-      setSubmitting(false)
-      return
-    }
-
-    setSubmissionUncertain(false)
-    if (
-      result.status === "retry_required" ||
-      result.status === "pending" ||
-      result.status === "moving_remote"
-    ) {
-      setRetryableTransfer(result)
-      setError(
-        "Chưa xác định được kết quả chuyển trên Chỉnh Lý. Tài liệu đang được giữ nguyên trạng thái chờ; hãy thử đồng bộ lại thao tác này."
-      )
-      toast.warning("Kết quả chuyển chưa rõ, có thể thử đồng bộ lại an toàn.")
-      setSubmitting(false)
-      return
-    }
-
-    setRetryableTransfer(null)
-    if (result.transferred_count > 0) {
-      try {
-        await onMutationCompleted(result, documentIds)
-      } catch (caught) {
-        console.warn(
-          "Transferred documents but could not refresh source UI",
-          caught
-        )
-      }
-    }
-
-    if (result.status !== "completed" || result.failed_count > 0) {
-      setTerminalTransfer(result)
-      const message =
-        result.transferred_count > 0
-          ? `Đã chuyển ${result.transferred_count} tài liệu; ${result.failed_count} tài liệu không chuyển được và vẫn active ở session nguồn.`
-          : `Không chuyển được ${result.failed_count || documentIds.length} tài liệu; các tài liệu vẫn active ở session nguồn.`
-      setError(message)
-      toast.warning(message)
-      setSubmitting(false)
-      return
-    }
-
-    if (mode === "automatic") {
-      toast.success(
-        `Đã chuyển ${result.transferred_count} tài liệu sang ${targetSessionLabel(
-          selectedSession
-        )} và bắt đầu luồng phân loại tự động.`
-      )
-      setSubmitting(false)
-      handleOpenChange(false)
-      return
-    }
-
-    setCompletedTransfer(result)
-    try {
-      await createTemporaryDossier(result)
-      toast.success(
-        `Đã chuyển ${result.transferred_count} tài liệu, tạo hồ sơ tạm và ghi nhận feedback.`
-      )
-      setSubmitting(false)
-      handleOpenChange(false)
-    } catch (caught) {
-      const detail = transferErrorMessage(
-        caught,
-        "Không thể tạo hồ sơ tạm ở phông đích."
-      )
-      const message = `Tài liệu đã chuyển thành công nhưng chưa tạo được hồ sơ tạm: ${detail}`
-      setError(message)
-      toast.error(message)
-      setSubmitting(false)
-    }
+    onOpenChange(false)
   }
-
-  const chooseRetentionCandidate = (key: string) => {
-    setSelectedRetentionCandidateKey(key)
-    const option = retentionCandidates.find(
-      (candidate) => candidate.key === key
-    )
-    if (!option) return
-    setDossierDraft((current) => ({
-      ...current,
-      retentionPeriod:
-        textValue(option.candidate.retention_period) || current.retentionPeriod,
-      retentionBasis: option.basis || current.retentionBasis,
-    }))
-  }
-
-  const transferDisabled =
-    submitting ||
-    loadingPreview ||
-    loadingSuggestions ||
-    !selectedTargetSessionId ||
-    Boolean(terminalTransfer) ||
-    (!completedTransfer &&
-      !retryableTransfer &&
-      !submissionUncertain &&
-      !preview?.allowed)
 
   return (
-    <Dialog.Root open={open} onOpenChange={handleOpenChange}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(nextOpen) =>
+        nextOpen ? onOpenChange(true) : closeDialog()
+      }
+    >
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-[#0F172A]/50 backdrop-blur-[2px]" />
-        <Dialog.Content className="fixed top-1/2 left-1/2 z-50 flex max-h-[92svh] w-[calc(100%-2rem)] max-w-6xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-[#CBD5E1] bg-white shadow-2xl outline-none">
-          <div className="flex items-start gap-3 border-b border-[#E2E8F0] px-5 py-4">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#0052FF]">
-              <ArrowRightLeft className="size-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <Dialog.Title className="text-base font-semibold text-[#0F172A]">
-                Chuyển phông tài liệu
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-slate-950/45" />
+        <Dialog.Content className="fixed top-1/2 left-1/2 z-50 max-h-[92vh] w-[min(920px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <Dialog.Title className="flex items-center gap-2 text-xl font-semibold text-slate-900">
+                <ArrowRightLeft className="h-5 w-5 text-blue-600" />
+                Chuyển tài liệu sang Phông khác
               </Dialog.Title>
-              <Dialog.Description className="mt-1 text-sm text-[#64748B]">
-                Chọn phông đích và cách xử lý các tài liệu sau khi chuyển. Tài
-                liệu được giữ nguyên dữ liệu số, không upload hoặc OCR lại.
+              <Dialog.Description className="mt-1 text-sm text-slate-600">
+                {documentIds.length} tài liệu đã chọn. Đích là session hoặc nhóm
+                phân loại; hệ thống không cho chọn hồ sơ đích có sẵn.
               </Dialog.Description>
             </div>
             <Dialog.Close asChild>
-              <Button variant="ghost" size="sm" className="size-8 p-0">
-                <X className="size-4" />
-                <span className="sr-only">Đóng</span>
+              <Button variant="ghost" size="icon" aria-label="Đóng">
+                <X className="h-4 w-4" />
               </Button>
             </Dialog.Close>
           </div>
 
-          <div className="grid min-h-0 flex-1 overflow-hidden lg:grid-cols-[minmax(280px,0.34fr)_minmax(0,0.66fr)]">
-            <div className="flex min-h-0 flex-col border-b border-[#E2E8F0] bg-[#F8FAFC] lg:border-r lg:border-b-0">
-              <div className="border-b border-[#E2E8F0] px-4 py-3">
-                <p className="mb-2 text-xs font-semibold tracking-wide text-[#475569] uppercase">
-                  1. Chọn phông đích
-                </p>
-                <label className="flex h-10 items-center gap-2 rounded-lg border border-[#CBD5E1] bg-white px-3 focus-within:border-[#0052FF] focus-within:ring-2 focus-within:ring-[#0052FF]/15">
-                  <Search className="size-4 text-[#94A3B8]" />
-                  <input
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Tên phông hoặc mã session"
-                    className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-                    disabled={transferStateLocked}
-                  />
-                </label>
+          <div className="mt-6 grid gap-6 md:grid-cols-[0.9fr_1.1fr]">
+            <section>
+              <label className="text-sm font-medium text-slate-800">
+                Phông đích
+              </label>
+              <div className="relative mt-2">
+                <Search className="absolute top-2.5 left-3 h-4 w-4 text-slate-400" />
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Tìm tên Phông, kho hoặc mã cơ quan"
+                  className="w-full rounded-lg border border-slate-300 py-2 pr-3 pl-9 text-sm"
+                />
               </div>
-              <div className="min-h-40 flex-1 overflow-y-auto p-3 lg:min-h-80">
-                {loadingSessions ? (
-                  <div className="flex items-center justify-center gap-2 py-12 text-sm text-[#64748B]">
-                    <Loader2 className="size-4 animate-spin" />
-                    Đang tải danh sách phông...
+              <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
+                {loadingTargets && (
+                  <div className="flex items-center gap-2 text-sm text-slate-500">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Đang tải danh sách...
                   </div>
-                ) : sessions.length > 0 ? (
-                  <div className="space-y-2">
-                    {sessions.map((session) => {
-                      const selected =
-                        session.session_id === selectedTargetSessionId
-                      return (
-                        <button
-                          key={session.session_id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedTargetSessionId(session.session_id)
-                            setError("")
-                          }}
-                          disabled={transferStateLocked}
-                          className={cn(
-                            "w-full rounded-xl border px-3 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-70",
-                            selected
-                              ? "border-[#0052FF] bg-white ring-2 ring-[#0052FF]/10"
-                              : "border-[#E2E8F0] bg-white hover:border-[#BFD3FF] hover:bg-[#F8FAFF]"
-                          )}
-                        >
-                          <div className="flex items-start gap-2">
-                            <div
-                              className={cn(
-                                "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border",
-                                selected
-                                  ? "border-[#0052FF] bg-[#0052FF] text-white"
-                                  : "border-[#CBD5E1]"
-                              )}
-                            >
-                              {selected ? (
-                                <CheckCircle2 className="size-3.5" />
-                              ) : null}
-                            </div>
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold text-[#0F172A]">
-                                {session.fonds_name || "Phông chưa đặt tên"}
-                              </p>
-                              <p className="mt-1 truncate text-xs text-[#64748B]">
-                                {session.session_id}
-                                {session.fonds_creator_code
-                                  ? ` · ${session.fonds_creator_code}`
-                                  : ""}
-                              </p>
-                            </div>
-                          </div>
-                        </button>
-                      )
-                    })}
-                    {nextOffset !== null ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="w-full"
-                        disabled={loadingMoreSessions || transferStateLocked}
-                        onClick={() => void loadMoreTargetSessions()}
-                      >
-                        {loadingMoreSessions ? (
-                          <Loader2
-                            data-icon="inline-start"
-                            className="animate-spin"
-                          />
-                        ) : null}
-                        Tải thêm
-                      </Button>
-                    ) : null}
-                  </div>
-                ) : (
-                  <p className="rounded-lg border border-dashed border-[#CBD5E1] bg-white px-3 py-8 text-center text-sm text-[#64748B]">
-                    Không có phông đích phù hợp mà bạn được phép quản lý.
-                  </p>
                 )}
+                {sessions.map((session) => (
+                  <button
+                    key={session.session_id}
+                    type="button"
+                    disabled={!session.selectable}
+                    onClick={() => setSelectedTargetId(session.session_id)}
+                    className={`w-full rounded-xl border p-3 text-left transition ${
+                      selectedTargetId === session.session_id
+                        ? "border-blue-500 bg-blue-50"
+                        : "border-slate-200 hover:border-slate-300"
+                    } disabled:cursor-not-allowed disabled:opacity-50`}
+                  >
+                    <div className="font-medium text-slate-900">
+                      {session.fonds_name ||
+                        session.archive_name ||
+                        session.session_id}
+                    </div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {caseLabel(session.transfer_case)}
+                    </div>
+                    {session.unavailable_reason && (
+                      <div className="mt-1 text-xs text-rose-600">
+                        {session.unavailable_reason}
+                      </div>
+                    )}
+                  </button>
+                ))}
               </div>
-            </div>
+            </section>
 
-            <div className="min-h-0 overflow-y-auto px-5 py-4">
-              <section>
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs font-semibold tracking-wide text-[#475569] uppercase">
-                    Tài liệu được chọn
-                  </p>
-                  <span className="rounded-full bg-[#EAF1FF] px-2.5 py-1 text-xs font-semibold text-[#0052FF]">
-                    {documentIds.length} tài liệu
-                  </span>
+            <section className="space-y-4">
+              {loadingContext && (
+                <div className="flex items-center gap-2 text-sm text-slate-500">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Đang xác định trường hợp chuyển...
                 </div>
-                <ul className="mt-2 max-h-24 space-y-1 overflow-y-auto rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2 text-xs text-[#475569]">
-                  {targets.map((target) => (
-                    <li key={target.id} className="truncate">
-                      {target.name}
-                    </li>
-                  ))}
-                </ul>
-              </section>
-
-              <section className="mt-5">
-                <p className="text-xs font-semibold tracking-wide text-[#475569] uppercase">
-                  2. Chọn cách xử lý
-                </p>
-                <div className="mt-2 grid gap-3 sm:grid-cols-2">
-                  <TransferModeCard
-                    selected={mode === "automatic"}
-                    disabled={transferStateLocked}
-                    icon={<Bot className="size-5" />}
-                    title="Tự động phân loại"
-                    description="Chuyển tài liệu rồi chạy luồng phân loại tự động hiện có ở phông đích."
-                    onClick={() => setMode("automatic")}
-                  />
-                  <TransferModeCard
-                    selected={mode === "temporary_dossier"}
-                    disabled={transferStateLocked}
-                    icon={<FolderPlus className="size-5" />}
-                    title="Tạo hồ sơ tạm"
-                    description="Chuyển tài liệu, gom thành hồ sơ tạm và ghi nhận làm feedback lập hồ sơ."
-                    onClick={() => setMode("temporary_dossier")}
-                  />
-                </div>
-              </section>
-
-              {selectedSession ? (
-                <div className="mt-4 flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-3 text-sm text-blue-950">
-                  <ArrowRightLeft className="mt-0.5 size-4 shrink-0" />
-                  <div>
-                    <p className="font-semibold">Phông đích</p>
-                    <p className="mt-0.5">
-                      {targetSessionLabel(selectedSession)} ·{" "}
-                      {selectedSession.session_id}
-                    </p>
+              )}
+              {context && (
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                  <div className="font-medium">
+                    {caseLabel(context.transfer_case)}
+                  </div>
+                  <div className="mt-1">
+                    {context.requires_target_approval
+                      ? "Yêu cầu sẽ chờ coordinator Phông đích accept/reject."
+                      : "Tài liệu được chuyển ngay, không tạo hồ sơ."}
                   </div>
                 </div>
-              ) : (
-                <p className="mt-4 rounded-lg border border-dashed border-[#CBD5E1] px-3 py-5 text-center text-sm text-[#64748B]">
-                  Chọn một phông ở danh sách để kiểm tra điều kiện chuyển.
-                </p>
               )}
 
-              {loadingPreview ? (
-                <div className="mt-4 flex items-center gap-2 rounded-lg bg-[#F8FAFC] px-3 py-3 text-sm text-[#64748B]">
-                  <Loader2 className="size-4 animate-spin" />
-                  Đang kiểm tra job và tài liệu trùng lặp...
-                </div>
-              ) : null}
-
-              {blockers.length > 0 ? (
-                <WarningBox title="Chưa thể chuyển tài liệu">
-                  {blockers.map((blocker, index) => (
-                    <li
-                      key={`${blocker.session_id}-${blocker.job_id ?? index}`}
-                    >
-                      {transferBlockerLabel(blocker)}
-                    </li>
-                  ))}
-                </WarningBox>
-              ) : null}
-
-              {validationErrors.length > 0 ? (
-                <WarningBox title="Có tài liệu chưa đủ điều kiện chuyển">
-                  {validationErrors.map((item) => (
-                    <li key={`${item.code}-${item.session_document_id}`}>
-                      #{item.session_document_id}:{" "}
-                      {validationErrorLabel(item.code)}
-                    </li>
-                  ))}
-                </WarningBox>
-              ) : null}
-
-              {duplicates.length > 0 ? (
-                <WarningBox title="Phông đích đã có tài liệu trùng">
-                  {duplicates.map((item) => (
-                    <li key={item.target_session_document_id}>
-                      {item.file_name} · {item.match_types.join(", ")}
-                    </li>
-                  ))}
-                </WarningBox>
-              ) : null}
-
-              {preview?.allowed && mode === "automatic" ? (
-                <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-950">
-                  <p className="flex items-center gap-2 font-semibold">
-                    <CheckCircle2 className="size-4" />
-                    Sẵn sàng chuyển và phân loại tự động
-                  </p>
-                  <p className="mt-1 text-xs leading-5">
-                    Sau khi chuyển, phông đích sẽ chạy lại luồng phân loại hiện
-                    có và sử dụng cache ma trận khoảng cách đã tính.
-                  </p>
-                  <p className="mt-1 text-xs leading-5">
-                    {sourceProjection?.status === "eligible"
-                      ? "Kết quả hồ sơ ở phông nguồn cũng được cập nhật ngay từ baseline hiện tại."
-                      : sourceProjection?.status === "not_applicable"
-                        ? "Phông nguồn chưa có phiên bản hồ sơ nên không cần cập nhật lại."
-                        : "Phông nguồn sẽ được đánh dấu cần cập nhật nếu baseline hiện tại không thể chiếu lại."}
-                  </p>
-                </div>
-              ) : null}
-
-              {preview?.allowed && mode === "temporary_dossier" ? (
-                <TemporaryDossierForm
-                  draft={dossierDraft}
-                  loading={loadingSuggestions}
-                  suggestionError={suggestionError}
-                  candidates={retentionCandidates}
-                  selectedCandidateKey={selectedRetentionCandidateKey}
-                  disabled={submitting}
-                  onChange={setDossierDraft}
-                  onSelectCandidate={chooseRetentionCandidate}
-                  onRefresh={() => void loadDossierSuggestions(true)}
+              {requiresDossier && (
+                <DossierFields
+                  dossier={dossier}
+                  onChange={(value) => {
+                    setDossier(value)
+                    setPreview(null)
+                  }}
                 />
-              ) : null}
+              )}
 
-              {completedTransfer ? (
-                <WarningBox title="Tài liệu đã chuyển, hồ sơ tạm chưa được tạo">
-                  <li>
-                    Không chuyển lại tài liệu. Hãy kiểm tra metadata rồi bấm
-                    “Thử tạo hồ sơ tạm lại”.
-                  </li>
-                  <li>
-                    Session đích: {completedTransfer.target_session_id} · thao
-                    tác {completedTransfer.operation_id}
-                  </li>
-                </WarningBox>
-              ) : null}
+              {requiresClassification && context && (
+                <ClassificationTreePicker
+                  leaves={context.classification_leafs}
+                  selectedKey={leafKey}
+                  onSelect={(nextLeaf) => {
+                    setLeafKey(classificationLeafKey(nextLeaf))
+                    setPreview(null)
+                  }}
+                />
+              )}
 
-              {retryableTransfer ? (
-                <WarningBox title="Kết quả chuyển chưa được xác định">
-                  <li>
-                    Hệ thống sẽ dùng lại đúng mã yêu cầu cũ khi thử lại, không
-                    tạo một thao tác chuyển mới.
-                  </li>
-                  <li>
-                    Thao tác {retryableTransfer.operation_id} · session đích{" "}
-                    {retryableTransfer.target_session_id}
-                  </li>
-                </WarningBox>
-              ) : null}
+              {context?.transfer_case === "case_4_classification_approved" && (
+                <div className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  Khi accept, backend tạo và tự kích hoạt ClusterVersion mới.
+                  Coordinator chỉ nhận thông báo; duyệt ClusterVersion sẽ được
+                  triển khai ở giai đoạn sau.
+                </div>
+              )}
 
-              {submissionUncertain ? (
-                <WarningBox title="Chưa nhận được phản hồi của thao tác chuyển">
-                  <li>
-                    Có thể gửi lại đúng yêu cầu này. Backend sẽ trả lại
-                    operation đang chạy hoặc kết quả đã lưu, không chuyển lại
-                    tài liệu đã thành công.
-                  </li>
-                </WarningBox>
-              ) : null}
+              {context && (
+                <label className="block text-sm font-medium text-slate-800">
+                  Lý do chuyển
+                  <textarea
+                    value={reason}
+                    onChange={(event) => {
+                      setReason(event.target.value)
+                      setPreview(null)
+                    }}
+                    rows={2}
+                    className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                </label>
+              )}
 
-              {terminalTransfer ? (
-                <WarningBox title="Thao tác chuyển đã kết thúc">
-                  <li>
-                    Đã chuyển {terminalTransfer.transferred_count} tài liệu;{" "}
-                    {terminalTransfer.failed_count} tài liệu không chuyển được
-                    vẫn active ở session nguồn.
-                  </li>
-                  <li>
-                    Đóng hộp thoại, chọn lại các tài liệu lỗi nếu muốn thực hiện
-                    một thao tác mới.
-                  </li>
-                </WarningBox>
-              ) : null}
+              {preview && (
+                <div
+                  className={`rounded-xl border p-3 text-sm ${
+                    preview.allowed
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                      : "border-rose-200 bg-rose-50 text-rose-900"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 font-medium">
+                    {preview.allowed ? (
+                      <CheckCircle2 className="h-4 w-4" />
+                    ) : (
+                      <AlertTriangle className="h-4 w-4" />
+                    )}
+                    {preview.allowed
+                      ? "Dữ liệu hợp lệ, có thể gửi yêu cầu."
+                      : "Chưa thể gửi yêu cầu."}
+                  </div>
+                  {!preview.allowed && validationMessages.length > 0 && (
+                    <ul className="mt-2 list-disc space-y-1 pl-5">
+                      {validationMessages.map((message) => (
+                        <li key={message}>{message}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
 
-              {error ? (
-                <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs leading-5 text-red-700">
+              {error && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
                   {error}
-                </p>
-              ) : null}
-
-              <label className="mt-4 block text-xs font-medium text-[#475569]">
-                Lý do chuyển (không bắt buộc)
-                <textarea
-                  value={reason}
-                  onChange={(event) => setReason(event.target.value)}
-                  rows={2}
-                  disabled={transferStateLocked}
-                  className="mt-1 w-full resize-none rounded-lg border border-[#CBD5E1] bg-white px-3 py-2 text-sm text-[#0F172A] outline-none focus:border-[#0052FF] focus:ring-2 focus:ring-[#0052FF]/15 disabled:bg-[#F1F5F9]"
-                />
-              </label>
-            </div>
+                </div>
+              )}
+            </section>
           </div>
 
-          <div className="flex flex-col-reverse gap-2 border-t border-[#E2E8F0] bg-[#F8FAFC] px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs text-[#64748B]">
-              {mode === "temporary_dossier"
-                ? "Hồ sơ tạm sẽ được ghi nhận bằng cơ chế feedback hiện có."
-                : "Chế độ phân loại tự động sử dụng nguyên luồng hiện tại."}
-            </p>
-            <div className="flex flex-col-reverse gap-2 sm:flex-row">
-              <Dialog.Close asChild>
-                <Button variant="outline" disabled={submitting}>
-                  Đóng
-                </Button>
-              </Dialog.Close>
-              <Button
-                onClick={() => void submitTransfer()}
-                disabled={transferDisabled}
-              >
-                {submitting ? (
-                  <Loader2 data-icon="inline-start" className="animate-spin" />
-                ) : mode === "temporary_dossier" ? (
-                  <FolderPlus data-icon="inline-start" />
-                ) : (
-                  <ArrowRightLeft data-icon="inline-start" />
-                )}
-                {completedTransfer
-                  ? "Thử tạo hồ sơ tạm lại"
-                  : retryableTransfer
-                    ? "Thử đồng bộ lại kết quả chuyển"
-                    : submissionUncertain
-                      ? "Thử lại yêu cầu chuyển"
-                      : mode === "temporary_dossier"
-                        ? "Chuyển và tạo hồ sơ tạm"
-                        : "Chuyển và tự động phân loại"}
-              </Button>
-            </div>
+          <div className="mt-6 flex justify-end gap-3">
+            <Button variant="outline" onClick={closeDialog}>
+              Hủy
+            </Button>
+            <Button
+              variant="outline"
+              disabled={!canCheck || checking || submitting}
+              onClick={() => void checkTransfer()}
+            >
+              {checking && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Kiểm tra
+            </Button>
+            <Button
+              disabled={!preview?.allowed || submitting}
+              onClick={() => void submitRequest()}
+            >
+              {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {context?.requires_target_approval
+                ? "Gửi yêu cầu"
+                : "Xác nhận chuyển"}
+            </Button>
           </div>
         </Dialog.Content>
       </Dialog.Portal>
@@ -942,448 +484,226 @@ export function DocumentTransferDialog({
   )
 }
 
-function TransferModeCard({
-  selected,
-  disabled,
-  icon,
-  title,
-  description,
-  onClick,
+function ClassificationTreePicker({
+  leaves,
+  selectedKey,
+  onSelect,
 }: {
-  selected: boolean
-  disabled: boolean
-  icon: React.ReactNode
-  title: string
-  description: string
-  onClick: () => void
+  leaves: DocumentTransferClassificationLeaf[]
+  selectedKey: string
+  onSelect: (leaf: DocumentTransferClassificationLeaf) => void
 }) {
-  return (
-    <button
-      type="button"
-      aria-pressed={selected}
-      disabled={disabled}
-      onClick={onClick}
-      className={cn(
-        "rounded-xl border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-70",
-        selected
-          ? "border-[#0052FF] bg-[#F3F7FF] ring-2 ring-[#0052FF]/10"
-          : "border-[#CBD5E1] bg-white hover:border-[#8CB2FF]"
-      )}
-    >
-      <div className="flex items-start gap-3">
-        <div
-          className={cn(
-            "flex size-9 shrink-0 items-center justify-center rounded-lg",
-            selected ? "bg-[#0052FF] text-white" : "bg-[#F1F5F9] text-[#475569]"
-          )}
-        >
-          {icon}
-        </div>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-[#0F172A]">{title}</p>
-          <p className="mt-1 text-xs leading-5 text-[#64748B]">{description}</p>
-        </div>
-      </div>
-    </button>
+  const tree = useMemo(() => buildClassificationTree(leaves), [leaves])
+  const selectedLeaf = leaves.find(
+    (leaf) => classificationLeafKey(leaf) === selectedKey
   )
-}
-
-function TemporaryDossierForm({
-  draft,
-  loading,
-  suggestionError,
-  candidates,
-  selectedCandidateKey,
-  disabled,
-  onChange,
-  onSelectCandidate,
-  onRefresh,
-}: {
-  draft: TemporaryDossierDraft
-  loading: boolean
-  suggestionError: string
-  candidates: RetentionCandidateOption[]
-  selectedCandidateKey: string
-  disabled: boolean
-  onChange: (draft: TemporaryDossierDraft) => void
-  onSelectCandidate: (key: string) => void
-  onRefresh: () => void
-}) {
-  const updateField = (field: keyof TemporaryDossierDraft, value: string) => {
-    onChange({ ...draft, [field]: value })
-  }
 
   return (
-    <section className="mt-4 rounded-xl border border-violet-200 bg-violet-50/40 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="flex items-center gap-2 text-sm font-semibold text-[#0F172A]">
-            <Sparkles className="size-4 text-violet-600" />
-            Thông tin hồ sơ tạm
-          </p>
-          <p className="mt-1 text-xs text-[#64748B]">
-            Kiểm tra và chỉnh lại gợi ý trước khi chuyển tài liệu.
-          </p>
-        </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={loading || disabled}
-          onClick={onRefresh}
-        >
-          {loading ? (
-            <Loader2 data-icon="inline-start" className="animate-spin" />
-          ) : (
-            <RefreshCw data-icon="inline-start" />
-          )}
-          Gợi ý lại
-        </Button>
+    <div>
+      <div className="text-sm font-medium text-slate-800">
+        Cây phân loại Phông đích
       </div>
-
-      {loading ? (
-        <div className="mt-4 flex items-center gap-2 rounded-lg bg-white px-3 py-3 text-sm text-[#64748B]">
-          <Loader2 className="size-4 animate-spin text-violet-600" />
-          Đang gợi ý tiêu đề, thời gian và thời hạn bảo quản...
-        </div>
-      ) : null}
-
-      {suggestionError ? (
-        <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          {suggestionError}
-        </p>
-      ) : null}
-
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <label className="sm:col-span-2">
-          <FieldLabel>Tiêu đề hồ sơ</FieldLabel>
-          <textarea
-            value={draft.title}
-            onChange={(event) => updateField("title", event.target.value)}
-            rows={2}
-            disabled={disabled}
-            className="mt-1 w-full resize-none rounded-lg border border-[#CBD5E1] bg-white px-3 py-2 text-sm outline-none focus:border-[#0052FF] focus:ring-2 focus:ring-[#0052FF]/15 disabled:bg-[#F1F5F9]"
-          />
-        </label>
-        <label>
-          <FieldLabel>Thời gian bắt đầu</FieldLabel>
-          <input
-            value={draft.startDate}
-            onChange={(event) => updateField("startDate", event.target.value)}
-            disabled={disabled}
-            className="mt-1 h-10 w-full rounded-lg border border-[#CBD5E1] bg-white px-3 text-sm outline-none focus:border-[#0052FF] focus:ring-2 focus:ring-[#0052FF]/15 disabled:bg-[#F1F5F9]"
-          />
-        </label>
-        <label>
-          <FieldLabel>Thời gian kết thúc</FieldLabel>
-          <input
-            value={draft.endDate}
-            onChange={(event) => updateField("endDate", event.target.value)}
-            disabled={disabled}
-            className="mt-1 h-10 w-full rounded-lg border border-[#CBD5E1] bg-white px-3 text-sm outline-none focus:border-[#0052FF] focus:ring-2 focus:ring-[#0052FF]/15 disabled:bg-[#F1F5F9]"
-          />
-        </label>
-        <label className="sm:col-span-2">
-          <FieldLabel>Thời hạn bảo quản</FieldLabel>
-          <input
-            value={draft.retentionPeriod}
-            onChange={(event) =>
-              updateField("retentionPeriod", event.target.value)
-            }
-            disabled={disabled}
-            className="mt-1 h-10 w-full rounded-lg border border-[#CBD5E1] bg-white px-3 text-sm outline-none focus:border-[#0052FF] focus:ring-2 focus:ring-[#0052FF]/15 disabled:bg-[#F1F5F9]"
-          />
-        </label>
-        {candidates.length > 1 ? (
-          <label className="sm:col-span-2">
-            <FieldLabel>Chọn căn cứ được gợi ý</FieldLabel>
-            <select
-              value={selectedCandidateKey}
-              onChange={(event) => onSelectCandidate(event.target.value)}
-              disabled={disabled}
-              className="mt-1 h-10 w-full rounded-lg border border-[#CBD5E1] bg-white px-3 text-sm outline-none focus:border-[#0052FF] focus:ring-2 focus:ring-[#0052FF]/15 disabled:bg-[#F1F5F9]"
-            >
-              {candidates.map((candidate) => (
-                <option key={candidate.key} value={candidate.key}>
-                  {candidate.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-        <label className="sm:col-span-2">
-          <FieldLabel>Căn cứ thời hạn bảo quản</FieldLabel>
-          <textarea
-            value={draft.retentionBasis}
-            onChange={(event) =>
-              updateField("retentionBasis", event.target.value)
-            }
-            rows={2}
-            disabled={disabled}
-            className="mt-1 w-full resize-none rounded-lg border border-[#CBD5E1] bg-white px-3 py-2 text-sm outline-none focus:border-[#0052FF] focus:ring-2 focus:ring-[#0052FF]/15 disabled:bg-[#F1F5F9]"
-          />
-        </label>
-      </div>
-    </section>
-  )
-}
-
-function FieldLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="block text-xs font-medium text-[#475569]">{children}</span>
-  )
-}
-
-function WarningBox({
-  title,
-  children,
-}: {
-  title: string
-  children: React.ReactNode
-}) {
-  return (
-    <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-950">
-      <p className="flex items-center gap-2 font-semibold">
-        <AlertTriangle className="size-4" />
-        {title}
+      <p className="mt-1 text-xs text-slate-500">
+        Mở theo đường dẫn phân loại và chỉ chọn nhóm cuối cùng.
       </p>
-      <ul className="mt-2 list-disc space-y-1 pl-5 text-xs leading-5">
-        {children}
-      </ul>
+      <div
+        role="tree"
+        aria-label="Cây phân loại Phông đích"
+        className="mt-2 max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 py-1"
+      >
+        {tree.length > 0 ? (
+          tree.map((node) => (
+            <ClassificationTreeBranch
+              key={node.key}
+              node={node}
+              level={0}
+              selectedKey={selectedKey}
+              onSelect={onSelect}
+            />
+          ))
+        ) : (
+          <div className="px-3 py-4 text-sm text-slate-500">
+            Phông đích chưa có nhóm nhỏ để chọn.
+          </div>
+        )}
+      </div>
+      {selectedLeaf && (
+        <div className="mt-2 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-800">
+          Đã chọn: {selectedLeaf.group_path.join(" / ")}
+        </div>
+      )}
     </div>
   )
 }
 
-function applyRetentionSuggestion(
-  response: SessionDossierRetentionSuggestionResponse,
-  setRecommendation: (value: Record<string, unknown>) => void,
-  setCandidates: (value: RetentionCandidateOption[]) => void,
-  setSelectedCandidateKey: (value: string) => void,
-  setDraft: React.Dispatch<React.SetStateAction<TemporaryDossierDraft>>
-) {
-  const recommendation = retentionRecommendationFromResponse(response)
-  const candidates = retentionCandidateOptions(response)
-  const recommendedEntryId = textValue(recommendation.entry_id)
-  const selectedCandidate =
-    candidates.find(
-      (option) => option.candidate.entry_id === recommendedEntryId
-    ) ?? candidates[0]
-  const retentionPeriod =
-    textValue(selectedCandidate?.candidate.retention_period) ||
-    textValue(recommendation.retention_period)
-  const retentionBasis =
-    selectedCandidate?.basis || retentionBasisLabel(recommendation)
-
-  setRecommendation(recommendation)
-  setCandidates(candidates)
-  setSelectedCandidateKey(selectedCandidate?.key ?? "")
-  setDraft((current) => ({
-    ...current,
-    retentionPeriod,
-    retentionBasis,
-  }))
-}
-
-function temporaryDossierMetadata(
-  draft: TemporaryDossierDraft,
-  baseRecommendation: Record<string, unknown>,
-  selectedCandidate?: RetentionCandidateSummary
-): Record<string, unknown> {
-  const metadata: Record<string, unknown> = {}
-  const title = draft.title.trim()
-  const startDate = draft.startDate.trim()
-  const endDate = draft.endDate.trim()
-  const retentionPeriod = draft.retentionPeriod.trim()
-  const retentionBasis = draft.retentionBasis.trim()
-  if (title) metadata.title = title
-  if (startDate) metadata.start_date = startDate
-  if (endDate) metadata.end_date = endDate
-  if (retentionPeriod) metadata.retention_period = retentionPeriod
-
-  const recommendation: Record<string, unknown> = {
-    ...baseRecommendation,
-    ...(selectedCandidate ?? {}),
-  }
-  if (retentionPeriod) recommendation.retention_period = retentionPeriod
-  if (retentionBasis) recommendation.basis_override = retentionBasis
-  if (Object.keys(recommendation).length > 0) {
-    metadata.retention_recommendation = recommendation
-  }
-  return metadata
-}
-
-function retentionCandidateOptions(
-  response: SessionDossierRetentionSuggestionResponse
-): RetentionCandidateOption[] {
-  const topLevelCandidates = Array.isArray(response.candidates)
-    ? response.candidates
-    : []
-  const versionCandidates = Array.isArray(response.versions)
-    ? [...response.versions]
-        .reverse()
-        .flatMap((version) => version.candidates ?? [])
-    : []
-  const seen = new Set<string>()
-  return [...topLevelCandidates, ...versionCandidates]
-    .filter((candidate) => {
-      const key = textValue(candidate.entry_id)
-      if (!key || seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
-    .map((candidate, index) => {
-      const basis = retentionBasisLabel(candidate)
-      const period = textValue(candidate.retention_period)
-      return {
-        key: `${candidate.entry_id}:${index}`,
-        candidate,
-        basis,
-        label:
-          [period, basis].filter(Boolean).join(" · ") || candidate.entry_id,
-      }
-    })
-}
-
-function retentionRecommendationFromResponse(
-  response: SessionDossierRetentionSuggestionResponse
-): Record<string, unknown> {
-  const recommendation = {
-    ...plainObject(
-      response.recommendation ?? response.retention_recommendation
-    ),
-  }
-  if (response.candidates.length > 0) {
-    recommendation.candidates = response.candidates
-  }
-  if (response.versions?.length) recommendation.versions = response.versions
-  if (response.active_candidate_version_id) {
-    recommendation.active_candidate_version_id =
-      response.active_candidate_version_id
-  }
-  recommendation.candidate_count = response.candidate_count
-  recommendation.candidates_truncated = response.candidates_truncated
-  if (response.plan_version_id) {
-    recommendation.plan_version_id = response.plan_version_id
-  }
-  recommendation.status = response.status
-  return recommendation
-}
-
-function retentionBasisLabel(input: unknown): string {
-  const value = plainObject(input)
-  const sourceUnit = textValue(
-    value.source_unit_index ?? value.unit_index ?? value.source_row_index
+function ClassificationTreeBranch({
+  node,
+  level,
+  selectedKey,
+  onSelect,
+}: {
+  node: ClassificationTreeNode
+  level: number
+  selectedKey: string
+  onSelect: (leaf: DocumentTransferClassificationLeaf) => void
+}) {
+  const isLeaf = node.children.length === 0 && node.leaf
+  const selected = Boolean(
+    isLeaf && classificationLeafKey(isLeaf) === selectedKey
   )
-  const appendix = textValue(value.appendix_name ?? value.appendix)
-  const sourceName = textValue(value.source_file_name ?? value.file_name)
-  const parts = [
-    sourceUnit ? `Điều ${sourceUnit}` : "",
-    appendix
-      ? appendix.toLocaleLowerCase("vi").startsWith("phụ lục")
-        ? appendix
-        : `Phụ lục ${appendix}`
-      : "",
-    sourceName
-      ? sourceName.toLocaleLowerCase("vi").startsWith("thông tư")
-        ? sourceName
-        : `Thông tư ${sourceName}`
-      : "",
-  ].filter(Boolean)
-  return parts.join(" | ") || textValue(value.breadcrumb)
-}
+  const paddingLeft = 12 + level * 20
 
-function titleSuggestionFromResponse(response: unknown): string {
-  const suggestions = plainObject(response).suggestions
-  if (!Array.isArray(suggestions)) return ""
-  for (const suggestion of suggestions) {
-    const title = textValue(plainObject(suggestion).title)
-    if (title) return title
+  if (isLeaf) {
+    return (
+      <button
+        type="button"
+        role="treeitem"
+        aria-selected={selected}
+        onClick={() => onSelect(isLeaf)}
+        style={{ paddingLeft }}
+        className={`flex w-full items-center gap-2 py-2 pr-3 text-left text-sm transition ${
+          selected
+            ? "bg-blue-100 font-medium text-blue-800"
+            : "text-slate-700 hover:bg-white"
+        }`}
+      >
+        <span
+          className={`h-3.5 w-3.5 rounded-full border ${
+            selected
+              ? "border-[4px] border-blue-600 bg-white"
+              : "border-slate-400 bg-white"
+          }`}
+        />
+        <span>{node.name}</span>
+      </button>
+    )
   }
-  return ""
-}
 
-function plainObject(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {}
-  return { ...(value as Record<string, unknown>) }
-}
-
-function textValue(value: unknown): string {
-  if (value === null || value === undefined) return ""
-  if (typeof value === "string") return value.trim()
-  if (typeof value === "number" && Number.isFinite(value)) return String(value)
-  return ""
-}
-
-function targetSessionLabel(
-  session: DocumentTransferTargetSession | undefined
-): string {
-  return session?.fonds_name || session?.archive_name || "Phông chưa đặt tên"
-}
-
-function jobTypeLabel(jobType: string): string {
   return (
-    {
-      build_clusters: "Lập hồ sơ",
-      refresh_dossier_classification: "Cập nhật phân loại hồ sơ",
-      number_documents: "Đánh số tài liệu",
-      finalize_artifacts: "Tạo mục lục",
-      build_publication_archive: "Tạo gói xuất bản",
-      poll_ingestion_extract: "Giải nén dữ liệu đầu vào",
-      start_digitization: "Bắt đầu số hóa",
-      poll_digitization: "Theo dõi số hóa",
-      process_digitization_document: "OCR tài liệu",
-      sync_digitization_document_metadata: "Đồng bộ metadata",
-      refresh_final_metadata: "Cập nhật metadata cuối",
-      document_mutation: "Thay đổi tập tài liệu",
-    }[jobType] ?? jobType
+    <div role="treeitem" aria-expanded="true">
+      <div
+        style={{ paddingLeft }}
+        className="flex items-center gap-2 py-2 pr-3 text-sm font-medium text-slate-800"
+      >
+        <FolderTree className="h-4 w-4 shrink-0 text-slate-500" />
+        <span>{node.name}</span>
+      </div>
+      <div role="group">
+        {node.children.map((child) => (
+          <ClassificationTreeBranch
+            key={child.key}
+            node={child}
+            level={level + 1}
+            selectedKey={selectedKey}
+            onSelect={onSelect}
+          />
+        ))}
+      </div>
+    </div>
   )
 }
 
-function transferBlockerLabel(blocker: DocumentTransferBlocker): string {
-  if (blocker.type === "document_edit_lock") {
-    const owner =
-      blocker.owner?.name || blocker.owner?.email || blocker.owner?.user_id
-    const documentId = blocker.document_id ?? blocker.session_document_id
-    return [
-      documentId ? `Tài liệu #${documentId}` : "Tài liệu",
-      owner ? `đang được ${owner} chỉnh sửa` : "đang được chỉnh sửa",
-      blocker.expires_at ? `đến ${blocker.expires_at}` : "",
-    ]
-      .filter(Boolean)
-      .join(" ")
-  }
-  const sessionRole =
-    blocker.session_role === "target" ? "Phông đích" : "Phông nguồn"
-  return `${sessionRole} · ${jobTypeLabel(blocker.job_type ?? "task")} · ${blocker.status ?? "active"}`
-}
-
-function validationErrorLabel(code: string): string {
+function DossierFields({
+  dossier,
+  onChange,
+}: {
+  dossier: DocumentTransferDossierInput
+  onChange: (value: DocumentTransferDossierInput) => void
+}) {
+  const field = (key: keyof DocumentTransferDossierInput, value: string) =>
+    onChange({ ...dossier, [key]: value })
   return (
-    {
-      DOCUMENT_NOT_ACTIVE: "Tài liệu không còn active.",
-      REMOTE_REFERENCE_MISSING: "Thiếu remote batch/document ID.",
-      METADATA_NOT_READY: "Metadata chưa sẵn sàng.",
-      METADATA_NOT_FINAL: "Metadata chưa hoàn tất.",
-      METADATA_NOT_VERIFIED: "Metadata chưa được xác nhận.",
-    }[code] ?? code
+    <div className="grid gap-3 rounded-xl border border-slate-200 p-3 sm:grid-cols-2">
+      <label className="text-sm font-medium text-slate-800 sm:col-span-2">
+        Tiêu đề hồ sơ mới
+        <input
+          value={dossier.title}
+          onChange={(event) => field("title", event.target.value)}
+          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        />
+      </label>
+      <label className="text-sm text-slate-700">
+        Thời hạn bảo quản
+        <input
+          value={dossier.retention_period || ""}
+          onChange={(event) => field("retention_period", event.target.value)}
+          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        />
+      </label>
+      <label className="text-sm text-slate-700">
+        Ngôn ngữ
+        <input
+          value={dossier.language || ""}
+          onChange={(event) => field("language", event.target.value)}
+          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        />
+      </label>
+      <label className="text-sm text-slate-700">
+        Từ ngày
+        <input
+          type="date"
+          value={dossier.start_date || ""}
+          onChange={(event) => field("start_date", event.target.value)}
+          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        />
+      </label>
+      <label className="text-sm text-slate-700">
+        Đến ngày
+        <input
+          type="date"
+          value={dossier.end_date || ""}
+          onChange={(event) => field("end_date", event.target.value)}
+          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        />
+      </label>
+      <label className="text-sm text-slate-700 sm:col-span-2">
+        Chú giải / ghi chú
+        <textarea
+          value={dossier.annotation || ""}
+          onChange={(event) => field("annotation", event.target.value)}
+          rows={2}
+          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        />
+      </label>
+    </div>
   )
 }
 
-function transferErrorMessage(caught: unknown, fallback: string): string {
-  if (!(caught instanceof Error) || !caught.message) return fallback
-  try {
-    const detail = JSON.parse(caught.message) as {
-      message?: unknown
-      detail?: unknown
-    }
-    if (typeof detail.message === "string" && detail.message.trim()) {
-      return detail.message
-    }
-    if (typeof detail.detail === "string" && detail.detail.trim()) {
-      return detail.detail
-    }
-  } catch {
-    // The request helper can also return a plain text message.
+function cleanDossier(
+  dossier: DocumentTransferDossierInput
+): DocumentTransferDossierInput {
+  return Object.fromEntries(
+    Object.entries(dossier)
+      .map(([key, value]) => [
+        key,
+        typeof value === "string" ? value.trim() : value,
+      ])
+      .filter(([, value]) => value !== "")
+  ) as unknown as DocumentTransferDossierInput
+}
+
+function caseLabel(value: string | null | undefined): string {
+  if (value === "case_1_no_approved_plan") {
+    return "Case 1 · Chuyển tài liệu vào session"
   }
-  return caught.message
+  if (value === "case_2_plan_without_classification") {
+    return "Case 2 · Tạo hồ sơ mới, chưa chọn nhóm phân loại"
+  }
+  if (value === "case_3_classification_pending_approval") {
+    return "Case 3 · Tạo hồ sơ mới trong nhóm phân loại"
+  }
+  if (value === "case_4_classification_approved") {
+    return "Case 4 · Tạo hồ sơ và active version mới"
+  }
+  return "Không khả dụng"
+}
+
+function newClientId(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `transfer-${Date.now()}`
+}
+
+function errorMessage(caught: unknown): string {
+  return caught instanceof Error
+    ? caught.message
+    : "Không thể xử lý yêu cầu chuyển tài liệu."
 }

@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react"
+import { AlertTriangle, CheckCircle2, FolderClock, Loader2 } from "lucide-react"
 import { motion } from "framer-motion"
 import { cn } from "@/shared/lib/utils"
 import {
@@ -166,6 +166,7 @@ interface ProcessStepFooterProps {
   canContinue: boolean
   buildBlockedMessage?: string | null
   onContinue: (selectedItems: never[]) => void
+  onViewUnclassifiedDossiers?: () => void
 }
 
 export function ProcessStepFooter({
@@ -179,6 +180,7 @@ export function ProcessStepFooter({
   canContinue,
   buildBlockedMessage,
   onContinue,
+  onViewUnclassifiedDossiers,
 }: ProcessStepFooterProps) {
   const pendingCount = pendingReadyCount ?? pendingReadyPageItems.length
   const readyForDossierCount = dossierReadyCount ?? dossierReadyPageItems.length
@@ -228,31 +230,43 @@ export function ProcessStepFooter({
           title={statusTitle}
           description={statusDescription}
         />
-        <button
-          disabled={!canContinue}
-          onClick={() => {
-            if (!canContinue) return
-            onContinue([])
-          }}
-          className={cn(
-            "group flex w-full shrink-0 items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold transition-all duration-200 sm:ml-auto sm:w-auto",
-            canContinue
-              ? "text-white hover:brightness-95 active:scale-[0.98]"
-              : "cursor-not-allowed bg-[#E2E8F0] text-[#64748B]"
-          )}
-          style={
-            canContinue
-              ? {
-                  background: "linear-gradient(to right, #0052FF, #4D7CFF)",
-                  boxShadow: "0 3px 10px rgba(0,82,255,0.2)",
-                }
-              : {}
-          }
-        >
-          {canContinue
-            ? `Lập hồ sơ (${dossierReadyItems.length} tài liệu)`
-            : "Lập hồ sơ"}
-        </button>
+        <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row">
+          {onViewUnclassifiedDossiers ? (
+            <button
+              type="button"
+              onClick={onViewUnclassifiedDossiers}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#CBD5E1] bg-white px-5 py-3 text-sm font-semibold text-[#334155] transition-colors hover:border-[#94A3B8] hover:bg-[#F8FAFC] sm:w-auto"
+            >
+              <FolderClock className="size-4" />
+              Xem hồ sơ chờ phân loại
+            </button>
+          ) : null}
+          <button
+            disabled={!canContinue}
+            onClick={() => {
+              if (!canContinue) return
+              onContinue([])
+            }}
+            className={cn(
+              "group flex w-full shrink-0 items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold transition-all duration-200 sm:w-auto",
+              canContinue
+                ? "text-white hover:brightness-95 active:scale-[0.98]"
+                : "cursor-not-allowed bg-[#E2E8F0] text-[#64748B]"
+            )}
+            style={
+              canContinue
+                ? {
+                    background: "linear-gradient(to right, #0052FF, #4D7CFF)",
+                    boxShadow: "0 3px 10px rgba(0,82,255,0.2)",
+                  }
+                : {}
+            }
+          >
+            {canContinue
+              ? `Lập hồ sơ (${dossierReadyItems.length} tài liệu)`
+              : "Lập hồ sơ"}
+          </button>
+        </div>
       </WorkflowActionPanelBody>
     </WorkflowActionPanel>
   )

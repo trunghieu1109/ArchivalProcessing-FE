@@ -23,6 +23,7 @@ import type {
   SelectedDocumentDossierSuggestionsResponse,
   SessionDossierTitleSuggestionResponse,
   TemporaryFolderPromoteResponse,
+  UnclassifiedSessionDossierListResponse,
 } from "./sessionApi.types"
 
 export async function getActiveClusters(
@@ -235,6 +236,16 @@ export async function listSessionDossiers(sessionId: string): Promise<{
   }>(`/sessions/${encodeURIComponent(sessionId)}/dossiers`, {
     cache: "no-store",
   })
+}
+
+export async function listUnclassifiedSessionDossiers(
+  sessionId: string
+): Promise<UnclassifiedSessionDossierListResponse> {
+  const searchParams = new URLSearchParams({ scope: "unclassified" })
+  return requestJson<UnclassifiedSessionDossierListResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/dossiers?${searchParams.toString()}`,
+    { cache: "no-store" }
+  )
 }
 
 export async function listSessionDossierDrafts(

@@ -779,6 +779,157 @@ export interface DocumentTransferTargetSession {
   fonds_name?: string | null
   archive_name?: string | null
   fonds_creator_code?: string | null
+  selectable: boolean
+  unavailable_reason: string | null
+  workflow_stage: DocumentTransferWorkflowStage
+  transfer_case: DocumentTransferCase | null
+}
+
+export type DocumentTransferWorkflowStage =
+  | "no_approved_plan"
+  | "plan_approved_no_classification"
+  | "classification_pending_approval"
+  | "classification_approved"
+  | "completed"
+
+export type DocumentTransferCase =
+  | "case_1_no_approved_plan"
+  | "case_2_plan_without_classification"
+  | "case_3_classification_pending_approval"
+  | "case_4_classification_approved"
+
+export interface DocumentTransferTargetSnapshot {
+  workflow_revision: number
+  plan_version_id: string | null
+  cluster_version_id: string | null
+  classification_review_id: string | null
+  classification_review_status: string | null
+}
+
+export interface DocumentTransferClassificationLeaf {
+  group_id: string
+  group_ids: string[]
+  group_path: string[]
+}
+
+export interface DocumentTransferTargetContext {
+  source_session_id: string
+  target_session_id: string
+  selectable: boolean
+  unavailable_reason: string | null
+  workflow_stage: DocumentTransferWorkflowStage
+  transfer_case: DocumentTransferCase
+  requires_target_approval: boolean
+  target_snapshot: DocumentTransferTargetSnapshot
+  required_form_fields: Array<"dossier" | "target_classification">
+  classification_leafs: DocumentTransferClassificationLeaf[]
+}
+
+export interface DocumentTransferDossierInput {
+  title: string
+  retention_period?: string | null
+  start_date?: string | null
+  end_date?: string | null
+  annotation?: string | null
+  language?: string | null
+  dossier_number?: string | null
+  dossier_code?: string | null
+  retention_recommendation?: Record<string, unknown> | null
+  note?: string | null
+}
+
+export interface DocumentTransferTargetClassification {
+  plan_version_id: string
+  cluster_version_id: string
+  group_ids: string[]
+  leaf_group_id: string
+  group_path?: string[]
+}
+
+export type DocumentTransferRequestStatus =
+  | "pending_target_approval"
+  | "accepting"
+  | "completed"
+  | "completed_with_errors"
+  | "rejected"
+  | "auto_rejected"
+  | "failed"
+
+export interface DocumentTransferApproval {
+  required: boolean
+  status: "not_required" | "pending" | "accepted" | "rejected"
+  handled_by: { user_id: string | null; name: string | null } | null
+  handled_at: string | null
+  reason: string | null
+}
+
+export interface DocumentTransferRequestResponse {
+  request_id: string
+  client_request_id: string
+  transfer_case: DocumentTransferCase
+  status: DocumentTransferRequestStatus
+  source_session_id: string
+  target_session_id: string
+  source_session_document_ids: number[]
+  target_session_document_ids: number[]
+  document_count: number
+  target_snapshot: DocumentTransferTargetSnapshot
+  target_dossier_draft: {
+    draft_id: string
+    dossier_id: string
+    status: "pending" | "materialized" | "deleted"
+    metadata: DocumentTransferDossierInput
+    classification: DocumentTransferTargetClassification | null
+    materialized_session_dossier_id: string | null
+  } | null
+  approval: DocumentTransferApproval
+  transfer_operation_id: string | null
+  error: string | null
+  documents?: Array<{
+    source_session_document_id: number
+    target_session_document_id: number | null
+    document_id: string
+    file_name: string
+    request_item_status:
+      | "locked_at_source"
+      | "transferring"
+      | "transferred"
+      | "unlocked"
+      | "failed"
+    review_status: "verified"
+    is_reviewed: true
+  }>
+  rejection?: {
+    code: string
+    reason: string
+    rejected_at: string
+  } | null
+  previous_request_id?: string | null
+  replacement_request_id?: string | null
+  created_at: string
+  updated_at: string
+  finished_at: string | null
+}
+
+export interface DocumentTransferRequestSummary {
+  request_id: string
+  transfer_case: DocumentTransferCase
+  status: DocumentTransferRequestStatus
+  source_session_id: string
+  target_session_id: string
+  document_count: number
+  dossier_title: string | null
+  leaf_name: string | null
+  group_path?: string[]
+  created_at: string
+  updated_at: string
+}
+
+export interface DocumentTransferRequestsResponse {
+  session_id: string
+  role: "source" | "target"
+  items: DocumentTransferRequestSummary[]
+  pagination: PaginationMeta
 }
 
 export interface DocumentTransferTargetsResponse {
@@ -874,6 +1025,8 @@ export interface DocumentTransferPreviewResponse {
     fonds_creator_code?: string | null
   }
   allowed: boolean
+  transfer_case: DocumentTransferCase
+  requires_target_approval: boolean
   documents: Array<{
     session_document_id: number
     document_id: string
@@ -887,21 +1040,27 @@ export interface DocumentTransferPreviewResponse {
     review_status: string
     is_reviewed: boolean
     issued_date?: string | null
+    numbering_status: string
   }>
   validation_errors: Array<{
     code: string
-    session_document_id: number
+    session_document_id?: number
+    field?: string
     message: string
+    request_id?: string
   }>
   blocking_jobs: DocumentTransferBlocker[]
   duplicates: DocumentTransferDuplicate[]
-  source_impact: DocumentDeletionImpact
-  target_impact: DocumentDeletionImpact
-  source_cluster_projection: DocumentTransferClusterProjection
+  source_impact: DocumentDeletionImpact | null
+  target_impact: DocumentDeletionImpact | null
+  source_cluster_projection: DocumentTransferClusterProjection | null
   source_document_set_revision: number
   target_document_set_revision: number
   requires_source_reclustering: boolean
   requires_target_reclustering: boolean
+  current_target_snapshot: DocumentTransferTargetSnapshot
+  normalized_dossier: DocumentTransferDossierInput | null
+  normalized_target_classification: DocumentTransferTargetClassification | null
 }
 
 export interface DocumentTransferOperationResponse {

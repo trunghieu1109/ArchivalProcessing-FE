@@ -205,6 +205,17 @@ export function UploadPage() {
     goTo(4, currentSessionId)
   }
 
+  const handleViewUnclassifiedDossiers = () => {
+    const currentSessionId = sessionId ?? routeSessionId ?? cache.sessionId
+    if (!currentSessionId) {
+      toast.error("Chưa có session để xem hồ sơ chờ phân loại.")
+      return
+    }
+    navigate(
+      `/sessions/${encodeURIComponent(currentSessionId)}/step/4?view=unclassified`
+    )
+  }
+
   const handleFinalizeAutoStartHandled = useCallback(() => {
     const nextParams = new URLSearchParams(searchParams)
     nextParams.delete("start")
@@ -1889,6 +1900,7 @@ export function UploadPage() {
         ocrMessage={ocrMessage}
         ocrSignatureStatus={ocrSignatureStatus}
         handleContinueToResults={handleContinueToResults}
+        handleViewUnclassifiedDossiers={handleViewUnclassifiedDossiers}
         missingDossierInputs={missingDossierInputs}
         missingDossierInputLabels={missingDossierInputLabels}
         dossierBuildBlockedMessage={dossierBuildMissingMessage(

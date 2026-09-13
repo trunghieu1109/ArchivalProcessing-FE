@@ -56,6 +56,7 @@ type ProcessStepViewProps = ReturnType<typeof useProcessStepModel> &
     }
     sessionId: string | null
     onContinue: (groups: ClusterGroup[]) => void
+    onViewUnclassifiedDossiers?: () => void
   }
 
 export function ProcessStepView(props: ProcessStepViewProps) {
@@ -140,6 +141,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
     metadataTotal,
     needsReviewItems,
     onContinue,
+    onViewUnclassifiedDossiers,
     paths,
     pendingExtractionItems,
     pendingReadyItems,
@@ -600,6 +602,7 @@ export function ProcessStepView(props: ProcessStepViewProps) {
         canContinue={canContinue}
         buildBlockedMessage={buildBlockedMessage}
         onContinue={onContinue}
+        onViewUnclassifiedDossiers={onViewUnclassifiedDossiers}
       />
     </motion.div>
   )

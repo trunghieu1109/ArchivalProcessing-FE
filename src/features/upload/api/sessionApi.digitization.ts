@@ -27,7 +27,13 @@ import type {
   DocumentDeletionOperationResponse,
   DocumentDeletionPreviewResponse,
   DocumentTransferOperationResponse,
+  DocumentTransferDossierInput,
   DocumentTransferPreviewResponse,
+  DocumentTransferRequestResponse,
+  DocumentTransferRequestsResponse,
+  DocumentTransferTargetClassification,
+  DocumentTransferTargetContext,
+  DocumentTransferTargetSnapshot,
   DocumentTransferTargetsResponse,
   DocumentArchiveDownload,
   DocumentNumberingMode,
@@ -50,6 +56,16 @@ export async function listSessionDocumentTransferTargets(
   searchParams.set("offset", String(options.offset ?? 0))
   return requestJson<DocumentTransferTargetsResponse>(
     `/sessions/${encodeURIComponent(sourceSessionId)}/documents/transfer-targets?${searchParams.toString()}`,
+    { cache: "no-store" }
+  )
+}
+
+export async function getSessionDocumentTransferTargetContext(
+  sourceSessionId: string,
+  targetSessionId: string
+): Promise<DocumentTransferTargetContext> {
+  return requestJson<DocumentTransferTargetContext>(
+    `/sessions/${encodeURIComponent(sourceSessionId)}/documents/transfer-targets/${encodeURIComponent(targetSessionId)}/context`,
     { cache: "no-store" }
   )
 }
@@ -110,18 +126,137 @@ export async function retrySessionDocumentDeletion(
 
 export async function previewSessionDocumentTransfer(
   sourceSessionId: string,
-  targetSessionId: string,
-  documentIds: number[]
+  payload: {
+    target_session_id: string
+    session_document_ids: number[]
+    expected_target_snapshot: DocumentTransferTargetSnapshot
+    dossier?: DocumentTransferDossierInput
+    target_classification?: DocumentTransferTargetClassification
+  }
 ): Promise<DocumentTransferPreviewResponse> {
   return requestJson<DocumentTransferPreviewResponse>(
     `/sessions/${encodeURIComponent(sourceSessionId)}/documents/transfer-preview`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
+}
+
+export async function createSessionDocumentTransferRequest(
+  sourceSessionId: string,
+  payload: {
+    client_request_id: string
+    target_session_id: string
+    session_document_ids: number[]
+    expected_source_document_set_revision: number
+    expected_target_document_set_revision: number
+    expected_target_snapshot: DocumentTransferTargetSnapshot
+    dossier?: DocumentTransferDossierInput
+    target_classification?: DocumentTransferTargetClassification
+    reason?: string | null
+    confirmed: true
+  }
+): Promise<DocumentTransferRequestResponse> {
+  return requestJson<DocumentTransferRequestResponse>(
+    `/sessions/${encodeURIComponent(sourceSessionId)}/document-transfer-requests`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
+}
+
+export async function listSessionDocumentTransferRequests(
+  sessionId: string,
+  options: {
+    role: "source" | "target"
+    status?: string
+    limit?: number
+    offset?: number
+  }
+): Promise<DocumentTransferRequestsResponse> {
+  const searchParams = new URLSearchParams({
+    role: options.role,
+    limit: String(options.limit ?? 50),
+    offset: String(options.offset ?? 0),
+  })
+  if (options.status) searchParams.set("status", options.status)
+  return requestJson<DocumentTransferRequestsResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/document-transfer-requests?${searchParams.toString()}`,
+    { cache: "no-store" }
+  )
+}
+
+export async function getSessionDocumentTransferRequest(
+  sessionId: string,
+  requestId: string
+): Promise<DocumentTransferRequestResponse> {
+  return requestJson<DocumentTransferRequestResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/document-transfer-requests/${encodeURIComponent(requestId)}`,
+    { cache: "no-store" }
+  )
+}
+
+export async function acceptSessionDocumentTransferRequest(
+  targetSessionId: string,
+  requestId: string,
+  clientOperationId: string
+): Promise<{
+  request_id: string
+  status: string
+  transfer_operation_id: string
+}> {
+  return requestJson(
+    `/sessions/${encodeURIComponent(targetSessionId)}/document-transfer-requests/${encodeURIComponent(requestId)}/accept`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        target_session_id: targetSessionId,
-        session_document_ids: documentIds,
+        client_operation_id: clientOperationId,
+        confirmed: true,
       }),
+    }
+  )
+}
+
+export async function rejectSessionDocumentTransferRequest(
+  targetSessionId: string,
+  requestId: string,
+  clientOperationId: string,
+  reason: string
+): Promise<{ request_id: string; status: "rejected" }> {
+  return requestJson(
+    `/sessions/${encodeURIComponent(targetSessionId)}/document-transfer-requests/${encodeURIComponent(requestId)}/reject`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        client_operation_id: clientOperationId,
+        reason,
+      }),
+    }
+  )
+}
+
+export async function resubmitSessionDocumentTransferRequest(
+  sourceSessionId: string,
+  requestId: string,
+  payload: {
+    client_operation_id: string
+    expected_target_snapshot: DocumentTransferTargetSnapshot
+    dossier?: DocumentTransferDossierInput
+    target_classification?: DocumentTransferTargetClassification
+  }
+): Promise<DocumentTransferRequestResponse> {
+  return requestJson<DocumentTransferRequestResponse>(
+    `/sessions/${encodeURIComponent(sourceSessionId)}/document-transfer-requests/${encodeURIComponent(requestId)}/resubmit`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     }
   )
 }

@@ -3,7 +3,39 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   getClusterVersionChanges,
   listSessionDossierRetentionCandidates,
+  listUnclassifiedSessionDossiers,
 } from "./sessionApi.clusters"
+
+describe("listUnclassifiedSessionDossiers", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it("requests only dossiers that have not entered a cluster version", async () => {
+    const payload = {
+      session_id: "session one",
+      scope: "unclassified",
+      cluster_version_id: null,
+      version_number: null,
+      dossiers: [],
+    }
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    await expect(
+      listUnclassifiedSessionDossiers("session one")
+    ).resolves.toEqual(payload)
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/sessions/session%20one/dossiers?scope=unclassified",
+      { cache: "no-store" }
+    )
+  })
+})
 
 describe("listSessionDossierRetentionCandidates", () => {
   afterEach(() => {
