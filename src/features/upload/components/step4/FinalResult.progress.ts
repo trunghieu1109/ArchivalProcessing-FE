@@ -181,7 +181,9 @@ export function clusterVersionOptionLabel(
   const status =
     version.id === activeClusterVersionId
       ? "đang dùng"
-      : version.status === "active"
+      : version.status === "draft"
+        ? "chờ duyệt"
+        : version.status === "active"
         ? "active"
         : "cũ"
   return `Phiên bản ${version.version_number} - ${status} - ${clusterVersionSourceLabel(version.source)}`

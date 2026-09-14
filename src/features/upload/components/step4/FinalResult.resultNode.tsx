@@ -203,15 +203,30 @@ export function ResultNode({
               : "hover:bg-[#F8FAFC]"
         )}
         style={{ paddingLeft: `${8 + depth * indentStep}px` }}
+        onDragEnter={(event) => {
+          if (!isDropFolder || !canDrop) return
+          event.preventDefault()
+          if (dropTargetId !== node.id) onDragEnter(node.id)
+        }}
         onDragOver={(event) => {
           if (!isDropFolder || !canDrop) return
           event.preventDefault()
-          onDragEnter(node.id)
+          event.dataTransfer.dropEffect = 'move'
         }}
-        onDragLeave={() => isDropFolder && onDragEnter(null)}
+        onDragLeave={(event) => {
+          if (!isDropFolder || dropTargetId !== node.id) return
+
+          const nextTarget = event.relatedTarget
+          if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
+            return
+          }
+
+          onDragEnter(null)
+        }}
         onDrop={(event) => {
           if (!isDropFolder || !group) return
           event.preventDefault()
+          event.stopPropagation()
           void onDropOnDossier(group.id)
         }}
       >

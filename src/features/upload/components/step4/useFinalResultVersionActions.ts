@@ -2,6 +2,7 @@ import type { PointerEvent as ReactPointerEvent } from "react"
 import { toast } from "sonner"
 import {
   activateClusterVersion,
+  approveClusterVersion,
   ensureClusterBuild,
   getActiveClusters,
   getClusterVersion,
@@ -31,6 +32,7 @@ export function useFinalResultVersionActions(context: Record<string, any>) {
     clusterJobMode,
     displayedClusterVersion,
     displayedClusterVersionId,
+    hasUsableActiveClusterVersion,
     loading,
     metadataItems,
     movingSelectedDocumentsTargetId,
@@ -88,20 +90,19 @@ export function useFinalResultVersionActions(context: Record<string, any>) {
       toast.error("Chưa có session để cập nhật hồ sơ.")
       return
     }
-    if (pendingClusterVersion) {
-      toast.error(
-        "Đang có phiên bản hồ sơ mới chờ áp dụng. Hãy áp dụng trước khi gửi job cập nhật khác."
-      )
-      return
-    }
     setClusterJobMode(mode)
     setRebuildSubmitting(true)
     try {
-      const currentVersion = await getActiveClusters(sessionId)
+      const activeVersion = await getActiveClusters(sessionId)
+      const currentVersion =
+        pendingClusterVersion ??
+        (displayedClusterVersion?.status === "draft"
+          ? displayedClusterVersion
+          : activeVersion)
       const baselineVersionId =
         currentVersion?.id ?? activeClusterVersionId ?? NO_CLUSTER_VERSION
       setActiveClusterVersionId(
-        currentVersion?.id ?? activeClusterVersionId ?? null
+        activeVersion?.id ?? activeClusterVersionId ?? null
       )
       const response = await ensureClusterBuild(sessionId, {
         source: forceFileRegister ? "user_file_register" : "user_feedback",
@@ -161,48 +162,69 @@ export function useFinalResultVersionActions(context: Record<string, any>) {
     }
   }
 
-  const handleApplyPendingClusterVersion = () => {
-    if (!pendingClusterVersion) return
-
-    const nextGroups = versionToGroups(pendingClusterVersion, metadataItems)
-    const clusteredIds = clusteredDocumentIds(pendingClusterVersion)
-    const hasMetadataItems = metadataItems.length > 0
-    const missingVerified = hasMetadataItems
-      ? verifiedItems.filter(
-          (item: { document_id: string }) => !clusteredIds.has(item.document_id)
-        )
-      : []
-    setGroups(nextGroups)
-    setDisplayedClusterVersionId(pendingClusterVersion.id)
-    setDisplayedClusterVersion(pendingClusterVersion)
-    setActiveClusterVersionId(pendingClusterVersion.id)
-    setPendingClusterVersion(null)
-    if (
-      pendingClusterVersion.source === "user_feedback" ||
-      pendingClusterVersion.source === "user_file_register"
-    ) {
-      setPendingFeedbackCount(0)
-      setPendingFeedbackRefreshKey((key: number) => key + 1)
+  const handleApplyPendingClusterVersion = async () => {
+    if (!pendingClusterVersion || !sessionId) return
+    setRestoringClusterVersion(true)
+    try {
+      const appliedVersion =
+        pendingClusterVersion.status === "draft"
+          ? await approveClusterVersion(sessionId, pendingClusterVersion.id)
+          : pendingClusterVersion
+      const nextGroups = versionToGroups(appliedVersion, metadataItems)
+      const clusteredIds = clusteredDocumentIds(appliedVersion)
+      const hasMetadataItems = metadataItems.length > 0
+      const missingVerified = hasMetadataItems
+        ? verifiedItems.filter(
+            (item: { document_id: string }) =>
+              !clusteredIds.has(item.document_id)
+          )
+        : []
+      setGroups(nextGroups)
+      setDisplayedClusterVersionId(appliedVersion.id)
+      setDisplayedClusterVersion(appliedVersion)
+      setActiveClusterVersionId(appliedVersion.id)
+      setPendingClusterVersion(null)
+      if (
+        appliedVersion.source === "user_feedback" ||
+        appliedVersion.source === "user_file_register"
+      ) {
+        setPendingFeedbackCount(0)
+        setPendingFeedbackRefreshKey((key: number) => key + 1)
+      }
+      setClusterJobMode(clusterJobModeFromSource(appliedVersion.source))
+      setClusterProgressPhase(null)
+      setClusterCompletedPhases(completedClusterPhaseSet())
+      setClusterProgressMessage("Đã áp dụng phiên bản hồ sơ mới.")
+      const nextDossierCount = regularDossierCount(nextGroups)
+      const nextTemporaryCount = temporaryDocumentCount(nextGroups)
+      setStatus(
+        nextDossierCount > 0 &&
+          (!hasMetadataItems ||
+            verifiedItems.length === 0 ||
+            missingVerified.length === 0)
+          ? `Đã lập ${nextDossierCount} hồ sơ${verifiedItems.length > 0 ? ` từ ${verifiedItems.length} tài liệu đã xác nhận` : ""}.${nextTemporaryCount > 0 ? ` Có ${nextTemporaryCount} tài liệu trong Thư mục tạm.` : ""}`
+          : hasMetadataItems &&
+              nextDossierCount > 0 &&
+              missingVerified.length > 0
+            ? `Đã có ${nextDossierCount} hồ sơ. Có ${missingVerified.length} tài liệu đã xác nhận chưa được cập nhật vào hồ sơ.`
+            : nextTemporaryCount > 0
+              ? `Có ${nextTemporaryCount} tài liệu trong Thư mục tạm; chưa có hồ sơ để tạo mục lục.`
+              : "Chưa có kết quả lập hồ sơ từ backend."
+      )
+      toast.success(
+        pendingClusterVersion.status === "draft"
+          ? "Đã duyệt và kích hoạt phiên bản hồ sơ mới."
+          : "Đã áp dụng phiên bản hồ sơ mới."
+      )
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Không thể duyệt phiên bản hồ sơ đang chờ."
+      )
+    } finally {
+      setRestoringClusterVersion(false)
     }
-    setClusterJobMode(clusterJobModeFromSource(pendingClusterVersion.source))
-    setClusterProgressPhase(null)
-    setClusterCompletedPhases(completedClusterPhaseSet())
-    setClusterProgressMessage("Đã áp dụng phiên bản hồ sơ mới.")
-    const nextDossierCount = regularDossierCount(nextGroups)
-    const nextTemporaryCount = temporaryDocumentCount(nextGroups)
-    setStatus(
-      nextDossierCount > 0 &&
-        (!hasMetadataItems ||
-          verifiedItems.length === 0 ||
-          missingVerified.length === 0)
-        ? `Đã lập ${nextDossierCount} hồ sơ${verifiedItems.length > 0 ? ` từ ${verifiedItems.length} tài liệu đã xác nhận` : ""}.${nextTemporaryCount > 0 ? ` Có ${nextTemporaryCount} tài liệu trong Thư mục tạm.` : ""}`
-        : hasMetadataItems && nextDossierCount > 0 && missingVerified.length > 0
-          ? `Đã có ${nextDossierCount} hồ sơ. Có ${missingVerified.length} tài liệu đã xác nhận chưa được cập nhật vào hồ sơ.`
-          : nextTemporaryCount > 0
-            ? `Có ${nextTemporaryCount} tài liệu trong Thư mục tạm; chưa có hồ sơ để tạo mục lục.`
-            : "Chưa có kết quả lập hồ sơ từ backend."
-    )
-    toast.success("Đã áp dụng phiên bản hồ sơ mới.")
   }
 
   const handleViewClusterVersion = async (clusterVersionId: string) => {
@@ -397,8 +419,10 @@ export function useFinalResultVersionActions(context: Record<string, any>) {
       )
       return
     }
-    if (pendingClusterVersion) {
-      toast.error("Có phiên bản hồ sơ mới. Hãy áp dụng trước khi tạo mục lục.")
+    if (pendingClusterVersion && !hasUsableActiveClusterVersion) {
+      toast.error(
+        "Có phiên bản hồ sơ mới nhưng chưa có bản active hợp lệ để tạo mục lục."
+      )
       return
     }
     if (

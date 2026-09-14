@@ -68,6 +68,8 @@ export function FinalResultView(props: Record<string, any>) {
     handleDeleteSelectedDocuments,
     handleTransferSelectedDocuments,
     handleFinish,
+    hasUsableActiveClusterVersion,
+    sourceHasActiveClusterVersion,
     handleMoveSelectionToDossier,
     handlePreviewResizePointerDown,
     handleManualClassificationResizePointerDown,
@@ -445,17 +447,26 @@ export function FinalResultView(props: Record<string, any>) {
         <div className="flex flex-col gap-3 rounded-2xl border border-[#BFD3FF] bg-[#F8FAFF] px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-[#0F172A]">
-              Đã có cập nhật hồ sơ mới
+              {pendingClusterVersion.status === "draft"
+                ? "Kết quả lập hồ sơ đang chờ duyệt"
+                : "Đã có cập nhật hồ sơ mới"}
             </p>
             <p className="mt-1 text-sm text-[#475569]">
               Phiên bản {pendingClusterVersion.version_number} có{" "}
               {pendingDossierCount} hồ sơ và {pendingClusterDocumentCount} tài
-              liệu. Bấm áp dụng để chuyển giao diện sang phiên bản mới.
+              liệu.{" "}
+              {pendingClusterVersion.status === "draft"
+                ? hasUsableActiveClusterVersion
+                  ? "Bản active gần nhất vẫn được dùng cho các bước sau cho tới khi duyệt."
+                  : "Chưa có bản active hợp lệ; cần duyệt phiên bản này trước khi sang bước sau."
+                : "Bấm áp dụng để chuyển giao diện sang phiên bản mới."}
             </p>
           </div>
           <Button onClick={handleApplyPendingClusterVersion}>
             <RefreshCw data-icon="inline-start" />
-            Áp dụng phiên bản mới
+            {pendingClusterVersion.status === "draft"
+              ? "Duyệt và kích hoạt"
+              : "Áp dụng phiên bản mới"}
           </Button>
         </div>
       )}
@@ -740,6 +751,8 @@ export function FinalResultView(props: Record<string, any>) {
           handleSelectDossierSuggestionsFromSelection
         }
         handleFinish={handleFinish}
+        hasUsableActiveClusterVersion={hasUsableActiveClusterVersion}
+        sourceHasActiveClusterVersion={sourceHasActiveClusterVersion}
         handleRebuildClusters={handleRebuildClusters}
         handleRestorePreviousClusterVersion={
           handleRestorePreviousClusterVersion

@@ -397,7 +397,8 @@ export function FinalResult({
     [metadataItems, pendingClusterVersion]
   )
   const pendingClusterVersionId = pendingClusterVersion?.id ?? null
-  const hasPendingClusterVersion = pendingClusterVersionId !== null
+  const workingClusterVersionId =
+    pendingClusterVersionId ?? activeClusterVersionId
   const pendingClusterDocumentCount = pendingClusterGroups.reduce(
     (sum, group) => sum + group.documents.length,
     0
@@ -407,6 +408,23 @@ export function FinalResult({
     () =>
       [...clusterVersions].sort((a, b) => a.version_number - b.version_number),
     [clusterVersions]
+  )
+  const activeClusterVersion =
+    clusterVersions.find((version) => version.id === activeClusterVersionId) ??
+    (displayedClusterVersion?.id === activeClusterVersionId
+      ? displayedClusterVersion
+      : null)
+  const hasUsableActiveClusterVersion = Boolean(
+    activeClusterVersion &&
+    !activeClusterVersion.is_stale &&
+    (activeClusterVersion.source_document_set_revision == null ||
+      activeClusterVersion.current_document_set_revision == null ||
+      activeClusterVersion.source_document_set_revision ===
+        activeClusterVersion.current_document_set_revision)
+  )
+  const sourceHasActiveClusterVersion = Boolean(
+    activeClusterVersionId ||
+    clusterVersions.some((version) => version.status === "active")
   )
   const displayedClusterVersionIndex = displayedClusterVersionId
     ? sortedClusterVersions.findIndex(
@@ -424,8 +442,8 @@ export function FinalResult({
       : null
   const viewingHistoricalClusterVersion = Boolean(
     displayedClusterVersionId &&
-    activeClusterVersionId &&
-    displayedClusterVersionId !== activeClusterVersionId
+    workingClusterVersionId &&
+    displayedClusterVersionId !== workingClusterVersionId
   )
 
   useEffect(() => {
@@ -526,19 +544,19 @@ export function FinalResult({
     let cancelled = false
     const hydrationRevision = feedbackHydrationRevisionRef.current
     const currentDisplayedClusterVersion = displayedClusterVersionRef.current
-    const displayingActiveVersion = Boolean(
+    const displayingWorkingVersion = Boolean(
       sessionId &&
       currentDisplayedClusterVersion &&
       displayedClusterVersionId &&
-      activeClusterVersionId &&
-      displayedClusterVersionId === activeClusterVersionId
+      workingClusterVersionId &&
+      displayedClusterVersionId === workingClusterVersionId
     )
     if (rebuildSubmitting || rebuildBaselineVersionId || loading) {
       return () => {
         cancelled = true
       }
     }
-    if (!displayingActiveVersion || hasPendingClusterVersion) {
+    if (!displayingWorkingVersion) {
       const timeoutId = window.setTimeout(() => {
         if (
           cancelled ||
@@ -546,10 +564,10 @@ export function FinalResult({
         ) {
           return
         }
-        if (!displayingActiveVersion || hasPendingClusterVersion) {
+        if (!displayingWorkingVersion) {
           setPendingFeedbackCount(0)
         }
-        if (displayingActiveVersion && currentDisplayedClusterVersion) {
+        if (displayingWorkingVersion && currentDisplayedClusterVersion) {
           setGroups(
             versionToGroups(
               currentDisplayedClusterVersion,
@@ -566,7 +584,7 @@ export function FinalResult({
 
     const feedbackRequestKey = [
       sessionId,
-      activeClusterVersionId,
+      workingClusterVersionId,
       displayedClusterVersionId,
       pendingFeedbackRefreshKey,
     ].join(":")
@@ -623,14 +641,13 @@ export function FinalResult({
       cancelled = true
     }
   }, [
-    activeClusterVersionId,
     displayedClusterVersionId,
-    hasPendingClusterVersion,
     loading,
     pendingFeedbackRefreshKey,
     rebuildBaselineVersionId,
     rebuildSubmitting,
     sessionId,
+    workingClusterVersionId,
   ])
 
   useEffect(() => {
@@ -844,6 +861,7 @@ export function FinalResult({
     clusterJobMode,
     displayedClusterVersion,
     displayedClusterVersionId,
+    hasUsableActiveClusterVersion,
     loading,
     metadataItems,
     movingSelectedDocumentsTargetId,
@@ -909,7 +927,6 @@ export function FinalResult({
     handleRebuildClusters,
     loading,
     movingSelectedDocumentsTargetId,
-    pendingClusterVersion,
     promotingSelectedDocuments,
     promotingTemporaryFolder,
     rebuildBaselineVersionId,
@@ -1469,8 +1486,7 @@ export function FinalResult({
       checkingClusters ||
       rebuildSubmitting ||
       restoringClusterVersion ||
-      Boolean(rebuildBaselineVersionId) ||
-      Boolean(pendingClusterVersion)
+      Boolean(rebuildBaselineVersionId)
     ) {
       toast.error("Đang cập nhật hồ sơ. Vui lòng chờ xong rồi hủy feedback.")
       return
@@ -1512,7 +1528,6 @@ export function FinalResult({
     displayedClusterVersion,
     loading,
     metadataItems,
-    pendingClusterVersion,
     pendingFeedbackCount,
     rebuildBaselineVersionId,
     rebuildSubmitting,
@@ -1565,6 +1580,12 @@ export function FinalResult({
   }, [previewDocuments, selectedSessionDocumentIds])
 
   const handleTransferSelectedDocuments = useCallback(() => {
+    if (sourceHasActiveClusterVersion) {
+      toast.error(
+        "Phông nguồn đã có kết quả phân loại được duyệt nên không thể chuyển tài liệu đi."
+      )
+      return
+    }
     const selectedEntries = previewDocuments.filter((entry) =>
       selectedSessionDocumentIds.has(entry.sessionDocumentId)
     )
@@ -1588,7 +1609,11 @@ export function FinalResult({
       return
     }
     setTransferTargets(targets)
-  }, [previewDocuments, selectedSessionDocumentIds])
+  }, [
+    previewDocuments,
+    selectedSessionDocumentIds,
+    sourceHasActiveClusterVersion,
+  ])
 
   const handleDocumentDeletionCompleted = useCallback(
     (
@@ -1707,6 +1732,25 @@ export function FinalResult({
           ),
         }))
       )
+      setDisplayedClusterVersion((previous) =>
+        previous
+          ? {
+              ...previous,
+              clusters: previous.clusters?.map((cluster) => ({
+                ...cluster,
+                placements: cluster.placements.map((placement) =>
+                  targetedIds.has(placement.session_document_id)
+                    ? {
+                        ...placement,
+                        active_transfer_request_id: request.request_id,
+                        active_transfer_request_status: request.status,
+                      }
+                    : placement
+                ),
+              })),
+            }
+          : previous
+      )
       setStatus(
         `Đã gửi yêu cầu chuyển ${request.document_count} tài liệu tới ${request.target_session_id}. Tài liệu được khóa cho tới khi Phông đích xử lý.`
       )
@@ -1737,8 +1781,7 @@ export function FinalResult({
     promotingTemporaryFolder ||
     promotingSelectedDocuments ||
     Boolean(movingSelectedDocumentsTargetId) ||
-    Boolean(rebuildBaselineVersionId) ||
-    Boolean(pendingClusterVersion)
+    Boolean(rebuildBaselineVersionId)
   const selectedDocumentsActionDisabled =
     temporaryFolderUpdateDisabled ||
     clusterVersionStale ||
@@ -1750,6 +1793,7 @@ export function FinalResult({
     selectedHasActiveEditLock
   const transferSelectedDocumentsDisabled =
     !canTransferDocuments ||
+    sourceHasActiveClusterVersion ||
     temporaryFolderUpdateDisabled ||
     selectedDocumentCount === 0 ||
     selectedHasActiveEditLock
@@ -1799,6 +1843,8 @@ export function FinalResult({
         handleDeleteSelectedDocuments={handleDeleteSelectedDocuments}
         handleTransferSelectedDocuments={handleTransferSelectedDocuments}
         handleFinish={handleFinish}
+        hasUsableActiveClusterVersion={hasUsableActiveClusterVersion}
+        sourceHasActiveClusterVersion={sourceHasActiveClusterVersion}
         handleMoveSelectionToDossier={handleMoveSelectionToDossier}
         handlePreviewResizePointerDown={handlePreviewResizePointerDown}
         handleManualClassificationResizePointerDown={

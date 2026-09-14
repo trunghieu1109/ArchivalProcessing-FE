@@ -1,6 +1,7 @@
 import {
   useEffect,
   useRef,
+  useState,
   type Dispatch,
   type SetStateAction,
 } from "react"
@@ -9,6 +10,7 @@ import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import {
   getActiveClusters,
   getClusterBuildStatus,
+  getClusterVersion,
   listClusterVersions,
   listSessionEvents,
   type ClusterVersionResponse,
@@ -38,13 +40,36 @@ import {
   regularDossierCount,
   temporaryDocumentCount,
 } from "./FinalResult.metadataUtils"
+import {
+  DOCUMENT_TRANSFER_UI_REFRESH_EVENT,
+  documentTransferRefreshAffectsSession,
+  isDocumentTransferRefreshEventType,
+  type DocumentTransferUiRefreshDetail,
+} from "../documentTransferUiSync"
 
 const CLUSTER_ACTIVE_POLL_INTERVAL_MS = 5_000
 const CLUSTER_IDLE_POLL_INTERVAL_MS = 30_000
 const CLUSTER_POLL_TIMEOUT_MS = 10 * 60 * 1_000
-const CLUSTER_EVENT_POLL_INTERVAL_MS = 5_000
+const SESSION_EVENT_POLL_INTERVAL_MS = 2_000
 const CLUSTER_EVENT_PAGE_SIZE = 100
 const NO_CLUSTER_VERSION = "__none__"
+
+function transferProjectionSignature(groups: ClusterGroup[]): string {
+  return groups
+    .flatMap((group) =>
+      group.documents
+        .filter(
+          (document) =>
+            group.isTransferPending || Boolean(document.activeTransferRequestId)
+        )
+        .map(
+          (document) =>
+            `${document.sessionDocumentId}:${document.activeTransferRequestId ?? ""}:${document.activeTransferRequestStatus ?? ""}`
+        )
+    )
+    .sort()
+    .join("|")
+}
 
 interface FinalResultPollingContext {
   activeClusterVersionId: string | null
@@ -120,6 +145,7 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
   const clusterEventCursorRef = useRef(0)
   const clusterRevisionRef = useRef<string | null>(null)
   const clusterSummarySeedAttemptedRef = useRef(false)
+  const [transferRefreshKey, setTransferRefreshKey] = useState(0)
   const pollStateRef = useRef({
     checkingClusters,
     clusterJobMode,
@@ -152,6 +178,30 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
     activeBuildProgressCompletedRef.current = false
     clusterEventCursorRef.current = 0
     clusterSummarySeedAttemptedRef.current = false
+  }, [sessionId])
+
+  useEffect(() => {
+    if (!sessionId) return
+    const refresh = (event?: Event) => {
+      const detail =
+        event?.type === DOCUMENT_TRANSFER_UI_REFRESH_EVENT
+          ? (event as CustomEvent<DocumentTransferUiRefreshDetail>).detail
+          : undefined
+      if (documentTransferRefreshAffectsSession(detail, sessionId)) {
+        setTransferRefreshKey((key) => key + 1)
+      }
+    }
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") refresh()
+    }
+    window.addEventListener(DOCUMENT_TRANSFER_UI_REFRESH_EVENT, refresh)
+    window.addEventListener("focus", refresh)
+    document.addEventListener("visibilitychange", refreshWhenVisible)
+    return () => {
+      window.removeEventListener(DOCUMENT_TRANSFER_UI_REFRESH_EVENT, refresh)
+      window.removeEventListener("focus", refresh)
+      document.removeEventListener("visibilitychange", refreshWhenVisible)
+    }
   }, [sessionId])
 
   useEffect(() => {
@@ -241,7 +291,7 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
         if (!rawActiveBuildJob) completedBuildJobIdRef.current = null
         const hasActiveBuildJob = Boolean(
           rawActiveBuildJob &&
-            buildStatus?.job?.id !== completedBuildJobIdRef.current
+          buildStatus?.job?.id !== completedBuildJobIdRef.current
         )
         const activeBuildJobId = hasActiveBuildJob
           ? Number(buildStatus?.job?.id)
@@ -252,10 +302,6 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
         if (activeBuildJobChanged) {
           activeBuildJobIdRef.current = activeBuildJobId
           activeBuildProgressCompletedRef.current = false
-          clusterEventCursorRef.current = Math.max(
-            Number(buildStatus?.last_event_id ?? 0),
-            Number(buildStatus?.progress?.event_id ?? 0)
-          )
         } else if (!rawActiveBuildJob) {
           activeBuildJobIdRef.current = null
         }
@@ -357,10 +403,22 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
           return
         }
 
-        const versionSummary = await getActiveClusters(sessionId, {
+        const versionsResponse = await listClusterVersions(sessionId).catch(
+          () => null
+        )
+        if (cancelled) return
+        if (versionsResponse) {
+          setClusterVersions(versionsResponse.versions ?? [])
+        }
+        const draftSummary =
+          versionsResponse?.versions?.find(
+            (candidate) => candidate.status === "draft" && !candidate.is_stale
+          ) ?? null
+        const activeVersionSummary = await getActiveClusters(sessionId, {
           summaryOnly: true,
         })
         if (cancelled) return
+        const versionSummary = draftSummary ?? activeVersionSummary
         let version = versionSummary
         const nextVersionId = versionSummary?.id ?? null
         const nextVersionMarker = nextVersionId ?? NO_CLUSTER_VERSION
@@ -379,7 +437,16 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
             setPendingFeedbackRefreshKey((key: number) => key + 1)
           }
         }
-        setActiveClusterVersionId(nextVersionId)
+        setActiveClusterVersionId(
+          versionsResponse?.active_cluster_version_id ??
+            activeVersionSummary?.id ??
+            null
+        )
+
+        const fetchFullWorkingVersion = () =>
+          draftSummary
+            ? getClusterVersion(sessionId, draftSummary.id)
+            : getActiveClusters(sessionId)
 
         if (
           latestState.rebuildBaselineVersionId &&
@@ -389,7 +456,7 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
           if (rawActiveBuildJob && buildStatus?.job?.id) {
             completedBuildJobIdRef.current = buildStatus.job.id
           }
-          version = await getActiveClusters(sessionId)
+          version = await fetchFullWorkingVersion()
           if (cancelled || !version) return
           const nextGroups = versionToGroups(
             version,
@@ -400,7 +467,7 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
           setGroups(nextGroups)
           setDisplayedClusterVersionId(version.id)
           setDisplayedClusterVersion(version)
-          setPendingClusterVersion(null)
+          setPendingClusterVersion(version.status === "draft" ? version : null)
           setPendingFeedbackCount(0)
           setPendingFeedbackRefreshKey((key: number) => key + 1)
           setRebuildBaselineVersionId(null)
@@ -444,29 +511,39 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
 
         const shouldDisplayInitialVersion =
           Boolean(version && nextVersionId) &&
-          (!latestState.displayedClusterVersionId || !latestState.hasClusterData)
+          (!latestState.displayedClusterVersionId ||
+            !latestState.hasClusterData)
         const effectiveDisplayedVersionId = shouldDisplayInitialVersion
           ? nextVersionId
           : latestState.displayedClusterVersionId
         const shouldFetchFullVersion =
           Boolean(version && nextVersionId) &&
           (shouldDisplayInitialVersion ||
+            !version?.clusters ||
             Boolean(
               effectiveDisplayedVersionId &&
               nextVersionId !== effectiveDisplayedVersionId
             ))
         if (shouldFetchFullVersion) {
-          version = await getActiveClusters(sessionId)
+          version = await fetchFullWorkingVersion()
           if (cancelled) return
         }
         const nextGroups = versionToGroups(version, latestState.metadataItems)
         let displayedGroupsForStatus = latestState.groups
+        const transferProjectionChanged =
+          effectiveDisplayedVersionId === nextVersionId &&
+          transferProjectionSignature(nextGroups) !==
+            transferProjectionSignature(latestState.groups)
 
-        if (shouldDisplayInitialVersion && nextVersionId && version) {
+        if (
+          (shouldDisplayInitialVersion || transferProjectionChanged) &&
+          nextVersionId &&
+          version
+        ) {
           setGroups(nextGroups)
           setDisplayedClusterVersionId(nextVersionId)
           setDisplayedClusterVersion(version)
-          setPendingClusterVersion(null)
+          setPendingClusterVersion(version.status === "draft" ? version : null)
           displayedGroupsForStatus = nextGroups
         }
 
@@ -493,10 +570,25 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
           return
         }
 
-        setPendingClusterVersion(null)
+        setPendingClusterVersion(version?.status === "draft" ? version : null)
         if (latestState.rebuildBaselineVersionId) {
           setRebuildBaselineVersionId(null)
           toast.success("Đã có phiên bản hồ sơ mới từ feedback đã lưu.")
+        }
+
+        if (version?.status === "draft") {
+          setClusterProgressPhase(null)
+          setClusterCompletedPhases(completedClusterPhaseSet())
+          setClusterProgressMessage(
+            "Đã có kết quả lập hồ sơ mới chờ coordinator duyệt."
+          )
+          setStatus(
+            activeVersionSummary && !activeVersionSummary.is_stale
+              ? `Phiên bản ${version.version_number} đang ở trạng thái nháp. Bản active gần nhất vẫn được dùng cho các bước sau.`
+              : `Phiên bản ${version.version_number} đang ở trạng thái nháp. Cần duyệt phiên bản này trước khi sang bước sau.`
+          )
+          schedule(CLUSTER_IDLE_POLL_INTERVAL_MS)
+          return
         }
 
         const clusteredIds = clusteredDocumentIds(version)
@@ -586,6 +678,7 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
     setClusterJobMode,
     setClusterProgressMessage,
     setClusterProgressPhase,
+    setClusterVersions,
     setDisplayedClusterVersion,
     setDisplayedClusterVersionId,
     setGroups,
@@ -595,25 +688,18 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
     setPendingFeedbackRefreshKey,
     setRebuildBaselineVersionId,
     setStatus,
+    transferRefreshKey,
   ])
 
   useEffect(() => {
-    if (!sessionId || (!loading && !rebuildBaselineVersionId)) return
+    if (!sessionId) return
 
     let cancelled = false
     let timeoutId: number | undefined
 
     const pollEvents = async () => {
-      if (activeBuildJobIdRef.current === null && !rebuildBaselineVersionId) {
-        if (!cancelled) {
-          timeoutId = window.setTimeout(
-            pollEvents,
-            visibleAwareDelay(CLUSTER_EVENT_POLL_INTERVAL_MS)
-          )
-        }
-        return
-      }
       try {
+        let transferChanged = false
         let hasMoreEvents = true
         while (hasMoreEvents && !cancelled) {
           const response = await listSessionEvents(sessionId, {
@@ -627,6 +713,9 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
               clusterEventCursorRef.current,
               event.id
             )
+            if (isDocumentTransferRefreshEventType(event.event_type)) {
+              transferChanged = true
+            }
             if (Number(event.payload?.job_id) !== activeJobId) continue
             if (event.event_type === "clustering.progress") {
               const phase = String(event.payload?.phase ?? "")
@@ -663,8 +752,10 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
               setClusterProgressMessage("Đã tạo phiên bản hồ sơ mới.")
             }
           }
-          hasMoreEvents =
-            response.events.length === CLUSTER_EVENT_PAGE_SIZE
+          hasMoreEvents = response.events.length === CLUSTER_EVENT_PAGE_SIZE
+        }
+        if (transferChanged && !cancelled) {
+          setTransferRefreshKey((key) => key + 1)
         }
       } catch {
         // The cluster polling loop owns user-facing errors.
@@ -672,7 +763,7 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
       if (!cancelled) {
         timeoutId = window.setTimeout(
           pollEvents,
-          visibleAwareDelay(CLUSTER_EVENT_POLL_INTERVAL_MS)
+          visibleAwareDelay(SESSION_EVENT_POLL_INTERVAL_MS)
         )
       }
     }
@@ -683,8 +774,6 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
       if (timeoutId !== undefined) window.clearTimeout(timeoutId)
     }
   }, [
-    loading,
-    rebuildBaselineVersionId,
     sessionId,
     setClusterCompletedPhases,
     setClusterProgressMessage,

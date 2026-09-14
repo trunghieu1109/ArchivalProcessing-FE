@@ -249,8 +249,13 @@ export function DocumentRow({
             toggleExpanded()
           }
         }}
-        onDragStart={() => {
+        onDragStart={(event) => {
           if (documentInactive) return
+          event.dataTransfer.effectAllowed = 'move'
+          event.dataTransfer.setData(
+            'text/plain',
+            String(document.sessionDocumentId ?? document.documentId),
+          )
           setDragging(true)
           onDragStart(document, clusterId)
         }}

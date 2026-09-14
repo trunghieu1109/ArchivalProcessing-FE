@@ -62,7 +62,6 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
     groups,
     loading,
     movingSelectedDocumentsTargetId,
-    pendingClusterVersion,
     promotingSelectedDocuments,
     promotingTemporaryFolder,
     rebuildBaselineVersionId,
@@ -580,12 +579,6 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
       toast.error("Tài liệu này chưa có mã session để cập nhật metadata.")
       throw new Error("Missing session document id")
     }
-    if (pendingClusterVersion) {
-      toast.error(
-        "Có phiên bản hồ sơ mới. Hãy áp dụng trước khi sửa metadata tài liệu."
-      )
-      throw new Error("Pending cluster version exists")
-    }
     if (
       loading ||
       rebuildSubmitting ||
@@ -762,12 +755,6 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
       toast.error("Chưa có session để tạo hồ sơ từ tài liệu đã chọn.")
       return false
     }
-    if (pendingClusterVersion) {
-      toast.error(
-        "Có phiên bản hồ sơ mới. Hãy áp dụng trước khi tạo hồ sơ khác."
-      )
-      return false
-    }
     if (
       loading ||
       rebuildSubmitting ||
@@ -851,12 +838,6 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
     }
     if (!sessionId) {
       toast.error("Chưa có session để chuyển tài liệu đã chọn.")
-      return false
-    }
-    if (pendingClusterVersion) {
-      toast.error(
-        "Có phiên bản hồ sơ mới. Hãy áp dụng trước khi chuyển tài liệu."
-      )
       return false
     }
     if (
@@ -956,12 +937,6 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
     }
     if (!sessionId) {
       toast.error("Chưa có session để cập nhật Thư mục tạm.")
-      return
-    }
-    if (pendingClusterVersion) {
-      toast.error(
-        "Có phiên bản hồ sơ mới. Hãy áp dụng trước khi cập nhật Thư mục tạm."
-      )
       return
     }
     if (

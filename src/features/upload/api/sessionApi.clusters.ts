@@ -118,6 +118,20 @@ export async function activateClusterVersion(
   )
 }
 
+export async function approveClusterVersion(
+  sessionId: string,
+  clusterVersionId: string
+): Promise<ClusterVersionResponse> {
+  return requestJson<ClusterVersionResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/clusters/versions/${encodeURIComponent(clusterVersionId)}/approve`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ created_by: "ui" }),
+    }
+  )
+}
+
 export async function patchSessionDossier(
   sessionId: string,
   dossierId: string,

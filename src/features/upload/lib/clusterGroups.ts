@@ -21,6 +21,8 @@ import {
 
 export const TEMPORARY_CLUSTER_ID = "temporary-folder"
 export const TEMPORARY_FOLDER_NAME = "Thư mục tạm"
+export const TRANSFER_PENDING_CLUSTER_ID = "transfer-pending"
+export const TRANSFER_PENDING_FOLDER_NAME = "Tài liệu đang chờ chuyển Phông"
 
 export interface ClusterGroup {
   id: string
@@ -30,6 +32,7 @@ export interface ClusterGroup {
   documents: ClusterDocument[]
   isTemporary?: boolean
   isPendingDossier?: boolean
+  isTransferPending?: boolean
   draftId?: number | null
   manualMetadataFields?: string[]
   metadataRevision?: number
@@ -258,11 +261,91 @@ export function versionToGroups(
   const itemsByDocumentId = new Map(
     items.map((item) => [item.document_id, item])
   )
-  return ensureTemporaryFolderGroup(
+  const groups = ensureTemporaryFolderGroup(
     version.clusters.flatMap((cluster) =>
       clusterToGroups(cluster, itemsByDocumentId)
     )
   )
+  const pendingPlacements = version.pending_transfer_documents ?? []
+  const pendingDocumentIds = new Set(
+    pendingPlacements.map((placement) => placement.document_id)
+  )
+  groups.forEach((group) => {
+    group.documents.forEach((document) => {
+      if (document.activeTransferRequestId) {
+        pendingDocumentIds.add(document.documentId)
+      }
+    })
+  })
+  if (pendingDocumentIds.size === 0) return groups
+
+  const pendingCluster: SessionClusterSummary = {
+    id: -1,
+    cluster_id: TRANSFER_PENDING_CLUSTER_ID,
+    dossier_id: TRANSFER_PENDING_CLUSTER_ID,
+    title: TRANSFER_PENDING_FOLDER_NAME,
+    dossier: null,
+    dossiers: [],
+    status: "transfer_pending",
+    notes: [],
+    document_ids: pendingPlacements.map(
+      (placement) => placement.document_id
+    ),
+    page_count: null,
+    sheet_count: null,
+    start_date: null,
+    end_date: null,
+    placements: pendingPlacements,
+  }
+  const projectedPendingGroup = clusterToGroups(
+    pendingCluster,
+    itemsByDocumentId
+  )[0]
+  const documentsById = new Map(
+    projectedPendingGroup.documents.map((document) => [
+      document.documentId,
+      document,
+    ])
+  )
+  groups.forEach((group) => {
+    group.documents.forEach((document) => {
+      if (
+        pendingDocumentIds.has(document.documentId) &&
+        !documentsById.has(document.documentId)
+      ) {
+        documentsById.set(document.documentId, document)
+      }
+    })
+  })
+  const pendingDocuments = [...documentsById.values()].map(
+    (document, positionIndex) => ({ ...document, positionIndex })
+  )
+  const visibleGroups = groups.map((group) => {
+    const documents = group.documents.filter(
+      (document) => !pendingDocumentIds.has(document.documentId)
+    )
+    return {
+      ...group,
+      documents,
+      files: documents.map((document) => document.filePath),
+    }
+  })
+  return [
+    {
+      ...projectedPendingGroup,
+      id: TRANSFER_PENDING_CLUSTER_ID,
+      clusterId: TRANSFER_PENDING_CLUSTER_ID,
+      label: TRANSFER_PENDING_FOLDER_NAME,
+      files: pendingDocuments.map((document) => document.filePath),
+      documents: pendingDocuments,
+      dossierId: null,
+      isPendingDossier: true,
+      isTransferPending: true,
+      classificationPath: [],
+      requiresReview: true,
+    },
+    ...visibleGroups,
+  ]
 }
 
 export function ensureTemporaryFolderGroup(

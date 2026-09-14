@@ -182,7 +182,10 @@ function numericValue(value: unknown): number | null {
 
 export function regularDossierCount(groups: ClusterGroup[]): number {
   return groups.filter(
-    (group) => !group.isTemporary && !group.isPendingDossier
+    (group) =>
+      !group.isTemporary &&
+      !group.isPendingDossier &&
+      !group.isTransferPending
   ).length
 }
 

@@ -765,6 +765,7 @@ export interface DocumentTransferClusterProjection {
   cluster_version_id?: string | null
   new_cluster_version_id?: string | null
   cluster_version_number?: number | null
+  cluster_version_status?: "active" | "draft" | null
   affected_cluster_ids: string[]
   affected_dossier_ids: string[]
   removed_cluster_ids: string[]
@@ -817,9 +818,11 @@ export interface DocumentTransferTargetContext {
   target_session_id: string
   selectable: boolean
   unavailable_reason: string | null
+  source_transfer_allowed: boolean
   workflow_stage: DocumentTransferWorkflowStage
-  transfer_case: DocumentTransferCase
+  transfer_case: DocumentTransferCase | null
   requires_target_approval: boolean
+  cluster_version_approval_mode?: "automatic" | "manual"
   target_snapshot: DocumentTransferTargetSnapshot
   required_form_fields: Array<"dossier" | "target_classification">
   classification_leafs: DocumentTransferClassificationLeaf[]

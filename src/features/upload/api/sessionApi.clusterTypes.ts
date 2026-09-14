@@ -531,7 +531,11 @@ export interface ClusterVersionResponse extends ApiRevisionMetadata {
   session_id: string
   version_number: number
   source: string
-  status: string
+  status: "draft" | "active" | "superseded" | "stale" | string
+  approval_mode?: "automatic" | "manual"
+  requires_approval?: boolean
+  approved_at?: string | null
+  approved_by?: string | null
   previous_version_id: string | null
   plan_version_id: string | null
   summary: Record<string, unknown>
@@ -543,6 +547,7 @@ export interface ClusterVersionResponse extends ApiRevisionMetadata {
   source_document_set_revision?: number
   current_document_set_revision?: number
   clusters?: SessionClusterSummary[]
+  pending_transfer_documents?: ClusterPlacement[]
 }
 
 export type ClusterGroupChangeType = "created" | "removed" | "updated" | "moved"
@@ -648,6 +653,9 @@ export interface ClusterVersionChangesResponse {
 
 export interface ClusterVersionListResponse extends ApiRevisionMetadata {
   session_id: string
+  approval_mode?: "automatic" | "manual"
+  active_cluster_version_id?: string | null
+  draft_cluster_version_id?: string | null
   versions: ClusterVersionResponse[]
 }
 
@@ -682,6 +690,8 @@ export interface ClusterFeedbackListResponse extends ApiRevisionMetadata {
   dossier_drafts?: SessionDossierDraft[]
   active_version_id?: string | null
   active_version_created_at?: string | null
+  working_version_id?: string | null
+  working_version_created_at?: string | null
   feedback_count?: number
   pending_feedback_count?: number
   dossier_draft_count?: number

@@ -55,6 +55,20 @@ export function buildResultTree(
   }
 
   groups
+    .filter((group) => group.isTransferPending)
+    .forEach((group) => {
+      roots.push({
+        id: `transfer-pending:${group.id}`,
+        label: group.label,
+        type: "pending_dossier",
+        children: [],
+        group,
+        documentCount: group.documents.length,
+        pageCount: dossierPageCount(group),
+      })
+    })
+
+  groups
     .filter((group) => group.isTemporary)
     .forEach((group) => {
       roots.push({
@@ -69,7 +83,9 @@ export function buildResultTree(
     })
 
   groups
-    .filter((group) => group.isPendingDossier)
+    .filter(
+      (group) => group.isPendingDossier && !group.isTransferPending
+    )
     .forEach((group) => {
       roots.push({
         id: `pending-dossier:${group.id}`,
@@ -83,7 +99,12 @@ export function buildResultTree(
     })
 
   groups
-    .filter((group) => !group.isTemporary && !group.isPendingDossier)
+    .filter(
+      (group) =>
+        !group.isTemporary &&
+        !group.isPendingDossier &&
+        !group.isTransferPending
+    )
     .forEach((group) => {
       const fondsLabel =
         sessionFondsLabel || resultTreeFondsLabel(group, fallbackFondsLabel)
@@ -491,7 +512,12 @@ export function findResultTreeNode(
 
 export function dossierGroupsFromNode(node: ResultTreeNode): ClusterGroup[] {
   const groups: ClusterGroup[] = []
-  if (node.group && !node.group.isTemporary) {
+  if (
+    node.group &&
+    !node.group.isTemporary &&
+    !node.group.isPendingDossier &&
+    !node.group.isTransferPending
+  ) {
     groups.push(node.group)
   }
   node.children.forEach((child) => {

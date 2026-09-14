@@ -396,12 +396,21 @@ export function DocumentTransferDialog({
                 />
               )}
 
+              {context?.transfer_case ===
+                "case_3_classification_pending_approval" && (
+                <div className="flex gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  Khi accept, hồ sơ mới được thêm vào bản phân loại nháp hiện
+                  tại và tiếp tục chờ coordinator Phông đích duyệt.
+                </div>
+              )}
+
               {context?.transfer_case === "case_4_classification_approved" && (
                 <div className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                  Khi accept, backend tạo và tự kích hoạt ClusterVersion mới.
-                  Coordinator chỉ nhận thông báo; duyệt ClusterVersion sẽ được
-                  triển khai ở giai đoạn sau.
+                  {context.cluster_version_approval_mode === "manual"
+                    ? "Khi accept, hệ thống sao chép bản active thành bản nháp mới, thêm hồ sơ và chờ coordinator Phông đích duyệt."
+                    : "Khi accept, hệ thống tạo và tự động kích hoạt ClusterVersion mới theo chế độ automatic."}
                 </div>
               )}
 

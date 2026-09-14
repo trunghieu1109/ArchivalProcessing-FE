@@ -29,6 +29,7 @@ interface FinalResultFeedbackPanelProps {
   handleDeleteSelectedDocuments: () => void
   handleTransferSelectedDocuments: () => void
   handleFinish: () => void
+  hasUsableActiveClusterVersion: boolean
   handleRebuildClusters: (strategy?: string) => Promise<unknown> | void
   handleRestorePreviousClusterVersion: () => Promise<unknown> | void
   handleSelectDossierSuggestionsFromSelection: () => void
@@ -43,6 +44,7 @@ interface FinalResultFeedbackPanelProps {
   restoringClusterVersion: boolean
   selectedDocumentCount: number
   selectedDocumentsActionDisabled: boolean
+  sourceHasActiveClusterVersion: boolean
   sessionId: string | null
   totalDossiers: number
   totalFiles: number
@@ -65,6 +67,7 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
     handleTransferSelectedDocuments,
     handleSelectDossierSuggestionsFromSelection,
     handleFinish,
+    hasUsableActiveClusterVersion,
     handleRebuildClusters,
     handleRestorePreviousClusterVersion,
     loading,
@@ -78,6 +81,7 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
     restoringClusterVersion,
     selectedDocumentCount,
     selectedDocumentsActionDisabled,
+    sourceHasActiveClusterVersion,
     sessionId,
     totalDossiers,
     totalFiles,
@@ -90,7 +94,7 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
       ? "Danh sách tài liệu đã thay đổi. Hãy lập lại hồ sơ trước khi sang bước Đánh số trang."
       : pendingFeedbackCount > 0
         ? `Bạn còn ${pendingFeedbackCount} feedback chưa được cập nhật vào hồ sơ. Hãy cập nhật hồ sơ hoặc hủy feedback trước khi tiếp tục.`
-        : pendingClusterVersion
+        : pendingClusterVersion && !hasUsableActiveClusterVersion
           ? "Có phiên bản hồ sơ mới đang chờ áp dụng. Hãy áp dụng phiên bản đó trước khi đánh số trang."
           : totalDossiers === 0
             ? "Chưa có hồ sơ để chuyển sang bước Đánh số trang."
@@ -136,8 +140,7 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
             loading ||
             !sessionId ||
             totalFiles === 0 ||
-            viewingHistoricalClusterVersion ||
-            Boolean(pendingClusterVersion)
+            viewingHistoricalClusterVersion
           }
         >
           {restoringClusterVersion ||
@@ -158,7 +161,11 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
             onClick={handleSelectDossierSuggestionsFromSelection}
             className="w-full xl:w-auto"
             disabled={selectedDocumentsActionDisabled}
-            title="Tìm hồ sơ phù hợp cho toàn bộ tài liệu đang chọn"
+            title={
+              selectedDocumentCount === 0
+                ? "Hãy chọn ít nhất một tài liệu để lấy gợi ý hồ sơ"
+                : "Tìm hồ sơ phù hợp cho toàn bộ tài liệu đang chọn"
+            }
           >
             <ListChecks data-icon="inline-start" />
             Gợi ý hồ sơ
@@ -169,6 +176,11 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
           onClick={() => void handleCreateDossierFromSelection()}
           className="w-full xl:w-auto"
           disabled={selectedDocumentsActionDisabled}
+          title={
+            selectedDocumentCount === 0
+              ? "Hãy chọn ít nhất một tài liệu để tạo hồ sơ mới"
+              : "Tạo hồ sơ mới từ các tài liệu đang chọn"
+          }
         >
           {promotingSelectedDocuments ? (
             <Loader2 data-icon="inline-start" className="animate-spin" />
@@ -197,7 +209,13 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
             onClick={handleTransferSelectedDocuments}
             className="w-full border-[#BFD3FF] text-[#0052FF] hover:bg-[#F3F7FF] xl:w-auto"
             disabled={transferSelectedDocumentsDisabled}
-            title="Chuyển các tài liệu đã chọn sang một phông khác"
+            title={
+              sourceHasActiveClusterVersion
+                ? "Phông nguồn đã có kết quả phân loại được duyệt nên không thể chuyển tài liệu đi"
+                : selectedDocumentCount === 0
+                  ? "Hãy chọn ít nhất một tài liệu để chuyển phông"
+                  : "Chuyển các tài liệu đã chọn sang một phông khác"
+            }
           >
             <ArrowRightLeft data-icon="inline-start" />
             Chuyển phông
@@ -216,8 +234,7 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
             loading ||
             !sessionId ||
             totalFiles === 0 ||
-            viewingHistoricalClusterVersion ||
-            Boolean(pendingClusterVersion)
+            viewingHistoricalClusterVersion
           }
         >
           {rebuildSubmitting && clusterJobMode === "update" ? (
@@ -242,8 +259,7 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
             loading ||
             !sessionId ||
             viewingHistoricalClusterVersion ||
-            Boolean(rebuildBaselineVersionId) ||
-            Boolean(pendingClusterVersion)
+            Boolean(rebuildBaselineVersionId)
           }
         >
           {cancelingPendingFeedback ? (

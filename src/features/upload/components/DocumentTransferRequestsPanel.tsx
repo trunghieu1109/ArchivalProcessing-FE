@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Dialog } from "radix-ui"
 import {
+  AlertTriangle,
   Bell,
   Check,
   Loader2,
@@ -12,6 +13,7 @@ import {
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import {
   acceptSessionDocumentTransferRequest,
   getSessionDocumentTransferRequest,
@@ -23,6 +25,11 @@ import {
   type DocumentTransferRequestResponse,
   type DocumentTransferRequestSummary,
 } from "@/features/upload/api/sessionApi"
+import { notifyDocumentTransferUiRefresh } from "./documentTransferUiSync"
+
+const TRANSFER_REQUEST_LIST_POLL_INTERVAL_MS = 5_000
+const TRANSFER_REQUEST_OPEN_POLL_INTERVAL_MS = 2_000
+const TRANSFER_ACCEPT_POLL_INTERVAL_MS = 1_500
 
 interface DocumentTransferRequestsPanelProps {
   sessionId: string | null
@@ -47,9 +54,15 @@ export function DocumentTransferRequestsPanel({
   const [acting, setActing] = useState(false)
   const [error, setError] = useState("")
   const operationIdsRef = useRef<Map<string, string>>(new Map())
+  const requestStatusesRef = useRef<Map<string, string>>(new Map())
+  const detailStatusesRef = useRef<Map<string, string>>(new Map())
 
   const loadList = useCallback(
-    async (selectedRole: RequestRole, quiet = false) => {
+    async (
+      selectedRole: RequestRole,
+      quiet = false,
+      updateVisibleItems = true
+    ) => {
       if (!sessionId) return
       if (!quiet) setLoading(true)
       try {
@@ -58,7 +71,19 @@ export function DocumentTransferRequestsPanel({
           limit: 50,
           offset: 0,
         })
-        setItems(response.items)
+        response.items.forEach((item) => {
+          const previousStatus = requestStatusesRef.current.get(item.request_id)
+          requestStatusesRef.current.set(item.request_id, item.status)
+          if (previousStatus && previousStatus !== item.status) {
+            notifyDocumentTransferUiRefresh({
+              requestId: item.request_id,
+              sourceSessionId: item.source_session_id,
+              targetSessionId: item.target_session_id,
+              status: item.status,
+            })
+          }
+        })
+        if (updateVisibleItems) setItems(response.items)
         if (selectedRole === "target") {
           setPendingCount(
             response.items.filter(
@@ -85,6 +110,31 @@ export function DocumentTransferRequestsPanel({
           sessionId,
           requestId
         )
+        const previousStatus = requestStatusesRef.current.get(requestId)
+        const previousDetailStatus = detailStatusesRef.current.get(requestId)
+        requestStatusesRef.current.set(requestId, response.status)
+        detailStatusesRef.current.set(requestId, response.status)
+        if (previousStatus && previousStatus !== response.status) {
+          notifyDocumentTransferUiRefresh({
+            requestId: response.request_id,
+            sourceSessionId: response.source_session_id,
+            targetSessionId: response.target_session_id,
+            status: response.status,
+          })
+        }
+        if (previousDetailStatus === "accepting") {
+          if (response.status === "completed") {
+            toast.success(
+              "Đã chuyển tài liệu xong. Cây hồ sơ đang được đồng bộ tự động."
+            )
+          } else if (response.status === "completed_with_errors") {
+            toast.warning(
+              "Đã chuyển một phần tài liệu. Hãy kiểm tra các tài liệu lỗi trong yêu cầu."
+            )
+          } else if (response.status === "failed") {
+            toast.error("Chuyển tài liệu thất bại. Hãy kiểm tra nguyên nhân.")
+          }
+        }
         setDetail(response)
         setError("")
       } catch (caught) {
@@ -97,18 +147,28 @@ export function DocumentTransferRequestsPanel({
   )
 
   useEffect(() => {
+    requestStatusesRef.current.clear()
+    detailStatusesRef.current.clear()
+  }, [sessionId])
+
+  useEffect(() => {
     if (!sessionId) return
-    const initialLoad = window.setTimeout(
-      () => void loadList("target", true),
-      0
-    )
-    const interval = window.setInterval(
-      () => void loadList("target", true),
-      30_000
-    )
+    let cancelled = false
+    let timeoutId: number | undefined
+    const poll = async () => {
+      await loadList("target", true, false)
+      if (!cancelled) {
+        timeoutId = window.setTimeout(
+          poll,
+          visibleAwareDelay(TRANSFER_REQUEST_LIST_POLL_INTERVAL_MS, 30_000)
+        )
+      }
+    }
+    const initialLoad = window.setTimeout(() => void poll(), 0)
     return () => {
+      cancelled = true
       window.clearTimeout(initialLoad)
-      window.clearInterval(interval)
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId)
     }
   }, [loadList, sessionId])
 
@@ -123,12 +183,49 @@ export function DocumentTransferRequestsPanel({
   }, [loadList, open, role])
 
   useEffect(() => {
+    if (!open || detail?.status === "accepting") return
+    let cancelled = false
+    let timeoutId: number | undefined
+    const poll = async () => {
+      await loadList(role, true)
+      if (!cancelled) {
+        timeoutId = window.setTimeout(
+          poll,
+          visibleAwareDelay(TRANSFER_REQUEST_OPEN_POLL_INTERVAL_MS)
+        )
+      }
+    }
+    timeoutId = window.setTimeout(
+      poll,
+      visibleAwareDelay(TRANSFER_REQUEST_OPEN_POLL_INTERVAL_MS)
+    )
+    return () => {
+      cancelled = true
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId)
+    }
+  }, [detail?.status, loadList, open, role])
+
+  useEffect(() => {
     if (!open || !detail || detail.status !== "accepting") return
-    const interval = window.setInterval(() => {
-      void loadDetail(detail.request_id, true)
-      void loadList(role, true)
-    }, 3_000)
-    return () => window.clearInterval(interval)
+    let cancelled = false
+    let timeoutId: number | undefined
+    const poll = async () => {
+      await Promise.all([
+        loadDetail(detail.request_id, true),
+        loadList(role, true),
+      ])
+      if (!cancelled) {
+        timeoutId = window.setTimeout(
+          poll,
+          visibleAwareDelay(TRANSFER_ACCEPT_POLL_INTERVAL_MS, 10_000)
+        )
+      }
+    }
+    timeoutId = window.setTimeout(poll, TRANSFER_ACCEPT_POLL_INTERVAL_MS)
+    return () => {
+      cancelled = true
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId)
+    }
   }, [detail, loadDetail, loadList, open, role])
 
   const acceptRequest = async () => {
@@ -136,7 +233,7 @@ export function DocumentTransferRequestsPanel({
     setActing(true)
     setError("")
     try {
-      await acceptSessionDocumentTransferRequest(
+      const accepted = await acceptSessionDocumentTransferRequest(
         detail.target_session_id,
         detail.request_id,
         clientOperationId(
@@ -146,7 +243,17 @@ export function DocumentTransferRequestsPanel({
           { confirmed: true }
         )
       )
-      toast.success("Đã chấp nhận yêu cầu. Hệ thống đang chuyển tài liệu.")
+      notifyDocumentTransferUiRefresh({
+        requestId: detail.request_id,
+        sourceSessionId: detail.source_session_id,
+        targetSessionId: detail.target_session_id,
+        status: accepted.status,
+      })
+      toast.success(
+        detail.transfer_case === "case_4_classification_approved"
+          ? "Đã chấp nhận yêu cầu. Sau khi chuyển xong, hãy kiểm tra phiên bản phân loại mới của Phông đích."
+          : "Đã chấp nhận yêu cầu. Hệ thống đang chuyển tài liệu."
+      )
       await loadDetail(detail.request_id)
       await loadList(role, true)
     } catch (caught) {
@@ -161,7 +268,7 @@ export function DocumentTransferRequestsPanel({
     setActing(true)
     setError("")
     try {
-      await rejectSessionDocumentTransferRequest(
+      const rejected = await rejectSessionDocumentTransferRequest(
         detail.target_session_id,
         detail.request_id,
         clientOperationId(
@@ -172,6 +279,12 @@ export function DocumentTransferRequestsPanel({
         ),
         rejectReason.trim()
       )
+      notifyDocumentTransferUiRefresh({
+        requestId: detail.request_id,
+        sourceSessionId: detail.source_session_id,
+        targetSessionId: detail.target_session_id,
+        status: rejected.status,
+      })
       toast.success("Đã từ chối và mở khóa tài liệu tại Phông nguồn.")
       await loadDetail(detail.request_id)
       await loadList(role, true)
@@ -236,6 +349,12 @@ export function DocumentTransferRequestsPanel({
             : {}),
         }
       )
+      notifyDocumentTransferUiRefresh({
+        requestId: replacement.request_id,
+        sourceSessionId: replacement.source_session_id,
+        targetSessionId: replacement.target_session_id,
+        status: replacement.status,
+      })
       toast.success("Đã gửi lại yêu cầu theo context mới nhất.")
       setDetail(replacement)
       await loadList(role, true)
@@ -410,6 +529,37 @@ export function DocumentTransferRequestsPanel({
                       metadata={detail.target_dossier_draft.metadata}
                     />
                   )}
+                  {detail.status === "accepting" && (
+                    <div
+                      role="status"
+                      className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900"
+                    >
+                      <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                      Đang chuyển tài liệu và cập nhật kết quả hai Phông. Giao
+                      diện sẽ tự làm mới ngay khi worker hoàn tất.
+                    </div>
+                  )}
+                  {canResolve &&
+                    detail.transfer_case ===
+                      "case_4_classification_approved" && (
+                      <div
+                        role="alert"
+                        className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"
+                      >
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                        <div>
+                          <div className="font-medium">
+                            Cảnh báo khi nhận tài liệu vào Phông đã duyệt
+                          </div>
+                          <div className="mt-1">
+                            Phông đích đang có kết quả phân loại active. Khi
+                            chấp nhận, hệ thống sẽ tạo phiên bản mới từ bản
+                            active và thêm hồ sơ này; phiên bản mới được duyệt
+                            thủ công hoặc tự động theo cấu hình hệ thống.
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   {detail.error && (
                     <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
                       <div className="font-medium">Nguyên nhân thất bại</div>
