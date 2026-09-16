@@ -2,9 +2,11 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import {
+  acceptSessionDocumentTransferRequest,
   getSessionDocumentTransferRequest,
   listSessionDocumentTransferRequests,
 } from "@/features/upload/api/sessionApi"
+import { ApiRequestError } from "@/features/upload/api/sessionApi.http"
 import { DocumentTransferRequestsPanel } from "./DocumentTransferRequestsPanel"
 
 vi.mock("@/features/upload/api/sessionApi", () => ({
@@ -136,5 +138,34 @@ describe("DocumentTransferRequestsPanel", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Giao diện sẽ tự làm mới ngay khi worker hoàn tất"
     )
+  })
+
+  it("describes an accept validation error in plain Vietnamese", async () => {
+    vi.mocked(acceptSessionDocumentTransferRequest).mockRejectedValue(
+      new ApiRequestError("Technical backend message", 409, {
+        code: "TARGET_PLAN_VERSION_CHANGED",
+      })
+    )
+
+    render(
+      <DocumentTransferRequestsPanel
+        sessionId="session-target"
+        canManageTarget={true}
+      />
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: /Yêu cầu chuyển/i }))
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Hồ sơ nhận mới/i })
+    )
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Chấp nhận" })
+    )
+
+    expect(
+      await screen.findByText(
+        /Phương án phân loại của Phông đích đã thay đổi.*Yêu cầu vẫn ở trạng thái chờ duyệt/
+      )
+    ).toBeInTheDocument()
   })
 })

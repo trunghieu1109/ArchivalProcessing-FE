@@ -320,6 +320,7 @@ export async function startDigitization(
     remove_blank_pages_before_ocr?: boolean
     session_file_id?: number
     remote_file_id?: string | number | null
+    ingestion_run_ids?: number[]
     upload_mode?: UploadMode
     overwrite?: boolean
   }

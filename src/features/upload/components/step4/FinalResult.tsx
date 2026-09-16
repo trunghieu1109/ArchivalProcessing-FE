@@ -102,6 +102,7 @@ const SUPPLEMENTAL_VERIFICATION_PENDING_STATUSES = new Set([
   "waiting_for_files",
   "uploading",
   "syncing_documents",
+  "waiting_for_ocr",
   "ocr_processing",
   "waiting_for_review",
   "partially_verified",

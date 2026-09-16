@@ -25,6 +25,7 @@ import {
   type DocumentTransferRequestResponse,
   type DocumentTransferRequestSummary,
 } from "@/features/upload/api/sessionApi"
+import { ApiRequestError } from "@/features/upload/api/sessionApi.http"
 import { notifyDocumentTransferUiRefresh } from "./documentTransferUiSync"
 
 const TRANSFER_REQUEST_LIST_POLL_INTERVAL_MS = 5_000
@@ -257,7 +258,7 @@ export function DocumentTransferRequestsPanel({
       await loadDetail(detail.request_id)
       await loadList(role, true)
     } catch (caught) {
-      setError(errorMessage(caught))
+      setError(acceptErrorMessage(caught))
     } finally {
       setActing(false)
     }
@@ -742,4 +743,46 @@ function errorMessage(caught: unknown): string {
   return caught instanceof Error
     ? caught.message
     : "Không thể xử lý yêu cầu chuyển tài liệu."
+}
+
+const ACCEPT_ERROR_MESSAGES: Record<string, string> = {
+  TARGET_SESSION_COMPLETED:
+    "Phông đích đã kết thúc chỉnh lý nên không thể nhận thêm tài liệu.",
+  TARGET_PLAN_VERSION_CHANGED:
+    "Phương án phân loại của Phông đích đã thay đổi so với lúc yêu cầu được tạo.",
+  TARGET_CLUSTER_VERSION_CHANGED:
+    "Kết quả lập hồ sơ của Phông đích đã thay đổi so với lúc yêu cầu được tạo.",
+  TARGET_DOCUMENT_SET_CHANGED:
+    "Danh sách tài liệu của Phông đích đã thay đổi so với lúc yêu cầu được tạo.",
+  TARGET_LEAF_CHANGED:
+    "Nhánh phân loại đã chọn ở Phông đích không còn tồn tại hoặc không còn phù hợp.",
+  SOURCE_CLASSIFICATION_APPROVED:
+    "Phông nguồn đã có kết quả lập hồ sơ được duyệt phù hợp với tài liệu hiện tại nên tài liệu không còn được phép chuyển.",
+  SOURCE_WORKING_CLUSTER_REQUIRED:
+    "Phông nguồn không còn bản lập hồ sơ đang làm việc phù hợp để chuyển tài liệu.",
+  SOURCE_CONTEXT_CHANGED:
+    "Danh sách hoặc phiên bản tài liệu của Phông nguồn đã thay đổi.",
+  DOCUMENT_OUTSIDE_WORKING_CLUSTER:
+    "Có tài liệu không còn nằm trong bản lập hồ sơ đang làm việc của Phông nguồn.",
+  SUPPLEMENTAL_INTAKE_NOT_COMPLETED:
+    "Có tài liệu thuộc một đợt bổ sung chưa hoàn tất nên chưa thể chuyển.",
+  DOCUMENT_IN_DOSSIER_DRAFT:
+    "Có tài liệu đang thuộc hồ sơ nháp nên chưa thể chuyển.",
+  DOCUMENT_NOT_VERIFIED:
+    "Có tài liệu không còn ở trạng thái đã xác nhận.",
+  DOCUMENT_ALREADY_NUMBERED:
+    "Có tài liệu đã bắt đầu đánh số trang nên không thể chuyển Phông.",
+}
+
+function acceptErrorMessage(caught: unknown): string {
+  if (caught instanceof ApiRequestError && caught.code) {
+    const description = ACCEPT_ERROR_MESSAGES[caught.code]
+    if (description) {
+      return (
+        description +
+        " Yêu cầu vẫn ở trạng thái chờ duyệt; hãy từ chối yêu cầu nếu không tiếp tục xử lý."
+      )
+    }
+  }
+  return errorMessage(caught)
 }
