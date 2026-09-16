@@ -32,6 +32,9 @@ export interface ClusterGroup {
   documents: ClusterDocument[]
   isTemporary?: boolean
   isPendingDossier?: boolean
+  supplementalIntakeId?: string | null
+  supplementalTargetState?: "existing" | "pending" | "materialized" | string
+  readinessStatus?: string | null
   isTransferPending?: boolean
   draftId?: number | null
   manualMetadataFields?: string[]

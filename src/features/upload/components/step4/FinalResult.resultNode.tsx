@@ -10,6 +10,7 @@ import {
   FolderPlus,
   Loader2,
   ListChecks,
+  ListOrdered,
   ListTree,
   MoveRight,
   RefreshCw,
@@ -18,7 +19,10 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/shared/lib/utils"
-import type { ClusterDocumentChangeType } from "@/features/upload/api/sessionApi"
+import type {
+  ArrangementDossierKind,
+  ClusterDocumentChangeType,
+} from "@/features/upload/api/sessionApi"
 import type {
   ClusterDocument,
   ClusterGroup,
@@ -28,6 +32,7 @@ import { changeTagPresentation } from "./FinalResult.changes"
 import { CountBadge, DocumentRow } from "./FinalResult.documentRow"
 import { SelectionCheckbox } from "./FinalResult.selection"
 import { dossierPageCount, formatDateRange } from "./FinalResult.metadataUtils"
+import { hasPendingSupplementalDocuments } from "./FinalResult.transferState"
 import {
   SHOW_DOSSIER_CODE,
   SHOW_DOSSIER_SUGGESTIONS,
@@ -57,6 +62,7 @@ export function ResultNode({
   refreshingClassificationDossierId,
   manuallyClassifyingDossierId,
   classificationRefreshDisabled,
+  sortingScope,
   onToggle,
   onToggleDocumentSelection,
   onToggleGroupSelection,
@@ -75,6 +81,8 @@ export function ResultNode({
   onOpenManualClassification,
   onSaveDocumentMetadata,
   onPromoteTemporaryFolder,
+  onSortDossierDocuments,
+  onSortLeafDossiers,
 }: {
   node: ResultTreeNode
   sessionId: string | null
@@ -99,6 +107,7 @@ export function ResultNode({
   refreshingClassificationDossierId: string | null
   manuallyClassifyingDossierId: string | null
   classificationRefreshDisabled: boolean
+  sortingScope: string | null
   onToggle: (nodeId: string) => void
   onToggleDocumentSelection: (
     sessionDocumentId: number,
@@ -125,13 +134,28 @@ export function ResultNode({
     lockToken: string
   ) => Promise<void>
   onPromoteTemporaryFolder: (group: ClusterGroup) => void
+  onSortDossierDocuments: (
+    group: ClusterGroup,
+    dossierKind: ArrangementDossierKind
+  ) => void
+  onSortLeafDossiers: (leafGroupId: string) => void
 }) {
   const open = openNodeIds.has(node.id)
   const isPendingDossier = node.type === "pending_dossier"
   const isDossier = node.type === "dossier" || isPendingDossier
   const isTemporary = node.type === "temporary"
-  const isDropFolder = isDossier || isTemporary
+  const isDropFolder = (isDossier && !isPendingDossier) || isTemporary
   const group = node.group
+  const isClassificationLeaf = Boolean(
+    (node.type === "classification" || node.type === "year") &&
+    node.classificationGroupId &&
+    node.children.some(
+      (child) => child.type === "dossier" || child.type === "pending_dossier"
+    ) &&
+    !node.children.some(
+      (child) => child.type === "classification" || child.type === "year"
+    )
+  )
   const nodeChangeTag = changeTagPresentation(
     isDossier ? "dossier" : "group",
     node.changeTypes
@@ -172,6 +196,9 @@ export function ResultNode({
   const manualClassificationBusy = Boolean(
     group && manuallyClassifyingDossierId === (group.dossierId ?? group.id)
   )
+  const dossierHasPendingSupplementalDocuments = Boolean(
+    group && hasPendingSupplementalDocuments(group.documents)
+  )
   const nodeRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -211,13 +238,16 @@ export function ResultNode({
         onDragOver={(event) => {
           if (!isDropFolder || !canDrop) return
           event.preventDefault()
-          event.dataTransfer.dropEffect = 'move'
+          event.dataTransfer.dropEffect = "move"
         }}
         onDragLeave={(event) => {
           if (!isDropFolder || dropTargetId !== node.id) return
 
           const nextTarget = event.relatedTarget
-          if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
+          if (
+            nextTarget instanceof Node &&
+            event.currentTarget.contains(nextTarget)
+          ) {
             return
           }
 
@@ -386,6 +416,31 @@ export function ResultNode({
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5 pl-1">
+          {isClassificationLeaf && node.classificationGroupId && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              title="Sắp xếp các hồ sơ đủ điều kiện trong mục này"
+              disabled={
+                temporaryFolderUpdateDisabled ||
+                sortingScope === `leaf:${node.classificationGroupId}`
+              }
+              onClick={(event) => {
+                event.stopPropagation()
+                onSortLeafDossiers(node.classificationGroupId!)
+              }}
+            >
+              {sortingScope === `leaf:${node.classificationGroupId}` ? (
+                <Loader2 data-icon="inline-start" className="animate-spin" />
+              ) : (
+                <ListOrdered data-icon="inline-start" />
+              )}
+              <span className={cn(compact && "hidden 2xl:inline")}>
+                Sắp xếp hồ sơ
+              </span>
+            </Button>
+          )}
           {isDropFolder && canDrop && (
             <span className="flex items-center gap-1 rounded-full bg-[#DBEAFE] px-2 py-1 text-[10px] font-semibold text-[#0052FF]">
               <MoveRight className="size-3" />
@@ -474,14 +529,49 @@ export function ResultNode({
               </span>
             </Button>
           )}
+          {isDossier && group && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              title="Sắp xếp tài liệu đã verify trong hồ sơ; tài liệu draft được giữ ở cuối"
+              disabled={
+                temporaryFolderUpdateDisabled ||
+                sortingScope ===
+                  `dossier:${isPendingDossier ? "draft_dossier" : "cluster_dossier"}:${group.dossierId ?? group.id}`
+              }
+              onClick={(event) => {
+                event.stopPropagation()
+                onSortDossierDocuments(
+                  group,
+                  isPendingDossier ? "draft_dossier" : "cluster_dossier"
+                )
+              }}
+            >
+              {sortingScope ===
+              `dossier:${isPendingDossier ? "draft_dossier" : "cluster_dossier"}:${group.dossierId ?? group.id}` ? (
+                <Loader2 data-icon="inline-start" className="animate-spin" />
+              ) : (
+                <ListOrdered data-icon="inline-start" />
+              )}
+              <span className={cn(compact && "hidden 2xl:inline")}>
+                Sắp xếp tài liệu
+              </span>
+            </Button>
+          )}
           {isDossier && !isPendingDossier && group && (
             <Button
               type="button"
               variant="outline"
               size="sm"
-              title="Chọn thủ công một nhóm cấp thấp nhất trong cây phân loại"
+              title={
+                dossierHasPendingSupplementalDocuments
+                  ? "Hồ sơ còn tài liệu bổ sung bản nháp hoặc chờ cập nhật; chưa thể phân loại"
+                  : "Chọn thủ công một nhóm cấp thấp nhất trong cây phân loại"
+              }
               disabled={
                 classificationRefreshDisabled ||
+                dossierHasPendingSupplementalDocuments ||
                 classificationRefreshBusy ||
                 manualClassificationBusy
               }
@@ -510,10 +600,14 @@ export function ResultNode({
               title={
                 classificationRefreshPending
                   ? "Hồ sơ đang được phân loại lại"
-                  : "Phân loại lại hồ sơ vào các nhóm"
+                  : dossierHasPendingSupplementalDocuments
+                    ? "Hồ sơ còn tài liệu bổ sung bản nháp hoặc chờ cập nhật; chưa thể phân loại lại"
+                    : "Phân loại lại hồ sơ vào các nhóm"
               }
               disabled={
-                classificationRefreshDisabled || classificationRefreshBusy
+                classificationRefreshDisabled ||
+                dossierHasPendingSupplementalDocuments ||
+                classificationRefreshBusy
               }
               onClick={(event) => {
                 event.stopPropagation()
@@ -604,6 +698,7 @@ export function ResultNode({
                   document.sessionDocumentId ===
                     selectedDossierSuggestionsDocumentId
                 }
+                inDraftDossier={isPendingDossier}
                 onToggleSelection={onToggleDocumentSelection}
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
@@ -645,6 +740,7 @@ export function ResultNode({
               }
               manuallyClassifyingDossierId={manuallyClassifyingDossierId}
               classificationRefreshDisabled={classificationRefreshDisabled}
+              sortingScope={sortingScope}
               onToggle={onToggle}
               onToggleDocumentSelection={onToggleDocumentSelection}
               onToggleGroupSelection={onToggleGroupSelection}
@@ -665,6 +761,8 @@ export function ResultNode({
               onOpenManualClassification={onOpenManualClassification}
               onSaveDocumentMetadata={onSaveDocumentMetadata}
               onPromoteTemporaryFolder={onPromoteTemporaryFolder}
+              onSortDossierDocuments={onSortDossierDocuments}
+              onSortLeafDossiers={onSortLeafDossiers}
             />
           ))}
         </div>

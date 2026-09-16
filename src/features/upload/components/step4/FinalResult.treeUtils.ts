@@ -84,7 +84,10 @@ export function buildResultTree(
 
   groups
     .filter(
-      (group) => group.isPendingDossier && !group.isTransferPending
+      (group) =>
+        group.isPendingDossier &&
+        !group.isTransferPending &&
+        !group.supplementalIntakeId
     )
     .forEach((group) => {
       roots.push({
@@ -102,7 +105,7 @@ export function buildResultTree(
     .filter(
       (group) =>
         !group.isTemporary &&
-        !group.isPendingDossier &&
+        (!group.isPendingDossier || Boolean(group.supplementalIntakeId)) &&
         !group.isTransferPending
     )
     .forEach((group) => {
@@ -141,6 +144,7 @@ export function buildResultTree(
           current.children.push(child)
         }
         if (groupId) {
+          child.classificationGroupId = groupId
           child.changeTypes = mergeChangeTypes(
             child.changeTypes,
             changeHighlights?.classificationGroups.get(groupId)
@@ -152,7 +156,7 @@ export function buildResultTree(
       current.children.push({
         id: `dossier:${group.id}`,
         label: group.label,
-        type: "dossier",
+        type: group.isPendingDossier ? "pending_dossier" : "dossier",
         children: [],
         group,
         changeTypes: changeHighlights?.dossiers.get(
@@ -560,6 +564,8 @@ export function moveSelectedDocumentsLocally(
   targetGroupId: string,
   pendingFeedback?: PendingClusterFeedbackMarker
 ): ClusterGroup[] {
+  const target = groups.find((group) => group.id === targetGroupId)
+  if (!target || target.isPendingDossier) return groups
   const selectedIds = new Set(sessionDocumentIds)
   if (selectedIds.size === 0) return groups
 

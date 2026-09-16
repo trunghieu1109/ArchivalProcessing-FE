@@ -332,6 +332,10 @@ export interface SessionDossierDraft {
   id: number
   session_id: string
   target_cluster_id: string
+  supplemental_intake_id?: string | null
+  reserved_dossier_id?: string | null
+  target?: Record<string, unknown> | null
+  readiness_status?: string | null
   source: string
   status: "pending" | "applied" | "cancelled" | string
   session_document_ids: number[]
@@ -656,6 +660,7 @@ export interface ClusterVersionListResponse extends ApiRevisionMetadata {
   approval_mode?: "automatic" | "manual"
   active_cluster_version_id?: string | null
   draft_cluster_version_id?: string | null
+  working_cluster_version_id?: string | null
   versions: ClusterVersionResponse[]
 }
 

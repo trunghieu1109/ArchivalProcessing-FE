@@ -51,6 +51,10 @@ import {
   documentTransferLockDetails,
   documentTransferLockLabel,
   isDocumentTransferLocked,
+  isSupplementalPlacementPending,
+  supplementalPlacementDetails,
+  supplementalPlacementLabel,
+  usesDraftDocumentActions,
 } from "./FinalResult.transferState"
 
 export function DocumentRow({
@@ -67,6 +71,7 @@ export function DocumentRow({
   selectionDisabled,
   explanationDisabled,
   selectedDossierSuggestions,
+  inDraftDossier,
   onToggleSelection,
   onDragStart,
   onDragEnd,
@@ -88,6 +93,7 @@ export function DocumentRow({
   selectionDisabled: boolean
   explanationDisabled: boolean
   selectedDossierSuggestions: boolean
+  inDraftDossier: boolean
   onToggleSelection: (sessionDocumentId: number, checked: boolean) => void
   onDragStart: (document: ClusterDocument, fromClusterId: string) => void
   onDragEnd: () => void
@@ -122,36 +128,49 @@ export function DocumentRow({
   const documentDeletePending = document.lifecycleStatus === "delete_pending"
   const documentTransferred = document.lifecycleStatus === "transferred_out"
   const documentTransferLocked = isDocumentTransferLocked(document)
+  const supplementalPlacementPending = isSupplementalPlacementPending(document)
+  const draftActionsOnly = usesDraftDocumentActions(document, inDraftDossier)
   const documentInactive =
     documentDeleted ||
     documentDeletePending ||
     documentTransferred ||
-    documentTransferLocked
-  const inactiveDetails = documentTransferLocked
-    ? documentTransferLockDetails(document)
-    : documentTransferred
-      ? [
-          document.transferredToSessionId
-            ? `Đã chuyển sang session ${document.transferredToSessionId}`
-            : "Đã chuyển sang phông khác",
-          document.transferredByName ? `bởi ${document.transferredByName}` : "",
-          document.transferredAt
-            ? `lúc ${formatDeletedAt(document.transferredAt)}`
-            : "",
-        ]
-          .filter(Boolean)
-          .join(" ")
-      : documentDeleted
+    documentTransferLocked ||
+    supplementalPlacementPending
+  const previewDisabled =
+    documentDeleted ||
+    documentDeletePending ||
+    documentTransferred ||
+    documentTransferLocked ||
+    document.previewAvailable === false
+  const inactiveDetails = supplementalPlacementPending
+    ? supplementalPlacementDetails(document)
+    : documentTransferLocked
+      ? documentTransferLockDetails(document)
+      : documentTransferred
         ? [
-            "Đã xóa khỏi session",
-            document.deletedByName ? `bởi ${document.deletedByName}` : "",
-            document.deletedAt
-              ? `lúc ${formatDeletedAt(document.deletedAt)}`
+            document.transferredToSessionId
+              ? `Đã chuyển sang session ${document.transferredToSessionId}`
+              : "Đã chuyển sang phông khác",
+            document.transferredByName
+              ? `bởi ${document.transferredByName}`
+              : "",
+            document.transferredAt
+              ? `lúc ${formatDeletedAt(document.transferredAt)}`
               : "",
           ]
             .filter(Boolean)
             .join(" ")
-        : "Đang chờ xác nhận xóa từ Chỉnh Lý"
+        : documentDeleted
+          ? [
+              "Đã xóa khỏi session",
+              document.deletedByName ? `bởi ${document.deletedByName}` : "",
+              document.deletedAt
+                ? `lúc ${formatDeletedAt(document.deletedAt)}`
+                : "",
+            ]
+              .filter(Boolean)
+              .join(" ")
+          : "Đang chờ xác nhận xóa từ Chỉnh Lý"
   const summary = metadataText(document.metadata, [
     "document_summary",
     "trich_yeu_van_ban",
@@ -251,10 +270,10 @@ export function DocumentRow({
         }}
         onDragStart={(event) => {
           if (documentInactive) return
-          event.dataTransfer.effectAllowed = 'move'
+          event.dataTransfer.effectAllowed = "move"
           event.dataTransfer.setData(
-            'text/plain',
-            String(document.sessionDocumentId ?? document.documentId),
+            "text/plain",
+            String(document.sessionDocumentId ?? document.documentId)
           )
           setDragging(true)
           onDragStart(document, clusterId)
@@ -324,18 +343,22 @@ export function DocumentRow({
                     ? "border-amber-200 bg-amber-50 text-amber-800"
                     : documentTransferred
                       ? "border-blue-200 bg-blue-50 text-blue-700"
-                      : "border-red-200 bg-red-50 text-red-700"
+                      : supplementalPlacementPending
+                        ? "border-amber-200 bg-amber-50 text-amber-800"
+                        : "border-red-200 bg-red-50 text-red-700"
                 )}
               >
-                {documentTransferLocked
-                  ? documentTransferLockLabel(document)
-                  : documentTransferred
-                    ? document.transferredToSessionId
-                      ? `Đã chuyển sang session ${document.transferredToSessionId}`
-                      : "Đã chuyển phông"
-                    : documentDeleted
-                      ? "Đã xóa khỏi session"
-                      : "Đang xóa"}
+                {supplementalPlacementPending
+                  ? supplementalPlacementLabel(document)
+                  : documentTransferLocked
+                    ? documentTransferLockLabel(document)
+                    : documentTransferred
+                      ? document.transferredToSessionId
+                        ? `Đã chuyển sang session ${document.transferredToSessionId}`
+                        : "Đã chuyển phông"
+                      : documentDeleted
+                        ? "Đã xóa khỏi session"
+                        : "Đang xóa"}
               </span>
             ) : null}
             {document.editLock?.locked || documentLock.held ? (
@@ -370,7 +393,7 @@ export function DocumentRow({
                 <CalendarDays className="size-3" /> {issuedDate}
               </span>
             )}
-            {signatureTag && (
+            {!draftActionsOnly && signatureTag && (
               <span
                 title={signatureTag.title}
                 className={cn(
@@ -445,28 +468,30 @@ export function DocumentRow({
             </p>
           )}
         </div>
-        <Button
-          type="button"
-          variant={membershipExplanationSelected ? "default" : "outline"}
-          size="icon-sm"
-          draggable={false}
-          title="Giải thích vì sao tài liệu thuộc hồ sơ này"
-          aria-label="Giải thích vì sao tài liệu thuộc hồ sơ này"
-          className="mt-0.5 shrink-0"
-          onClick={(event) => {
-            event.stopPropagation()
-            if (documentInactive || explanationDisabled) return
-            onExplainMembership(document)
-          }}
-          disabled={
-            documentInactive ||
-            explanationDisabled ||
-            document.sessionDocumentId === null
-          }
-          onDragStart={(event) => event.stopPropagation()}
-        >
-          <BrainCircuit className="size-3.5" />
-        </Button>
+        {!draftActionsOnly && (
+          <Button
+            type="button"
+            variant={membershipExplanationSelected ? "default" : "outline"}
+            size="icon-sm"
+            draggable={false}
+            title="Giải thích vì sao tài liệu thuộc hồ sơ này"
+            aria-label="Giải thích vì sao tài liệu thuộc hồ sơ này"
+            className="mt-0.5 shrink-0"
+            onClick={(event) => {
+              event.stopPropagation()
+              if (documentInactive || explanationDisabled) return
+              onExplainMembership(document)
+            }}
+            disabled={
+              documentInactive ||
+              explanationDisabled ||
+              document.sessionDocumentId === null
+            }
+            onDragStart={(event) => event.stopPropagation()}
+          >
+            <BrainCircuit className="size-3.5" />
+          </Button>
+        )}
         <Button
           type="button"
           variant={expanded ? "default" : "outline"}
@@ -491,15 +516,15 @@ export function DocumentRow({
           className="mt-0.5 shrink-0"
           onClick={(event) => {
             event.stopPropagation()
-            if (documentInactive || document.previewAvailable === false) return
+            if (previewDisabled) return
             onSelectPreview(document)
           }}
-          disabled={documentInactive || document.previewAvailable === false}
+          disabled={previewDisabled}
           onDragStart={(event) => event.stopPropagation()}
         >
           <Eye className="size-3.5" />
         </Button>
-        {SHOW_DOSSIER_SUGGESTIONS && (
+        {SHOW_DOSSIER_SUGGESTIONS && !draftActionsOnly && (
           <Button
             type="button"
             variant={selectedDossierSuggestions ? "default" : "outline"}

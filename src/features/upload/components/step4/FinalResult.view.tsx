@@ -45,6 +45,7 @@ export function FinalResultView(props: Record<string, any>) {
     checkingClusters,
     clusterCompletedPhases,
     clusterJobMode,
+    clusterActionState,
     clusterProgressMessage,
     clusterProgressPhase,
     clusterVersionNavigationBusy,
@@ -91,6 +92,8 @@ export function FinalResultView(props: Record<string, any>) {
     handleToggleDocumentSelection,
     handleToggleGroupSelection,
     handleViewClusterVersion,
+    handleSortDossierDocuments,
+    handleSortLeafDossiers,
     groupInformationError,
     groupInformationLoading,
     groupInformationTable,
@@ -109,6 +112,7 @@ export function FinalResultView(props: Record<string, any>) {
     openNodeIds,
     pendingClusterDocumentCount,
     pendingClusterVersion,
+    pendingClusterVersionNeedsRefresh,
     pendingDossierCount,
     pendingFeedbackCount,
     previewDocument,
@@ -164,6 +168,10 @@ export function FinalResultView(props: Record<string, any>) {
     showClusterProgress,
     sidePreviewOpen,
     sortedClusterVersions,
+    sortingScope,
+    supplementalPendingDocumentCount,
+    supplementalPendingUpdateDocumentCount,
+    supplementalVerificationPendingCount,
     stopResultTreeAutoScroll,
     temporaryFolderUpdateDisabled,
     totalDossiers,
@@ -183,6 +191,8 @@ export function FinalResultView(props: Record<string, any>) {
   const staleReason = String(displayedClusterVersion?.stale_reason ?? "")
   const documentsTransferredOut = staleReason === "documents_transferred_out"
   const documentsTransferredIn = staleReason === "documents_transferred_in"
+  const pendingClusterApprovalBlockedReason =
+    clusterActionState.approvalBlockedReason
 
   return (
     <motion.div
@@ -225,10 +235,12 @@ export function FinalResultView(props: Record<string, any>) {
             {resultStatusText}
           </p>
         </div>
-        <div className="ml-auto grid w-full max-w-[22rem] shrink-0 grid-cols-3 justify-end gap-2 sm:w-auto">
-          <Metric label="Hồ sơ" value={totalDossiers} />
-          <Metric label="Tài liệu" value={totalFiles} />
-          <Metric label="Trang" value={totalPages} />
+        <div className="ml-auto flex w-full max-w-[34rem] shrink-0 flex-col gap-2 sm:w-auto sm:items-end">
+          <div className="grid w-full grid-cols-3 gap-2 sm:w-auto">
+            <Metric label="Hồ sơ" value={totalDossiers} />
+            <Metric label="Tài liệu" value={totalFiles} />
+            <Metric label="Trang" value={totalPages} />
+          </div>
         </div>
       </div>
 
@@ -456,13 +468,17 @@ export function FinalResultView(props: Record<string, any>) {
               {pendingDossierCount} hồ sơ và {pendingClusterDocumentCount} tài
               liệu.{" "}
               {pendingClusterVersion.status === "draft"
-                ? hasUsableActiveClusterVersion
-                  ? "Bản active gần nhất vẫn được dùng cho các bước sau cho tới khi duyệt."
-                  : "Chưa có bản active hợp lệ; cần duyệt phiên bản này trước khi sang bước sau."
+                ? pendingClusterApprovalBlockedReason
+                  ? `Chưa thể duyệt: ${pendingClusterApprovalBlockedReason}`
+                  : "Bản active gần nhất đã hết hiệu lực làm việc vì có draft mới; cần duyệt draft này trước khi sang bước sau."
                 : "Bấm áp dụng để chuyển giao diện sang phiên bản mới."}
             </p>
           </div>
-          <Button onClick={handleApplyPendingClusterVersion}>
+          <Button
+            onClick={handleApplyPendingClusterVersion}
+            disabled={Boolean(pendingClusterApprovalBlockedReason)}
+            title={pendingClusterApprovalBlockedReason ?? undefined}
+          >
             <RefreshCw data-icon="inline-start" />
             {pendingClusterVersion.status === "draft"
               ? "Duyệt và kích hoạt"
@@ -584,6 +600,7 @@ export function FinalResultView(props: Record<string, any>) {
                     Boolean(refreshingClassificationDossierId) ||
                     Boolean(manuallyClassifyingDossierId)
                   }
+                  sortingScope={sortingScope}
                   onToggle={toggleNode}
                   onToggleDocumentSelection={handleToggleDocumentSelection}
                   onToggleGroupSelection={handleToggleGroupSelection}
@@ -618,6 +635,8 @@ export function FinalResultView(props: Record<string, any>) {
                   onOpenManualClassification={handleOpenManualClassification}
                   onSaveDocumentMetadata={handleSaveDocumentMetadata}
                   onPromoteTemporaryFolder={handlePromoteTemporaryFolder}
+                  onSortDossierDocuments={handleSortDossierDocuments}
+                  onSortLeafDossiers={handleSortLeafDossiers}
                 />
               ))}
               {tree.length === 0 && (
@@ -740,6 +759,7 @@ export function FinalResultView(props: Record<string, any>) {
         canRestoreFileRegisterVersion={canRestoreFileRegisterVersion}
         cancelingPendingFeedback={cancelingPendingFeedback}
         clusterJobMode={clusterJobMode}
+        clusterActionState={clusterActionState}
         clusterVersionStale={clusterVersionStale}
         deleteSelectedDocumentsDisabled={deleteSelectedDocumentsDisabled}
         transferSelectedDocumentsDisabled={transferSelectedDocumentsDisabled}
@@ -760,7 +780,15 @@ export function FinalResultView(props: Record<string, any>) {
         loading={loading}
         movingSelectedDocumentsTargetId={movingSelectedDocumentsTargetId}
         pendingClusterVersion={pendingClusterVersion}
+        pendingClusterVersionNeedsRefresh={pendingClusterVersionNeedsRefresh}
         pendingFeedbackCount={pendingFeedbackCount}
+        supplementalPendingDocumentCount={supplementalPendingDocumentCount}
+        supplementalPendingUpdateDocumentCount={
+          supplementalPendingUpdateDocumentCount
+        }
+        supplementalVerificationPendingCount={
+          supplementalVerificationPendingCount
+        }
         promotingSelectedDocuments={promotingSelectedDocuments}
         promotingTemporaryFolder={promotingTemporaryFolder}
         rebuildBaselineVersionId={rebuildBaselineVersionId}

@@ -5,6 +5,8 @@ import type { SessionMetadataValues } from "@/features/upload/components/Session
 import { UploadConfirmDialog } from "@/features/upload/components/UploadConfirmDialog"
 import { cn } from "@/shared/lib/utils"
 
+export type ExistingSessionUploadPurpose = "session_data" | "dossier_intake"
+
 interface UploadSessionSetupPanelProps {
   existingSessionMode: boolean
   allProcessing: boolean
@@ -13,6 +15,7 @@ interface UploadSessionSetupPanelProps {
   syncSessionMetadataDraft?: (metadata: SessionMetadataValues) => void
   uploadMode: UploadMode
   syncUploadMode: (mode: UploadMode) => void
+  uploadPurpose: ExistingSessionUploadPurpose
 }
 
 export function UploadSessionSetupPanel({
@@ -23,6 +26,7 @@ export function UploadSessionSetupPanel({
   syncSessionMetadataDraft,
   uploadMode,
   syncUploadMode,
+  uploadPurpose,
 }: UploadSessionSetupPanelProps) {
   const [overwriteDialogOpen, setOverwriteDialogOpen] = useState(false)
   const controlsDisabled = allProcessing || sessionLoading
@@ -123,7 +127,7 @@ export function UploadSessionSetupPanel({
         </div>
       )}
 
-      {existingSessionMode && (
+      {existingSessionMode && uploadPurpose === "session_data" && (
         <div className="rounded-2xl border border-[#D8E1EC] bg-white p-5 shadow-sm">
           <p className="text-sm font-bold text-[#0F172A]">
             Chế độ upload bổ sung

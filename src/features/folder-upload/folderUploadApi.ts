@@ -26,6 +26,7 @@ export function createFolderUpload(
     root_name: string
     expected_file_count: number
     expected_total_bytes: number
+    supplemental_intake_id?: string
   },
   signal?: AbortSignal
 ): Promise<FolderUploadSummary> {

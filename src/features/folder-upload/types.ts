@@ -51,6 +51,7 @@ export interface FolderUploadSummary {
   folder_upload_id: string
   session_id: string
   client_upload_id: string
+  supplemental_intake_id?: string | null
   mode: UploadMode
   root_name: string
   status: string
@@ -104,6 +105,7 @@ export interface FolderUploadJob {
   folderUploadId: string | null
   rootName: string
   mode: UploadMode
+  supplementalIntakeId?: string | null
   status: FolderUploadJobStatus
   files: FolderUploadFileState[]
   totalBytes: number
@@ -120,6 +122,7 @@ export interface FolderUploadStartInput {
   sessionId: string
   files: FileList | File[]
   mode: UploadMode
+  supplementalIntakeId?: string | null
 }
 
 export interface RegisteredFolderFilesResponse {

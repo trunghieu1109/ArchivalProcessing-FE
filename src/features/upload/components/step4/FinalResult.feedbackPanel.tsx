@@ -13,6 +13,10 @@ import {
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { WorkflowActionPanel } from "@/features/upload/components/WorkflowActionPanel"
+import {
+  resolveFinalResultActionState,
+  type FinalResultActionState,
+} from "./FinalResult.actionState"
 import { SHOW_DOSSIER_SUGGESTIONS } from "./temporaryFeatureVisibility"
 
 interface FinalResultFeedbackPanelProps {
@@ -21,6 +25,7 @@ interface FinalResultFeedbackPanelProps {
   canRestoreFileRegisterVersion: boolean
   cancelingPendingFeedback: boolean
   clusterJobMode: string
+  clusterActionState?: FinalResultActionState
   clusterVersionStale: boolean
   deleteSelectedDocumentsDisabled: boolean
   transferSelectedDocumentsDisabled: boolean
@@ -36,7 +41,11 @@ interface FinalResultFeedbackPanelProps {
   loading: boolean
   movingSelectedDocumentsTargetId: string | null
   pendingClusterVersion: unknown | null
+  pendingClusterVersionNeedsRefresh?: boolean
   pendingFeedbackCount: number
+  supplementalPendingDocumentCount?: number
+  supplementalPendingUpdateDocumentCount?: number
+  supplementalVerificationPendingCount?: number
   promotingSelectedDocuments: boolean
   promotingTemporaryFolder: boolean
   rebuildBaselineVersionId: string | null
@@ -58,6 +67,7 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
     canRestoreFileRegisterVersion,
     cancelingPendingFeedback,
     clusterJobMode,
+    clusterActionState,
     clusterVersionStale,
     deleteSelectedDocumentsDisabled,
     transferSelectedDocumentsDisabled,
@@ -67,13 +77,16 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
     handleTransferSelectedDocuments,
     handleSelectDossierSuggestionsFromSelection,
     handleFinish,
-    hasUsableActiveClusterVersion,
     handleRebuildClusters,
     handleRestorePreviousClusterVersion,
     loading,
     movingSelectedDocumentsTargetId,
     pendingClusterVersion,
+    pendingClusterVersionNeedsRefresh = false,
     pendingFeedbackCount,
+    supplementalPendingDocumentCount = 0,
+    supplementalPendingUpdateDocumentCount = 0,
+    supplementalVerificationPendingCount = 0,
     promotingSelectedDocuments,
     promotingTemporaryFolder,
     rebuildBaselineVersionId,
@@ -88,25 +101,32 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
     viewingHistoricalClusterVersion,
   } = props
 
-  const finishBlockedReason = viewingHistoricalClusterVersion
-    ? "Bạn đang xem phiên bản hồ sơ cũ. Hãy kích hoạt hoặc quay về phiên bản đang dùng trước khi đánh số trang."
-    : clusterVersionStale
-      ? "Danh sách tài liệu đã thay đổi. Hãy lập lại hồ sơ trước khi sang bước Đánh số trang."
-      : pendingFeedbackCount > 0
-        ? `Bạn còn ${pendingFeedbackCount} feedback chưa được cập nhật vào hồ sơ. Hãy cập nhật hồ sơ hoặc hủy feedback trước khi tiếp tục.`
-        : pendingClusterVersion && !hasUsableActiveClusterVersion
-          ? "Có phiên bản hồ sơ mới đang chờ áp dụng. Hãy áp dụng phiên bản đó trước khi đánh số trang."
-          : totalDossiers === 0
-            ? "Chưa có hồ sơ để chuyển sang bước Đánh số trang."
-            : loading ||
-                rebuildSubmitting ||
-                restoringClusterVersion ||
-                promotingTemporaryFolder ||
-                promotingSelectedDocuments ||
-                Boolean(movingSelectedDocumentsTargetId) ||
-                Boolean(rebuildBaselineVersionId)
-              ? "Hồ sơ đang được cập nhật. Vui lòng chờ thao tác hoàn tất."
-              : null
+  const effectiveActionState =
+    clusterActionState ??
+    resolveFinalResultActionState({
+      hasPendingClusterVersion: Boolean(pendingClusterVersion),
+      pendingClusterVersionStatus: pendingClusterVersion ? "draft" : null,
+      pendingClusterVersionNeedsRefresh,
+      pendingFeedbackCount,
+      supplementalVerificationPendingCount,
+      supplementalPendingDocumentCount,
+      supplementalPendingUpdateDocumentCount,
+      clusterVersionStale,
+      busy: Boolean(
+        loading ||
+        rebuildSubmitting ||
+        restoringClusterVersion ||
+        promotingTemporaryFolder ||
+        promotingSelectedDocuments ||
+        movingSelectedDocumentsTargetId ||
+        rebuildBaselineVersionId
+      ),
+      viewingHistoricalClusterVersion,
+      hasSession: Boolean(sessionId),
+      totalFiles,
+      totalDossiers,
+    })
+  const finishBlockedReason = effectiveActionState.finishBlockedReason
 
   return (
     <WorkflowActionPanel className="flex flex-col gap-3 px-4 py-4 sm:px-6 xl:flex-row xl:items-center xl:justify-between">
@@ -115,7 +135,11 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
           ? `Đã chọn ${selectedDocumentCount} tài liệu.`
           : pendingFeedbackCount > 0
             ? `Có ${pendingFeedbackCount} feedback đã lưu và đang chờ cập nhật hồ sơ.`
-            : "Chọn tài liệu bằng checkbox hoặc kéo tài liệu vào Thư mục tạm để xử lý sau."}
+            : supplementalVerificationPendingCount > 0
+              ? `Còn ${supplementalVerificationPendingCount} đợt tài liệu bổ sung đang chờ verify đủ.`
+              : supplementalPendingUpdateDocumentCount > 0
+                ? `Có ${supplementalPendingUpdateDocumentCount} tài liệu bổ sung đã verify đang chờ cập nhật hồ sơ.`
+                : "Chọn tài liệu bằng checkbox hoặc kéo tài liệu vào Thư mục tạm để xử lý sau."}
       </p>
       <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-6 xl:flex xl:w-auto xl:flex-wrap xl:items-center xl:justify-end">
         <Button
@@ -129,7 +153,8 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
           title={
             canRestoreFileRegisterVersion
               ? "Quay trở lại phiên bản hồ sơ trước khi lập theo tập lưu"
-              : "Lập lại hồ sơ theo dạng tập lưu, không phụ thuộc phương án chỉnh lý hiện tại"
+              : (effectiveActionState.clusterMutationBlockedReason ??
+                "Lập lại hồ sơ theo dạng tập lưu, không phụ thuộc phương án chỉnh lý hiện tại")
           }
           disabled={
             rebuildSubmitting ||
@@ -140,7 +165,11 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
             loading ||
             !sessionId ||
             totalFiles === 0 ||
-            viewingHistoricalClusterVersion
+            viewingHistoricalClusterVersion ||
+            Boolean(
+              !canRestoreFileRegisterVersion &&
+              effectiveActionState.clusterMutationBlockedReason
+            )
           }
         >
           {restoringClusterVersion ||
@@ -221,29 +250,25 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
             Chuyển phông
           </Button>
         ) : null}
-        <Button
-          variant="outline"
-          onClick={() => void handleRebuildClusters()}
-          className="w-full xl:w-auto"
-          disabled={
-            rebuildSubmitting ||
-            restoringClusterVersion ||
-            promotingTemporaryFolder ||
-            promotingSelectedDocuments ||
-            Boolean(movingSelectedDocumentsTargetId) ||
-            loading ||
-            !sessionId ||
-            totalFiles === 0 ||
-            viewingHistoricalClusterVersion
-          }
-        >
-          {rebuildSubmitting && clusterJobMode === "update" ? (
-            <Loader2 data-icon="inline-start" className="animate-spin" />
-          ) : (
-            <RefreshCw data-icon="inline-start" />
-          )}
-          {clusterVersionStale ? "Lập hồ sơ lại" : "Cập nhật hồ sơ"}
-        </Button>
+        {effectiveActionState.showUpdateAction ? (
+          <Button
+            variant="outline"
+            onClick={() => void handleRebuildClusters()}
+            className="w-full xl:w-auto"
+            disabled={!effectiveActionState.canUpdateDossiers}
+            title={effectiveActionState.updateBlockedReason ?? undefined}
+          >
+            {rebuildSubmitting && clusterJobMode === "update" ? (
+              <Loader2 data-icon="inline-start" className="animate-spin" />
+            ) : (
+              <RefreshCw data-icon="inline-start" />
+            )}
+            Cập nhật hồ sơ
+            {supplementalPendingUpdateDocumentCount > 0
+              ? ` (${supplementalPendingUpdateDocumentCount})`
+              : ""}
+          </Button>
+        ) : null}
         <Button
           variant="outline"
           onClick={() => void handleCancelPendingFeedback()}

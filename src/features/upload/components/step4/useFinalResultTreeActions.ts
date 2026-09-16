@@ -830,6 +830,10 @@ export function useFinalResultTreeActions(context: Record<string, any>) {
     group: ClusterGroup,
     requestedSessionDocumentIds?: Iterable<number>
   ): Promise<boolean> => {
+    if (group.isPendingDossier) {
+      toast.error("Không thể chuyển tài liệu vào hồ sơ nháp.")
+      return false
+    }
     if (viewingHistoricalClusterVersion) {
       toast.error(
         "Bạn đang xem phiên bản cũ. Hãy kích hoạt phiên bản này trước khi chuyển tài liệu."

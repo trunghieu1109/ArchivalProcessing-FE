@@ -30,21 +30,13 @@ export function useFinalResultVersionActions(context: Record<string, any>) {
   const {
     activeClusterVersionId,
     clusterJobMode,
+    clusterActionState,
     displayedClusterVersion,
     displayedClusterVersionId,
-    hasUsableActiveClusterVersion,
-    loading,
     metadataItems,
-    movingSelectedDocumentsTargetId,
     onFinish,
     pendingClusterVersion,
-    pendingFeedbackCount,
     previewLayoutRef,
-    promotingSelectedDocuments,
-    promotingTemporaryFolder,
-    rebuildBaselineVersionId,
-    rebuildSubmitting,
-    restoringClusterVersion,
     sessionId,
     verifiedItems,
     viewingHistoricalClusterVersion,
@@ -80,6 +72,13 @@ export function useFinalResultVersionActions(context: Record<string, any>) {
   ) => {
     const forceFileRegister = mode === "file_register"
     const previousJobMode = clusterJobMode
+    const blockedReason = forceFileRegister
+      ? clusterActionState.clusterMutationBlockedReason
+      : clusterActionState.updateBlockedReason
+    if (blockedReason) {
+      toast.error(blockedReason)
+      return
+    }
     if (viewingHistoricalClusterVersion) {
       toast.error(
         "Bạn đang xem phiên bản cũ. Hãy kích hoạt phiên bản này trước khi cập nhật hồ sơ."
@@ -164,6 +163,10 @@ export function useFinalResultVersionActions(context: Record<string, any>) {
 
   const handleApplyPendingClusterVersion = async () => {
     if (!pendingClusterVersion || !sessionId) return
+    if (clusterActionState.approvalBlockedReason) {
+      toast.error(clusterActionState.approvalBlockedReason)
+      return
+    }
     setRestoringClusterVersion(true)
     try {
       const appliedVersion =
@@ -407,35 +410,8 @@ export function useFinalResultVersionActions(context: Record<string, any>) {
   }
 
   const handleFinish = () => {
-    if (viewingHistoricalClusterVersion) {
-      toast.error(
-        "Bạn đang xem phiên bản cũ. Hãy kích hoạt phiên bản này trước khi tạo mục lục."
-      )
-      return
-    }
-    if (pendingFeedbackCount > 0) {
-      toast.error(
-        "Hãy cập nhật hồ sơ để áp dụng các tài liệu đã di chuyển trước khi tạo mục lục."
-      )
-      return
-    }
-    if (pendingClusterVersion && !hasUsableActiveClusterVersion) {
-      toast.error(
-        "Có phiên bản hồ sơ mới nhưng chưa có bản active hợp lệ để tạo mục lục."
-      )
-      return
-    }
-    if (
-      loading ||
-      rebuildSubmitting ||
-      restoringClusterVersion ||
-      promotingTemporaryFolder ||
-      promotingSelectedDocuments ||
-      Boolean(movingSelectedDocumentsTargetId) ||
-      rebuildBaselineVersionId ||
-      viewingHistoricalClusterVersion
-    ) {
-      toast.error("Đang cập nhật hồ sơ. Vui lòng chờ xong rồi tạo mục lục.")
+    if (clusterActionState.finishBlockedReason) {
+      toast.error(clusterActionState.finishBlockedReason)
       return
     }
     onFinish()

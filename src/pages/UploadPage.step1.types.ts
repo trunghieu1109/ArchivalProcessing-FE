@@ -15,9 +15,12 @@ import type {
 import type { UseOcrFolderResult } from "@/features/upload/hooks/useOcrFolder"
 import type {
   ArchiveEntry,
+  PlanCriterionSet,
+  PlanGroup,
   ProcessState,
   SectionHandle,
 } from "@/features/upload/types"
+import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
 import type { PlanAnalysisFailure } from "./UploadPage.progress"
 
 export interface UploadPageStepOneProps {
@@ -102,6 +105,11 @@ export interface UploadPageStepOneProps {
   syncSessionMetadataDraft?: (metadata: SessionMetadataValues) => void
   sessionId: string | null
   ensureSession: () => Promise<string>
+  activeClusterVersionId: string | null
+  activePlanVersionId: string | null
+  activeClassificationGroups: PlanGroup[]
+  activeClassificationCriteria: PlanCriterionSet[]
+  clusterGroups: ClusterGroup[]
   openZipUpload: boolean
   zipUploadFocusKey?: string | null
   openFolderUpload: boolean

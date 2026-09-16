@@ -112,6 +112,7 @@ export function UploadPageView(props: Record<string, any>) {
     planDraftDirty,
     draftMatchesActive,
     activePlanVersionId,
+    activeClusterVersionId,
     planViewTab,
     setPlanViewTab,
     dossierBuildStrategy,
@@ -364,6 +365,11 @@ export function UploadPageView(props: Record<string, any>) {
               syncSessionMetadataDraft={syncSessionMetadataDraft}
               sessionId={resolvedSessionId}
               ensureSession={ensureSession}
+              activeClusterVersionId={activeClusterVersionId}
+              activePlanVersionId={activePlanVersionId || null}
+              activeClassificationGroups={activeParsedPlan.groups}
+              activeClassificationCriteria={activeParsedPlan.criterias}
+              clusterGroups={clusterGroups}
               openZipUpload={searchParams.get("upload") === "zip"}
               zipUploadFocusKey={
                 searchParams.get("focus") ?? searchParams.get("zipUpload")

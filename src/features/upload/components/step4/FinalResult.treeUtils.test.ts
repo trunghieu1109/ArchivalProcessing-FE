@@ -41,7 +41,7 @@ function group(
 }
 
 describe("moveSelectedDocumentsLocally", () => {
-  it("optimistically moves multiple documents into a pending dossier", () => {
+  it("does not move documents into a pending dossier", () => {
     const marker: PendingClusterFeedbackMarker = {
       id: -1,
       action: "manual_move",
@@ -61,19 +61,9 @@ describe("moveSelectedDocumentsLocally", () => {
       marker
     )
 
-    expect(moved[0].documents.map((item) => item.sessionDocumentId)).toEqual([
-      1,
-    ])
-    expect(moved[1].documents).toEqual([])
-    expect(
-      moved[2].documents.map((item) => item.sessionDocumentId)
-    ).toEqual([4, 2, 3])
-    expect(moved[2].documents[1].pendingFeedback).toBe(marker)
-    expect(moved[2].documents[2].pendingFeedback).toBe(marker)
-    expect(moved[2].isPendingDossier).toBe(true)
-    expect(groups[0].documents.map((item) => item.sessionDocumentId)).toEqual([
-      1,
-      2,
-    ])
+    expect(moved).toBe(groups)
+    expect(moved[0].documents.map((item) => item.sessionDocumentId)).toEqual([1, 2])
+    expect(moved[1].documents.map((item) => item.sessionDocumentId)).toEqual([3])
+    expect(moved[2].documents.map((item) => item.sessionDocumentId)).toEqual([4])
   })
 })

@@ -55,6 +55,7 @@ import { createUploadPageWorkflowActions } from "./UploadPage.workflow"
 import {
   canNavigateDirectlyToMetadata,
   resolvePlanInputsReuploaded,
+  shouldEnsureDossierBuildBeforeResults,
 } from "./UploadPage.workflowPolicy"
 import { createUploadPageActions } from "./UploadPage.actions"
 import { isMetadataDiscoveryPending } from "./UploadPage.metadataDiscovery"
@@ -148,6 +149,10 @@ export function UploadPage() {
     const currentSessionId = sessionId ?? routeSessionId ?? cache.sessionId
     if (!currentSessionId) {
       toast.error("Chưa có session để lập hồ sơ.")
+      return
+    }
+    if (!shouldEnsureDossierBuildBeforeResults(cache.activeClusterVersionId)) {
+      goTo(4, currentSessionId)
       return
     }
     const hasActivePlanForBuild = Boolean(activePlanVersionId)
@@ -770,12 +775,7 @@ export function UploadPage() {
         window.clearTimeout(timeoutId)
       }
     }
-  }, [
-    planAnalysisJobId,
-    planAnalysisState,
-    sessionId,
-    syncPlanAnalysisFailure,
-  ])
+  }, [planAnalysisJobId, planAnalysisState, sessionId, syncPlanAnalysisFailure])
 
   const {
     ensureSession,
@@ -1855,6 +1855,7 @@ export function UploadPage() {
         planDraftDirty={planDraftDirty}
         draftMatchesActive={draftMatchesActive}
         activePlanVersionId={activePlanVersionId}
+        activeClusterVersionId={cache.activeClusterVersionId ?? null}
         planViewTab={planViewTab}
         setPlanViewTab={setPlanViewTab}
         dossierBuildStrategy={dossierBuildStrategy}

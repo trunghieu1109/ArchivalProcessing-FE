@@ -10,11 +10,17 @@ import type { DocumentPreviewTarget } from "@/features/upload/components/Documen
 import {
   cancelPendingClusterFeedback,
   explainDocumentDossierMembership,
+  getClusterVersion,
   getClusterGroupInformationTable,
   getClusterVersionChanges,
+  getClusteringPendingDocuments,
+  listSupplementalIntakes,
   listClusterFeedback,
   patchSessionDossier,
   suggestSelectedDocumentDossiers,
+  sortDossierDocuments,
+  sortLeafDossiers,
+  type ArrangementDossierKind,
   type ClusterGroupInformationTableResponse,
   type ClusterVersionChangesResponse,
   type ClusterVersionResponse,
@@ -22,6 +28,8 @@ import {
   type DocumentDeletionOperationResponse,
   type DocumentTransferRequestResponse,
   type SessionDossierSuggestion,
+  type SupplementalIntakeResponse,
+  type ClusteringPendingDocumentsResponse,
 } from "@/features/upload/api/sessionApi"
 import { useAuth } from "@/features/auth/lib/AuthContext"
 import { toast } from "sonner"
@@ -84,8 +92,20 @@ import {
   isDocumentTransferLocked,
   transferSelectionError,
 } from "./FinalResult.transferState"
+import { applySupplementalIntakeOverlay } from "./FinalResult.supplementalOverlay"
+import { resolveFinalResultActionState } from "./FinalResult.actionState"
 
 const DOSSIER_SUGGESTION_TOP_K = 5
+const SUPPLEMENTAL_VERIFICATION_PENDING_STATUSES = new Set([
+  "prepared",
+  "waiting_for_files",
+  "uploading",
+  "syncing_documents",
+  "ocr_processing",
+  "waiting_for_review",
+  "partially_verified",
+])
+
 export function FinalResult({
   sessionId,
   groups: initialGroups,
@@ -102,6 +122,13 @@ export function FinalResult({
   const [groups, setGroups] = useState<ClusterGroup[]>(() =>
     ensureTemporaryFolderGroup(initialGroups)
   )
+  const [supplementalIntakes, setSupplementalIntakes] = useState<
+    SupplementalIntakeResponse[]
+  >([])
+  const [supplementalRefreshKey, setSupplementalRefreshKey] = useState(0)
+  const [clusteringPending, setClusteringPending] =
+    useState<ClusteringPendingDocumentsResponse | null>(null)
+  const [sortingScope, setSortingScope] = useState<string | null>(null)
   const [status, setStatus] = useState(
     initialDossierCount > 0
       ? `Đã lập ${initialDossierCount} hồ sơ.`
@@ -244,9 +271,25 @@ export function FinalResult({
     () => buildClusterChangeHighlights(visibleClusterVersionChanges),
     [visibleClusterVersionChanges]
   )
+  const displayGroups = useMemo(
+    () =>
+      applySupplementalIntakeOverlay(
+        groups,
+        supplementalIntakes,
+        metadataItems
+      ),
+    [groups, metadataItems, supplementalIntakes]
+  )
+  const supplementalVerificationPendingCount = useMemo(
+    () =>
+      supplementalIntakes.filter((intake) =>
+        SUPPLEMENTAL_VERIFICATION_PENDING_STATUSES.has(intake.status)
+      ).length,
+    [supplementalIntakes]
+  )
   const tree = useMemo(
-    () => buildResultTree(groups, fondsName, changeHighlights),
-    [changeHighlights, fondsName, groups]
+    () => buildResultTree(displayGroups, fondsName, changeHighlights),
+    [changeHighlights, displayGroups, fondsName]
   )
   const [resultTreeSearch, setResultTreeSearch] = useState("")
   const [resultTreeSearchIndex, setResultTreeSearchIndex] = useState(0)
@@ -258,21 +301,21 @@ export function FinalResult({
     resultTreeSearchMatches[resultTreeSearchIndex] ?? null
   const activeResultTreeSearchAncestorKey =
     activeResultTreeSearchMatch?.ancestorIds.join("\u001f") ?? ""
-  const totalDossiers = regularDossierCount(groups)
-  const hasClusterData = groups.some(
+  const totalDossiers = regularDossierCount(displayGroups)
+  const hasClusterData = displayGroups.some(
     (group) => !group.isTemporary || group.documents.length > 0
   )
-  const totalFiles = groups.reduce(
+  const totalFiles = displayGroups.reduce(
     (sum, group) => sum + group.documents.length,
     0
   )
-  const totalPages = groups.reduce(
+  const totalPages = displayGroups.reduce(
     (sum, group) => sum + dossierPageCount(group),
     0
   )
   const previewDocuments = useMemo<PreviewDocumentEntry[]>(
     () =>
-      groups.flatMap((group) =>
+      displayGroups.flatMap((group) =>
         group.documents.flatMap((document) =>
           document.sessionDocumentId === null
             ? []
@@ -285,7 +328,7 @@ export function FinalResult({
               ]
         )
       ),
-    [groups]
+    [displayGroups]
   )
   const selectableSessionDocumentIdSet = useMemo(
     () =>
@@ -334,17 +377,17 @@ export function FinalResult({
   const selectedMetadataGroup = useMemo(
     () =>
       selectedMetadataGroupId
-        ? (groups.find(
+        ? (displayGroups.find(
             (group) =>
               !group.isTemporary && group.id === selectedMetadataGroupId
           ) ?? null)
         : null,
-    [groups, selectedMetadataGroupId]
+    [displayGroups, selectedMetadataGroupId]
   )
   const selectedDossierSuggestionsDocuments = useMemo(() => {
     if (selectedDossierSuggestionsDocumentIds.length === 0) return []
     const documentsBySessionId = new Map(
-      groups
+      displayGroups
         .flatMap((group) => group.documents)
         .flatMap((document) =>
           document.sessionDocumentId === null
@@ -358,7 +401,7 @@ export function FinalResult({
         return document ? [document] : []
       }
     )
-  }, [groups, selectedDossierSuggestionsDocumentIds])
+  }, [displayGroups, selectedDossierSuggestionsDocumentIds])
   const selectedDossierSuggestionsDocumentId =
     selectedDossierSuggestionsDocumentIds.length === 1
       ? selectedDossierSuggestionsDocumentIds[0]
@@ -397,6 +440,32 @@ export function FinalResult({
     [metadataItems, pendingClusterVersion]
   )
   const pendingClusterVersionId = pendingClusterVersion?.id ?? null
+  const supplementalPendingUpdateDocumentCount = useMemo(() => {
+    const pendingDocuments = clusteringPending?.documents ?? []
+    if (!pendingClusterVersion) return pendingDocuments.length
+    const workingDocumentIds = new Set(
+      pendingClusterGroups.flatMap((group) =>
+        group.documents.map((document) => String(document.sessionDocumentId))
+      )
+    )
+    return pendingDocuments.filter(
+      (document) =>
+        !workingDocumentIds.has(String(document.session_document_id))
+    ).length
+  }, [
+    clusteringPending?.documents,
+    pendingClusterGroups,
+    pendingClusterVersion,
+  ])
+  const pendingClusterVersionNeedsRefresh = Boolean(
+    pendingClusterVersion?.status === "draft" &&
+    (pendingClusterVersion.is_stale ||
+      supplementalPendingUpdateDocumentCount > 0 ||
+      (pendingClusterVersion.source_document_set_revision != null &&
+        pendingClusterVersion.current_document_set_revision != null &&
+        pendingClusterVersion.source_document_set_revision !==
+          pendingClusterVersion.current_document_set_revision))
+  )
   const workingClusterVersionId =
     pendingClusterVersionId ?? activeClusterVersionId
   const pendingClusterDocumentCount = pendingClusterGroups.reduce(
@@ -416,6 +485,7 @@ export function FinalResult({
       : null)
   const hasUsableActiveClusterVersion = Boolean(
     activeClusterVersion &&
+    !pendingClusterVersion &&
     !activeClusterVersion.is_stale &&
     (activeClusterVersion.source_document_set_revision == null ||
       activeClusterVersion.current_document_set_revision == null ||
@@ -450,6 +520,49 @@ export function FinalResult({
     displayedClusterVersionRef.current = displayedClusterVersion
     metadataItemsRef.current = metadataItems
   }, [displayedClusterVersion, metadataItems])
+
+  useEffect(() => {
+    if (!sessionId) {
+      const resetId = window.setTimeout(() => {
+        setSupplementalIntakes([])
+        setClusteringPending(null)
+      }, 0)
+      return () => window.clearTimeout(resetId)
+    }
+    let cancelled = false
+    let running = false
+    const refresh = async () => {
+      if (running) return
+      running = true
+      const [intakesResult, pendingResult] = await Promise.allSettled([
+        listSupplementalIntakes(sessionId, {
+          status: "active",
+          includeDocuments: true,
+        }),
+        getClusteringPendingDocuments(sessionId),
+      ])
+      if (!cancelled && intakesResult.status === "fulfilled") {
+        setSupplementalIntakes(intakesResult.value.items)
+      }
+      if (!cancelled && pendingResult.status === "fulfilled") {
+        setClusteringPending(pendingResult.value)
+      }
+      if (intakesResult.status === "rejected") {
+        // The result screen remains usable when the optional intake endpoint
+        // is temporarily unavailable during a rolling deployment.
+      }
+      if (pendingResult.status === "rejected") {
+        // Older backends may not expose the supplemental pending query yet.
+      }
+      running = false
+    }
+    void refresh()
+    const intervalId = window.setInterval(refresh, 2_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [sessionId, supplementalRefreshKey])
 
   useEffect(() => {
     let cancelled = false
@@ -846,6 +959,32 @@ export function FinalResult({
     setStatus,
   })
 
+  const clusterVersionStale = Boolean(displayedClusterVersion?.is_stale)
+  const clusterActionState = resolveFinalResultActionState({
+    hasPendingClusterVersion: Boolean(pendingClusterVersion),
+    pendingClusterVersionStatus: pendingClusterVersion?.status ?? null,
+    pendingClusterVersionNeedsRefresh,
+    pendingFeedbackCount,
+    supplementalVerificationPendingCount,
+    supplementalPendingDocumentCount: clusteringPending?.count ?? 0,
+    supplementalPendingUpdateDocumentCount,
+    clusterVersionStale,
+    busy: Boolean(
+      loading ||
+      checkingClusters ||
+      rebuildSubmitting ||
+      restoringClusterVersion ||
+      promotingTemporaryFolder ||
+      promotingSelectedDocuments ||
+      movingSelectedDocumentsTargetId ||
+      rebuildBaselineVersionId ||
+      clusteringPending?.blocked_reasons.includes("cluster_build_in_progress")
+    ),
+    viewingHistoricalClusterVersion,
+    hasSession: Boolean(sessionId),
+    totalFiles,
+    totalDossiers,
+  })
   const {
     handleActivateDisplayedClusterVersion,
     handleApplyPendingClusterVersion,
@@ -859,6 +998,8 @@ export function FinalResult({
   } = useFinalResultVersionActions({
     activeClusterVersionId,
     clusterJobMode,
+    clusterActionState,
+    clusterVersionStale,
     displayedClusterVersion,
     displayedClusterVersionId,
     hasUsableActiveClusterVersion,
@@ -867,7 +1008,11 @@ export function FinalResult({
     movingSelectedDocumentsTargetId,
     onFinish,
     pendingClusterVersion,
+    pendingClusterVersionNeedsRefresh,
     pendingFeedbackCount,
+    supplementalPendingDocumentCount: clusteringPending?.count ?? 0,
+    supplementalPendingUpdateDocumentCount,
+    supplementalVerificationPendingCount,
     previewLayoutRef,
     promotingSelectedDocuments,
     promotingTemporaryFolder,
@@ -1758,7 +1903,6 @@ export function FinalResult({
     []
   )
 
-  const clusterVersionStale = Boolean(displayedClusterVersion?.is_stale)
   const showClusterProgress =
     loading ||
     checkingClusters ||
@@ -1807,6 +1951,121 @@ export function FinalResult({
     },
     [resultTreeSearchMatches.length]
   )
+  const applyCompletedSort = useCallback(
+    async (clusterVersionId: string, message: string) => {
+      if (!sessionId) return
+      const version = await getClusterVersion(sessionId, clusterVersionId, {
+        includeClusters: true,
+      })
+      if (version.status === "active") {
+        setActiveClusterVersionId(clusterVersionId)
+      }
+      setDisplayedClusterVersionId(clusterVersionId)
+      setDisplayedClusterVersion(version)
+      setPendingClusterVersion(version.status === "draft" ? version : null)
+      setGroups(versionToGroups(version, metadataItemsRef.current))
+      setClusterVersions((current) => {
+        const withoutResult = current.filter(
+          (item) => item.id !== clusterVersionId
+        )
+        return [...withoutResult, version]
+      })
+      setSupplementalRefreshKey((key) => key + 1)
+      setStatus(message)
+    },
+    [sessionId]
+  )
+  const handleSortDossierDocuments = useCallback(
+    async (group: ClusterGroup, dossierKind: ArrangementDossierKind) => {
+      const dossierId = group.dossierId ?? group.id
+      if (
+        !sessionId ||
+        (dossierKind === "cluster_dossier" && !workingClusterVersionId) ||
+        viewingHistoricalClusterVersion ||
+        sortingScope
+      ) {
+        return
+      }
+      const scope = `dossier:${dossierKind}:${dossierId}`
+      setSortingScope(scope)
+      try {
+        const response = await sortDossierDocuments(
+          sessionId,
+          dossierId,
+          dossierKind,
+          workingClusterVersionId
+        )
+        if (response.cluster_version_id) {
+          await applyCompletedSort(
+            response.cluster_version_id,
+            `Đã sắp xếp ${response.sorted_document_count ?? 0} tài liệu đã verify trong hồ sơ.`
+          )
+        } else {
+          setSupplementalRefreshKey((key) => key + 1)
+          setStatus(
+            `Đã sắp xếp ${response.sorted_document_count ?? 0} tài liệu đã verify trong hồ sơ draft.`
+          )
+        }
+        toast.success("Sắp xếp tài liệu hoàn tất.")
+      } catch (caught) {
+        toast.error(
+          finalResultErrorMessage(caught, "Không thể sắp xếp tài liệu.")
+        )
+      } finally {
+        setSortingScope(null)
+      }
+    },
+    [
+      applyCompletedSort,
+      sessionId,
+      sortingScope,
+      viewingHistoricalClusterVersion,
+      workingClusterVersionId,
+    ]
+  )
+  const handleSortLeafDossiers = useCallback(
+    async (leafGroupId: string) => {
+      const planVersionId =
+        displayedClusterVersion?.plan_version_id ?? activePlanVersionId
+      if (
+        !sessionId ||
+        !workingClusterVersionId ||
+        !planVersionId ||
+        viewingHistoricalClusterVersion ||
+        sortingScope
+      ) {
+        return
+      }
+      const scope = `leaf:${leafGroupId}`
+      setSortingScope(scope)
+      try {
+        const response = await sortLeafDossiers(
+          sessionId,
+          leafGroupId,
+          planVersionId,
+          workingClusterVersionId
+        )
+        await applyCompletedSort(
+          response.cluster_version_id,
+          `Đã sắp xếp ${response.sorted_dossier_count ?? 0} hồ sơ đủ điều kiện trong mục.`
+        )
+        toast.success("Sắp xếp hồ sơ hoàn tất.")
+      } catch (caught) {
+        toast.error(finalResultErrorMessage(caught, "Không thể sắp xếp hồ sơ."))
+      } finally {
+        setSortingScope(null)
+      }
+    },
+    [
+      activePlanVersionId,
+      applyCompletedSort,
+      displayedClusterVersion?.plan_version_id,
+      sessionId,
+      sortingScope,
+      viewingHistoricalClusterVersion,
+      workingClusterVersionId,
+    ]
+  )
   return (
     <>
       <FinalResultView
@@ -1825,6 +2084,7 @@ export function FinalResult({
         clusterVersionChangesError={clusterVersionChangesError}
         clusterVersionChangesLoading={clusterVersionChangesLoading}
         clusterVersionStale={clusterVersionStale}
+        clusterActionState={clusterActionState}
         deleteSelectedDocumentsDisabled={deleteSelectedDocumentsDisabled}
         transferSelectedDocumentsDisabled={transferSelectedDocumentsDisabled}
         displayedClusterVersion={displayedClusterVersion}
@@ -1877,6 +2137,8 @@ export function FinalResult({
         handleToggleDocumentSelection={handleToggleDocumentSelection}
         handleToggleGroupSelection={handleToggleGroupSelection}
         handleViewClusterVersion={handleViewClusterVersion}
+        handleSortDossierDocuments={handleSortDossierDocuments}
+        handleSortLeafDossiers={handleSortLeafDossiers}
         groupInformationError={groupInformationError}
         groupInformationLoading={groupInformationLoading}
         groupInformationTable={groupInformationTable}
@@ -1892,8 +2154,16 @@ export function FinalResult({
         openNodeIds={openNodeIds}
         pendingClusterDocumentCount={pendingClusterDocumentCount}
         pendingClusterVersion={pendingClusterVersion}
+        pendingClusterVersionNeedsRefresh={pendingClusterVersionNeedsRefresh}
         pendingDossierCount={pendingDossierCount}
         pendingFeedbackCount={pendingFeedbackCount}
+        supplementalPendingDocumentCount={clusteringPending?.count ?? 0}
+        supplementalPendingUpdateDocumentCount={
+          supplementalPendingUpdateDocumentCount
+        }
+        supplementalVerificationPendingCount={
+          supplementalVerificationPendingCount
+        }
         previewDocument={previewDocument}
         selectedDossierSuggestionsDocuments={
           selectedDossierSuggestionsDocuments
@@ -1904,7 +2174,7 @@ export function FinalResult({
         dossierSuggestionRepresentativeDocuments={
           dossierSuggestionRepresentativeDocuments
         }
-        dossierSuggestionDossiers={groups}
+        dossierSuggestionDossiers={displayGroups}
         selectedDossierSuggestionsDocumentId={
           selectedDossierSuggestionsDocumentId
         }
@@ -1955,6 +2225,7 @@ export function FinalResult({
         showClusterProgress={showClusterProgress}
         sidePreviewOpen={sidePreviewOpen}
         sortedClusterVersions={sortedClusterVersions}
+        sortingScope={sortingScope}
         stopResultTreeAutoScroll={stopResultTreeAutoScroll}
         temporaryFolderUpdateDisabled={temporaryFolderUpdateDisabled}
         totalDossiers={totalDossiers}
@@ -2147,4 +2418,8 @@ function scrollResultTreeNodeIntoView(
     node.scrollIntoView({ block: "center", behavior: "smooth" })
     return
   }
+}
+
+function finalResultErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
 }

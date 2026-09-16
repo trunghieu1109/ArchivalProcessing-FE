@@ -46,9 +46,13 @@ import {
   isDocumentTransferRefreshEventType,
   type DocumentTransferUiRefreshDetail,
 } from "../documentTransferUiSync"
+import {
+  selectApplicableDraftClusterVersion,
+  shouldDisplayWorkingClusterVersion,
+} from "./FinalResult.versionSelection"
 
-const CLUSTER_ACTIVE_POLL_INTERVAL_MS = 5_000
-const CLUSTER_IDLE_POLL_INTERVAL_MS = 30_000
+const CLUSTER_ACTIVE_POLL_INTERVAL_MS = 2_000
+const CLUSTER_IDLE_POLL_INTERVAL_MS = 5_000
 const CLUSTER_POLL_TIMEOUT_MS = 10 * 60 * 1_000
 const SESSION_EVENT_POLL_INTERVAL_MS = 2_000
 const CLUSTER_EVENT_PAGE_SIZE = 100
@@ -410,14 +414,18 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
         if (versionsResponse) {
           setClusterVersions(versionsResponse.versions ?? [])
         }
-        const draftSummary =
-          versionsResponse?.versions?.find(
-            (candidate) => candidate.status === "draft" && !candidate.is_stale
-          ) ?? null
         const activeVersionSummary = await getActiveClusters(sessionId, {
           summaryOnly: true,
         })
         if (cancelled) return
+        const resolvedActiveVersionId =
+          versionsResponse?.active_cluster_version_id ??
+          activeVersionSummary?.id ??
+          null
+        const draftSummary = selectApplicableDraftClusterVersion(
+          versionsResponse?.versions ?? [],
+          resolvedActiveVersionId
+        )
         const versionSummary = draftSummary ?? activeVersionSummary
         let version = versionSummary
         const nextVersionId = versionSummary?.id ?? null
@@ -437,11 +445,7 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
             setPendingFeedbackRefreshKey((key: number) => key + 1)
           }
         }
-        setActiveClusterVersionId(
-          versionsResponse?.active_cluster_version_id ??
-            activeVersionSummary?.id ??
-            null
-        )
+        setActiveClusterVersionId(resolvedActiveVersionId)
 
         const fetchFullWorkingVersion = () =>
           draftSummary
@@ -511,8 +515,12 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
 
         const shouldDisplayInitialVersion =
           Boolean(version && nextVersionId) &&
-          (!latestState.displayedClusterVersionId ||
-            !latestState.hasClusterData)
+          shouldDisplayWorkingClusterVersion({
+            activeClusterVersionId: resolvedActiveVersionId,
+            displayedClusterVersionId: latestState.displayedClusterVersionId,
+            hasClusterData: latestState.hasClusterData,
+            workingClusterVersionId: nextVersionId,
+          })
         const effectiveDisplayedVersionId = shouldDisplayInitialVersion
           ? nextVersionId
           : latestState.displayedClusterVersionId

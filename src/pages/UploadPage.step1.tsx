@@ -1,10 +1,18 @@
+import { useRef, useState } from "react"
 import { motion } from "framer-motion"
 import { ArrowRight, CheckCircle2, Loader2, Play } from "lucide-react"
 import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import { PlanAnalysisFailureAlert } from "@/features/upload/components/PlanAnalysisFailureAlert"
 import { DocxSection } from "@/features/upload/components/step1/DocxSection"
 import { UnifiedDataUploadSection } from "@/features/upload/components/step1/UnifiedDataUploadSection"
-import { UploadSessionSetupPanel } from "@/features/upload/components/step1/UploadSessionSetupPanel"
+import {
+  SupplementalIntakeUploadSection,
+  type SupplementalIntakeUploadHandle,
+} from "@/features/upload/components/step1/SupplementalIntakeUploadSection"
+import {
+  UploadSessionSetupPanel,
+  type ExistingSessionUploadPurpose,
+} from "@/features/upload/components/step1/UploadSessionSetupPanel"
 import { DossierTitleCatalogSection } from "@/features/upload/components/step1/DossierTitleCatalogSection"
 import { SHOW_DOSSIER_TITLE_CATALOG } from "@/features/upload/components/step4/temporaryFeatureVisibility"
 import { workflowActionPanelClassName } from "@/features/upload/components/WorkflowActionPanel"
@@ -87,6 +95,11 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
     syncSessionMetadataDraft,
     sessionId,
     ensureSession,
+    activeClusterVersionId,
+    activePlanVersionId,
+    activeClassificationGroups,
+    activeClassificationCriteria,
+    clusterGroups,
     openZipUpload,
     zipUploadFocusKey,
     openFolderUpload,
@@ -95,6 +108,16 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
     pendingDataUpload,
     onPendingDataUploadChange,
   } = props
+  const [uploadPurpose, setUploadPurpose] =
+    useState<ExistingSessionUploadPurpose>("session_data")
+  const supplementalIntakeRef = useRef<SupplementalIntakeUploadHandle>(null)
+  const dossierIntakeUpload =
+    existingSessionMode && uploadPurpose === "dossier_intake"
+  const dossierPrimaryActionDisabled =
+    primaryActionPending ||
+    allProcessing ||
+    sessionLoading ||
+    pendingDataUpload?.kind !== "folder"
   const zipUploadStatus = zipUploadProgress
     ? zipUploadProgress.phase === "error"
       ? "Upload ZIP thất bại"
@@ -152,9 +175,10 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
         syncSessionMetadataDraft={syncSessionMetadataDraft}
         uploadMode={uploadMode}
         syncUploadMode={syncUploadMode}
+        uploadPurpose={uploadPurpose}
       />
 
-      {planAnalysisFailure && (
+      {!dossierIntakeUpload && planAnalysisFailure && (
         <div className="flex flex-col gap-3">
           <ProgressTimeline
             phases={PLAN_PROGRESS_PHASES}
@@ -168,17 +192,20 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
         </div>
       )}
 
-      {!planAnalysisFailure && (planAnalyzing || planProgressMessage) && (
-        <ProgressTimeline
-          phases={PLAN_PROGRESS_PHASES}
-          activePhase={planProgressPhase}
-          completedPhases={planCompletedPhases}
-          title={progressTitle}
-          message={
-            planProgressMessage || "Backend đang phân tích phương án chỉnh lý."
-          }
-        />
-      )}
+      {!dossierIntakeUpload &&
+        !planAnalysisFailure &&
+        (planAnalyzing || planProgressMessage) && (
+          <ProgressTimeline
+            phases={PLAN_PROGRESS_PHASES}
+            activePhase={planProgressPhase}
+            completedPhases={planCompletedPhases}
+            title={progressTitle}
+            message={
+              planProgressMessage ||
+              "Backend đang phân tích phương án chỉnh lý."
+            }
+          />
+        )}
 
       <UnifiedDataUploadSection
         ref={dataUploadRef}
@@ -207,48 +234,74 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
         openFolderUpload={openFolderUpload}
         folderUploadFocusKey={folderUploadFocusKey}
         onPendingUploadChange={onPendingDataUploadChange}
+        existingSessionMode={existingSessionMode}
+        uploadPurpose={uploadPurpose}
+        syncUploadPurpose={setUploadPurpose}
+        prepareSupplementalIntake={() => {
+          const handle = supplementalIntakeRef.current
+          if (!handle) {
+            return Promise.reject(
+              new Error("Form bổ sung theo hồ sơ chưa sẵn sàng.")
+            )
+          }
+          return handle.prepareIntake()
+        }}
+        supplementalIntakeFields={
+          <SupplementalIntakeUploadSection
+            ref={supplementalIntakeRef}
+            sessionId={sessionId}
+            activeClusterVersionId={activeClusterVersionId}
+            activePlanVersionId={activePlanVersionId}
+            classificationGroups={activeClassificationGroups}
+            classificationCriteria={activeClassificationCriteria}
+            initialDossierGroups={clusterGroups}
+            disabled={allProcessing || sessionLoading}
+          />
+        }
       />
 
       {/* DOCX */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <DocxSection
-          ref={doc1Ref}
-          index={1}
-          label="Phương án phân loại"
-          sublabel={
-            existingSessionMode
-              ? "Tải lại file Word chứa phương án phân loại để phân tích lại session."
-              : "Tải lên file Word chứa phương án phân loại tài liệu."
-          }
-          processState={doc1State}
-          onProcessStateChange={syncDoc1State}
-          onHasFileChange={syncDoc1Has}
-          uploadCompleteState={existingSessionMode ? "done" : "idle"}
-          onUploadFile={(file) =>
-            uploadInput("arrangement_plan", file).then(() => undefined)
-          }
-        />
-        <DocxSection
-          ref={doc2Ref}
-          index={2}
-          label="Thêm thông tư thời hạn bảo quản"
-          sublabel={
-            existingSessionMode
-              ? "Bổ sung file Word chứa thông tư thời hạn bảo quản."
-              : "Thêm file Word chứa thông tư thời hạn bảo quản."
-          }
-          processState={doc2State}
-          onProcessStateChange={syncDoc2State}
-          onHasFileChange={syncDoc2Has}
-          uploadCompleteState={existingSessionMode ? "done" : "idle"}
-          multiple
-          onUploadFiles={(files) =>
-            uploadRetentionInputs(files).then(() => undefined)
-          }
-        />
-      </div>
+      {!dossierIntakeUpload && (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <DocxSection
+            ref={doc1Ref}
+            index={1}
+            label="Phương án phân loại"
+            sublabel={
+              existingSessionMode
+                ? "Tải lại file Word chứa phương án phân loại để phân tích lại session."
+                : "Tải lên file Word chứa phương án phân loại tài liệu."
+            }
+            processState={doc1State}
+            onProcessStateChange={syncDoc1State}
+            onHasFileChange={syncDoc1Has}
+            uploadCompleteState={existingSessionMode ? "done" : "idle"}
+            onUploadFile={(file) =>
+              uploadInput("arrangement_plan", file).then(() => undefined)
+            }
+          />
+          <DocxSection
+            ref={doc2Ref}
+            index={2}
+            label="Thêm thông tư thời hạn bảo quản"
+            sublabel={
+              existingSessionMode
+                ? "Bổ sung file Word chứa thông tư thời hạn bảo quản."
+                : "Thêm file Word chứa thông tư thời hạn bảo quản."
+            }
+            processState={doc2State}
+            onProcessStateChange={syncDoc2State}
+            onHasFileChange={syncDoc2Has}
+            uploadCompleteState={existingSessionMode ? "done" : "idle"}
+            multiple
+            onUploadFiles={(files) =>
+              uploadRetentionInputs(files).then(() => undefined)
+            }
+          />
+        </div>
+      )}
 
-      {SHOW_DOSSIER_TITLE_CATALOG && (
+      {!dossierIntakeUpload && SHOW_DOSSIER_TITLE_CATALOG && (
         <DossierTitleCatalogSection
           draftFile={dossierTitleCatalogDraftFile}
           upload={dossierTitleCatalogUpload}
@@ -406,16 +459,24 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
 
         <button
           type="button"
-          disabled={primaryActionDisabled}
+          disabled={
+            dossierIntakeUpload
+              ? dossierPrimaryActionDisabled
+              : primaryActionDisabled
+          }
           onClick={handleStartAll}
           className={cn(
             "group flex h-10 w-full min-w-0 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold transition-all duration-200 sm:w-auto sm:min-w-44 lg:max-w-[16rem]",
-            !primaryActionDisabled
+            !(dossierIntakeUpload
+              ? dossierPrimaryActionDisabled
+              : primaryActionDisabled)
               ? "text-primary-foreground hover:-translate-y-0.5 active:scale-[0.98]"
               : "cursor-not-allowed bg-muted text-muted-foreground"
           )}
           style={
-            !primaryActionDisabled
+            !(dossierIntakeUpload
+              ? dossierPrimaryActionDisabled
+              : primaryActionDisabled)
               ? {
                   background: "linear-gradient(to right, #0052FF, #4D7CFF)",
                   boxShadow: "0 4px 14px rgba(0,82,255,0.25)",
@@ -440,44 +501,48 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
                 ? postUploadDiscoveryMessage
                 : primaryActionPending
                   ? "Đang xử lý..."
-                  : !primaryActionAvailable
-                    ? "Chọn dữ liệu để bắt đầu"
-                    : planAnalyzing
-                      ? existingSessionMode
-                        ? "Xem trạng thái phân tích"
-                        : "Đang phân tích..."
-                      : allProcessing
-                        ? "Đang xử lý..."
-                        : pendingDataUpload?.kind === "zip"
-                          ? "Bắt đầu upload ZIP"
-                          : pendingDataUpload?.kind === "folder"
-                            ? `Bắt đầu upload ${pendingDataUpload.fileCount} PDF`
-                            : planInputsReuploaded
-                              ? planReanalysisActionLabel
-                              : metadataIsNextStep &&
-                                  folderUploadReady &&
-                                  folderUploadWasCancelled
-                                ? `Xử lý ${folderUploadEffectiveCount} tài liệu đã tải thành công`
-                                : folderUploadMetadataNavigationReady
-                                  ? "Chuyển sang Extract Metadata"
-                                  : existingSessionMode &&
-                                      metadataIsNextStep &&
-                                      zipSupplementUploaded
+                  : dossierIntakeUpload && !pendingDataUpload
+                    ? "Chọn folder PDF để bắt đầu"
+                    : !primaryActionAvailable
+                      ? "Chọn dữ liệu để bắt đầu"
+                      : planAnalyzing
+                        ? existingSessionMode
+                          ? "Xem trạng thái phân tích"
+                          : "Đang phân tích..."
+                        : allProcessing
+                          ? "Đang xử lý..."
+                          : pendingDataUpload?.kind === "zip"
+                            ? "Bắt đầu upload ZIP"
+                            : pendingDataUpload?.kind === "folder"
+                              ? `Bắt đầu upload ${pendingDataUpload.fileCount} PDF`
+                              : planInputsReuploaded
+                                ? planReanalysisActionLabel
+                                : metadataIsNextStep &&
+                                    folderUploadReady &&
+                                    folderUploadWasCancelled
+                                  ? `Xử lý ${folderUploadEffectiveCount} tài liệu đã tải thành công`
+                                  : folderUploadMetadataNavigationReady
                                     ? "Chuyển sang Extract Metadata"
                                     : existingSessionMode &&
                                         metadataIsNextStep &&
-                                        zipHas &&
-                                        !hasPlanReady
+                                        zipSupplementUploaded
                                       ? "Chuyển sang Extract Metadata"
-                                      : existingSessionMode && hasPlanInputs
-                                        ? planStepActionLabel
-                                        : allDone
-                                          ? "Tiếp tục"
-                                          : existingSessionMode
+                                      : existingSessionMode &&
+                                          metadataIsNextStep &&
+                                          zipHas &&
+                                          !hasPlanReady
+                                        ? "Chuyển sang Extract Metadata"
+                                        : existingSessionMode && hasPlanInputs
+                                          ? planStepActionLabel
+                                          : allDone
                                             ? "Tiếp tục"
-                                            : "Bắt đầu xử lý"}
+                                            : existingSessionMode
+                                              ? "Tiếp tục"
+                                              : "Bắt đầu xử lý"}
           </span>
-          {!primaryActionDisabled && (
+          {!(dossierIntakeUpload
+            ? dossierPrimaryActionDisabled
+            : primaryActionDisabled) && (
             <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
           )}
         </button>

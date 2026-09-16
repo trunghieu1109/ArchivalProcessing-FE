@@ -70,6 +70,7 @@ export class FolderUploadManager {
       folderUploadId: null,
       rootName: manifest.rootName,
       mode: input.mode,
+      supplementalIntakeId: input.supplementalIntakeId ?? null,
       status: "preparing",
       files: manifest.files,
       totalBytes: manifest.files.reduce(
@@ -269,6 +270,7 @@ export class FolderUploadManager {
       folderUploadId: summary.folder_upload_id,
       rootName: summary.root_name,
       mode: summary.mode,
+      supplementalIntakeId: summary.supplemental_intake_id ?? null,
       status:
         summary.document_sync_status === "failed"
           ? "attention_required"
@@ -308,6 +310,9 @@ export class FolderUploadManager {
           root_name: job.rootName,
           expected_file_count: job.files.length,
           expected_total_bytes: job.totalBytes,
+          ...(job.supplementalIntakeId
+            ? { supplemental_intake_id: job.supplementalIntakeId }
+            : {}),
         },
         this.signalFor(job.id)
       )

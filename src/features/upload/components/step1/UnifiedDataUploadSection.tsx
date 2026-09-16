@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
   type RefObject,
 } from "react"
 import { CloudUpload, FileArchive, FolderOpen } from "lucide-react"
@@ -38,6 +39,7 @@ import type {
   SectionHandle,
 } from "@/features/upload/types"
 import { cn } from "@/shared/lib/utils"
+import type { ExistingSessionUploadPurpose } from "./UploadSessionSetupPanel"
 import {
   detectDroppedUploadSource,
   isPdfFile,
@@ -92,6 +94,11 @@ interface UnifiedDataUploadSectionProps {
   openFolderUpload: boolean
   folderUploadFocusKey?: string | null
   onPendingUploadChange: (pending: PendingDataUploadSummary | null) => void
+  existingSessionMode: boolean
+  uploadPurpose: ExistingSessionUploadPurpose
+  syncUploadPurpose: (purpose: ExistingSessionUploadPurpose) => void
+  supplementalIntakeFields?: ReactNode
+  prepareSupplementalIntake?: () => Promise<string>
 }
 
 export const UnifiedDataUploadSection = forwardRef<
@@ -124,6 +131,11 @@ export const UnifiedDataUploadSection = forwardRef<
     openFolderUpload,
     folderUploadFocusKey,
     onPendingUploadChange,
+    existingSessionMode,
+    uploadPurpose,
+    syncUploadPurpose,
+    supplementalIntakeFields,
+    prepareSupplementalIntake,
   },
   ref
 ) {
@@ -133,6 +145,8 @@ export const UnifiedDataUploadSection = forwardRef<
   const expectedSessionTransitionRef = useRef(false)
   const zipInputRef = useRef<HTMLInputElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
+  const dossierIntakeUpload =
+    existingSessionMode && uploadPurpose === "dossier_intake"
   const [dragging, setDragging] = useState(false)
   const [detecting, setDetecting] = useState(false)
   const [startingFolder, setStartingFolder] = useState(false)
@@ -278,6 +292,10 @@ export const UnifiedDataUploadSection = forwardRef<
   }, [folderJobNeedsProgress, folderUploadEnabled, openZipUpload])
 
   const selectZip = async (file: File) => {
+    if (dossierIntakeUpload) {
+      toast.error("Bổ sung theo hồ sơ chỉ nhận nguyên folder PDF.")
+      return
+    }
     if (!isZipFile(file)) {
       toast.error("Dữ liệu được chọn không phải file ZIP.")
       return
@@ -364,10 +382,17 @@ export const UnifiedDataUploadSection = forwardRef<
       try {
         expectedSessionTransitionRef.current = sessionId === null
         const targetSessionId = sessionId ?? (await ensureSession())
+        const supplementalIntakeId = dossierIntakeUpload
+          ? await prepareSupplementalIntake?.()
+          : undefined
+        if (dossierIntakeUpload && !supplementalIntakeId) {
+          throw new Error("Chưa thể chuẩn bị đợt bổ sung theo hồ sơ.")
+        }
         const jobId = folderManager.start({
           sessionId: targetSessionId,
           files: pendingSource.files,
-          mode: uploadMode,
+          mode: dossierIntakeUpload ? "append" : uploadMode,
+          supplementalIntakeId,
         })
         const completion = waitForFolderUploadCompletion(
           folderManager,
@@ -375,7 +400,9 @@ export const UnifiedDataUploadSection = forwardRef<
         ).then(() => undefined)
         clearPendingSource()
         toast.success(
-          "Đã bắt đầu upload folder. Bạn có thể chuyển sang màn hình khác."
+          dossierIntakeUpload
+            ? "Đã tạo intake và bắt đầu upload folder PDF bổ sung."
+            : "Đã bắt đầu upload folder. Bạn có thể chuyển sang màn hình khác."
         )
         return { kind: "folder", completion }
       } catch (error) {
@@ -404,7 +431,11 @@ export const UnifiedDataUploadSection = forwardRef<
     try {
       const source = await detectDroppedUploadSource(event.dataTransfer)
       if (source.kind === "zip") {
-        await selectZip(source.file)
+        if (dossierIntakeUpload) {
+          toast.error("Bổ sung theo hồ sơ chỉ nhận nguyên folder PDF.")
+        } else {
+          await selectZip(source.file)
+        }
       } else if (folderUploadEnabled) {
         selectFolder(source.files)
       } else {
@@ -417,6 +448,18 @@ export const UnifiedDataUploadSection = forwardRef<
     } finally {
       setDetecting(false)
     }
+  }
+
+  const changeUploadPurpose = (purpose: ExistingSessionUploadPurpose) => {
+    if (purpose === uploadPurpose) return
+    if (purpose === "dossier_intake" && pendingSource?.kind === "zip") {
+      discardStagedZip()
+      resetPendingSource()
+      toast.info(
+        "Đã bỏ file ZIP đang chọn vì bổ sung theo hồ sơ chỉ nhận folder PDF."
+      )
+    }
+    syncUploadPurpose(purpose)
   }
 
   return (
@@ -441,8 +484,9 @@ export const UnifiedDataUploadSection = forwardRef<
               )}
             </div>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-[#64748B]">
-              Kéo thả một file ZIP hoặc nguyên folder PDF. Hệ thống tự chọn
-              pipeline phù hợp trước khi bắt đầu upload.
+              {dossierIntakeUpload
+                ? "Chọn nguyên folder PDF, sau đó khai báo hồ sơ hoặc nhóm phân loại đích ngay bên dưới."
+                : "Kéo thả một file ZIP hoặc nguyên folder PDF. Hệ thống tự chọn pipeline phù hợp trước khi bắt đầu upload."}
             </p>
           </div>
         </div>
@@ -478,13 +522,20 @@ export const UnifiedDataUploadSection = forwardRef<
           <p className="text-sm font-semibold text-[#0F172A]">
             {detecting
               ? "Đang nhận diện dữ liệu..."
-              : "Kéo thả file ZIP hoặc nguyên folder PDF vào đây"}
+              : dossierIntakeUpload
+                ? "Kéo thả nguyên folder PDF vào đây"
+                : "Kéo thả file ZIP hoặc nguyên folder PDF vào đây"}
           </p>
           <div className="flex flex-wrap items-center justify-center gap-2">
             <button
               type="button"
-              disabled={selectionDisabled}
+              disabled={selectionDisabled || dossierIntakeUpload}
               onClick={() => zipInputRef.current?.click()}
+              title={
+                dossierIntakeUpload
+                  ? "Bổ sung theo hồ sơ chỉ hỗ trợ folder PDF"
+                  : undefined
+              }
               className="flex h-10 items-center gap-2 rounded-lg bg-[#0052FF] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#0047DB] disabled:cursor-not-allowed disabled:opacity-60"
             >
               <FileArchive className="size-4" />
@@ -503,7 +554,9 @@ export const UnifiedDataUploadSection = forwardRef<
             )}
           </div>
           <p className="text-xs text-[#94A3B8]">
-            ZIP được xử lý theo extract-job; folder giữ nguyên relative path.
+            {dossierIntakeUpload
+              ? "Các PDF mới được giữ dạng nháp ở cuối hồ sơ cho tới khi verify OCR."
+              : "ZIP được xử lý theo extract-job; folder giữ nguyên relative path."}
           </p>
         </div>
       )}
@@ -535,6 +588,36 @@ export const UnifiedDataUploadSection = forwardRef<
           event.currentTarget.value = ""
         }}
       />
+
+      {existingSessionMode && (
+        <div className="mt-5 border-t border-[#E2E8F0] pt-5">
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,15rem)_minmax(0,1fr)] sm:items-end">
+            <label className="block text-sm font-medium text-[#334155]">
+              Phạm vi bổ sung
+              <select
+                value={uploadPurpose}
+                disabled={disabled || startingFolder}
+                onChange={(event) =>
+                  changeUploadPurpose(
+                    event.target.value as ExistingSessionUploadPurpose
+                  )
+                }
+                className="mt-2 w-full rounded-lg border border-[#CBD5E1] bg-white px-3 py-2 text-sm text-[#0F172A] outline-none focus:border-[#0052FF] focus:ring-2 focus:ring-[#0052FF]/10 disabled:cursor-not-allowed disabled:bg-[#F8FAFC]"
+              >
+                <option value="session_data">Bổ sung dữ liệu chung</option>
+                <option value="dossier_intake">Bổ sung theo hồ sơ</option>
+              </select>
+            </label>
+            <p className="text-xs leading-5 text-[#64748B]">
+              {dossierIntakeUpload
+                ? "Hệ thống tạo supplemental intake từ thông tin bên dưới rồi gắn folder upload vào intake đó."
+                : "Dữ liệu tiếp tục pipeline metadata và phân loại thông thường của session."}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {dossierIntakeUpload && supplementalIntakeFields}
 
       <div className={selectedKind === "zip" ? "block" : "hidden"}>
         <UploadProgressPanel kind="zip">

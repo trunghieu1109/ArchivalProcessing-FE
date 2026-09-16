@@ -6,6 +6,7 @@ import {
   resolveExistingPlanAnalysisAction,
   resolvePlanAnalysisInputSelection,
   resolvePlanInputsReuploaded,
+  shouldEnsureDossierBuildBeforeResults,
   shouldAnalyzePlanInputsAfterDataUpload,
 } from "./UploadPage.workflowPolicy"
 
@@ -97,5 +98,13 @@ describe("supplemental data upload workflow policy", () => {
         planInputsReuploaded: true,
       })
     ).toBe(false)
+  })
+
+  it("opens an existing dossier snapshot without starting another build", () => {
+    expect(shouldEnsureDossierBuildBeforeResults("cluster-version-1")).toBe(
+      false
+    )
+    expect(shouldEnsureDossierBuildBeforeResults(null)).toBe(true)
+    expect(shouldEnsureDossierBuildBeforeResults(undefined)).toBe(true)
   })
 })

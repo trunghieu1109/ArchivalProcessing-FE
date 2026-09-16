@@ -45,4 +45,5 @@ export interface ResultTreeNode {
   changeTypes?: Array<ClusterGroupChangeType | ClusterDossierChangeType>
   documentCount: number
   pageCount: number
+  classificationGroupId?: string
 }

@@ -30,6 +30,12 @@ export function canNavigateDirectlyToMetadata(
   return !hasArrangementPlan && !hasRetentionSchedule
 }
 
+export function shouldEnsureDossierBuildBeforeResults(
+  activeClusterVersionId: string | null | undefined
+): boolean {
+  return !activeClusterVersionId?.trim()
+}
+
 export function shouldAnalyzePlanInputsAfterDataUpload({
   dataUploadSucceeded,
   planInputsReuploaded,
