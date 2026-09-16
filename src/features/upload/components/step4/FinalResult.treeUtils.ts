@@ -7,7 +7,6 @@ import { clusterDocumentTotals } from "@/features/upload/lib/clusterGroups"
 import {
   UNKNOWN_YEAR_LABEL,
   dossierPageCount,
-  dossierYearLabel,
 } from "./FinalResult.metadataUtils"
 import type { DraggedDocument, ResultTreeNode } from "./FinalResult.types"
 import type { ClusterChangeHighlights } from "./FinalResult.changes"
@@ -204,29 +203,16 @@ export function resultTreePath(group: ClusterGroup): string[] {
   const classificationPath = (group.classificationPath ?? [])
     .map((segment) => segment.trim())
     .filter(Boolean)
-  const yearLabel = dossierYearLabel(group)
-  const hasClassificationYear = classificationPath.some(isYearPathSegment)
-
-  if (hasClassificationYear) {
-    let yearSegmentUsed = false
-    const deduped = classificationPath.flatMap((segment) => {
-      if (!isYearPathSegment(segment)) return [segment]
-      if (yearSegmentUsed) return []
-      yearSegmentUsed = true
-      return [segment]
-    })
-    return deduped.length > 0 ? deduped : [UNCLASSIFIED_LABEL]
-  }
-
-  const tail =
-    classificationPath.length > 0 ? classificationPath : [UNCLASSIFIED_LABEL]
-  return [yearLabel, ...tail]
+  return classificationPath.length > 0
+    ? classificationPath
+    : [UNCLASSIFIED_LABEL]
 }
 
 export function isYearPathSegment(value: string): boolean {
   const normalized = normalizePathSegment(value)
   return (
     normalized === normalizePathSegment(UNKNOWN_YEAR_LABEL) ||
+    /^(?:19|20)\d{2}$/.test(normalized) ||
     /^nam\s+(?:19|20)\d{2}\b/.test(normalized) ||
     /^year\s+(?:19|20)\d{2}\b/.test(normalized)
   )

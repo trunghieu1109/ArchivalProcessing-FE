@@ -5,7 +5,10 @@ import {
   type ClusterGroup,
 } from "@/features/upload/lib/clusterGroups"
 import { updateDossierGroupFromResponse } from "./FinalResult.metadataUtils"
-import { resultTreePath } from "./FinalResult.treeUtils"
+import {
+  isYearPathSegment,
+  resultTreePath,
+} from "./FinalResult.treeUtils"
 import { updateClusterVersionDossier } from "./FinalResult.versionUtils"
 
 const baseGroup: ClusterGroup = {
@@ -106,7 +109,22 @@ describe("manual classification year remains authoritative", () => {
     expect(resultTreePath(reloadedGroup!)).not.toContain("Năm 2025")
   })
 
-  it("falls back to metadata year B when classification path has no year", () => {
-    expect(resultTreePath(baseGroup)).toEqual(["Năm 2025", "Hành chính"])
+  it("does not invent a metadata year when classification has no year", () => {
+    expect(resultTreePath(baseGroup)).toEqual(["Hành chính"])
+  })
+
+  it("keeps a numeric TH3 year as the only explicit year level", () => {
+    const th3Group: ClusterGroup = {
+      ...baseGroup,
+      startDate: "2015-02-06",
+      classificationPath: ["New rural documents", "2015"],
+      classificationGroupIds: ["new-root", "new-year"],
+    }
+
+    expect(resultTreePath(th3Group)).toEqual([
+      "New rural documents",
+      "2015",
+    ])
+    expect(isYearPathSegment("2015")).toBe(true)
   })
 })
