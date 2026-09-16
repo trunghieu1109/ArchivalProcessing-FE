@@ -90,6 +90,7 @@ import {
 import { buildClusterChangeHighlights } from "./FinalResult.changes"
 import {
   isDocumentTransferLocked,
+  isSupplementalPlacementPending,
   transferSelectionError,
 } from "./FinalResult.transferState"
 import { applySupplementalIntakeOverlay } from "./FinalResult.supplementalOverlay"
@@ -322,6 +323,7 @@ export function FinalResult({
             : [
                 {
                   groupId: group.id,
+                  inDraftDossier: group.isPendingDossier === true,
                   document,
                   sessionDocumentId: document.sessionDocumentId,
                 },
@@ -350,6 +352,11 @@ export function FinalResult({
     (entry) =>
       selectedSessionDocumentIds.has(entry.sessionDocumentId) &&
       entry.document.editLock?.locked === true
+  )
+  const selectedHasTransferExcludedDraft = previewDocuments.some(
+    (entry) =>
+      selectedSessionDocumentIds.has(entry.sessionDocumentId) &&
+      (entry.inDraftDossier || isSupplementalPlacementPending(entry.document))
   )
   const userRole = String(user?.role ?? "")
     .trim()
@@ -493,8 +500,9 @@ export function FinalResult({
         activeClusterVersion.current_document_set_revision)
   )
   const sourceHasActiveClusterVersion = Boolean(
-    activeClusterVersionId ||
-    clusterVersions.some((version) => version.status === "active")
+    activeClusterVersion?.status === "active" &&
+    Number(activeClusterVersion.source_document_set_revision ?? 0) ===
+      Number(activeClusterVersion.current_document_set_revision ?? 0)
   )
   const displayedClusterVersionIndex = displayedClusterVersionId
     ? sortedClusterVersions.findIndex(
@@ -1725,6 +1733,10 @@ export function FinalResult({
   }, [previewDocuments, selectedSessionDocumentIds])
 
   const handleTransferSelectedDocuments = useCallback(() => {
+    if (!workingClusterVersionId) {
+      toast.error("Chưa có cluster version đang làm việc để chuyển phông.")
+      return
+    }
     if (sourceHasActiveClusterVersion) {
       toast.error(
         "Phông nguồn đã có kết quả phân loại được duyệt nên không thể chuyển tài liệu đi."
@@ -1734,6 +1746,10 @@ export function FinalResult({
     const selectedEntries = previewDocuments.filter((entry) =>
       selectedSessionDocumentIds.has(entry.sessionDocumentId)
     )
+    if (selectedEntries.some((entry) => entry.inDraftDossier)) {
+      toast.error("Không thể chuyển phông tài liệu đang thuộc hồ sơ nháp.")
+      return
+    }
     if (selectedEntries.some((entry) => entry.document.editLock?.locked)) {
       toast.error("Không thể chuyển phông khi có tài liệu đang được chỉnh sửa.")
       return
@@ -1758,6 +1774,7 @@ export function FinalResult({
     previewDocuments,
     selectedSessionDocumentIds,
     sourceHasActiveClusterVersion,
+    workingClusterVersionId,
   ])
 
   const handleDocumentDeletionCompleted = useCallback(
@@ -1938,9 +1955,11 @@ export function FinalResult({
   const transferSelectedDocumentsDisabled =
     !canTransferDocuments ||
     sourceHasActiveClusterVersion ||
+    !workingClusterVersionId ||
     temporaryFolderUpdateDisabled ||
     selectedDocumentCount === 0 ||
-    selectedHasActiveEditLock
+    selectedHasActiveEditLock ||
+    selectedHasTransferExcludedDraft
   const handleResultTreeSearchNavigate = useCallback(
     (direction: number) => {
       setResultTreeSearchIndex((current) => {
@@ -2045,6 +2064,9 @@ export function FinalResult({
           planVersionId,
           workingClusterVersionId
         )
+        if (!response.cluster_version_id) {
+          throw new Error("Kết quả sắp xếp hồ sơ không trả về cluster version.")
+        }
         await applyCompletedSort(
           response.cluster_version_id,
           `Đã sắp xếp ${response.sorted_dossier_count ?? 0} hồ sơ đủ điều kiện trong mục.`

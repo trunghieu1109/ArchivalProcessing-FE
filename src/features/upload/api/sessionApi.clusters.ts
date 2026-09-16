@@ -387,6 +387,7 @@ export async function enqueueClusterBuild(
     source?: string
     batch_size?: number
     dossier_build_strategy?: DossierBuildStrategy
+    apply_ready_supplemental_intakes?: boolean
   } = {}
 ): Promise<Record<string, unknown>> {
   return requestJson<Record<string, unknown>>(
@@ -408,6 +409,7 @@ export async function ensureClusterBuild(
     source?: string
     batch_size?: number
     dossier_build_strategy?: DossierBuildStrategy
+    apply_ready_supplemental_intakes?: boolean
   } = {}
 ): Promise<EnsureClusterBuildResponse> {
   return requestJson<EnsureClusterBuildResponse>(

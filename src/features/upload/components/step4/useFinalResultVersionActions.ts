@@ -105,6 +105,7 @@ export function useFinalResultVersionActions(context: Record<string, any>) {
       )
       const response = await ensureClusterBuild(sessionId, {
         source: forceFileRegister ? "user_file_register" : "user_feedback",
+        apply_ready_supplemental_intakes: true,
         ...(forceFileRegister
           ? { dossier_build_strategy: "file_register" as const }
           : {}),

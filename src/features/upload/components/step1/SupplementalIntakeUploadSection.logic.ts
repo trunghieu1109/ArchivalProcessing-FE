@@ -23,6 +23,7 @@ export interface SupplementalNewPathLevel {
   type: string
   criteria: string[]
   definition: string
+  isYear: boolean
 }
 
 export interface SupplementalNewPathChoice {
@@ -109,10 +110,12 @@ export function supplementalNewPathLevels(
   }
   groups.forEach((group) => visit(group, 0))
 
-  const depthCount = Math.max(
-    criterias.length,
-    groupsByDepth.size > 0 ? Math.max(...groupsByDepth.keys()) + 1 : 0
-  )
+  // The active hierarchy is authoritative for the number of levels. Criteria
+  // decorate those levels; stale/extra criteria must not create phantom rows.
+  const depthCount =
+    groupsByDepth.size > 0
+      ? Math.max(...groupsByDepth.keys()) + 1
+      : criterias.length
   return Array.from({ length: depthCount }, (_, depth) => {
     const depthGroups = groupsByDepth.get(depth) ?? []
     const observedType =
@@ -124,17 +127,20 @@ export function supplementalNewPathLevels(
           normalizedLevelType(item.group_level) ===
             normalizedLevelType(observedType)
       ) ?? criterias[depth]
+    const criteria = [...(matchingCriteria?.criteria ?? [])]
+    const type =
+      matchingCriteria?.group_level.trim() ||
+      observedType ||
+      `level-${depth + 1}`
     return {
       depth,
-      type:
-        matchingCriteria?.group_level.trim() ||
-        observedType ||
-        `level-${depth + 1}`,
-      criteria: [...(matchingCriteria?.criteria ?? [])],
+      type,
+      criteria,
       definition:
         depthGroups
           .find((group) => group.definition.trim())
           ?.definition.trim() ?? "",
+      isYear: isSupplementalYearLevel(type, criteria),
     }
   })
 }
@@ -190,14 +196,27 @@ export function supplementalClassificationPathFromChoices(
 
 export function sanitizeSupplementalGroupName(
   type: string,
-  value: string
+  value: string,
+  criteria: string[] = []
 ): string {
-  return isSupplementalYearLevel(type) ? value.replace(/\D/g, "") : value
+  return isSupplementalYearLevel(type, criteria)
+    ? value.replace(/\D/g, "")
+    : value
 }
 
-export function isSupplementalYearLevel(type: string): boolean {
+export function isSupplementalYearLevel(
+  type: string,
+  criteria: string[] = []
+): boolean {
   const normalized = normalizedLevelType(type)
-  return normalized === "year" || normalized === "nam"
+  if (normalized === "year" || normalized === "nam") return true
+  return criteria.some((item) => {
+    const normalizedCriterion = normalizedLevelType(item)
+    return (
+      normalizedCriterion.includes("nam") ||
+      normalizedCriterion.includes("year")
+    )
+  })
 }
 
 export function parseSupplementalClassificationPath(

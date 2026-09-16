@@ -176,12 +176,14 @@ describe("supplemental intake upload form", () => {
     expect(levels).toEqual([
       {
         depth: 0,
+        isYear: false,
         type: "series",
         criteria: ["Lĩnh vực"],
         definition: "Theo lĩnh vực hoạt động",
       },
       {
         depth: 1,
+        isYear: true,
         type: "year",
         criteria: ["Năm hình thành"],
         definition: "",
@@ -203,6 +205,96 @@ describe("supplemental intake upload form", () => {
     expect(isSupplementalYearLevel("Năm")).toBe(true)
     expect(sanitizeSupplementalGroupName("subject", "Tài chính 2026")).toBe(
       "Tài chính 2026"
+    )
+  })
+
+  it("uses active hierarchy depth and ignores extra stale criteria rows", () => {
+    const groups = [
+      {
+        id: "root-a",
+        name: "Administration",
+        type: "level-1",
+        definition: "",
+        children: [
+          {
+            id: "leaf-a",
+            name: "2025",
+            type: "level-2",
+            definition: "",
+            children: [],
+          },
+        ],
+      },
+    ]
+
+    const levels = supplementalNewPathLevels(groups, [
+      { group_level: "level-1", criteria: ["Subject"] },
+      { group_level: "level-2", criteria: ["Year created"] },
+      { group_level: "level-3", criteria: ["Stale criterion"] },
+    ])
+
+    expect(levels).toHaveLength(2)
+    expect(levels.map((level) => level.type)).toEqual(["level-1", "level-2"])
+  })
+
+  it("recognizes a year level from criteria even when its type is generic", () => {
+    const groups = [
+      {
+        id: "root-a",
+        name: "Administration",
+        type: "level-1",
+        definition: "",
+        children: [
+          {
+            id: "leaf-a",
+            name: "2025",
+            type: "level-2",
+            definition: "",
+            children: [],
+          },
+        ],
+      },
+    ]
+    const levels = supplementalNewPathLevels(groups, [
+      { group_level: "level-1", criteria: ["Subject"] },
+      { group_level: "level-2", criteria: ["Year created"] },
+    ])
+
+    expect(levels[1].isYear).toBe(true)
+    expect(
+      sanitizeSupplementalGroupName(
+        levels[1].type,
+        "Year 20a26",
+        levels[1].criteria
+      )
+    ).toBe("2026")
+  })
+
+  it("does not offer an active-plan child below a newly entered parent", () => {
+    const targets = flattenSupplementalClassificationTargets([
+      {
+        id: "root-a",
+        name: "Root A",
+        type: "level-1",
+        definition: "",
+        children: [
+          {
+            id: "leaf-a",
+            name: "Leaf A",
+            type: "level-2",
+            definition: "",
+            children: [],
+          },
+        ],
+      },
+    ])
+    const choices = [
+      { kind: "new" as const, groupId: "", name: "New root" },
+      { kind: "" as const, groupId: "", name: "" },
+    ]
+
+    expect(supplementalExistingOptionsForNewPath(targets, choices, 1)).toEqual(
+      []
     )
   })
 })

@@ -25,6 +25,7 @@ export interface DraggedDocument {
 
 export interface PreviewDocumentEntry {
   groupId: string
+  inDraftDossier: boolean
   document: ClusterDocument
   sessionDocumentId: number
 }

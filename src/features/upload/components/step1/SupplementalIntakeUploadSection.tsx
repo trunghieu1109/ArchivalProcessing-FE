@@ -26,7 +26,6 @@ import { cn } from "@/shared/lib/utils"
 import {
   cleanSupplementalDossierMetadata,
   flattenSupplementalClassificationTargets,
-  isSupplementalYearLevel,
   sanitizeSupplementalGroupName,
   selectedSupplementalClassificationLeaf,
   supplementalClassificationPathFromChoices,
@@ -447,7 +446,7 @@ export const SupplementalIntakeUploadSection = forwardRef<
                       : choice?.kind === "new"
                         ? "__new__"
                         : ""
-                  const yearLevel = isSupplementalYearLevel(level.type)
+                  const yearLevel = level.isYear
                   return (
                     <div
                       key={level.depth}
@@ -528,7 +527,8 @@ export const SupplementalIntakeUploadSection = forwardRef<
                           onChange={(event) => {
                             const name = sanitizeSupplementalGroupName(
                               level.type,
-                              event.target.value
+                              event.target.value,
+                              level.criteria
                             )
                             setNewPathChoices((current) => {
                               const next = [...current]

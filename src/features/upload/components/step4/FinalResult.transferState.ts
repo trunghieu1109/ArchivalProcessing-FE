@@ -66,6 +66,11 @@ export function supplementalPlacementDetails(
 export function transferSelectionError(
   documents: ClusterDocument[]
 ): string | null {
+  const supplementalDrafts = documents.filter(isSupplementalPlacementPending)
+  if (supplementalDrafts.length > 0) {
+    return "Không thể chuyển phông tài liệu bổ sung chưa được cập nhật vào hồ sơ."
+  }
+
   const transferLocked = documents.filter(isDocumentTransferLocked)
   if (transferLocked.length > 0) {
     return transferLocked.length === 1
