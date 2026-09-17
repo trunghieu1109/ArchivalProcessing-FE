@@ -16,10 +16,10 @@ test("keeps pre-clustering deletion available while hiding it in dossier step", 
   assert.equal(SHOW_DOCUMENT_DELETION_IN_DOSSIER_STEP, false)
 })
 
-test("temporarily hides unstable frontend entry points and defaults metadata export to mixed", () => {
+test("keeps enabled entry points visible while retaining the other temporary UI settings", () => {
   assert.equal(SHOW_QUICK_DOSSIER_BUILD, false)
   assert.equal(SHOW_DOSSIER_TITLE_CATALOG, false)
-  assert.equal(SHOW_DOSSIER_SUGGESTIONS, false)
-  assert.equal(SHOW_DOCUMENT_TRANSFER, false)
+  assert.equal(SHOW_DOSSIER_SUGGESTIONS, true)
+  assert.equal(SHOW_DOCUMENT_TRANSFER, true)
   assert.equal(DEFAULT_METADATA_EXPORT_MODE, "combined")
 })
