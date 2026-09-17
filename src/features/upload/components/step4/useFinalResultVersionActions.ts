@@ -23,6 +23,7 @@ import {
   regularDossierCount,
   temporaryDocumentCount,
 } from "./FinalResult.metadataUtils"
+import { SHOW_SUPPLEMENTAL_INTAKE } from "./temporaryFeatureVisibility"
 
 const NO_CLUSTER_VERSION = "__none__"
 
@@ -105,7 +106,9 @@ export function useFinalResultVersionActions(context: Record<string, any>) {
       )
       const response = await ensureClusterBuild(sessionId, {
         source: forceFileRegister ? "user_file_register" : "user_feedback",
-        apply_ready_supplemental_intakes: true,
+        ...(SHOW_SUPPLEMENTAL_INTAKE
+          ? { apply_ready_supplemental_intakes: true }
+          : {}),
         ...(forceFileRegister
           ? { dossier_build_strategy: "file_register" as const }
           : {}),

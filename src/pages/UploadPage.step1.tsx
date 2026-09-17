@@ -14,7 +14,10 @@ import {
   type ExistingSessionUploadPurpose,
 } from "@/features/upload/components/step1/UploadSessionSetupPanel"
 import { DossierTitleCatalogSection } from "@/features/upload/components/step1/DossierTitleCatalogSection"
-import { SHOW_DOSSIER_TITLE_CATALOG } from "@/features/upload/components/step4/temporaryFeatureVisibility"
+import {
+  SHOW_DOSSIER_TITLE_CATALOG,
+  SHOW_SUPPLEMENTAL_INTAKE,
+} from "@/features/upload/components/step4/temporaryFeatureVisibility"
 import { workflowActionPanelClassName } from "@/features/upload/components/WorkflowActionPanel"
 import { cn } from "@/shared/lib/utils"
 import { easeOut } from "./UploadPage.planUtils"
@@ -112,7 +115,9 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
     useState<ExistingSessionUploadPurpose>("session_data")
   const supplementalIntakeRef = useRef<SupplementalIntakeUploadHandle>(null)
   const dossierIntakeUpload =
-    existingSessionMode && uploadPurpose === "dossier_intake"
+    SHOW_SUPPLEMENTAL_INTAKE &&
+    existingSessionMode &&
+    uploadPurpose === "dossier_intake"
   const dossierPrimaryActionDisabled =
     primaryActionPending ||
     allProcessing ||
@@ -235,28 +240,35 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
         folderUploadFocusKey={folderUploadFocusKey}
         onPendingUploadChange={onPendingDataUploadChange}
         existingSessionMode={existingSessionMode}
+        supplementalIntakeEnabled={SHOW_SUPPLEMENTAL_INTAKE}
         uploadPurpose={uploadPurpose}
         syncUploadPurpose={setUploadPurpose}
-        prepareSupplementalIntake={() => {
-          const handle = supplementalIntakeRef.current
-          if (!handle) {
-            return Promise.reject(
-              new Error("Form bổ sung theo hồ sơ chưa sẵn sàng.")
-            )
-          }
-          return handle.prepareIntake()
-        }}
+        prepareSupplementalIntake={
+          SHOW_SUPPLEMENTAL_INTAKE
+            ? () => {
+                const handle = supplementalIntakeRef.current
+                if (!handle) {
+                  return Promise.reject(
+                    new Error("Form bổ sung theo hồ sơ chưa sẵn sàng.")
+                  )
+                }
+                return handle.prepareIntake()
+              }
+            : undefined
+        }
         supplementalIntakeFields={
-          <SupplementalIntakeUploadSection
-            ref={supplementalIntakeRef}
-            sessionId={sessionId}
-            activeClusterVersionId={activeClusterVersionId}
-            activePlanVersionId={activePlanVersionId}
-            classificationGroups={activeClassificationGroups}
-            classificationCriteria={activeClassificationCriteria}
-            initialDossierGroups={clusterGroups}
-            disabled={allProcessing || sessionLoading}
-          />
+          SHOW_SUPPLEMENTAL_INTAKE ? (
+            <SupplementalIntakeUploadSection
+              ref={supplementalIntakeRef}
+              sessionId={sessionId}
+              activeClusterVersionId={activeClusterVersionId}
+              activePlanVersionId={activePlanVersionId}
+              classificationGroups={activeClassificationGroups}
+              classificationCriteria={activeClassificationCriteria}
+              initialDossierGroups={clusterGroups}
+              disabled={allProcessing || sessionLoading}
+            />
+          ) : null
         }
       />
 

@@ -9,7 +9,10 @@ export const SHOW_QUICK_DOSSIER_BUILD = false
 export const SHOW_DOSSIER_TITLE_CATALOG = false
 
 // TEMPORARY_HIDE_TAG: DOCUMENT_TRANSFER
-export const SHOW_DOCUMENT_TRANSFER = true
+export const SHOW_DOCUMENT_TRANSFER = false
+
+// TEMPORARY_HIDE_TAG: SUPPLEMENTAL_INTAKE
+export const SHOW_SUPPLEMENTAL_INTAKE = false
 
 // The public UI currently exports the mixed/combined metadata workbook only.
 export const DEFAULT_METADATA_EXPORT_MODE = "combined" as const

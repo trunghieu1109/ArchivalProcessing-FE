@@ -48,6 +48,7 @@ import {
   SHOW_DOCUMENT_DELETION,
   SHOW_DOCUMENT_DELETION_IN_DOSSIER_STEP,
   SHOW_DOCUMENT_TRANSFER,
+  SHOW_SUPPLEMENTAL_INTAKE,
 } from "./temporaryFeatureVisibility"
 import {
   DocumentTransferDialog,
@@ -275,18 +276,22 @@ export function FinalResult({
   )
   const displayGroups = useMemo(
     () =>
-      applySupplementalIntakeOverlay(
-        groups,
-        supplementalIntakes,
-        metadataItems
-      ),
+      SHOW_SUPPLEMENTAL_INTAKE
+        ? applySupplementalIntakeOverlay(
+            groups,
+            supplementalIntakes,
+            metadataItems
+          )
+        : groups,
     [groups, metadataItems, supplementalIntakes]
   )
   const supplementalVerificationPendingCount = useMemo(
     () =>
-      supplementalIntakes.filter((intake) =>
-        SUPPLEMENTAL_VERIFICATION_PENDING_STATUSES.has(intake.status)
-      ).length,
+      SHOW_SUPPLEMENTAL_INTAKE
+        ? supplementalIntakes.filter((intake) =>
+            SUPPLEMENTAL_VERIFICATION_PENDING_STATUSES.has(intake.status)
+          ).length
+        : 0,
     [supplementalIntakes]
   )
   const tree = useMemo(
@@ -449,6 +454,7 @@ export function FinalResult({
   )
   const pendingClusterVersionId = pendingClusterVersion?.id ?? null
   const supplementalPendingUpdateDocumentCount = useMemo(() => {
+    if (!SHOW_SUPPLEMENTAL_INTAKE) return 0
     const pendingDocuments = clusteringPending?.documents ?? []
     if (!pendingClusterVersion) return pendingDocuments.length
     const workingDocumentIds = new Set(
@@ -531,7 +537,7 @@ export function FinalResult({
   }, [displayedClusterVersion, metadataItems])
 
   useEffect(() => {
-    if (!sessionId) {
+    if (!SHOW_SUPPLEMENTAL_INTAKE || !sessionId) {
       const resetId = window.setTimeout(() => {
         setSupplementalIntakes([])
         setClusteringPending(null)

@@ -36,6 +36,7 @@ import { hasPendingSupplementalDocuments } from "./FinalResult.transferState"
 import {
   SHOW_DOSSIER_CODE,
   SHOW_DOSSIER_SUGGESTIONS,
+  SHOW_SUPPLEMENTAL_INTAKE,
 } from "./temporaryFeatureVisibility"
 
 export function ResultNode({
@@ -416,31 +417,33 @@ export function ResultNode({
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5 pl-1">
-          {isClassificationLeaf && node.classificationGroupId && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              title="Sắp xếp các hồ sơ đủ điều kiện trong mục này"
-              disabled={
-                temporaryFolderUpdateDisabled ||
-                sortingScope === `leaf:${node.classificationGroupId}`
-              }
-              onClick={(event) => {
-                event.stopPropagation()
-                onSortLeafDossiers(node.classificationGroupId!)
-              }}
-            >
-              {sortingScope === `leaf:${node.classificationGroupId}` ? (
-                <Loader2 data-icon="inline-start" className="animate-spin" />
-              ) : (
-                <ListOrdered data-icon="inline-start" />
-              )}
-              <span className={cn(compact && "hidden 2xl:inline")}>
-                Sắp xếp hồ sơ
-              </span>
-            </Button>
-          )}
+          {SHOW_SUPPLEMENTAL_INTAKE &&
+            isClassificationLeaf &&
+            node.classificationGroupId && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                title="Sắp xếp các hồ sơ đủ điều kiện trong mục này"
+                disabled={
+                  temporaryFolderUpdateDisabled ||
+                  sortingScope === `leaf:${node.classificationGroupId}`
+                }
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onSortLeafDossiers(node.classificationGroupId!)
+                }}
+              >
+                {sortingScope === `leaf:${node.classificationGroupId}` ? (
+                  <Loader2 data-icon="inline-start" className="animate-spin" />
+                ) : (
+                  <ListOrdered data-icon="inline-start" />
+                )}
+                <span className={cn(compact && "hidden 2xl:inline")}>
+                  Sắp xếp hồ sơ
+                </span>
+              </Button>
+            )}
           {isDropFolder && canDrop && (
             <span className="flex items-center gap-1 rounded-full bg-[#DBEAFE] px-2 py-1 text-[10px] font-semibold text-[#0052FF]">
               <MoveRight className="size-3" />
@@ -529,7 +532,7 @@ export function ResultNode({
               </span>
             </Button>
           )}
-          {isDossier && group && (
+          {SHOW_SUPPLEMENTAL_INTAKE && isDossier && group && (
             <Button
               type="button"
               variant="outline"

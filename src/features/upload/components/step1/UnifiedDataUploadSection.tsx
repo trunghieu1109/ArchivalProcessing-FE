@@ -95,6 +95,7 @@ interface UnifiedDataUploadSectionProps {
   folderUploadFocusKey?: string | null
   onPendingUploadChange: (pending: PendingDataUploadSummary | null) => void
   existingSessionMode: boolean
+  supplementalIntakeEnabled: boolean
   uploadPurpose: ExistingSessionUploadPurpose
   syncUploadPurpose: (purpose: ExistingSessionUploadPurpose) => void
   supplementalIntakeFields?: ReactNode
@@ -132,6 +133,7 @@ export const UnifiedDataUploadSection = forwardRef<
     folderUploadFocusKey,
     onPendingUploadChange,
     existingSessionMode,
+    supplementalIntakeEnabled,
     uploadPurpose,
     syncUploadPurpose,
     supplementalIntakeFields,
@@ -146,7 +148,9 @@ export const UnifiedDataUploadSection = forwardRef<
   const zipInputRef = useRef<HTMLInputElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
   const dossierIntakeUpload =
-    existingSessionMode && uploadPurpose === "dossier_intake"
+    supplementalIntakeEnabled &&
+    existingSessionMode &&
+    uploadPurpose === "dossier_intake"
   const [dragging, setDragging] = useState(false)
   const [detecting, setDetecting] = useState(false)
   const [startingFolder, setStartingFolder] = useState(false)
@@ -589,7 +593,7 @@ export const UnifiedDataUploadSection = forwardRef<
         }}
       />
 
-      {existingSessionMode && (
+      {existingSessionMode && supplementalIntakeEnabled && (
         <div className="mt-5 border-t border-[#E2E8F0] pt-5">
           <div className="grid gap-3 sm:grid-cols-[minmax(0,15rem)_minmax(0,1fr)] sm:items-end">
             <label className="block text-sm font-medium text-[#334155]">
