@@ -6,6 +6,8 @@ import { FinalizeArtifactsPage } from "@/pages/FinalizeArtifactsPage"
 import { LoginPage } from "@/pages/LoginPage"
 import { SessionsPage } from "@/pages/SessionsPage"
 import { UploadPage } from "@/pages/UploadPage"
+import { HomogeneousClustersPage } from "@/pages/HomogeneousClustersPage"
+import { ProvisionalDossiersPage } from "@/pages/ProvisionalDossiersPage"
 import { useAuth } from "@/features/auth/lib/AuthContext"
 
 export function App() {
@@ -42,6 +44,22 @@ export function App() {
         element={
           <RequireAuth>
             <FinalizeArtifactsPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/sessions/:sessionId/clusters/review"
+        element={
+          <RequireAuth>
+            <HomogeneousClustersPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/sessions/:sessionId/dossiers/compose"
+        element={
+          <RequireAuth>
+            <ProvisionalDossiersPage />
           </RequireAuth>
         }
       />

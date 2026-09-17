@@ -62,6 +62,7 @@ export interface ClusterPlacement {
   requires_review: boolean
   page_count: number | null
   sheet_count: number | null
+  membership_similarity?: number | null
   source_page_count?: number | null
   output_page_count?: number | null
   document_numbering_mode?: DocumentNumberingMode | null
@@ -430,6 +431,22 @@ export interface SessionClusterSummary {
   is_temporary?: boolean
   created_from_temporary_folder?: boolean
   title: string
+  content_summary?: string
+  summary_status?: string
+  statistics?: {
+    document_count?: number
+    document_type_counts?: Record<string, number>
+    start_date?: string | null
+    end_date?: string | null
+    page_count?: number | null
+    sheet_count?: number | null
+    [key: string]: unknown
+  }
+  cohesion_mean?: number | null
+  cohesion_p10?: number | null
+  inlier_ratio?: number | null
+  metric_mode?: string | null
+  metric_sample_size?: number
   dossier: SessionDossierSummary | null
   dossiers?: SessionDossierSummary[]
   status: string
@@ -491,6 +508,7 @@ export interface ClusterVersionResponse extends ApiRevisionMetadata {
   version_number: number
   source: string
   status: string
+  workflow_kind?: "classic" | "homogeneous" | string
   previous_version_id: string | null
   plan_version_id: string | null
   summary: Record<string, unknown>
@@ -502,6 +520,63 @@ export interface ClusterVersionResponse extends ApiRevisionMetadata {
   source_document_set_revision?: number
   current_document_set_revision?: number
   clusters?: SessionClusterSummary[]
+}
+
+export interface ProvisionalDossierCluster {
+  cluster_id: string
+  title: string
+  content_summary: string
+  document_count: number
+  cohesion_mean: number | null
+  position_index: number
+}
+
+export interface ProvisionalDossier {
+  id: number
+  session_id: string
+  source_cluster_version_id: string
+  generated_title: string
+  title_override: string | null
+  title: string
+  status: "draft" | "promoted" | string
+  revision: number
+  statistics: {
+    cluster_count?: number
+    document_count?: number
+    document_type_counts?: Record<string, number>
+    start_date?: string | null
+    end_date?: string | null
+    cohesion_mean?: number | null
+    [key: string]: unknown
+  }
+  created_by?: string | null
+  promoted_at?: string | null
+  created_at: string
+  updated_at: string
+  clusters: ProvisionalDossierCluster[]
+}
+
+export interface ProvisionalDossierListResponse {
+  session_id: string
+  dossiers: ProvisionalDossier[]
+  composition?: {
+    eligible_cluster_count: number
+    assigned_cluster_count: number
+    unassigned_cluster_count: number
+  }
+}
+
+export interface ProvisionalDossierPromotionResponse {
+  provisional_dossier?: ProvisionalDossier
+  promoted_count?: number
+  remaining_draft_count?: number
+  unassigned_cluster_count?: number
+  build_job?: {
+    job_id: number
+    job_type: string
+    status: string
+    created: boolean
+  } | null
 }
 
 export interface ClusterVersionListResponse extends ApiRevisionMetadata {

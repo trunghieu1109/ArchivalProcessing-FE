@@ -6,9 +6,8 @@ import { useAuth } from "@/features/auth/lib/AuthContext"
 import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import type { SessionMetadataValues } from "@/features/upload/components/SessionMetadataBar"
 import {
-  ensureClusterBuild,
+  startHomogeneousClustering,
   deleteDossierTitleCatalog,
-  getActivePlan,
   getWorkingPlan,
   listSessionEvents,
   uploadDossierTitleCatalog,
@@ -213,58 +212,35 @@ export function UploadPage() {
       toast.error("Chưa có session để lập hồ sơ.")
       return
     }
-    const missingInputs = missingDossierBuildInputs({
-      hasArrangementPlan: doc1Has,
-      hasRetentionSchedule: doc2Has,
-      hasVerifiedDocuments,
-      hasActivePlan: Boolean(activePlanVersionId),
-    })
-    if (missingInputs.length > 0) {
-      toast.error(dossierBuildMissingMessage(missingInputs))
+    if (!hasVerifiedDocuments) {
+      toast.error(dossierBuildMissingMessage(["verified_documents"]))
       return
     }
 
     try {
-      let buildStrategy = activePlanSettings.dossierBuildStrategy
-      if (activePlanVersionId && activeParsedPlan.groups.length === 0) {
-        try {
-          const activePlan = await getActivePlan(currentSessionId)
-          if (
-            activePlan &&
-            isSessionViewActive(currentSessionViewScope, currentSessionId)
-          ) {
-            applyActivePlanResponse(activePlan)
-            buildStrategy = activePlanBuildStrategy(activePlan)
-          }
-        } catch {
-          // Hydration is best-effort. The backend remains authoritative for
-          // validating the active plan when ensureClusterBuild is requested.
-        }
-      }
-      const response = await ensureClusterBuild(currentSessionId, {
-        source: "user_view_results",
-        dossier_build_strategy: buildStrategy,
-      })
+      const response = await startHomogeneousClustering(currentSessionId)
       if (!isSessionViewActive(currentSessionViewScope, currentSessionId)) {
         return
       }
       if (response.status === "queued") {
-        toast.success("Đã gửi task lập hồ sơ từ tài liệu đã xác nhận.")
+        toast.success("Đã bắt đầu phân cụm tài liệu theo độ thuần nhất cao.")
       } else if (response.status === "already_queued_or_running") {
-        toast.info("Task lập hồ sơ đang được xử lý.")
+        toast.info("Task phân cụm đang được xử lý.")
       } else {
-        toast.info("Hồ sơ đã được lập với dữ liệu mới nhất.")
+        toast.info("Đang mở kết quả phân cụm mới nhất.")
       }
     } catch (err) {
       toast.error(
         err instanceof Error
-          ? `Không gửi được task lập hồ sơ: ${err.message}`
-          : "Không gửi được task lập hồ sơ."
+          ? `Không gửi được task phân cụm: ${err.message}`
+          : "Không gửi được task phân cụm."
       )
       return
     }
 
-    goTo(4, currentSessionId)
+    navigate(
+      `/sessions/${encodeURIComponent(currentSessionId)}/clusters/review`
+    )
   }
 
   const handleFinalizeAutoStartHandled = useCallback(() => {
