@@ -18,6 +18,7 @@ export interface DocumentPreviewUrlResponse {
   document_id: number
   document_numbering_mode?: DocumentNumberingMode | null
   data_path: string
+  original_path?: string | null
   download_url?: string | null
   expires_in?: number | null
   expires_at?: string | null

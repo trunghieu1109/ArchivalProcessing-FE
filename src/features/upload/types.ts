@@ -131,6 +131,7 @@ export interface PdfMetadata {
   metadata_retry_disabled_reason?: string | null
   document_id: string
   data_path: string
+  original_path?: string | null
   import_action?: string | null
   metadata_batch_id?: string | null
   metadata_batch_name?: string | null

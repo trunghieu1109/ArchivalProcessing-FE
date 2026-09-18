@@ -35,6 +35,7 @@ export interface SupplementalIntakeDocument {
   metadata_final?: boolean
   remote_metadata_status?: string | null
   data_path?: string | null
+  original_path?: string | null
   light_metadata?: Record<string, unknown>
   lifecycle_status?: string
   preview_available?: boolean

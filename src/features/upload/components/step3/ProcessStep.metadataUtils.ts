@@ -191,6 +191,7 @@ export function documentResponseToPdfMetadata(
     ocr_batch_id: document.ocr_batch_id,
     document_id: document.document_id,
     data_path: document.data_path,
+    original_path: document.original_path,
     import_action: document.import_action,
     metadata_batch_id: document.metadata_batch_id,
     metadata_batch_name: document.metadata_batch_name,
