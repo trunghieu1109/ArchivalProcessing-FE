@@ -131,21 +131,21 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
     }
 
     const planFile = analyzeArrangement
-      ? cache.arrangementPlanUpload?.local_cached_path
+      ? sessionInputReference(cache.arrangementPlanUpload)
       : undefined
     const retentionFiles = analyzeRetention
       ? retentionUploadPaths(cache.retentionUploads)
       : []
     if (analyzeArrangement && !planFile) {
       if (isWorkflowActive()) {
-        toast.error("Backend chưa trả về đường dẫn local cho file phương án.")
+        toast.error("Backend chưa trả về tham chiếu cho file phương án.")
       }
       return
     }
     if (analyzeRetention && retentionFiles.length === 0) {
       if (isWorkflowActive()) {
         toast.error(
-          "Backend chưa trả về đường dẫn local cho file thời hạn bảo quản."
+          "Backend chưa trả về tham chiếu cho file thời hạn bảo quản."
         )
       }
       return
@@ -498,7 +498,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
         const retentionFiles = retentionUploadPaths(retentionPlan)
         if (retentionFileDrafts.length > 0 && retentionFiles.length === 0) {
           throw new Error(
-            "Backend chưa trả về đường dẫn local cho file thông tư."
+            "Backend chưa trả về tham chiếu cho file thông tư."
           )
         }
         if (retentionFiles.length > 0) {
@@ -539,14 +539,14 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
         return
       }
 
-      const planFile = arrangementPlan?.local_cached_path
+      const planFile = sessionInputReference(arrangementPlan)
       const retentionFiles = retentionUploadPaths(retentionPlan)
       if (
         !planFile ||
         (retentionFileDrafts.length > 0 && retentionFiles.length === 0)
       ) {
         throw new Error(
-          "Backend chưa trả về đường dẫn local cho file phương án hoặc thông tư."
+          "Backend chưa trả về tham chiếu cho file phương án hoặc thông tư."
         )
       }
 
@@ -612,6 +612,18 @@ function retentionUploadPaths(
   uploads: SessionInputUploadResponse[] | null | undefined
 ): string[] {
   return (uploads ?? [])
-    .map((upload) => upload.local_cached_path?.trim() ?? "")
+    .map(sessionInputReference)
     .filter((path): path is string => Boolean(path))
+}
+
+function sessionInputReference(
+  upload: SessionInputUploadResponse | null | undefined
+): string {
+  return (
+    upload?.local_cached_path?.trim() ||
+    upload?.data_path?.trim() ||
+    upload?.remote_object_name?.trim() ||
+    upload?.remote_file_id?.trim() ||
+    ""
+  )
 }

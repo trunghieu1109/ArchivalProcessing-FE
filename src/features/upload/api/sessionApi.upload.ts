@@ -75,6 +75,17 @@ export async function uploadSessionInput(
   if (fileType === "raw_zip") {
     return uploadRawZipSessionInputDirect(sessionId, file, uploadOptions)
   }
+  if (
+    DIRECT_PRESIGNED_UPLOAD_ENABLED &&
+    (fileType === "arrangement_plan" || fileType === "retention_schedule")
+  ) {
+    return uploadDocxSessionInputDirect(
+      sessionId,
+      fileType,
+      file,
+      uploadOptions
+    )
+  }
   const form = new FormData()
   form.append("file_type", fileType)
   form.append("created_by", uploadOptions.createdBy ?? "ui")
@@ -150,8 +161,9 @@ async function uploadRawZipSessionInputDirect(
   }
   options.onProgress?.(uploadProgressSnapshot("uploading", 0, file.size))
   if (!DIRECT_PRESIGNED_UPLOAD_ENABLED) {
-    return proxyPresignedRawZipUpload(
+    return proxyPresignedSessionInputUpload(
       sessionId,
+      "raw_zip",
       file,
       contentType,
       presign,
@@ -172,8 +184,9 @@ async function uploadRawZipSessionInputDirect(
     )
   } catch (error) {
     if (!(error instanceof PresignedUploadNetworkError)) throw error
-    return proxyPresignedRawZipUpload(
+    return proxyPresignedSessionInputUpload(
       sessionId,
+      "raw_zip",
       file,
       contentType,
       presign,
@@ -196,7 +209,80 @@ async function uploadRawZipSessionInputDirect(
       created_by: options.createdBy ?? "ui",
       upload_mode: options.uploadMode ?? "append",
       client_upload_id: clientUploadId,
-      ...(options.maxFiles === undefined ? {} : { max_files: options.maxFiles }),
+      ...(options.maxFiles === undefined
+        ? {}
+        : { max_files: options.maxFiles }),
+    },
+    options.signal
+  )
+  options.onProgress?.(uploadProgressSnapshot("done", file.size, file.size))
+  return completed
+}
+
+async function uploadDocxSessionInputDirect(
+  sessionId: string,
+  fileType: "arrangement_plan" | "retention_schedule",
+  file: File,
+  options: UploadSessionInputOptions
+): Promise<SessionInputUploadResponse> {
+  const clientUploadId = options.uploadJobId ?? createClientId()
+  const contentType = file.type || defaultContentType(file.name)
+  const presign = await postJson<SessionInputRemoteUploadPresignResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/inputs/remote-upload/presign`,
+    {
+      file_type: fileType,
+      file_name: file.name,
+      content_type: contentType,
+      size_bytes: file.size,
+      created_by: options.createdBy ?? "ui",
+      client_upload_id: clientUploadId,
+    },
+    options.signal
+  )
+  if (!presign.remote_file_id) {
+    throw new Error("Chỉnh Lý chưa trả về remote_file_id cho file DOCX.")
+  }
+
+  options.onProgress?.(uploadProgressSnapshot("uploading", 0, file.size))
+  try {
+    await globalUploadSemaphore.use(
+      options.uploadJobId ?? `docx:${sessionId}:${clientUploadId}`,
+      () =>
+        putPresignedFile(
+          presign.upload_url,
+          file,
+          contentType,
+          options.onProgress,
+          options.signal
+        )
+    )
+  } catch (error) {
+    if (!(error instanceof PresignedUploadNetworkError)) throw error
+    return proxyPresignedSessionInputUpload(
+      sessionId,
+      fileType,
+      file,
+      contentType,
+      presign,
+      options
+    )
+  }
+
+  options.onProgress?.(
+    uploadProgressSnapshot("processing", file.size, file.size)
+  )
+  const completed = await postJson<SessionInputUploadResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/inputs/remote-upload/complete`,
+    {
+      file_type: fileType,
+      file_name: file.name,
+      content_type: contentType,
+      size_bytes: file.size,
+      remote_batch_id: presign.remote_batch_id,
+      remote_file_id: presign.remote_file_id,
+      upload_url: presign.upload_url,
+      created_by: options.createdBy ?? "ui",
+      client_upload_id: clientUploadId,
     },
     options.signal
   )
@@ -325,7 +411,9 @@ async function uploadRawZipSessionInputChunked(
         delete_parts: true,
         created_by: options.createdBy ?? "ui",
         upload_mode: options.uploadMode ?? "append",
-        ...(options.maxFiles === undefined ? {} : { max_files: options.maxFiles }),
+        ...(options.maxFiles === undefined
+          ? {}
+          : { max_files: options.maxFiles }),
       }),
       signal: options.signal,
     }
@@ -512,26 +600,28 @@ async function proxyChunkedPartUpload(
   }
 }
 
-async function proxyPresignedRawZipUpload(
+async function proxyPresignedSessionInputUpload(
   sessionId: string,
+  fileType: "raw_zip" | "arrangement_plan" | "retention_schedule",
   file: File,
   contentType: string,
   presign: SessionInputRemoteUploadPresignResponse,
   options: UploadSessionInputOptions
 ): Promise<SessionInputUploadResponse> {
   const query = new URLSearchParams({
-    file_type: "raw_zip",
+    file_type: fileType,
     file_name: file.name,
     content_type: contentType,
     size_bytes: String(file.size),
     created_by: options.createdBy ?? "ui",
     remote_batch_id: presign.remote_batch_id,
     remote_file_id: presign.remote_file_id ?? "",
-    client_upload_id:
-      options.uploadJobId ?? presign.client_upload_id ?? "",
-    upload_mode: options.uploadMode ?? "append",
+    client_upload_id: options.uploadJobId ?? presign.client_upload_id ?? "",
   })
-  if (options.maxFiles !== undefined) {
+  if (fileType === "raw_zip") {
+    query.set("upload_mode", options.uploadMode ?? "append")
+  }
+  if (fileType === "raw_zip" && options.maxFiles !== undefined) {
     query.set("max_files", String(options.maxFiles))
   }
   const proxyUpload =
@@ -544,7 +634,7 @@ async function proxyPresignedRawZipUpload(
     )
   return withSessionUploadEventProgress(
     sessionId,
-    "raw_zip",
+    fileType,
     file.name,
     presign.remote_file_id ?? null,
     proxyUpload,
