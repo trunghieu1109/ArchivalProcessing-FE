@@ -56,6 +56,7 @@ export interface DigitizationDocument {
   transferred_to_session_document_id?: number | null
   document_id: string
   data_path: string
+  original_path?: string | null
   metadata_batch_id?: string | null
   metadata_batch_name?: string | null
   last_import_job_id?: string | number | null
@@ -219,6 +220,7 @@ export interface NumberingDocumentStatus {
   document_id: string
   file_name: string
   data_path: string
+  original_path?: string | null
   cluster_id: string
   cluster_status?: string | null
   document_change_status?: string | null
@@ -668,6 +670,7 @@ export interface SessionDocumentResponse {
   transferred_to_session_document_id?: number | null
   document_id: string
   data_path: string
+  original_path?: string | null
   file_name: string
   import_action?: string | null
   metadata_batch_id?: string | null
@@ -948,6 +951,7 @@ export interface DocumentDeletionPreviewResponse {
     document_id: string
     file_name: string
     data_path: string
+    original_path?: string | null
     lifecycle_status: string
     generation: number
     remote_ingestion_batch_id?: string | null
@@ -1012,6 +1016,7 @@ export interface DocumentTransferDuplicate {
   document_id: string
   file_name: string
   data_path: string
+  original_path?: string | null
   lifecycle_status: string
   match_types: string[]
 }
@@ -1035,6 +1040,7 @@ export interface DocumentTransferPreviewResponse {
     document_id: string
     file_name: string
     data_path: string
+    original_path?: string | null
     lifecycle_status: string
     remote_ingestion_batch_id?: string | null
     remote_document_id?: string | null
