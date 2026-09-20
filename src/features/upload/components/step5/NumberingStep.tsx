@@ -65,6 +65,8 @@ import { NumberedPdfPreviewPanel } from "./NumberingStep.preview"
 import {
   canPreviewNumberingDocument,
   groupDocumentsByDossier,
+  isNumberingDocumentLocked,
+  isNumberingDossierLocked,
   isNumberingComplete,
   mergeCachedNumberingPage,
   mergeNumberingSummaryResponse,
@@ -183,11 +185,11 @@ export function NumberingStep({
   const [numberingStyleOptions, setNumberingStyleOptions] = useState<
     NumberingStyleOption[]
   >(FALLBACK_NUMBERING_STYLE_OPTIONS)
-  const [updatingDocumentId, setUpdatingDocumentId] = useState<number | null>(
-    null
+  const [updatingDocumentIds, setUpdatingDocumentIds] = useState<Set<number>>(
+    () => new Set()
   )
-  const [retryingDocumentId, setRetryingDocumentId] = useState<number | null>(
-    null
+  const [retryingDocumentIds, setRetryingDocumentIds] = useState<Set<number>>(
+    () => new Set()
   )
   const [error, setError] = useState("")
   const [progressPhase, setProgressPhase] = useState<string | null>(null)
@@ -970,7 +972,11 @@ export function NumberingStep({
           : updateMode === "cascade"
             ? "theo mốc"
             : "tự động"
-      setUpdatingDocumentId(document.session_document_id)
+      setUpdatingDocumentIds((current) => {
+        const next = new Set(current)
+        next.add(document.session_document_id)
+        return next
+      })
       setError("")
       setProgressPhase("loading_data")
       setProgressMessage(`Đang gửi yêu cầu cập nhật số ${modeText}.`)
@@ -1012,7 +1018,11 @@ export function NumberingStep({
         setError(message)
         toast.error(message)
       } finally {
-        setUpdatingDocumentId(null)
+        setUpdatingDocumentIds((current) => {
+          const next = new Set(current)
+          next.delete(document.session_document_id)
+          return next
+        })
       }
     },
     [refreshStatus, sessionId]
@@ -1024,7 +1034,7 @@ export function NumberingStep({
         toast.error("Chưa có session để đánh số lại tài liệu.")
         return
       }
-      if (starting || status?.active) return
+      if (starting || isNumberingDocumentLocked(status, document)) return
 
       const entries = numberingEntries(document)
       const retryEntries = entries
@@ -1044,7 +1054,11 @@ export function NumberingStep({
         return
       }
       const anchorPageNumber = firstEntry.page_number
-      setRetryingDocumentId(document.session_document_id)
+      setRetryingDocumentIds((current) => {
+        const next = new Set(current)
+        next.add(document.session_document_id)
+        return next
+      })
       setError("")
       setProgressPhase("loading_data")
       setProgressMessage(
@@ -1085,10 +1099,14 @@ export function NumberingStep({
         setError(message)
         toast.error(message)
       } finally {
-        setRetryingDocumentId(null)
+        setRetryingDocumentIds((current) => {
+          const next = new Set(current)
+          next.delete(document.session_document_id)
+          return next
+        })
       }
     },
-    [refreshStatus, sessionId, starting, status?.active]
+    [refreshStatus, sessionId, starting, status]
   )
 
   const exportMetadata = useCallback(async () => {
@@ -2073,11 +2091,17 @@ export function NumberingStep({
                   (document) =>
                     isAddedNumberingDocument(document, hasNumberingOutput)
                 )
+                const dossierLocked = isNumberingDossierLocked(
+                  status,
+                  group.dossierId
+                )
+                const dossierRequestPending = group.documents.some(
+                  (document) =>
+                    updatingDocumentIds.has(document.session_document_id) ||
+                    retryingDocumentIds.has(document.session_document_id)
+                )
                 const modeToggleDisabled =
-                  starting ||
-                  Boolean(status?.active) ||
-                  updatingDocumentId !== null ||
-                  retryingDocumentId !== null
+                  starting || dossierLocked || dossierRequestPending
                 const firstDocument = group.documents[0]
                 const metadataCountConflicts =
                   metadataCountConflictsByDossier.get(group.dossierId) ??
@@ -2137,6 +2161,10 @@ export function NumberingStep({
                     />
                     <div className="grid gap-1.5">
                       {group.documents.map((document) => {
+                        const documentLocked = isNumberingDocumentLocked(
+                          status,
+                          document
+                        )
                         const isAddedDocument = isAddedNumberingDocument(
                           document,
                           hasNumberingOutput
@@ -2172,14 +2200,12 @@ export function NumberingStep({
                               setPreviewDocumentId(document.session_document_id)
                             }
                             onUpdateFromPage={updateDocumentNumberFromPage}
-                            updating={
-                              updatingDocumentId ===
+                            updating={updatingDocumentIds.has(
                               document.session_document_id
-                            }
-                            retrying={
-                              retryingDocumentId ===
+                            )}
+                            retrying={retryingDocumentIds.has(
                               document.session_document_id
-                            }
+                            )}
                             retryable={
                               canManageNumbering &&
                               !viewingNumberingHistory &&
@@ -2197,11 +2223,15 @@ export function NumberingStep({
                             disabled={
                               starting ||
                               viewingNumberingHistory ||
-                              Boolean(status?.active) ||
+                              documentLocked ||
                               !canManageNumbering ||
                               Boolean(document.historical_only) ||
-                              updatingDocumentId !== null ||
-                              retryingDocumentId !== null
+                              updatingDocumentIds.has(
+                                document.session_document_id
+                              ) ||
+                              retryingDocumentIds.has(
+                                document.session_document_id
+                              )
                             }
                           />
                         )

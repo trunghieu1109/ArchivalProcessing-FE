@@ -110,6 +110,47 @@ export function isNumberingComplete(status: NumberingStatusResponse): boolean {
   return status.summary.done + status.summary.failed >= total && !status.active
 }
 
+export function isNumberingDossierLocked(
+  status: NumberingStatusResponse | null,
+  dossierId: string
+): boolean {
+  if (!status?.active) return false
+  const jobs = status.active_jobs?.length
+    ? status.active_jobs
+    : status.job
+      ? [status.job]
+      : []
+  if (jobs.length === 0) return true
+  return jobs.some((job) => {
+    const lock = job.lock
+    if (!lock) return true
+    if (lock.scope === "session") return true
+    return lock.dossier_id === dossierId
+  })
+}
+
+export function isNumberingDocumentLocked(
+  status: NumberingStatusResponse | null,
+  document: Pick<NumberingDocumentStatus, "session_document_id" | "dossier_id">
+): boolean {
+  if (!status?.active) return false
+  const jobs = status.active_jobs?.length
+    ? status.active_jobs
+    : status.job
+      ? [status.job]
+      : []
+  if (jobs.length === 0) return true
+  return jobs.some((job) => {
+    const lock = job.lock
+    if (!lock) return true
+    if (lock.scope === "session") return true
+    if (lock.scope === "dossier") {
+      return lock.dossier_id === document.dossier_id
+    }
+    return lock.session_document_id === document.session_document_id
+  })
+}
+
 export function statusBadge(status: string): {
   label: string
   className: string
@@ -160,7 +201,7 @@ export function canPreviewNumberingDocument(
   if (document.historical_only) {
     return Boolean(
       textOrNull(document.numbered_pdf_version_id) ||
-        textOrNull(document.download_url)
+      textOrNull(document.download_url)
     )
   }
   if (textOrNull(document.numbered_pdf_version_id)) return true
@@ -188,6 +229,7 @@ export function mergeCachedNumberingPage(
       current.document_numbering_style_overrides,
     active: current.active,
     job: current.job,
+    active_jobs: current.active_jobs,
     summary: current.summary,
     numbering_capabilities: current.numbering_capabilities,
     numbering_configuration: current.numbering_configuration,

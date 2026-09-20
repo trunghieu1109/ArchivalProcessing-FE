@@ -19,7 +19,9 @@ import type {
   MetadataSnapshotResponse,
   NumberedDocumentPreviewUrlResponse,
   NumberingDocumentPreviewUrlsResponse,
+  NumberingDocumentStatusResponse,
   NumberingDocumentStatusPageResponse,
+  NumberingDossierStatusResponse,
   NumberingDossierPreviewUrlsResponse,
   NumberingStatusResponse,
   NumberingStateDetailResponse,
@@ -269,6 +271,26 @@ export async function getNumberingDocumentStatuses(
   const query = numberingPaginationQuery(options)
   return requestJson<NumberingDocumentStatusPageResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/numbering/documents/status${query}`
+  )
+}
+
+export async function getNumberingDocumentStatus(
+  sessionId: string,
+  sessionDocumentId: number
+): Promise<NumberingDocumentStatusResponse> {
+  return requestJson<NumberingDocumentStatusResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/numbering/documents/${encodeURIComponent(String(sessionDocumentId))}/status`
+  )
+}
+
+export async function getNumberingDossierStatus(
+  sessionId: string,
+  dossierId: string,
+  options: { limit?: number; offset?: number } = {}
+): Promise<NumberingDossierStatusResponse> {
+  const query = numberingPaginationQuery(options)
+  return requestJson<NumberingDossierStatusResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/numbering/dossiers/${encodeURIComponent(dossierId)}/status${query}`
   )
 }
 

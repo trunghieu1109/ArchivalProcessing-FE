@@ -342,6 +342,29 @@ export interface NumberingDossierStatus {
   status_counts: Record<string, number>
 }
 
+export interface NumberingLockScope {
+  scope: "session" | "dossier" | "document"
+  session_id: string
+  dossier_id?: string | null
+  session_document_id?: number | null
+}
+
+export interface NumberingActiveJob extends ActiveJobSummary {
+  lock: NumberingLockScope
+}
+
+export interface NumberingSummary {
+  total_documents: number
+  total_dossiers?: number
+  dossiers_without_box_count?: number
+  status_counts: Record<string, number>
+  done: number
+  failed: number
+  pending: number
+  running: number
+  blank_page_warning_documents?: number
+}
+
 export interface NumberingStatusResponse extends ApiRevisionMetadata {
   session_id: string
   cluster_version_id: string
@@ -353,18 +376,9 @@ export interface NumberingStatusResponse extends ApiRevisionMetadata {
     opacity?: number
   } | null
   active: boolean
-  job: ActiveJobSummary | null
-  summary: {
-    total_documents: number
-    total_dossiers?: number
-    dossiers_without_box_count?: number
-    status_counts: Record<string, number>
-    done: number
-    failed: number
-    pending: number
-    running: number
-    blank_page_warning_documents?: number
-  }
+  job: NumberingActiveJob | null
+  active_jobs?: NumberingActiveJob[]
+  summary: NumberingSummary
   documents: NumberingDocumentStatus[]
   dossiers: NumberingDossierStatus[]
   pagination?: PaginationMeta
@@ -437,6 +451,23 @@ export interface NumberingDocumentStatusPageResponse extends Omit<
   "dossiers" | "pagination"
 > {
   pagination_scope: "documents"
+  pagination: PaginationMeta
+}
+
+export interface NumberingDocumentStatusResponse extends ApiRevisionMetadata {
+  session_id: string
+  cluster_version_id: string
+  job: NumberingActiveJob | null
+  document: NumberingDocumentStatus
+}
+
+export interface NumberingDossierStatusResponse extends ApiRevisionMetadata {
+  session_id: string
+  cluster_version_id: string
+  active_jobs: NumberingActiveJob[]
+  dossier: NumberingDossierStatus
+  documents: NumberingDocumentStatus[]
+  summary: NumberingSummary
   pagination: PaginationMeta
 }
 
