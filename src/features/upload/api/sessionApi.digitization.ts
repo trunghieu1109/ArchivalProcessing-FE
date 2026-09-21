@@ -28,6 +28,7 @@ import type {
   DocumentDeletionPreviewResponse,
   DocumentTransferOperationResponse,
   DocumentTransferDossierInput,
+  DocumentTransferClassificationContext,
   DocumentTransferPreviewResponse,
   DocumentTransferRequestResponse,
   DocumentTransferRequestsResponse,
@@ -131,7 +132,6 @@ export async function previewSessionDocumentTransfer(
     session_document_ids: number[]
     expected_target_snapshot: DocumentTransferTargetSnapshot
     dossier?: DocumentTransferDossierInput
-    target_classification?: DocumentTransferTargetClassification
   }
 ): Promise<DocumentTransferPreviewResponse> {
   return requestJson<DocumentTransferPreviewResponse>(
@@ -154,7 +154,6 @@ export async function createSessionDocumentTransferRequest(
     expected_target_document_set_revision: number
     expected_target_snapshot: DocumentTransferTargetSnapshot
     dossier?: DocumentTransferDossierInput
-    target_classification?: DocumentTransferTargetClassification
     reason?: string | null
     confirmed: true
   }
@@ -203,7 +202,9 @@ export async function getSessionDocumentTransferRequest(
 export async function acceptSessionDocumentTransferRequest(
   targetSessionId: string,
   requestId: string,
-  clientOperationId: string
+  clientOperationId: string,
+  targetClassification?: DocumentTransferTargetClassification | null,
+  expectedTargetSnapshot?: DocumentTransferTargetSnapshot
 ): Promise<{
   request_id: string
   status: string
@@ -217,8 +218,21 @@ export async function acceptSessionDocumentTransferRequest(
       body: JSON.stringify({
         client_operation_id: clientOperationId,
         confirmed: true,
+        target_classification: targetClassification ?? null,
+        ...(expectedTargetSnapshot
+          ? { expected_target_snapshot: expectedTargetSnapshot }
+          : {}),
       }),
     }
+  )
+}
+
+export async function getSessionClassificationContext(
+  targetSessionId: string
+): Promise<DocumentTransferClassificationContext> {
+  return requestJson<DocumentTransferClassificationContext>(
+    `/sessions/${encodeURIComponent(targetSessionId)}/classification-context`,
+    { cache: "no-store" }
   )
 }
 
@@ -248,7 +262,6 @@ export async function resubmitSessionDocumentTransferRequest(
     client_operation_id: string
     expected_target_snapshot: DocumentTransferTargetSnapshot
     dossier?: DocumentTransferDossierInput
-    target_classification?: DocumentTransferTargetClassification
   }
 ): Promise<DocumentTransferRequestResponse> {
   return requestJson<DocumentTransferRequestResponse>(
@@ -899,7 +912,7 @@ export function normalizeDocumentReviewStatus(
       lightMetadata,
       document.normalized_metadata,
       document.raw_metadata
-  )
+    )
   if (status === "rejected") return status
   if (status === "verified" && !missingDossierMetadata) return status
   if (status === "verified" && missingDossierMetadata) return "warning"
@@ -907,7 +920,8 @@ export function normalizeDocumentReviewStatus(
     review_status: status,
     light_metadata: lightMetadata,
   })
-  if (status === "warning" && (hasWarning || missingDossierMetadata)) return status
+  if (status === "warning" && (hasWarning || missingDossierMetadata))
+    return status
   if (document.metadata_ready && !hasWarning && !missingDossierMetadata) {
     return "verified"
   }

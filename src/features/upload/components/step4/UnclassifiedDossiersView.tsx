@@ -1,17 +1,23 @@
 import { useCallback, useEffect, useState } from "react"
 import {
   ArrowLeft,
+  CheckSquare,
   ChevronDown,
   FileText,
   FolderClock,
   Loader2,
+  Pencil,
   RefreshCw,
+  Save,
 } from "lucide-react"
+import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ApiRequestError } from "@/features/upload/api/sessionApi.http"
 import {
+  classifyUnclassifiedSessionDossiers,
   listUnclassifiedSessionDossiers,
+  patchSessionDossier,
   type UnclassifiedSessionDossierSummary,
 } from "@/features/upload/api/sessionApi"
 import { cn } from "@/shared/lib/utils"
@@ -53,6 +59,12 @@ export function UnclassifiedDossiersView({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [expanded, setExpanded] = useState(true)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [classifying, setClassifying] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editTitle, setEditTitle] = useState("")
+  const [editRetentionPeriod, setEditRetentionPeriod] = useState("")
+  const [saving, setSaving] = useState(false)
 
   const requestDossiers = useCallback(async () => {
     if (!sessionId) {
@@ -67,6 +79,12 @@ export function UnclassifiedDossiersView({
     try {
       const response = await requestDossiers()
       setDossiers(response.dossiers)
+      setSelectedIds((current) => {
+        const available = new Set(
+          response.dossiers.map((dossier) => dossier.dossier_id)
+        )
+        return new Set([...current].filter((value) => available.has(value)))
+      })
     } catch (loadError) {
       setDossiers([])
       setError(unclassifiedDossierErrorMessage(loadError))
@@ -74,6 +92,46 @@ export function UnclassifiedDossiersView({
       setLoading(false)
     }
   }, [requestDossiers])
+
+  const classifySelected = async () => {
+    if (!sessionId || selectedIds.size === 0) return
+    setClassifying(true)
+    setError("")
+    try {
+      const response = await classifyUnclassifiedSessionDossiers(sessionId, [
+        ...selectedIds,
+      ])
+      toast.success(
+        `Đã đưa ${response.selected_dossier_count} hồ sơ vào hàng đợi cập nhật.`
+      )
+      setSelectedIds(new Set())
+    } catch (caught) {
+      setError(unclassifiedDossierErrorMessage(caught))
+    } finally {
+      setClassifying(false)
+    }
+  }
+
+  const saveDossierMetadata = async () => {
+    if (!sessionId || !editingId) return
+    setSaving(true)
+    setError("")
+    try {
+      await patchSessionDossier(sessionId, editingId, {
+        title: editTitle,
+        retention_period: editRetentionPeriod,
+      })
+      toast.success(
+        "Đã lưu thông tin hồ sơ. Các giá trị người dùng nhập sẽ được giữ nguyên khi phân loại."
+      )
+      setEditingId(null)
+      await loadDossiers()
+    } catch (caught) {
+      setError(unclassifiedDossierErrorMessage(caught))
+    } finally {
+      setSaving(false)
+    }
+  }
 
   useEffect(() => {
     let active = true
@@ -119,8 +177,8 @@ export function UnclassifiedDossiersView({
               ) : null}
             </span>
             <span className="mt-1 block max-w-3xl text-sm leading-6 text-[#64748B]">
-              Các hồ sơ đã được chuyển vào Phông nhưng chưa thuộc cluster
-              version nào. Mở hoặc đóng phần này không khởi tạo build phân loại.
+              Chọn một hoặc nhiều hồ sơ để đưa vào kết quả phân loại. Các hồ sơ
+              không được chọn tiếp tục ở trạng thái chưa phân loại.
             </span>
           </span>
           <ChevronDown
@@ -174,36 +232,138 @@ export function UnclassifiedDossiersView({
             </div>
           ) : (
             <div className="space-y-4">
-              <p className="text-sm text-[#64748B]">
-                Có {dossiers.length} hồ sơ chưa phân loại.
-              </p>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <label className="flex items-center gap-2 text-sm text-[#64748B]">
+                  <input
+                    type="checkbox"
+                    checked={
+                      dossiers.length > 0 &&
+                      selectedIds.size === dossiers.length
+                    }
+                    onChange={(event) =>
+                      setSelectedIds(
+                        event.target.checked
+                          ? new Set(
+                              dossiers.map((dossier) => dossier.dossier_id)
+                            )
+                          : new Set()
+                      )
+                    }
+                    className="size-4 rounded border-slate-300"
+                  />
+                  Chọn tất cả {dossiers.length} hồ sơ
+                </label>
+                <Button
+                  type="button"
+                  disabled={selectedIds.size === 0 || classifying}
+                  onClick={() => void classifySelected()}
+                >
+                  {classifying ? (
+                    <Loader2 className="animate-spin" />
+                  ) : (
+                    <CheckSquare />
+                  )}
+                  Cập nhật {selectedIds.size || ""} hồ sơ đã chọn
+                </Button>
+              </div>
               {dossiers.map((dossier) => (
                 <article
                   key={dossier.id ?? dossier.dossier_id}
                   className="overflow-hidden rounded-2xl border border-[#D8E1EC] bg-white shadow-sm"
                 >
                   <div className="flex flex-col gap-3 border-b border-[#E2E8F0] px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="font-semibold text-[#0F172A]">
-                          {dossierTitle(dossier)}
-                        </h3>
-                        <Badge
-                          variant="outline"
-                          className="border-amber-200 bg-amber-50 text-amber-700"
-                        >
-                          Chưa phân loại
-                        </Badge>
+                    <div className="flex min-w-0 gap-3">
+                      <input
+                        type="checkbox"
+                        aria-label={`Chọn hồ sơ ${dossierTitle(dossier)}`}
+                        checked={selectedIds.has(dossier.dossier_id)}
+                        onChange={(event) =>
+                          setSelectedIds((current) => {
+                            const next = new Set(current)
+                            if (event.target.checked) {
+                              next.add(dossier.dossier_id)
+                            } else {
+                              next.delete(dossier.dossier_id)
+                            }
+                            return next
+                          })
+                        }
+                        className="mt-1 size-4 shrink-0 rounded border-slate-300"
+                      />
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-semibold text-[#0F172A]">
+                            {dossierTitle(dossier)}
+                          </h3>
+                          <Badge
+                            variant="outline"
+                            className="border-amber-200 bg-amber-50 text-amber-700"
+                          >
+                            Chưa phân loại
+                          </Badge>
+                        </div>
+                        <p className="mt-1 text-xs break-all text-[#64748B]">
+                          Mã hồ sơ: {dossier.dossier_id}
+                        </p>
                       </div>
-                      <p className="mt-1 text-xs break-all text-[#64748B]">
-                        Mã hồ sơ: {dossier.dossier_id}
-                      </p>
                     </div>
-                    <div className="text-sm text-[#475569]">
-                      {dossier.document_ids?.length ?? dossier.documents.length}{" "}
-                      tài liệu
+                    <div className="flex items-center gap-2 text-sm text-[#475569]">
+                      <span>
+                        {dossier.document_ids?.length ??
+                          dossier.documents.length}{" "}
+                        tài liệu
+                      </span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setEditingId(dossier.dossier_id)
+                          setEditTitle(dossierTitle(dossier))
+                          setEditRetentionPeriod(dossier.retention_period || "")
+                        }}
+                      >
+                        <Pencil />
+                        Sửa
+                      </Button>
                     </div>
                   </div>
+
+                  {editingId === dossier.dossier_id ? (
+                    <div className="grid gap-3 border-b border-[#E2E8F0] bg-blue-50/40 px-5 py-4 sm:grid-cols-[1fr_220px_auto] sm:items-end">
+                      <label className="text-sm font-medium text-[#334155]">
+                        Tiêu đề hồ sơ
+                        <input
+                          value={editTitle}
+                          onChange={(event) => setEditTitle(event.target.value)}
+                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal"
+                        />
+                      </label>
+                      <label className="text-sm font-medium text-[#334155]">
+                        Thời hạn bảo quản
+                        <input
+                          value={editRetentionPeriod}
+                          onChange={(event) =>
+                            setEditRetentionPeriod(event.target.value)
+                          }
+                          placeholder="Ví dụ: 20 năm"
+                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal"
+                        />
+                      </label>
+                      <Button
+                        type="button"
+                        disabled={saving || !editTitle.trim()}
+                        onClick={() => void saveDossierMetadata()}
+                      >
+                        {saving ? (
+                          <Loader2 className="animate-spin" />
+                        ) : (
+                          <Save />
+                        )}
+                        Lưu
+                      </Button>
+                    </div>
+                  ) : null}
 
                   <div className="grid gap-3 px-5 py-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
                     <div>

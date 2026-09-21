@@ -21,7 +21,6 @@ import {
   type DocumentTransferDossierInput,
   type DocumentTransferPreviewResponse,
   type DocumentTransferRequestResponse,
-  type DocumentTransferTargetClassification,
   type DocumentTransferTargetContext,
   type DocumentTransferTargetSession,
 } from "@/features/upload/api/sessionApi"
@@ -78,7 +77,6 @@ export function DocumentTransferDialog({
   )
   const [dossier, setDossier] =
     useState<DocumentTransferDossierInput>(EMPTY_DOSSIER)
-  const [leafKey, setLeafKey] = useState("")
   const [reason, setReason] = useState("")
   const [preview, setPreview] =
     useState<DocumentTransferPreviewResponse | null>(null)
@@ -136,7 +134,6 @@ export function DocumentTransferDialog({
       setContext(null)
       setPreview(null)
       setDossier(EMPTY_DOSSIER)
-      setLeafKey("")
       setError("")
       getSessionDocumentTransferTargetContext(sourceSessionId, selectedTargetId)
         .then((response) => {
@@ -155,34 +152,14 @@ export function DocumentTransferDialog({
     }
   }, [open, selectedTargetId, sourceSessionId])
 
-  const selectedLeaf = context?.classification_leafs.find(
-    (leaf) => classificationLeafKey(leaf) === leafKey
-  )
   const requiresDossier =
     context?.required_form_fields.includes("dossier") ?? false
-  const requiresClassification =
-    context?.required_form_fields.includes("target_classification") ?? false
-
-  const targetClassification =
-    context &&
-    selectedLeaf &&
-    context.target_snapshot.plan_version_id &&
-    context.target_snapshot.cluster_version_id
-      ? ({
-          plan_version_id: context.target_snapshot.plan_version_id,
-          cluster_version_id: context.target_snapshot.cluster_version_id,
-          group_ids: selectedLeaf.group_ids,
-          leaf_group_id: selectedLeaf.group_id,
-          group_path: selectedLeaf.group_path,
-        } satisfies DocumentTransferTargetClassification)
-      : undefined
 
   const normalizedDossier = requiresDossier ? cleanDossier(dossier) : undefined
   const canCheck = Boolean(
     context?.selectable &&
     documentIds.length > 0 &&
-    (!requiresDossier || normalizedDossier?.title) &&
-    (!requiresClassification || targetClassification)
+    (!requiresDossier || normalizedDossier?.title)
   )
   const validationMessages = useMemo(
     () => transferValidationMessages(preview?.validation_errors ?? [], targets),
@@ -196,9 +173,6 @@ export function DocumentTransferDialog({
       session_document_ids: documentIds,
       expected_target_snapshot: context.target_snapshot,
       ...(normalizedDossier ? { dossier: normalizedDossier } : {}),
-      ...(targetClassification
-        ? { target_classification: targetClassification }
-        : {}),
     }
   }
 
@@ -239,11 +213,6 @@ export function DocumentTransferDialog({
           ...(preview.normalized_dossier
             ? { dossier: preview.normalized_dossier }
             : {}),
-          ...(preview.normalized_target_classification
-            ? {
-                target_classification: preview.normalized_target_classification,
-              }
-            : {}),
           reason: reason.trim() || null,
           confirmed: true,
         }
@@ -269,7 +238,6 @@ export function DocumentTransferDialog({
     setSelectedTargetId("")
     setContext(null)
     setDossier(EMPTY_DOSSIER)
-    setLeafKey("")
     setReason("")
     setPreview(null)
     setError("")
@@ -385,23 +353,12 @@ export function DocumentTransferDialog({
                 />
               )}
 
-              {requiresClassification && context && (
-                <ClassificationTreePicker
-                  leaves={context.classification_leafs}
-                  selectedKey={leafKey}
-                  onSelect={(nextLeaf) => {
-                    setLeafKey(classificationLeafKey(nextLeaf))
-                    setPreview(null)
-                  }}
-                />
-              )}
-
               {context?.transfer_case ===
                 "case_3_classification_pending_approval" && (
                 <div className="flex gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                  Khi accept, hồ sơ mới được thêm vào bản phân loại nháp hiện
-                  tại và tiếp tục chờ coordinator Phông đích duyệt.
+                  Người nhận sẽ chọn nhóm phân loại khi chấp nhận. Nếu không
+                  chọn, hồ sơ được nhận ở trạng thái chưa phân loại.
                 </div>
               )}
 
@@ -409,8 +366,8 @@ export function DocumentTransferDialog({
                 <div className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                   {context.cluster_version_approval_mode === "manual"
-                    ? "Khi accept, hệ thống sao chép bản active thành bản nháp mới, thêm hồ sơ và chờ coordinator Phông đích duyệt."
-                    : "Khi accept, hệ thống tạo và tự động kích hoạt ClusterVersion mới theo chế độ automatic."}
+                    ? "Người nhận có thể chọn nhóm đích; nếu chọn, hệ thống tạo bản nháp mới và chờ duyệt."
+                    : "Người nhận có thể chọn nhóm đích hoặc để hồ sơ ở trạng thái chưa phân loại."}
                 </div>
               )}
 
@@ -493,7 +450,7 @@ export function DocumentTransferDialog({
   )
 }
 
-function ClassificationTreePicker({
+export function ClassificationTreePicker({
   leaves,
   selectedKey,
   onSelect,

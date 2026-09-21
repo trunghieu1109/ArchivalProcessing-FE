@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import {
   acceptSessionDocumentTransferRequest,
+  getSessionClassificationContext,
   getSessionDocumentTransferRequest,
   listSessionDocumentTransferRequests,
 } from "@/features/upload/api/sessionApi"
@@ -11,6 +12,7 @@ import { DocumentTransferRequestsPanel } from "./DocumentTransferRequestsPanel"
 
 vi.mock("@/features/upload/api/sessionApi", () => ({
   acceptSessionDocumentTransferRequest: vi.fn(),
+  getSessionClassificationContext: vi.fn(),
   getSessionDocumentTransferRequest: vi.fn(),
   getSessionDocumentTransferTargetContext: vi.fn(),
   listSessionDocumentTransferRequests: vi.fn(),
@@ -75,6 +77,26 @@ const requestDetail = {
   ],
 }
 
+const classificationContext = {
+  target_session_id: requestSummary.target_session_id,
+  selectable: true,
+  unavailable_reason: null,
+  transfer_case: "case_4_classification_approved",
+  workflow_stage: "classification_approved",
+  requires_target_approval: true,
+  required_form_fields: ["dossier"],
+  target_snapshot: requestDetail.target_snapshot,
+  classification_optional: true,
+  classification_available: true,
+  classification_leafs: [
+    {
+      group_id: "2026",
+      group_ids: ["finance", "2026"],
+      group_path: ["Tài chính", "Năm 2026"],
+    },
+  ],
+}
+
 describe("DocumentTransferRequestsPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -87,9 +109,12 @@ describe("DocumentTransferRequestsPanel", () => {
     vi.mocked(getSessionDocumentTransferRequest).mockResolvedValue(
       requestDetail as never
     )
+    vi.mocked(getSessionClassificationContext).mockResolvedValue(
+      classificationContext as never
+    )
   })
 
-  it("warns the target leader before accepting a case 4 request", async () => {
+  it("warns the target leader when manually classifying a case 4 request", async () => {
     render(
       <DocumentTransferRequestsPanel
         sessionId="session-target"
@@ -101,6 +126,10 @@ describe("DocumentTransferRequestsPanel", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: /Hồ sơ nhận mới/i })
     )
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^Chọn nhóm đích/ })
+    )
+    fireEvent.click(await screen.findByRole("treeitem", { name: "Năm 2026" }))
 
     await waitFor(() => {
       expect(
@@ -109,7 +138,55 @@ describe("DocumentTransferRequestsPanel", () => {
         })
       ).toHaveTextContent("Phông đích đang có kết quả phân loại active")
     })
-    expect(screen.getByRole("button", { name: "Chấp nhận" })).toBeEnabled()
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Chấp nhận" })).toBeEnabled()
+    })
+    expect(getSessionClassificationContext).toHaveBeenCalledWith(
+      "session-target"
+    )
+  })
+
+  it("sends the classification selected by the receiving user", async () => {
+    vi.mocked(acceptSessionDocumentTransferRequest).mockResolvedValue({
+      request_id: requestSummary.request_id,
+      status: "accepting",
+    } as never)
+
+    render(
+      <DocumentTransferRequestsPanel
+        sessionId="session-target"
+        canManageTarget={true}
+      />
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: /Yêu cầu chuyển/i }))
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Hồ sơ nhận mới/i })
+    )
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /^Chọn nhóm đích/ })
+      ).toBeEnabled()
+    })
+    fireEvent.click(screen.getByRole("button", { name: /^Chọn nhóm đích/ }))
+    fireEvent.click(await screen.findByRole("treeitem", { name: "Năm 2026" }))
+    fireEvent.click(screen.getByRole("button", { name: "Chấp nhận" }))
+
+    await waitFor(() => {
+      expect(acceptSessionDocumentTransferRequest).toHaveBeenCalledWith(
+        "session-target",
+        requestSummary.request_id,
+        expect.any(String),
+        {
+          plan_version_id: "plan-1",
+          cluster_version_id: "cluster-active-1",
+          group_ids: ["finance", "2026"],
+          leaf_group_id: "2026",
+          group_path: ["Tài chính", "Năm 2026"],
+        },
+        classificationContext.target_snapshot
+      )
+    })
   })
 
   it("shows live progress while the worker is transferring documents", async () => {
@@ -158,9 +235,11 @@ describe("DocumentTransferRequestsPanel", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: /Hồ sơ nhận mới/i })
     )
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Chấp nhận" })
-    )
+    const acceptButton = await screen.findByRole("button", {
+      name: "Chấp nhận",
+    })
+    await waitFor(() => expect(acceptButton).toBeEnabled())
+    fireEvent.click(acceptButton)
 
     expect(
       await screen.findByText(

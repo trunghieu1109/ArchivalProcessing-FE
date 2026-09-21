@@ -107,4 +107,16 @@ describe("final result action state", () => {
     expect(state.canUpdateDossiers).toBe(false)
     expect(state.canFinish).toBe(true)
   })
+
+  it("offers update and blocks finish while unclassified dossiers remain", () => {
+    const state = resolveFinalResultActionState({
+      ...stable,
+      unclassifiedDossierCount: 2,
+    })
+
+    expect(state.showUpdateAction).toBe(true)
+    expect(state.canUpdateDossiers).toBe(true)
+    expect(state.canFinish).toBe(false)
+    expect(state.finishBlockedReason).toContain("2 hồ sơ chưa phân loại")
+  })
 })

@@ -862,6 +862,21 @@ export interface DocumentTransferTargetContext {
   classification_leafs: DocumentTransferClassificationLeaf[]
 }
 
+export interface DocumentTransferClassificationContext {
+  target_session_id: string
+  selectable: boolean
+  unavailable_reason: string | null
+  transfer_case: DocumentTransferCase | null
+  workflow_stage: DocumentTransferWorkflowStage
+  requires_target_approval: boolean
+  cluster_version_approval_mode?: "automatic" | "manual"
+  target_snapshot: DocumentTransferTargetSnapshot
+  required_form_fields: Array<"dossier" | "target_classification">
+  classification_optional: true
+  classification_available: boolean
+  classification_leafs: DocumentTransferClassificationLeaf[]
+}
+
 export interface DocumentTransferDossierInput {
   title: string
   retention_period?: string | null

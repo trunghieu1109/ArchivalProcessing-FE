@@ -262,6 +262,26 @@ export async function listUnclassifiedSessionDossiers(
   )
 }
 
+export async function classifyUnclassifiedSessionDossiers(
+  sessionId: string,
+  dossierIds: string[]
+): Promise<{
+  session_id: string
+  job_id: number
+  status: string
+  selected_dossier_count: number
+  dossier_ids: string[]
+}> {
+  return requestJson(
+    `/sessions/${encodeURIComponent(sessionId)}/unclassified-dossiers/classify`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dossier_ids: dossierIds }),
+    }
+  )
+}
+
 export async function listSessionDossierDrafts(
   sessionId: string,
   status = "pending"

@@ -16,16 +16,21 @@ import { Button } from "@/components/ui/button"
 import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import {
   acceptSessionDocumentTransferRequest,
+  getSessionClassificationContext,
   getSessionDocumentTransferRequest,
   getSessionDocumentTransferTargetContext,
   listSessionDocumentTransferRequests,
   rejectSessionDocumentTransferRequest,
   resubmitSessionDocumentTransferRequest,
   type DocumentTransferDossierInput,
+  type DocumentTransferClassificationContext,
   type DocumentTransferRequestResponse,
   type DocumentTransferRequestSummary,
+  type DocumentTransferTargetClassification,
 } from "@/features/upload/api/sessionApi"
 import { ApiRequestError } from "@/features/upload/api/sessionApi.http"
+import { ClassificationTreePicker } from "./DocumentTransferDialog"
+import { classificationLeafKey } from "./documentTransferClassificationTree"
 import { notifyDocumentTransferUiRefresh } from "./documentTransferUiSync"
 
 const TRANSFER_REQUEST_LIST_POLL_INTERVAL_MS = 5_000
@@ -38,6 +43,7 @@ interface DocumentTransferRequestsPanelProps {
 }
 
 type RequestRole = "target" | "source"
+type AcceptClassificationMode = "unclassified" | "manual"
 
 export function DocumentTransferRequestsPanel({
   sessionId,
@@ -51,6 +57,13 @@ export function DocumentTransferRequestsPanel({
   )
   const [pendingCount, setPendingCount] = useState(0)
   const [rejectReason, setRejectReason] = useState("")
+  const [classificationContext, setClassificationContext] =
+    useState<DocumentTransferClassificationContext | null>(null)
+  const [acceptClassificationMode, setAcceptClassificationMode] =
+    useState<AcceptClassificationMode>("unclassified")
+  const [acceptLeafKey, setAcceptLeafKey] = useState("")
+  const [loadingClassificationContext, setLoadingClassificationContext] =
+    useState(false)
   const [loading, setLoading] = useState(false)
   const [acting, setActing] = useState(false)
   const [error, setError] = useState("")
@@ -229,8 +242,72 @@ export function DocumentTransferRequestsPanel({
     }
   }, [detail, loadDetail, loadList, open, role])
 
+  useEffect(() => {
+    if (
+      !open ||
+      role !== "target" ||
+      !detail ||
+      detail.status !== "pending_target_approval"
+    )
+      return
+    let cancelled = false
+    const timeout = window.setTimeout(() => {
+      setLoadingClassificationContext(true)
+      setClassificationContext(null)
+      setAcceptClassificationMode("unclassified")
+      setAcceptLeafKey("")
+      getSessionClassificationContext(detail.target_session_id)
+        .then((response) => {
+          if (!cancelled) setClassificationContext(response)
+        })
+        .catch((caught: unknown) => {
+          if (!cancelled) setError(errorMessage(caught))
+        })
+        .finally(() => {
+          if (!cancelled) setLoadingClassificationContext(false)
+        })
+    }, 0)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeout)
+    }
+  }, [detail, open, role])
+
   const acceptRequest = async () => {
     if (!detail) return
+    if (!classificationContext) {
+      setError("Chưa tải được ngữ cảnh phân loại hiện tại của Phông đích.")
+      return
+    }
+    if (!classificationContext.selectable) {
+      setError(
+        classificationContext.unavailable_reason ||
+          "Phông đích hiện không thể tiếp nhận hồ sơ."
+      )
+      return
+    }
+    const selectedLeaf = classificationContext?.classification_leafs.find(
+      (leaf) => classificationLeafKey(leaf) === acceptLeafKey
+    )
+    let targetClassification: DocumentTransferTargetClassification | null = null
+    if (acceptClassificationMode === "manual") {
+      if (
+        !selectedLeaf ||
+        !classificationContext?.target_snapshot.plan_version_id ||
+        !classificationContext.target_snapshot.cluster_version_id
+      ) {
+        setError("Hãy chọn một nhóm phân loại đích.")
+        return
+      }
+      targetClassification = {
+        plan_version_id: classificationContext.target_snapshot.plan_version_id,
+        cluster_version_id:
+          classificationContext.target_snapshot.cluster_version_id,
+        group_ids: selectedLeaf.group_ids,
+        leaf_group_id: selectedLeaf.group_id,
+        group_path: selectedLeaf.group_path,
+      }
+    }
     setActing(true)
     setError("")
     try {
@@ -241,8 +318,14 @@ export function DocumentTransferRequestsPanel({
           operationIdsRef.current,
           "accept",
           detail.request_id,
-          { confirmed: true }
-        )
+          {
+            confirmed: true,
+            target_classification: targetClassification,
+            expected_target_snapshot: classificationContext.target_snapshot,
+          }
+        ),
+        targetClassification,
+        classificationContext.target_snapshot
       )
       notifyDocumentTransferUiRefresh({
         requestId: detail.request_id,
@@ -251,9 +334,9 @@ export function DocumentTransferRequestsPanel({
         status: accepted.status,
       })
       toast.success(
-        detail.transfer_case === "case_4_classification_approved"
+        targetClassification
           ? "Đã chấp nhận yêu cầu. Sau khi chuyển xong, hãy kiểm tra phiên bản phân loại mới của Phông đích."
-          : "Đã chấp nhận yêu cầu. Hệ thống đang chuyển tài liệu."
+          : "Đã chấp nhận yêu cầu. Hồ sơ sẽ ở trạng thái chưa phân loại sau khi chuyển xong."
       )
       await loadDetail(detail.request_id)
       await loadList(role, true)
@@ -305,22 +388,6 @@ export function DocumentTransferRequestsPanel({
         detail.source_session_id,
         detail.target_session_id
       )
-      const previousClassification = detail.target_dossier_draft?.classification
-      const sameLeaf = previousClassification
-        ? context.classification_leafs.find(
-            (leaf) =>
-              leaf.group_id === previousClassification.leaf_group_id &&
-              sameStringArray(leaf.group_ids, previousClassification.group_ids)
-          )
-        : undefined
-      if (
-        context.required_form_fields.includes("target_classification") &&
-        !sameLeaf
-      ) {
-        throw new Error(
-          "Nhóm phân loại cũ không còn tồn tại. Hãy tạo yêu cầu mới và chọn lại nhóm đích."
-        )
-      }
       const replacement = await resubmitSessionDocumentTransferRequest(
         detail.source_session_id,
         detail.request_id,
@@ -334,19 +401,6 @@ export function DocumentTransferRequestsPanel({
           expected_target_snapshot: context.target_snapshot,
           ...(detail.target_dossier_draft?.metadata
             ? { dossier: detail.target_dossier_draft.metadata }
-            : {}),
-          ...(sameLeaf &&
-          context.target_snapshot.plan_version_id &&
-          context.target_snapshot.cluster_version_id
-            ? {
-                target_classification: {
-                  plan_version_id: context.target_snapshot.plan_version_id,
-                  cluster_version_id:
-                    context.target_snapshot.cluster_version_id,
-                  group_ids: sameLeaf.group_ids,
-                  leaf_group_id: sameLeaf.group_id,
-                },
-              }
             : {}),
         }
       )
@@ -511,7 +565,10 @@ export function DocumentTransferRequestsPanel({
                       value={
                         detail.target_dossier_draft?.classification?.group_path?.join(
                           " / "
-                        ) || "Chuyển vào session"
+                        ) ||
+                        (detail.status === "pending_target_approval"
+                          ? "Người nhận chưa chọn"
+                          : "Chưa phân loại")
                       }
                     />
                     <Info
@@ -541,7 +598,8 @@ export function DocumentTransferRequestsPanel({
                     </div>
                   )}
                   {canResolve &&
-                    detail.transfer_case ===
+                    acceptClassificationMode === "manual" &&
+                    classificationContext?.transfer_case ===
                       "case_4_classification_approved" && (
                       <div
                         role="alert"
@@ -559,6 +617,14 @@ export function DocumentTransferRequestsPanel({
                             thủ công hoặc tự động theo cấu hình hệ thống.
                           </div>
                         </div>
+                      </div>
+                    )}
+                  {canResolve &&
+                    classificationContext &&
+                    !classificationContext.selectable && (
+                      <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                        {classificationContext.unavailable_reason ||
+                          "Phông đích hiện không thể tiếp nhận hồ sơ."}
                       </div>
                     )}
                   {detail.error && (
@@ -588,6 +654,65 @@ export function DocumentTransferRequestsPanel({
 
                   {canResolve && (
                     <div className="space-y-3 rounded-xl border border-slate-200 p-4">
+                      <div>
+                        <div className="text-sm font-medium text-slate-800">
+                          Cách tiếp nhận hồ sơ
+                        </div>
+                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setAcceptClassificationMode("unclassified")
+                            }
+                            className={`rounded-lg border p-3 text-left text-sm ${
+                              acceptClassificationMode === "unclassified"
+                                ? "border-blue-500 bg-blue-50 text-blue-900"
+                                : "border-slate-200 text-slate-700"
+                            }`}
+                          >
+                            <span className="font-medium">Chưa phân loại</span>
+                            <span className="mt-1 block text-xs">
+                              Nhận hồ sơ trước và phân loại trong lần cập nhật
+                              sau.
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={
+                              !classificationContext?.classification_available
+                            }
+                            onClick={() =>
+                              setAcceptClassificationMode("manual")
+                            }
+                            className={`rounded-lg border p-3 text-left text-sm disabled:cursor-not-allowed disabled:opacity-50 ${
+                              acceptClassificationMode === "manual"
+                                ? "border-blue-500 bg-blue-50 text-blue-900"
+                                : "border-slate-200 text-slate-700"
+                            }`}
+                          >
+                            <span className="font-medium">Chọn nhóm đích</span>
+                            <span className="mt-1 block text-xs">
+                              Gắn hồ sơ ngay vào classification path đã chọn.
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+                      {loadingClassificationContext && (
+                        <div className="flex items-center gap-2 text-sm text-slate-500">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Đang tải cây phân loại...
+                        </div>
+                      )}
+                      {acceptClassificationMode === "manual" &&
+                        classificationContext && (
+                          <ClassificationTreePicker
+                            leaves={classificationContext.classification_leafs}
+                            selectedKey={acceptLeafKey}
+                            onSelect={(leaf) =>
+                              setAcceptLeafKey(classificationLeafKey(leaf))
+                            }
+                          />
+                        )}
                       <textarea
                         value={rejectReason}
                         onChange={(event) =>
@@ -607,7 +732,14 @@ export function DocumentTransferRequestsPanel({
                           Từ chối
                         </Button>
                         <Button
-                          disabled={acting}
+                          disabled={
+                            acting ||
+                            loadingClassificationContext ||
+                            !classificationContext ||
+                            !classificationContext.selectable ||
+                            (acceptClassificationMode === "manual" &&
+                              !acceptLeafKey)
+                          }
                           onClick={() => void acceptRequest()}
                         >
                           <Check className="mr-2 h-4 w-4" />
@@ -700,13 +832,6 @@ function DossierDetails({
   )
 }
 
-function sameStringArray(left: string[], right: string[]): boolean {
-  return (
-    left.length === right.length &&
-    left.every((value, index) => value === right[index])
-  )
-}
-
 function statusLabel(status: string): string {
   return (
     {
@@ -768,8 +893,7 @@ const ACCEPT_ERROR_MESSAGES: Record<string, string> = {
     "Có tài liệu thuộc một đợt bổ sung chưa hoàn tất nên chưa thể chuyển.",
   DOCUMENT_IN_DOSSIER_DRAFT:
     "Có tài liệu đang thuộc hồ sơ nháp nên chưa thể chuyển.",
-  DOCUMENT_NOT_VERIFIED:
-    "Có tài liệu không còn ở trạng thái đã xác nhận.",
+  DOCUMENT_NOT_VERIFIED: "Có tài liệu không còn ở trạng thái đã xác nhận.",
   DOCUMENT_ALREADY_NUMBERED:
     "Có tài liệu đã bắt đầu đánh số trang nên không thể chuyển Phông.",
 }

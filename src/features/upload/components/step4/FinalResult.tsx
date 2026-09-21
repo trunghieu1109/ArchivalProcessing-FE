@@ -16,6 +16,7 @@ import {
   getClusteringPendingDocuments,
   listSupplementalIntakes,
   listClusterFeedback,
+  listUnclassifiedSessionDossiers,
   patchSessionDossier,
   suggestSelectedDocumentDossiers,
   sortDossierDocuments,
@@ -182,7 +183,23 @@ export function FinalResult({
     string | null
   >(null)
   const [pendingFeedbackCount, setPendingFeedbackCount] = useState(0)
+  const [unclassifiedDossierCount, setUnclassifiedDossierCount] = useState(0)
   const [pendingFeedbackRefreshKey, setPendingFeedbackRefreshKey] = useState(0)
+
+  useEffect(() => {
+    if (!sessionId) return
+    let cancelled = false
+    listUnclassifiedSessionDossiers(sessionId)
+      .then((response) => {
+        if (!cancelled) setUnclassifiedDossierCount(response.dossiers.length)
+      })
+      .catch(() => {
+        if (!cancelled) setUnclassifiedDossierCount(0)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [pendingFeedbackRefreshKey, rebuildPollKey, sessionId])
   const [cancelingPendingFeedback, setCancelingPendingFeedback] =
     useState(false)
   const [selectedSessionDocumentIds, setSelectedSessionDocumentIds] = useState<
@@ -977,6 +994,7 @@ export function FinalResult({
     supplementalVerificationPendingCount,
     supplementalPendingDocumentCount: clusteringPending?.count ?? 0,
     supplementalPendingUpdateDocumentCount,
+    unclassifiedDossierCount,
     clusterVersionStale,
     busy: Boolean(
       loading ||

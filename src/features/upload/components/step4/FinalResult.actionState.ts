@@ -6,6 +6,7 @@ export interface FinalResultActionStateInput {
   supplementalVerificationPendingCount: number
   supplementalPendingDocumentCount: number
   supplementalPendingUpdateDocumentCount: number
+  unclassifiedDossierCount?: number
   clusterVersionStale: boolean
   busy: boolean
   viewingHistoricalClusterVersion: boolean
@@ -53,13 +54,16 @@ export function resolveFinalResultActionState(
             ? `Còn ${input.supplementalPendingUpdateDocumentCount} tài liệu bổ sung chưa có trong phiên bản này.`
             : input.pendingFeedbackCount > 0
               ? `Còn ${input.pendingFeedbackCount} feedback mới chưa được cập nhật vào phiên bản này.`
-              : input.pendingClusterVersionNeedsRefresh
-                ? "Phiên bản chờ duyệt chưa chứa các thay đổi mới nhất."
-                : null
+              : (input.unclassifiedDossierCount ?? 0) > 0
+                ? `Còn ${input.unclassifiedDossierCount} hồ sơ chưa được phân loại.`
+                : input.pendingClusterVersionNeedsRefresh
+                  ? "Phiên bản chờ duyệt chưa chứa các thay đổi mới nhất."
+                  : null
 
   const updateNeeded = Boolean(
     input.clusterVersionStale ||
     input.pendingFeedbackCount > 0 ||
+    (input.unclassifiedDossierCount ?? 0) > 0 ||
     input.supplementalPendingUpdateDocumentCount > 0 ||
     (hasDraft && input.pendingClusterVersionNeedsRefresh)
   )
@@ -73,19 +77,21 @@ export function resolveFinalResultActionState(
       ? `Còn ${input.supplementalVerificationPendingCount} đợt tài liệu bổ sung chưa verify đủ.`
       : input.pendingFeedbackCount > 0
         ? `Còn ${input.pendingFeedbackCount} feedback chưa được cập nhật vào hồ sơ.`
-        : hasDraft
-          ? approvalBlockedReason
-            ? `Phiên bản draft chưa thể duyệt: ${approvalBlockedReason}`
-            : "Có phiên bản hồ sơ draft đang chờ duyệt và kích hoạt."
-          : input.clusterVersionStale
-            ? "Danh sách tài liệu đã thay đổi. Hãy cập nhật hồ sơ trước khi đánh số trang."
-            : input.supplementalPendingDocumentCount > 0
-              ? `Còn ${input.supplementalPendingDocumentCount} tài liệu bổ sung chưa có trong phiên bản hồ sơ active.`
-              : input.totalDossiers <= 0
-                ? "Chưa có hồ sơ để chuyển sang bước Đánh số trang."
-                : input.busy
-                  ? "Hồ sơ đang được cập nhật. Vui lòng chờ thao tác hoàn tất."
-                  : null
+        : (input.unclassifiedDossierCount ?? 0) > 0
+          ? `Còn ${input.unclassifiedDossierCount} hồ sơ chưa phân loại. Hãy cập nhật hồ sơ trước khi đánh số trang.`
+          : hasDraft
+            ? approvalBlockedReason
+              ? `Phiên bản draft chưa thể duyệt: ${approvalBlockedReason}`
+              : "Có phiên bản hồ sơ draft đang chờ duyệt và kích hoạt."
+            : input.clusterVersionStale
+              ? "Danh sách tài liệu đã thay đổi. Hãy cập nhật hồ sơ trước khi đánh số trang."
+              : input.supplementalPendingDocumentCount > 0
+                ? `Còn ${input.supplementalPendingDocumentCount} tài liệu bổ sung chưa có trong phiên bản hồ sơ active.`
+                : input.totalDossiers <= 0
+                  ? "Chưa có hồ sơ để chuyển sang bước Đánh số trang."
+                  : input.busy
+                    ? "Hồ sơ đang được cập nhật. Vui lòng chờ thao tác hoàn tất."
+                    : null
 
   return {
     clusterMutationBlockedReason,
