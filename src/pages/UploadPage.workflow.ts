@@ -480,23 +480,26 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
         })
       }
 
-      const [[arrangementPlan, retentionPlan, zipInput]] = await Promise.all([
-        Promise.all([
-          arrangementUploadTask,
-          retentionUploadTask,
-          zipUploadTask,
-          dossierTitleCatalogUploadTask,
-        ]),
+      const planUploadsTask = Promise.all([
+        arrangementUploadTask,
+        retentionUploadTask,
+      ])
+      const dataUploadsTask = Promise.all([
+        zipUploadTask,
+        dossierTitleCatalogUploadTask,
         Promise.all(documentTasks),
         pendingFolderCompletion ?? Promise.resolve(),
       ])
-      const dataUploadCompleted = Boolean(
-        zipInput || pendingDataUpload?.kind === "folder"
-      )
+      // Plan analysis can start as soon as its own inputs are ready. Keep the
+      // remaining uploads running concurrently and observe failures even when
+      // enqueueing the plan job fails first.
+      void dataUploadsTask.catch(() => undefined)
+      const [arrangementPlan, retentionPlan] = await planUploadsTask
 
       if (!arrangementFile) {
         const retentionFiles = retentionUploadPaths(retentionPlan)
         if (retentionFileDrafts.length > 0 && retentionFiles.length === 0) {
+          await dataUploadsTask
           throw new Error(
             "Backend chưa trả về đường dẫn local cho file thông tư."
           )
@@ -515,6 +518,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
             ...planNumberingConfigPayload(),
           })
           syncPlanAnalysisJobId(queuedJob.job_id, isWorkflowActive())
+          await dataUploadsTask
           if (!isWorkflowActive()) return
           setPlanProgressMessage(
             "Đang chờ backend phân tích thông tư thời hạn bảo quản."
@@ -525,6 +529,10 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
           navigate(`/sessions/${encodeURIComponent(currentSessionId)}/step/2`)
           return
         }
+        const [zipInput] = await dataUploadsTask
+        const dataUploadCompleted = Boolean(
+          zipInput || pendingDataUpload?.kind === "folder"
+        )
         if (!isWorkflowActive()) return
         toast.success("Đã tạo session và lưu các file đã chọn.")
         if (dataUploadCompleted) {
@@ -545,6 +553,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
         !planFile ||
         (retentionFileDrafts.length > 0 && retentionFiles.length === 0)
       ) {
+        await dataUploadsTask
         throw new Error(
           "Backend chưa trả về đường dẫn local cho file phương án hoặc thông tư."
         )
@@ -575,6 +584,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
       }
       const queuedJob = await planJob
       syncPlanAnalysisJobId(queuedJob.job_id, isWorkflowActive())
+      await dataUploadsTask
       if (!isWorkflowActive()) return
       setPlanProgressMessage("Đang chờ backend phân tích phương án chỉnh lý.")
       toast.success("Đã tạo session và gửi task phân tích phương án chỉnh lý.")
