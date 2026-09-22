@@ -27,6 +27,7 @@ import {
   getSession,
   getWorkingPlan,
   listSessionEvents,
+  listUnclassifiedSessionDossiers,
   removeRetentionSourceFromDraft,
   uploadDossierTitleCatalog,
   type DossierBuildStrategy,
@@ -54,8 +55,8 @@ import { createConfirmPlanHandler } from "./UploadPage.confirmPlan"
 import { createUploadPageWorkflowActions } from "./UploadPage.workflow"
 import {
   canNavigateDirectlyToMetadata,
+  resolveDossierResultsTransition,
   resolvePlanInputsReuploaded,
-  shouldEnsureDossierBuildBeforeResults,
 } from "./UploadPage.workflowPolicy"
 import { createUploadPageActions } from "./UploadPage.actions"
 import { isMetadataDiscoveryPending } from "./UploadPage.metadataDiscovery"
@@ -151,8 +152,23 @@ export function UploadPage() {
       toast.error("Chưa có session để lập hồ sơ.")
       return
     }
-    if (!shouldEnsureDossierBuildBeforeResults(cache.activeClusterVersionId)) {
-      goTo(4, currentSessionId)
+    try {
+      const unclassified =
+        await listUnclassifiedSessionDossiers(currentSessionId)
+      const transition = resolveDossierResultsTransition({
+        activeClusterVersionId: cache.activeClusterVersionId,
+        unclassifiedDossierCount: unclassified.dossiers.length,
+      })
+      if (transition === "show_results") {
+        goTo(4, currentSessionId)
+        return
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? `Không kiểm tra được hồ sơ chưa phân loại: ${err.message}`
+          : "Không kiểm tra được hồ sơ chưa phân loại."
+      )
       return
     }
     const hasActivePlanForBuild = Boolean(activePlanVersionId)
@@ -216,9 +232,7 @@ export function UploadPage() {
       toast.error("Chưa có session để xem hồ sơ chờ phân loại.")
       return
     }
-    navigate(
-      `/sessions/${encodeURIComponent(currentSessionId)}/step/4?view=unclassified`
-    )
+    goTo(4, currentSessionId)
   }
 
   const handleFinalizeAutoStartHandled = useCallback(() => {

@@ -119,4 +119,24 @@ describe("final result action state", () => {
     expect(state.canFinish).toBe(false)
     expect(state.finishBlockedReason).toContain("2 hồ sơ chưa phân loại")
   })
+
+  it("allows the first update when only unclassified dossiers exist, then clears update state after classification", () => {
+    const waiting = resolveFinalResultActionState({
+      ...stable,
+      totalFiles: 0,
+      totalDossiers: 0,
+      unclassifiedDossierCount: 1,
+    })
+    expect(waiting.canUpdateDossiers).toBe(true)
+    expect(waiting.canFinish).toBe(false)
+
+    const updated = resolveFinalResultActionState({
+      ...stable,
+      hasPendingClusterVersion: true,
+      pendingClusterVersionStatus: "draft",
+      unclassifiedDossierCount: 0,
+    })
+    expect(updated.canUpdateDossiers).toBe(false)
+    expect(updated.canApprovePendingVersion).toBe(true)
+  })
 })

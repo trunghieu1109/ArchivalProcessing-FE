@@ -264,7 +264,7 @@ export async function listUnclassifiedSessionDossiers(
 
 export async function classifyUnclassifiedSessionDossiers(
   sessionId: string,
-  dossierIds: string[]
+  dossierIds?: string[]
 ): Promise<{
   session_id: string
   job_id: number
@@ -277,7 +277,9 @@ export async function classifyUnclassifiedSessionDossiers(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dossier_ids: dossierIds }),
+      body: JSON.stringify(
+        dossierIds === undefined ? {} : { dossier_ids: dossierIds }
+      ),
     }
   )
 }

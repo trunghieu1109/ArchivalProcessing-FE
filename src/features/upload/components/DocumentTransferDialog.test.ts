@@ -28,6 +28,29 @@ describe("transferValidationMessages", () => {
       "locked.pdf: Tài liệu đang thuộc một yêu cầu chuyển Phông chưa được xử lý. Yêu cầu: transfer-request-1.",
     ])
   })
+
+  it("explains job blockers and duplicates without exposing document details", () => {
+    const messages = transferValidationMessages(
+      [],
+      [],
+      [{ job_type: "build_clusters", status: "running", session_role: "target" }],
+      [
+        {
+          target_session_document_id: 1,
+          document_id: "private",
+          file_name: "private.pdf",
+          data_path: "/private",
+          lifecycle_status: "active",
+          match_types: ["remote_reference"],
+        },
+      ]
+    )
+
+    expect(messages).toEqual([
+      "Phông đích đang có tác vụ build_clusters (running).",
+      "Phông đích đã có 1 tài liệu trùng tham chiếu từ xa.",
+    ])
+  })
 })
 
 describe("transfer classification tree", () => {

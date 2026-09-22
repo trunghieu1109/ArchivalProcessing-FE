@@ -6,6 +6,8 @@ import {
   ensureClusterBuild,
   getActiveClusters,
   getClusterVersion,
+  listUnclassifiedSessionDossiers,
+  classifyUnclassifiedSessionDossiers,
 } from "@/features/upload/api/sessionApi"
 import type {
   ClusterDocument,
@@ -75,10 +77,6 @@ export function useFinalResultVersionActions(context: Record<string, any>) {
     const blockedReason = forceFileRegister
       ? clusterActionState.clusterMutationBlockedReason
       : clusterActionState.updateBlockedReason
-    if (blockedReason) {
-      toast.error(blockedReason)
-      return
-    }
     if (viewingHistoricalClusterVersion) {
       toast.error(
         "Bạn đang xem phiên bản cũ. Hãy kích hoạt phiên bản này trước khi cập nhật hồ sơ."
@@ -87,6 +85,27 @@ export function useFinalResultVersionActions(context: Record<string, any>) {
     }
     if (!sessionId) {
       toast.error("Chưa có session để cập nhật hồ sơ.")
+      return
+    }
+    let waitingDossiers: Awaited<
+      ReturnType<typeof listUnclassifiedSessionDossiers>
+    >["dossiers"] = []
+    try {
+      waitingDossiers = forceFileRegister
+        ? []
+        : (await listUnclassifiedSessionDossiers(sessionId)).dossiers
+    } catch {
+      if (blockedReason) {
+        toast.error(blockedReason)
+        return
+      }
+    }
+    const staleUnclassifiedState =
+      !forceFileRegister &&
+      waitingDossiers.length > 0 &&
+      !clusterActionState.updateNeeded
+    if (blockedReason && !staleUnclassifiedState) {
+      toast.error(blockedReason)
       return
     }
     setClusterJobMode(mode)
@@ -103,6 +122,18 @@ export function useFinalResultVersionActions(context: Record<string, any>) {
       setActiveClusterVersionId(
         activeVersion?.id ?? activeClusterVersionId ?? null
       )
+      if (waitingDossiers.length > 0) {
+        const response = await classifyUnclassifiedSessionDossiers(sessionId)
+        setRebuildBaselineVersionId(baselineVersionId)
+        setRebuildPollKey((key: number) => key + 1)
+        setLoading(true)
+        setCheckingClusters(false)
+        setStatus(
+          `Đã gửi yêu cầu cập nhật ${response.selected_dossier_count} hồ sơ chưa phân loại. Đang chờ backend tạo phiên bản mới.`
+        )
+        toast.success("Đã gửi job cập nhật hồ sơ chưa phân loại.")
+        return
+      }
       const response = await ensureClusterBuild(sessionId, {
         source: forceFileRegister ? "user_file_register" : "user_feedback",
         apply_ready_supplemental_intakes: true,

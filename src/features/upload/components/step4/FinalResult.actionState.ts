@@ -35,7 +35,7 @@ export function resolveFinalResultActionState(
     input.pendingClusterVersionStatus === "draft"
   const clusterMutationBlockedReason = !input.hasSession
     ? "Chưa có session để cập nhật hồ sơ."
-    : input.totalFiles <= 0
+    : input.totalFiles <= 0 && (input.unclassifiedDossierCount ?? 0) <= 0
       ? "Chưa có tài liệu để cập nhật hồ sơ."
       : input.viewingHistoricalClusterVersion
         ? "Bạn đang xem phiên bản cũ. Hãy quay về phiên bản đang làm việc trước khi cập nhật hồ sơ."

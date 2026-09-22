@@ -36,6 +36,23 @@ export function shouldEnsureDossierBuildBeforeResults(
   return !activeClusterVersionId?.trim()
 }
 
+export type DossierResultsTransition =
+  | "show_results"
+  | "ensure_build"
+
+export function resolveDossierResultsTransition({
+  activeClusterVersionId,
+  unclassifiedDossierCount,
+}: {
+  activeClusterVersionId: string | null | undefined
+  unclassifiedDossierCount: number
+}): DossierResultsTransition {
+  if (unclassifiedDossierCount > 0) return "show_results"
+  return shouldEnsureDossierBuildBeforeResults(activeClusterVersionId)
+    ? "ensure_build"
+    : "show_results"
+}
+
 export function shouldAnalyzePlanInputsAfterDataUpload({
   dataUploadSucceeded,
   planInputsReuploaded,

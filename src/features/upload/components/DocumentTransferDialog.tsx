@@ -162,8 +162,14 @@ export function DocumentTransferDialog({
     (!requiresDossier || normalizedDossier?.title)
   )
   const validationMessages = useMemo(
-    () => transferValidationMessages(preview?.validation_errors ?? [], targets),
-    [preview?.validation_errors, targets]
+    () =>
+      transferValidationMessages(
+        preview?.validation_errors ?? [],
+        targets,
+        preview?.blocking_jobs ?? [],
+        preview?.duplicates ?? []
+      ),
+    [preview, targets]
   )
 
   const requestPayload = () => {

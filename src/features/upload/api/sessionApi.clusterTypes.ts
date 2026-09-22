@@ -278,6 +278,10 @@ export interface UnclassifiedSessionDossierDocument {
   document_number: string
   issued_date: string
   page_count: number | null
+  document_type?: string
+  issuing_agency?: string
+  document_summary?: string
+  normalized_metadata?: Record<string, unknown>
   review_status: string
   is_reviewed: boolean
 }

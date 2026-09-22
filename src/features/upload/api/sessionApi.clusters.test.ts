@@ -4,6 +4,7 @@ import {
   getClusterVersionChanges,
   listSessionDossierRetentionCandidates,
   listUnclassifiedSessionDossiers,
+  classifyUnclassifiedSessionDossiers,
 } from "./sessionApi.clusters"
 
 describe("listUnclassifiedSessionDossiers", () => {
@@ -33,6 +34,33 @@ describe("listUnclassifiedSessionDossiers", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/sessions/session%20one/dossiers?scope=unclassified",
       { cache: "no-store" }
+    )
+  })
+})
+
+describe("classifyUnclassifiedSessionDossiers", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it("omits dossier_ids so the backend updates the complete waiting folder", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ selected_dossier_count: 2 }), {
+        status: 202,
+        headers: { "Content-Type": "application/json" },
+      })
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    await classifyUnclassifiedSessionDossiers("session one")
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/sessions/session%20one/unclassified-dossiers/classify",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      }
     )
   })
 })

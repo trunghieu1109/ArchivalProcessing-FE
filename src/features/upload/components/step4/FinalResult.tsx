@@ -31,6 +31,7 @@ import {
   type SessionDossierSuggestion,
   type SupplementalIntakeResponse,
   type ClusteringPendingDocumentsResponse,
+  type UnclassifiedSessionDossierSummary,
 } from "@/features/upload/api/sessionApi"
 import { useAuth } from "@/features/auth/lib/AuthContext"
 import { toast } from "sonner"
@@ -183,23 +184,30 @@ export function FinalResult({
     string | null
   >(null)
   const [pendingFeedbackCount, setPendingFeedbackCount] = useState(0)
-  const [unclassifiedDossierCount, setUnclassifiedDossierCount] = useState(0)
+  const [unclassifiedDossiers, setUnclassifiedDossiers] = useState<
+    UnclassifiedSessionDossierSummary[]
+  >([])
+  const unclassifiedDossierCount = unclassifiedDossiers.length
   const [pendingFeedbackRefreshKey, setPendingFeedbackRefreshKey] = useState(0)
 
   useEffect(() => {
     if (!sessionId) return
     let cancelled = false
-    listUnclassifiedSessionDossiers(sessionId)
+    const refresh = () => listUnclassifiedSessionDossiers(sessionId)
       .then((response) => {
-        if (!cancelled) setUnclassifiedDossierCount(response.dossiers.length)
+        if (!cancelled) setUnclassifiedDossiers(response.dossiers)
       })
       .catch(() => {
-        if (!cancelled) setUnclassifiedDossierCount(0)
+        // Keep the last known state on a transient polling error. Clearing it
+        // would incorrectly enable approval while the worker is still running.
       })
+    void refresh()
+    const intervalId = window.setInterval(() => void refresh(), 2500)
     return () => {
       cancelled = true
+      window.clearInterval(intervalId)
     }
-  }, [pendingFeedbackRefreshKey, rebuildPollKey, sessionId])
+  }, [displayedClusterVersionId, pendingClusterVersion?.id, pendingFeedbackRefreshKey, rebuildPollKey, sessionId])
   const [cancelingPendingFeedback, setCancelingPendingFeedback] =
     useState(false)
   const [selectedSessionDocumentIds, setSelectedSessionDocumentIds] = useState<
@@ -307,8 +315,14 @@ export function FinalResult({
     [supplementalIntakes]
   )
   const tree = useMemo(
-    () => buildResultTree(displayGroups, fondsName, changeHighlights),
-    [changeHighlights, displayGroups, fondsName]
+    () =>
+      buildResultTree(
+        displayGroups,
+        fondsName,
+        changeHighlights,
+        unclassifiedDossiers
+      ),
+    [changeHighlights, displayGroups, fondsName, unclassifiedDossiers]
   )
   const [resultTreeSearch, setResultTreeSearch] = useState("")
   const [resultTreeSearchIndex, setResultTreeSearchIndex] = useState(0)

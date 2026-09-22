@@ -10,6 +10,7 @@ import {
 } from "./FinalResult.metadataUtils"
 import type { DraggedDocument, ResultTreeNode } from "./FinalResult.types"
 import type { ClusterChangeHighlights } from "./FinalResult.changes"
+import type { UnclassifiedSessionDossierSummary } from "@/features/upload/api/sessionApi"
 import { SHOW_DOSSIER_CODE } from "./temporaryFeatureVisibility"
 
 const UNKNOWN_FONDS_LABEL = "Ch\u01b0a \u0111\u1eb7t t\u00ean ph\u00f4ng"
@@ -27,7 +28,8 @@ const UNCLASSIFIED_LABEL = "Chưa phân loại"
 export function buildResultTree(
   groups: ClusterGroup[],
   fondsName?: string | null,
-  changeHighlights?: ClusterChangeHighlights
+  changeHighlights?: ClusterChangeHighlights,
+  unclassifiedDossiers: UnclassifiedSessionDossierSummary[] = []
 ): ResultTreeNode[] {
   const roots: ResultTreeNode[] = []
   const fondsByLabel = new Map<string, ResultTreeNode>()
@@ -166,6 +168,30 @@ export function buildResultTree(
       })
     })
 
+  if (unclassifiedDossiers.length > 0) {
+    const waiting = createTreeNode(
+      "unclassified-folder",
+      "Hồ sơ chưa phân loại",
+      "unclassified_folder"
+    )
+    waiting.children = unclassifiedDossiers.map((dossier) => ({
+      id: `unclassified-dossier:${dossier.dossier_id}`,
+      label:
+        dossier.title_override?.trim() ||
+        dossier.title?.trim() ||
+        dossier.generated_title?.trim() ||
+        dossier.dossier_id,
+      type: "unclassified_dossier",
+      children: [],
+      unclassifiedDossier: dossier,
+      documentCount: dossier.documents.length,
+      pageCount: dossier.documents.reduce(
+        (sum, document) => sum + (document.page_count ?? 0),
+        0
+      ),
+    }))
+    roots.push(waiting)
+  }
   roots.forEach(updateTreeCounts)
   return sortResultTreeNodes(roots)
 }
@@ -269,7 +295,8 @@ function isSearchableResultTreeNode(node: ResultTreeNode): boolean {
   return (
     node.type === "dossier" ||
     node.type === "pending_dossier" ||
-    node.type === "temporary"
+    node.type === "temporary" ||
+    node.type === "unclassified_dossier"
   )
 }
 
@@ -286,6 +313,10 @@ function resultTreeNodeMatchesSearch(
       group?.dossierNumber,
       ...(SHOW_DOSSIER_CODE ? [group?.dossierCode] : []),
       group?.boxNumber,
+      node.unclassifiedDossier?.dossier_id,
+      ...((node.unclassifiedDossier?.documents ?? []).map(
+        (document) => `${document.title} ${document.file_name}`
+      )),
     ].join(" ")
   ).includes(normalizedQuery)
 }
@@ -306,7 +337,7 @@ export function createTreeNode(
 }
 
 export function updateTreeCounts(node: ResultTreeNode): ResultTreeNode {
-  if (node.group) return node
+  if (node.group || node.unclassifiedDossier) return node
   node.children.forEach(updateTreeCounts)
   node.documentCount = node.children.reduce(
     (sum, child) => sum + child.documentCount,
@@ -330,6 +361,8 @@ export function compareResultTreeNodes(
   a: ResultTreeNode,
   b: ResultTreeNode
 ): number {
+  if (a.type === "unclassified_folder" && b.type !== "unclassified_folder") return -1
+  if (b.type === "unclassified_folder" && a.type !== "unclassified_folder") return 1
   if (a.type === "temporary" && b.type !== "temporary") return -1
   if (b.type === "temporary" && a.type !== "temporary") return 1
   if (a.type === "pending_dossier" && b.type !== "pending_dossier") return -1

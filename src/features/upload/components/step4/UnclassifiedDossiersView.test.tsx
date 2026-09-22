@@ -76,7 +76,8 @@ describe("UnclassifiedDossiersView", () => {
     expect(screen.getByText("Không có hồ sơ chờ phân loại")).toBeVisible()
   })
 
-  it("queues only the dossiers selected by the user", async () => {
+  it("queues every dossier in the waiting folder without per-dossier selection", async () => {
+    const onUpdateQueued = vi.fn()
     apiMocks.listUnclassifiedSessionDossiers.mockResolvedValue({
       session_id: "session-1",
       scope: "unclassified",
@@ -114,20 +115,21 @@ describe("UnclassifiedDossiersView", () => {
       <UnclassifiedDossiersView
         sessionId="session-1"
         onBack={() => undefined}
+        onUpdateQueued={onUpdateQueued}
       />
     )
 
-    const checkboxes = await screen.findAllByRole("checkbox")
-    fireEvent.click(checkboxes[1])
-    fireEvent.click(
-      screen.getByRole("button", { name: /Cập nhật 1 hồ sơ đã chọn/i })
-    )
+    expect(
+      await screen.findByText(/Sẽ cập nhật toàn bộ 1 hồ sơ/i)
+    ).toBeInTheDocument()
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /^Cập nhật hồ sơ$/i }))
 
     await waitFor(() => {
       expect(apiMocks.classifyUnclassifiedSessionDossiers).toHaveBeenCalledWith(
-        "session-1",
-        ["transfer-dossier-1"]
+        "session-1"
       )
+      expect(onUpdateQueued).toHaveBeenCalledOnce()
     })
   })
 })

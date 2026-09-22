@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronRight,
   Eye,
+  FileText,
   Folder,
   FolderClock,
   FolderOpen,
@@ -142,6 +143,8 @@ export function ResultNode({
 }) {
   const open = openNodeIds.has(node.id)
   const isPendingDossier = node.type === "pending_dossier"
+  const isUnclassifiedFolder = node.type === "unclassified_folder"
+  const isUnclassifiedDossier = node.type === "unclassified_dossier"
   const isDossier = node.type === "dossier" || isPendingDossier
   const isTemporary = node.type === "temporary"
   const isDropFolder = (isDossier && !isPendingDossier) || isTemporary
@@ -265,7 +268,7 @@ export function ResultNode({
           onClick={() => onToggle(node.id)}
           className="flex size-5 shrink-0 items-center justify-center rounded-md text-[#64748B] hover:bg-[#E2E8F0]"
         >
-          {node.children.length > 0 || isDropFolder ? (
+          {node.children.length > 0 || isDropFolder || isUnclassifiedDossier ? (
             open ? (
               <ChevronDown className="size-3.5" />
             ) : (
@@ -287,7 +290,7 @@ export function ResultNode({
           />
         )}
 
-        {isTemporary || isPendingDossier ? (
+        {isTemporary || isPendingDossier || isUnclassifiedFolder || isUnclassifiedDossier ? (
           <FolderClock className="size-4 shrink-0 text-amber-600" />
         ) : open ? (
           <FolderOpen className="size-4 shrink-0 text-[#0052FF]" />
@@ -658,6 +661,51 @@ export function ResultNode({
 
       {open && (
         <div className="mt-1">
+          {isUnclassifiedDossier && node.unclassifiedDossier ? (
+            <div className="ml-7 space-y-2 rounded-xl border border-amber-200 bg-amber-50/40 p-3 text-xs text-[#475569]">
+              <div className="grid gap-x-4 gap-y-1 sm:grid-cols-2">
+                <span><strong>Số hồ sơ:</strong> {node.unclassifiedDossier.dossier_number || "Chưa có"}</span>
+                <span><strong>Thời hạn:</strong> {node.unclassifiedDossier.retention_period || "Chưa có"}</span>
+                <span><strong>Từ ngày:</strong> {node.unclassifiedDossier.start_date || "Chưa có"}</span>
+                <span><strong>Đến ngày:</strong> {node.unclassifiedDossier.end_date || "Chưa có"}</span>
+              </div>
+              <div className="space-y-1.5 border-t border-amber-200 pt-2">
+                <p className="font-semibold text-[#334155]">Tài liệu trong hồ sơ</p>
+                {node.unclassifiedDossier.documents.map((document) => (
+                  <div key={document.id} className="flex items-start gap-2 rounded-lg border border-[#E2E8F0] bg-white px-3 py-2">
+                    <FileText className="mt-0.5 size-3.5 shrink-0 text-[#0052FF]" />
+                    <div className="min-w-0">
+                      <p className="font-medium text-[#0F172A]">{document.title || document.file_name}</p>
+                      <p className="mt-0.5 break-words text-[11px] text-[#64748B]">
+                        {document.file_name}
+                        {document.document_number ? ` · Số ${document.document_number}` : ""}
+                        {document.issued_date ? ` · ${document.issued_date}` : ""}
+                        {document.page_count != null ? ` · ${document.page_count} trang` : ""}
+                      </p>
+                      {(document.document_type || document.issuing_agency || document.document_summary) ? (
+                        <p className="mt-0.5 text-[11px] text-[#64748B]">
+                          {[document.document_type, document.issuing_agency, document.document_summary].filter(Boolean).join(" · ")}
+                        </p>
+                      ) : null}
+                      {document.normalized_metadata && Object.keys(document.normalized_metadata).length > 0 ? (
+                        <details className="mt-1 text-[11px] text-[#475569]">
+                          <summary className="cursor-pointer font-medium">Xem toàn bộ metadata</summary>
+                          <dl className="mt-1 grid gap-x-3 gap-y-1 sm:grid-cols-[max-content_1fr]">
+                            {Object.entries(document.normalized_metadata).map(([key, value]) => (
+                              <div key={key} className="contents">
+                                <dt className="font-medium break-all">{key}</dt>
+                                <dd className="min-w-0 break-words">{typeof value === "string" ? value : JSON.stringify(value) ?? ""}</dd>
+                              </div>
+                            ))}
+                          </dl>
+                        </details>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
           {group &&
             group.documents.map((document) => (
               <DocumentRow

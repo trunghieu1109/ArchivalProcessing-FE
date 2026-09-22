@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import {
   ArrowLeft,
-  CheckSquare,
   ChevronDown,
   FileText,
   FolderClock,
@@ -25,6 +24,7 @@ import { cn } from "@/shared/lib/utils"
 interface UnclassifiedDossiersViewProps {
   sessionId: string | null
   onBack: () => void
+  onUpdateQueued?: () => void
 }
 
 function dossierTitle(dossier: UnclassifiedSessionDossierSummary): string {
@@ -52,6 +52,7 @@ function unclassifiedDossierErrorMessage(error: unknown): string {
 export function UnclassifiedDossiersView({
   sessionId,
   onBack,
+  onUpdateQueued,
 }: UnclassifiedDossiersViewProps) {
   const [dossiers, setDossiers] = useState<UnclassifiedSessionDossierSummary[]>(
     []
@@ -59,11 +60,12 @@ export function UnclassifiedDossiersView({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [expanded, setExpanded] = useState(true)
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [classifying, setClassifying] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editTitle, setEditTitle] = useState("")
   const [editRetentionPeriod, setEditRetentionPeriod] = useState("")
+  const [editStartDate, setEditStartDate] = useState("")
+  const [editEndDate, setEditEndDate] = useState("")
   const [saving, setSaving] = useState(false)
 
   const requestDossiers = useCallback(async () => {
@@ -79,12 +81,6 @@ export function UnclassifiedDossiersView({
     try {
       const response = await requestDossiers()
       setDossiers(response.dossiers)
-      setSelectedIds((current) => {
-        const available = new Set(
-          response.dossiers.map((dossier) => dossier.dossier_id)
-        )
-        return new Set([...current].filter((value) => available.has(value)))
-      })
     } catch (loadError) {
       setDossiers([])
       setError(unclassifiedDossierErrorMessage(loadError))
@@ -93,18 +89,20 @@ export function UnclassifiedDossiersView({
     }
   }, [requestDossiers])
 
-  const classifySelected = async () => {
-    if (!sessionId || selectedIds.size === 0) return
+  const classifyAll = async () => {
+    if (!sessionId || dossiers.length === 0) return
     setClassifying(true)
     setError("")
     try {
-      const response = await classifyUnclassifiedSessionDossiers(sessionId, [
-        ...selectedIds,
-      ])
+      const response = await classifyUnclassifiedSessionDossiers(sessionId)
       toast.success(
         `Đã đưa ${response.selected_dossier_count} hồ sơ vào hàng đợi cập nhật.`
       )
-      setSelectedIds(new Set())
+      if (onUpdateQueued) {
+        onUpdateQueued()
+      } else {
+        await loadDossiers()
+      }
     } catch (caught) {
       setError(unclassifiedDossierErrorMessage(caught))
     } finally {
@@ -120,6 +118,8 @@ export function UnclassifiedDossiersView({
       await patchSessionDossier(sessionId, editingId, {
         title: editTitle,
         retention_period: editRetentionPeriod,
+        start_date: editStartDate,
+        end_date: editEndDate,
       })
       toast.success(
         "Đã lưu thông tin hồ sơ. Các giá trị người dùng nhập sẽ được giữ nguyên khi phân loại."
@@ -177,8 +177,9 @@ export function UnclassifiedDossiersView({
               ) : null}
             </span>
             <span className="mt-1 block max-w-3xl text-sm leading-6 text-[#64748B]">
-              Chọn một hoặc nhiều hồ sơ để đưa vào kết quả phân loại. Các hồ sơ
-              không được chọn tiếp tục ở trạng thái chưa phân loại.
+              Các hồ sơ trong folder này sẽ được cập nhật cùng nhau khi bạn bấm
+              “Cập nhật hồ sơ”. Bạn có thể xem và bổ sung thông tin trước khi
+              cập nhật.
             </span>
           </span>
           <ChevronDown
@@ -233,37 +234,21 @@ export function UnclassifiedDossiersView({
           ) : (
             <div className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <label className="flex items-center gap-2 text-sm text-[#64748B]">
-                  <input
-                    type="checkbox"
-                    checked={
-                      dossiers.length > 0 &&
-                      selectedIds.size === dossiers.length
-                    }
-                    onChange={(event) =>
-                      setSelectedIds(
-                        event.target.checked
-                          ? new Set(
-                              dossiers.map((dossier) => dossier.dossier_id)
-                            )
-                          : new Set()
-                      )
-                    }
-                    className="size-4 rounded border-slate-300"
-                  />
-                  Chọn tất cả {dossiers.length} hồ sơ
-                </label>
+                <p className="text-sm text-[#64748B]">
+                  Sẽ cập nhật toàn bộ {dossiers.length} hồ sơ đang chờ phân
+                  loại.
+                </p>
                 <Button
                   type="button"
-                  disabled={selectedIds.size === 0 || classifying}
-                  onClick={() => void classifySelected()}
+                  disabled={classifying}
+                  onClick={() => void classifyAll()}
                 >
                   {classifying ? (
                     <Loader2 className="animate-spin" />
                   ) : (
-                    <CheckSquare />
+                    <RefreshCw />
                   )}
-                  Cập nhật {selectedIds.size || ""} hồ sơ đã chọn
+                  Cập nhật hồ sơ
                 </Button>
               </div>
               {dossiers.map((dossier) => (
@@ -273,23 +258,6 @@ export function UnclassifiedDossiersView({
                 >
                   <div className="flex flex-col gap-3 border-b border-[#E2E8F0] px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
                     <div className="flex min-w-0 gap-3">
-                      <input
-                        type="checkbox"
-                        aria-label={`Chọn hồ sơ ${dossierTitle(dossier)}`}
-                        checked={selectedIds.has(dossier.dossier_id)}
-                        onChange={(event) =>
-                          setSelectedIds((current) => {
-                            const next = new Set(current)
-                            if (event.target.checked) {
-                              next.add(dossier.dossier_id)
-                            } else {
-                              next.delete(dossier.dossier_id)
-                            }
-                            return next
-                          })
-                        }
-                        className="mt-1 size-4 shrink-0 rounded border-slate-300"
-                      />
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="font-semibold text-[#0F172A]">
@@ -321,6 +289,8 @@ export function UnclassifiedDossiersView({
                           setEditingId(dossier.dossier_id)
                           setEditTitle(dossierTitle(dossier))
                           setEditRetentionPeriod(dossier.retention_period || "")
+                          setEditStartDate(dossier.start_date || "")
+                          setEditEndDate(dossier.end_date || "")
                         }}
                       >
                         <Pencil />
@@ -330,7 +300,7 @@ export function UnclassifiedDossiersView({
                   </div>
 
                   {editingId === dossier.dossier_id ? (
-                    <div className="grid gap-3 border-b border-[#E2E8F0] bg-blue-50/40 px-5 py-4 sm:grid-cols-[1fr_220px_auto] sm:items-end">
+                    <div className="grid gap-3 border-b border-[#E2E8F0] bg-blue-50/40 px-5 py-4 sm:grid-cols-2 sm:items-end lg:grid-cols-[1fr_180px_160px_160px_auto]">
                       <label className="text-sm font-medium text-[#334155]">
                         Tiêu đề hồ sơ
                         <input
@@ -350,6 +320,28 @@ export function UnclassifiedDossiersView({
                           className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal"
                         />
                       </label>
+                      <label className="text-sm font-medium text-[#334155]">
+                        Ngày bắt đầu
+                        <input
+                          value={editStartDate}
+                          onChange={(event) =>
+                            setEditStartDate(event.target.value)
+                          }
+                          placeholder="YYYY-MM-DD"
+                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal"
+                        />
+                      </label>
+                      <label className="text-sm font-medium text-[#334155]">
+                        Ngày kết thúc
+                        <input
+                          value={editEndDate}
+                          onChange={(event) =>
+                            setEditEndDate(event.target.value)
+                          }
+                          placeholder="YYYY-MM-DD"
+                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal"
+                        />
+                      </label>
                       <Button
                         type="button"
                         disabled={saving || !editTitle.trim()}
@@ -365,7 +357,7 @@ export function UnclassifiedDossiersView({
                     </div>
                   ) : null}
 
-                  <div className="grid gap-3 px-5 py-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="grid gap-3 px-5 py-4 text-sm sm:grid-cols-2 lg:grid-cols-6">
                     <div>
                       <p className="text-xs text-[#64748B]">Số hồ sơ</p>
                       <p className="mt-1 font-medium text-[#0F172A]">
@@ -384,6 +376,18 @@ export function UnclassifiedDossiersView({
                       <p className="text-xs text-[#64748B]">Số trang</p>
                       <p className="mt-1 font-medium text-[#0F172A]">
                         {dossier.page_count ?? "Chưa xác định"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-[#64748B]">Ngày bắt đầu</p>
+                      <p className="mt-1 font-medium text-[#0F172A]">
+                        {dossier.start_date || "Chưa có"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-[#64748B]">Ngày kết thúc</p>
+                      <p className="mt-1 font-medium text-[#0F172A]">
+                        {dossier.end_date || "Chưa có"}
                       </p>
                     </div>
                     <div>

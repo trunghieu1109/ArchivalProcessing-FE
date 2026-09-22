@@ -4,6 +4,7 @@ import {
   hasArrangementPlanResult,
   hasRetentionAnalysisResult,
   resolveExistingPlanAnalysisAction,
+  resolveDossierResultsTransition,
   resolvePlanAnalysisInputSelection,
   resolvePlanInputsReuploaded,
   shouldEnsureDossierBuildBeforeResults,
@@ -106,5 +107,26 @@ describe("supplemental data upload workflow policy", () => {
     )
     expect(shouldEnsureDossierBuildBeforeResults(null)).toBe(true)
     expect(shouldEnsureDossierBuildBeforeResults(undefined)).toBe(true)
+  })
+
+  it("opens the combined result tree without building while dossiers wait for classification", () => {
+    expect(
+      resolveDossierResultsTransition({
+        activeClusterVersionId: null,
+        unclassifiedDossierCount: 2,
+      })
+    ).toBe("show_results")
+    expect(
+      resolveDossierResultsTransition({
+        activeClusterVersionId: "cluster-version-1",
+        unclassifiedDossierCount: 2,
+      })
+    ).toBe("show_results")
+    expect(
+      resolveDossierResultsTransition({
+        activeClusterVersionId: null,
+        unclassifiedDossierCount: 0,
+      })
+    ).toBe("ensure_build")
   })
 })

@@ -8,7 +8,6 @@ import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import { PlanAnalysisFailureAlert } from "@/features/upload/components/PlanAnalysisFailureAlert"
 import { ProcessStep } from "@/features/upload/components/step3/ProcessStep"
 import { FinalResult } from "@/features/upload/components/step4/FinalResult"
-import { UnclassifiedDossiersView } from "@/features/upload/components/step4/UnclassifiedDossiersView"
 import { NumberingStep } from "@/features/upload/components/step5/NumberingStep"
 import { PublicationStep } from "@/features/upload/components/step7/PublicationStep"
 import { FinalizeArtifactsStep } from "@/pages/FinalizeArtifactsPage"
@@ -668,7 +667,7 @@ export function UploadPageView(props: Record<string, any>) {
                       job hoàn tất, cây phương án hoặc thời hạn bảo quản sẽ tự
                       cập nhật tại màn hình này.
                     </p>
-                    {zipHas && (
+                    {resolvedSessionId && (
                       <button
                         type="button"
                         onClick={goToMetadataStep}
@@ -692,7 +691,7 @@ export function UploadPageView(props: Record<string, any>) {
                       ? "Kết quả thời hạn bảo quản đã sẵn sàng. Bạn vẫn có thể upload phương án chỉnh lý ở Step 1 để xem cây phân loại."
                       : "Hãy upload phương án chỉnh lý ở Step 1 để xem cây phân loại và tiêu chí phân tích. Các phần dữ liệu khác vẫn có thể xử lý độc lập."}
                   </p>
-                  {zipHas && (
+                  {resolvedSessionId && (
                     <button
                       type="button"
                       onClick={goToMetadataStep}
@@ -890,13 +889,7 @@ export function UploadPageView(props: Record<string, any>) {
               exit={{ opacity: 0, y: -16 }}
               transition={{ duration: 0.4, ease: easeOut }}
             >
-              {searchParams.get("view") === "unclassified" ? (
-                <UnclassifiedDossiersView
-                  sessionId={resolvedSessionId}
-                  onBack={() => goTo(3, resolvedSessionId)}
-                />
-              ) : (
-                <FinalResult
+              <FinalResult
                   sessionId={resolvedSessionId}
                   groups={clusterGroups}
                   fondsName={sessionMetadata?.fonds_name}
@@ -913,7 +906,6 @@ export function UploadPageView(props: Record<string, any>) {
                     )
                   }}
                 />
-              )}
             </motion.div>
           )}
 
