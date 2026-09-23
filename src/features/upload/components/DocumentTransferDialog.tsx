@@ -26,6 +26,12 @@ import {
 } from "@/features/upload/api/sessionApi"
 import { transferValidationMessages } from "./documentTransferValidation"
 import {
+  BUSINESS_DATE_PLACEHOLDER,
+  businessDateError,
+  isValidBusinessDate,
+  normalizeBusinessDate,
+} from "@/features/upload/lib/businessDate"
+import {
   buildClassificationTree,
   classificationLeafKey,
   type ClassificationTreeNode,
@@ -155,11 +161,18 @@ export function DocumentTransferDialog({
   const requiresDossier =
     context?.required_form_fields.includes("dossier") ?? false
 
-  const normalizedDossier = requiresDossier ? cleanDossier(dossier) : undefined
+  const dossierDatesValid =
+    isValidBusinessDate(dossier.start_date) &&
+    isValidBusinessDate(dossier.end_date)
+  const normalizedDossier = requiresDossier
+    ? dossierDatesValid
+      ? normalizeDossierDates(cleanDossier(dossier))
+      : cleanDossier(dossier)
+    : undefined
   const canCheck = Boolean(
     context?.selectable &&
     documentIds.length > 0 &&
-    (!requiresDossier || normalizedDossier?.title)
+    (!requiresDossier || (normalizedDossier?.title && dossierDatesValid))
   )
   const validationMessages = useMemo(
     () =>
@@ -613,20 +626,32 @@ function DossierFields({
       <label className="text-sm text-slate-700">
         Từ ngày
         <input
-          type="date"
           value={dossier.start_date || ""}
           onChange={(event) => field("start_date", event.target.value)}
+          placeholder={BUSINESS_DATE_PLACEHOLDER}
+          aria-invalid={Boolean(businessDateError(dossier.start_date))}
           className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
         />
+        {businessDateError(dossier.start_date) && (
+          <span className="mt-1 block text-xs text-red-600">
+            {businessDateError(dossier.start_date)}
+          </span>
+        )}
       </label>
       <label className="text-sm text-slate-700">
         Đến ngày
         <input
-          type="date"
           value={dossier.end_date || ""}
           onChange={(event) => field("end_date", event.target.value)}
+          placeholder={BUSINESS_DATE_PLACEHOLDER}
+          aria-invalid={Boolean(businessDateError(dossier.end_date))}
           className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
         />
+        {businessDateError(dossier.end_date) && (
+          <span className="mt-1 block text-xs text-red-600">
+            {businessDateError(dossier.end_date)}
+          </span>
+        )}
       </label>
       <label className="text-sm text-slate-700 sm:col-span-2">
         Chú giải / ghi chú
@@ -652,6 +677,20 @@ function cleanDossier(
       ])
       .filter(([, value]) => value !== "")
   ) as unknown as DocumentTransferDossierInput
+}
+
+function normalizeDossierDates(
+  dossier: DocumentTransferDossierInput
+): DocumentTransferDossierInput {
+  return {
+    ...dossier,
+    ...(dossier.start_date
+      ? { start_date: normalizeBusinessDate(dossier.start_date) }
+      : {}),
+    ...(dossier.end_date
+      ? { end_date: normalizeBusinessDate(dossier.end_date) }
+      : {}),
+  }
 }
 
 function caseLabel(value: string | null | undefined): string {

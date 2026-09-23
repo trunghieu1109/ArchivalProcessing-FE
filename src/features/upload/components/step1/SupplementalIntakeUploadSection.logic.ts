@@ -1,4 +1,5 @@
 import type { SupplementalClassificationPathNode } from "@/features/upload/api/sessionApi"
+import { normalizeBusinessDate } from "@/features/upload/lib/businessDate"
 import type { PlanCriterionSet, PlanGroup } from "@/features/upload/types"
 
 export interface SupplementalClassificationTarget {
@@ -240,9 +241,15 @@ export function parseSupplementalClassificationPath(
 export function cleanSupplementalDossierMetadata(
   value: Record<string, unknown>
 ): Record<string, unknown> {
-  return Object.fromEntries(
+  const cleaned = Object.fromEntries(
     Object.entries(value).filter(([, item]) => item !== "" && item != null)
   )
+  for (const field of ["start_date", "end_date"] as const) {
+    if (cleaned[field] != null) {
+      cleaned[field] = normalizeBusinessDate(cleaned[field])
+    }
+  }
+  return cleaned
 }
 
 function slug(value: string): string {

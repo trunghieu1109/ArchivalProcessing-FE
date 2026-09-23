@@ -23,6 +23,7 @@ import {
   type ClusterGroup,
 } from "@/features/upload/lib/clusterGroups"
 import { cn } from "@/shared/lib/utils"
+import { BUSINESS_DATE_PLACEHOLDER } from "@/features/upload/lib/businessDate"
 import {
   cleanSupplementalDossierMetadata,
   flattenSupplementalClassificationTargets,
@@ -582,17 +583,17 @@ export const SupplementalIntakeUploadSection = forwardRef<
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Ngày bắt đầu">
                   <input
-                    type="date"
                     value={startDate}
                     onChange={(event) => setStartDate(event.target.value)}
+                    placeholder={BUSINESS_DATE_PLACEHOLDER}
                     className={inputClass}
                   />
                 </Field>
                 <Field label="Ngày kết thúc">
                   <input
-                    type="date"
                     value={endDate}
                     onChange={(event) => setEndDate(event.target.value)}
+                    placeholder={BUSINESS_DATE_PLACEHOLDER}
                     className={inputClass}
                   />
                 </Field>

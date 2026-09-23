@@ -12,6 +12,7 @@ import type { DraggedDocument, ResultTreeNode } from "./FinalResult.types"
 import type { ClusterChangeHighlights } from "./FinalResult.changes"
 import type { UnclassifiedSessionDossierSummary } from "@/features/upload/api/sessionApi"
 import { SHOW_DOSSIER_CODE } from "./temporaryFeatureVisibility"
+import { parseBusinessDate } from "@/features/upload/lib/businessDate"
 
 const UNKNOWN_FONDS_LABEL = "Ch\u01b0a \u0111\u1eb7t t\u00ean ph\u00f4ng"
 export const PERMANENT_RETENTION_LABEL = "V\u0129nh vi\u1ec5n"
@@ -451,14 +452,7 @@ export function resultTreePeriodSortValueFromDate(
 ): ResultTreePeriodSortValue | null {
   const text = String(value ?? "").trim()
   if (!text) return null
-  const match = text.match(
-    /\b((?:19|20)\d{2})(?:[-/](\d{1,2}))?(?:[-/](\d{1,2}))?\b/
-  )
-  if (!match) return null
-  const year = Number(match[1])
-  const month = clampPeriodNumber(Number(match[2] ?? 0), 0, 12)
-  const day = clampPeriodNumber(Number(match[3] ?? 0), 0, 31)
-  return { year, month, day }
+  return parseBusinessDate(text)
 }
 
 export function resultTreePeriodSortValueFromLabel(

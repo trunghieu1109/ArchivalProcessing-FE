@@ -29,6 +29,10 @@ import {
   type SignatureTagInfo,
 } from "@/features/upload/lib/signatureStatus"
 import type { PdfMetadata } from "@/features/upload/types"
+import {
+  BUSINESS_DATE_PLACEHOLDER,
+  normalizeBusinessDate,
+} from "@/features/upload/lib/businessDate"
 
 export {
   METADATA_FIELDS,
@@ -179,12 +183,22 @@ export function MetadataCard({
   const commitEdit = async () => {
     if (readOnly) return
     const updated: Record<string, unknown> = { ...item.light_metadata }
-    METADATA_FIELDS.forEach((field) => {
-      field.aliases.forEach((alias) => {
-        if (alias !== field.key) delete updated[alias]
+    try {
+      METADATA_FIELDS.forEach((field) => {
+        field.aliases.forEach((alias) => {
+          if (alias !== field.key) delete updated[alias]
+        })
+        updated[field.key] =
+          field.key === "issued_date"
+            ? normalizeBusinessDate(draft[field.key])
+            : (draft[field.key] ?? "")
       })
-      updated[field.key] = draft[field.key] ?? ""
-    })
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Ngày ban hành không hợp lệ."
+      )
+      return
+    }
     updated["_warnings"] = {}
     if (await applyMetadata(updated)) setEditing(false)
   }
@@ -417,6 +431,11 @@ export function MetadataCard({
                       </span>
                       <textarea
                         value={draft[field.key] ?? ""}
+                        placeholder={
+                          field.key === "issued_date"
+                            ? BUSINESS_DATE_PLACEHOLDER
+                            : undefined
+                        }
                         onChange={(event) =>
                           setDraft((current) => ({
                             ...current,

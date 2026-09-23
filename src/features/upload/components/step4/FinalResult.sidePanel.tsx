@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/shared/lib/utils"
+import { BUSINESS_DATE_PLACEHOLDER } from "@/features/upload/lib/businessDate"
 import {
   listSessionDossierRetentionCandidates,
   type DossierTitleCandidate,
@@ -387,6 +388,11 @@ export function DossierMetadataSidePanel({
                 </span>
                 <textarea
                   value={draft[field.key]}
+                  placeholder={
+                    field.key === "startDate" || field.key === "endDate"
+                      ? BUSINESS_DATE_PLACEHOLDER
+                      : undefined
+                  }
                   onChange={(event) => {
                     setDraft((current) => ({
                       ...current,

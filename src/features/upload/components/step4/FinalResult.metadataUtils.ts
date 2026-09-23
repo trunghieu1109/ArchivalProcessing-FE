@@ -9,6 +9,7 @@ import type {
   ClusterGroup,
 } from "@/features/upload/lib/clusterGroups"
 import { clusterDocumentTotals } from "@/features/upload/lib/clusterGroups"
+import { normalizeBusinessDate } from "@/features/upload/lib/businessDate"
 import type { SignatureTagKind } from "@/features/upload/lib/signatureStatus"
 import type { PdfMetadata } from "@/features/upload/types"
 import { SHOW_DOSSIER_CODE } from "./temporaryFeatureVisibility"
@@ -97,8 +98,8 @@ export function dossierPatchPayloadFromDraft(
       trimmedOrNull(draft.retentionPeriod),
     ],
     language: ["language", trimmedOrNull(draft.language)],
-    startDate: ["start_date", trimmedOrNull(draft.startDate)],
-    endDate: ["end_date", trimmedOrNull(draft.endDate)],
+    startDate: ["start_date", normalizedDateOrNull(draft.startDate)],
+    endDate: ["end_date", normalizedDateOrNull(draft.endDate)],
     informationSign: ["information_sign", trimmedOrNull(draft.informationSign)],
     paperDossierId: ["paper_dossier_id", trimmedOrNull(draft.paperDossierId)],
     note: ["note", trimmedOrNull(draft.note)],
@@ -112,6 +113,11 @@ export function dossierPatchPayloadFromDraft(
     }
   )
   return payload as SessionDossierPatchPayload
+}
+
+function normalizedDateOrNull(value: string): string | null {
+  const normalized = normalizeBusinessDate(value)
+  return normalized || null
 }
 
 export function updateDossierGroupFromResponse(

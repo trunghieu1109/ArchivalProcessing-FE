@@ -20,6 +20,10 @@ import {
   type UnclassifiedSessionDossierSummary,
 } from "@/features/upload/api/sessionApi"
 import { cn } from "@/shared/lib/utils"
+import {
+  BUSINESS_DATE_PLACEHOLDER,
+  normalizeBusinessDate,
+} from "@/features/upload/lib/businessDate"
 
 interface UnclassifiedDossiersViewProps {
   sessionId: string | null
@@ -118,8 +122,8 @@ export function UnclassifiedDossiersView({
       await patchSessionDossier(sessionId, editingId, {
         title: editTitle,
         retention_period: editRetentionPeriod,
-        start_date: editStartDate,
-        end_date: editEndDate,
+        start_date: normalizeBusinessDate(editStartDate),
+        end_date: normalizeBusinessDate(editEndDate),
       })
       toast.success(
         "Đã lưu thông tin hồ sơ. Các giá trị người dùng nhập sẽ được giữ nguyên khi phân loại."
@@ -327,7 +331,7 @@ export function UnclassifiedDossiersView({
                           onChange={(event) =>
                             setEditStartDate(event.target.value)
                           }
-                          placeholder="YYYY-MM-DD"
+                          placeholder={BUSINESS_DATE_PLACEHOLDER}
                           className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal"
                         />
                       </label>
@@ -338,7 +342,7 @@ export function UnclassifiedDossiersView({
                           onChange={(event) =>
                             setEditEndDate(event.target.value)
                           }
-                          placeholder="YYYY-MM-DD"
+                          placeholder={BUSINESS_DATE_PLACEHOLDER}
                           className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal"
                         />
                       </label>
