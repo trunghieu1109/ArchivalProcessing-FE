@@ -33,6 +33,7 @@ import { DossierTitleCandidatePanel } from "./DossierTitleCandidatePanel"
 const LEGACY_RETENTION_VERSION_ID = "__current_retention_candidates__"
 
 export function DossierMetadataSidePanel({
+  readOnly = false,
   sessionId,
   clusterVersionId,
   group,
@@ -42,6 +43,7 @@ export function DossierMetadataSidePanel({
   onSelectRetentionCandidate,
   onClose,
 }: {
+  readOnly?: boolean
   sessionId: string | null
   clusterVersionId?: string | null
   group: ClusterGroup
@@ -312,7 +314,7 @@ export function DossierMetadataSidePanel({
                 Lưu metadata
               </Button>
             </>
-          ) : (
+          ) : !readOnly ? (
             <>
               {Boolean(group.titleCandidates?.length) && (
                 <Button
@@ -347,7 +349,7 @@ export function DossierMetadataSidePanel({
                 <Edit2 data-icon="inline-start" /> Sửa
               </Button>
             </>
-          )}
+          ) : null}
           <Button
             type="button"
             variant="ghost"

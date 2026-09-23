@@ -16,6 +16,7 @@ export interface FinalResultProps {
   activePlanVersionId?: string | null
   classificationTree?: FolderNode[]
   metadataItems?: PdfMetadata[]
+  readOnly?: boolean
   onFinish: () => void
 }
 

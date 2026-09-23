@@ -29,6 +29,7 @@ export interface ApiRevisionMetadata {
 
 export interface CreateSessionResponse {
   session_id: string
+  session_type?: "standard" | "merged"
   status: string
   archive_name?: string | null
   archive_code?: string | null
@@ -42,6 +43,9 @@ export interface CreateSessionResponse {
 
 export interface SessionSummary {
   session_id: string
+  session_type?: "standard" | "merged"
+  active_merged_session_id?: string | null
+  active_merged_session_status?: string | null
   status: string
   archive_name?: string | null
   archive_code?: string | null

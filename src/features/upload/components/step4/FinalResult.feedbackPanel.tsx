@@ -20,6 +20,7 @@ import {
 import { SHOW_DOSSIER_SUGGESTIONS } from "./temporaryFeatureVisibility"
 
 interface FinalResultFeedbackPanelProps {
+  readOnly?: boolean
   canDeleteDocuments: boolean
   canTransferDocuments: boolean
   canRestoreFileRegisterVersion: boolean
@@ -62,6 +63,7 @@ interface FinalResultFeedbackPanelProps {
 
 export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
   const {
+    readOnly = false,
     canDeleteDocuments,
     canTransferDocuments,
     canRestoreFileRegisterVersion,
@@ -112,6 +114,7 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
       supplementalPendingDocumentCount,
       supplementalPendingUpdateDocumentCount,
       clusterVersionStale,
+      readOnly,
       busy: Boolean(
         loading ||
         rebuildSubmitting ||
@@ -163,6 +166,7 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
             promotingSelectedDocuments ||
             Boolean(movingSelectedDocumentsTargetId) ||
             loading ||
+            readOnly ||
             !sessionId ||
             totalFiles === 0 ||
             viewingHistoricalClusterVersion ||
@@ -282,6 +286,7 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
             promotingSelectedDocuments ||
             Boolean(movingSelectedDocumentsTargetId) ||
             loading ||
+            readOnly ||
             !sessionId ||
             viewingHistoricalClusterVersion ||
             Boolean(rebuildBaselineVersionId)

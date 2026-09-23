@@ -40,6 +40,7 @@ import {
 } from "./temporaryFeatureVisibility"
 
 export function ResultNode({
+  readOnly,
   node,
   sessionId,
   depth,
@@ -85,6 +86,7 @@ export function ResultNode({
   onSortDossierDocuments,
   onSortLeafDossiers,
 }: {
+  readOnly: boolean
   node: ResultTreeNode
   sessionId: string | null
   depth: number
@@ -164,7 +166,10 @@ export function ResultNode({
     node.changeTypes
   )
   const canDrop = Boolean(
-    draggedDocument && group && draggedDocument.fromClusterId !== group.id
+    !readOnly &&
+      draggedDocument &&
+      group &&
+      draggedDocument.fromClusterId !== group.id
   )
   const groupSessionDocumentIds =
     group?.documents
@@ -279,7 +284,7 @@ export function ResultNode({
           )}
         </button>
 
-        {isDropFolder && group && (
+        {isDropFolder && group && !readOnly && (
           <SelectionCheckbox
             checked={groupSelectionChecked}
             indeterminate={groupSelectionIndeterminate}
@@ -426,6 +431,7 @@ export function ResultNode({
               size="sm"
               title="Sắp xếp các hồ sơ đủ điều kiện trong mục này"
               disabled={
+                readOnly ||
                 temporaryFolderUpdateDisabled ||
                 sortingScope === `leaf:${node.classificationGroupId}`
               }
@@ -452,7 +458,7 @@ export function ResultNode({
               </span>
             </span>
           )}
-          {isDropFolder && group && selectedDocumentCount > 0 && (
+          {!readOnly && isDropFolder && group && selectedDocumentCount > 0 && (
             <Button
               type="button"
               variant="outline"
@@ -480,7 +486,7 @@ export function ResultNode({
               </span>
             </Button>
           )}
-          {SHOW_DOSSIER_SUGGESTIONS &&
+          {!readOnly && SHOW_DOSSIER_SUGGESTIONS &&
             isTemporary &&
             group &&
             group.documents.length > 0 && (
@@ -508,7 +514,7 @@ export function ResultNode({
                 </span>
               </Button>
             )}
-          {isTemporary && group && group.documents.length > 0 && (
+          {!readOnly && isTemporary && group && group.documents.length > 0 && (
             <Button
               type="button"
               variant="outline"
@@ -539,6 +545,7 @@ export function ResultNode({
               size="sm"
               title="Sắp xếp tài liệu đã verify trong hồ sơ; tài liệu draft được giữ ở cuối"
               disabled={
+                readOnly ||
                 temporaryFolderUpdateDisabled ||
                 sortingScope ===
                   `dossier:${isPendingDossier ? "draft_dossier" : "cluster_dossier"}:${group.dossierId ?? group.id}`
@@ -573,6 +580,7 @@ export function ResultNode({
                   : "Chọn thủ công một nhóm cấp thấp nhất trong cây phân loại"
               }
               disabled={
+                readOnly ||
                 classificationRefreshDisabled ||
                 dossierHasPendingSupplementalDocuments ||
                 classificationRefreshBusy ||
@@ -608,6 +616,7 @@ export function ResultNode({
                     : "Phân loại lại hồ sơ vào các nhóm"
               }
               disabled={
+                readOnly ||
                 classificationRefreshDisabled ||
                 dossierHasPendingSupplementalDocuments ||
                 classificationRefreshBusy
@@ -709,6 +718,7 @@ export function ResultNode({
           {group &&
             group.documents.map((document) => (
               <DocumentRow
+                readOnly={readOnly}
                 key={`${group.id}-${document.documentId}`}
                 document={document}
                 sessionId={sessionId}
@@ -758,6 +768,7 @@ export function ResultNode({
             ))}
           {node.children.map((child) => (
             <ResultNode
+              readOnly={readOnly}
               key={child.id}
               node={child}
               sessionId={sessionId}

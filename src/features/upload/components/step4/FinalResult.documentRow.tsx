@@ -58,6 +58,7 @@ import {
 } from "./FinalResult.transferState"
 
 export function DocumentRow({
+  readOnly,
   document,
   sessionId,
   clusterId,
@@ -80,6 +81,7 @@ export function DocumentRow({
   onSelectDossierSuggestions,
   onSaveMetadata,
 }: {
+  readOnly: boolean
   document: ClusterDocument
   sessionId: string | null
   clusterId: string
@@ -262,14 +264,14 @@ export function DocumentRow({
   return (
     <div className="max-w-full min-w-0 overflow-hidden">
       <div
-        draggable={!documentInactive}
+        draggable={!readOnly && !documentInactive}
         onClick={() => {
           if (!dragging) {
             toggleExpanded()
           }
         }}
         onDragStart={(event) => {
-          if (documentInactive) return
+          if (readOnly || documentInactive) return
           event.dataTransfer.effectAllowed = "move"
           event.dataTransfer.setData(
             "text/plain",
@@ -293,27 +295,33 @@ export function DocumentRow({
         style={{ paddingLeft: `${8 + depth * indentStep}px` }}
         title="Nhấn để xem chi tiết tài liệu"
       >
-        <GripVertical
-          className={cn(
-            "mt-1.5 size-3 shrink-0 text-[#94A3B8]",
-            documentInactive ? "cursor-not-allowed opacity-40" : "cursor-grab"
-          )}
-        />
-        <SelectionCheckbox
-          checked={selectionChecked}
-          disabled={selectionDisabled || documentInactive}
-          ariaLabel={`Chọn tài liệu ${document.fileName}`}
-          title={
-            documentTransferLocked
-              ? documentTransferLockDetails(document)
-              : "Chọn tài liệu để tạo hồ sơ mới"
-          }
-          onChange={(checked) => {
-            if (document.sessionDocumentId !== null) {
-              onToggleSelection(document.sessionDocumentId, checked)
-            }
-          }}
-        />
+        {!readOnly ? (
+          <>
+            <GripVertical
+              className={cn(
+                "mt-1.5 size-3 shrink-0 text-[#94A3B8]",
+                documentInactive
+                  ? "cursor-not-allowed opacity-40"
+                  : "cursor-grab"
+              )}
+            />
+            <SelectionCheckbox
+              checked={selectionChecked}
+              disabled={selectionDisabled || documentInactive}
+              ariaLabel={`Chọn tài liệu ${document.fileName}`}
+              title={
+                documentTransferLocked
+                  ? documentTransferLockDetails(document)
+                  : "Chọn tài liệu để tạo hồ sơ mới"
+              }
+              onChange={(checked) => {
+                if (document.sessionDocumentId !== null) {
+                  onToggleSelection(document.sessionDocumentId, checked)
+                }
+              }}
+            />
+          </>
+        ) : null}
         <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-[#0052FF] shadow-[0_4px_12px_rgba(0,82,255,0.24)]">
           <FileText className="size-3.5 text-white" />
         </div>
@@ -468,7 +476,7 @@ export function DocumentRow({
             </p>
           )}
         </div>
-        {!draftActionsOnly && (
+        {!readOnly && !draftActionsOnly && (
           <Button
             type="button"
             variant={membershipExplanationSelected ? "default" : "outline"}
@@ -524,7 +532,7 @@ export function DocumentRow({
         >
           <Eye className="size-3.5" />
         </Button>
-        {SHOW_DOSSIER_SUGGESTIONS && !draftActionsOnly && (
+        {!readOnly && SHOW_DOSSIER_SUGGESTIONS && !draftActionsOnly && (
           <Button
             type="button"
             variant={selectedDossierSuggestions ? "default" : "outline"}
@@ -600,7 +608,7 @@ export function DocumentRow({
                     )}
                   </Button>
                 </>
-              ) : (
+              ) : !readOnly ? (
                 <Button
                   type="button"
                   variant="outline"
@@ -624,7 +632,7 @@ export function DocumentRow({
                     <Edit2 className="size-3.5" />
                   )}
                 </Button>
-              )}
+              ) : null}
             </div>
           </div>
           <div className="grid min-w-0 gap-2 text-xs">

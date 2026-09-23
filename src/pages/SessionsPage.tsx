@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { FileStack, Loader2, Plus, RefreshCw } from "lucide-react"
+import { FileStack, Loader2, Merge, Plus, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import { listChinhlyUsers, type ChinhlyUser } from "@/features/auth/api/authApi"
 import { UserMenu } from "@/features/auth/components/UserMenu"
@@ -14,14 +14,18 @@ import {
   type SessionSummary,
 } from "@/features/upload/api/sessionApi"
 import {
-  SessionCard,
-  SummaryPill,
-} from "./SessionsPage.components"
+  getMergedTree,
+  refreshMergedFonds,
+  syncMergedFonds,
+} from "@/features/upload/api/mergeApi"
+import { SessionCard, SummaryPill } from "./SessionsPage.components"
 import {
   analysisStatusesFromSessionDetail,
   chinhlyUserId,
   fallbackAnalysisStatuses,
   normalizedRole,
+  sessionMergeCardAction,
+  sessionOpenTarget,
   type SessionAnalysisStatuses,
 } from "./SessionsPage.utils"
 
@@ -40,6 +44,8 @@ async function loadAnalysisStatuses(
 
   const results = await Promise.allSettled(
     sessions.map(async (session) => {
+      if (session.session_type === "merged")
+        return [session.session_id, fallbackAnalysisStatuses(session)] as const
       const detail = await getSession(session.session_id)
       return [
         session.session_id,
@@ -57,6 +63,30 @@ async function loadAnalysisStatuses(
   return fallbackStatuses
 }
 
+async function loadMergedSourceSyncStatuses(
+  sessions: SessionSummary[]
+): Promise<Record<string, string[]>> {
+  const mergedSessions = sessions.filter(
+    (session) => session.session_type === "merged"
+  )
+  const results = await Promise.allSettled(
+    mergedSessions.map(async (session) => {
+      const tree = await getMergedTree(session.session_id)
+      return [
+        session.session_id,
+        tree.sources.map((source) => source.sync_status),
+      ] as const
+    })
+  )
+
+  const statuses: Record<string, string[]> = {}
+  for (const result of results) {
+    if (result.status !== "fulfilled") continue
+    statuses[result.value[0]] = result.value[1]
+  }
+  return statuses
+}
+
 export function SessionsPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -69,6 +99,10 @@ export function SessionsPage() {
   const [coordinators, setCoordinators] = useState<ChinhlyUser[]>([])
   const [analysisStatusesBySessionId, setAnalysisStatusesBySessionId] =
     useState<Record<string, SessionAnalysisStatuses>>({})
+  const [
+    mergedSourceSyncStatusesBySessionId,
+    setMergedSourceSyncStatusesBySessionId,
+  ] = useState<Record<string, string[]>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(
@@ -77,6 +111,9 @@ export function SessionsPage() {
   const [assigningSessionId, setAssigningSessionId] = useState<string | null>(
     null
   )
+  const [mergeActionSessionId, setMergeActionSessionId] = useState<
+    string | null
+  >(null)
   const loadRequestIdRef = useRef(0)
   const readyCount = useMemo(
     () => sessions.filter((session) => session.active_plan_version_id).length,
@@ -89,7 +126,10 @@ export function SessionsPage() {
   )
 
   const sessionOffset = sessionPageIndex * sessionPageSize
-  const sessionPageCount = Math.max(1, Math.ceil(sessionTotal / sessionPageSize))
+  const sessionPageCount = Math.max(
+    1,
+    Math.ceil(sessionTotal / sessionPageSize)
+  )
   const displayedPageIndex = Math.min(sessionPageIndex, sessionPageCount - 1)
   const sessionStartNumber =
     sessionTotal === 0 ? 0 : displayedPageIndex * sessionPageSize + 1
@@ -124,17 +164,23 @@ export function SessionsPage() {
         setSessionTotal(total)
         setCoordinators(coordinatorUsers)
         setAnalysisStatusesBySessionId({})
+        setMergedSourceSyncStatusesBySessionId({})
         setSessionPageIndex(pageCount - 1)
         return
       }
-      const nextAnalysisStatuses = await loadAnalysisStatuses(
-        response.sessions
-      )
+      const [nextAnalysisStatuses, nextMergedSourceSyncStatuses] =
+        await Promise.all([
+          loadAnalysisStatuses(response.sessions),
+          isAdmin
+            ? loadMergedSourceSyncStatuses(response.sessions)
+            : Promise.resolve({}),
+        ])
       if (loadRequestIdRef.current !== requestId) return
       setSessions(response.sessions)
       setSessionTotal(total)
       setCoordinators(coordinatorUsers)
       setAnalysisStatusesBySessionId(nextAnalysisStatuses)
+      setMergedSourceSyncStatusesBySessionId(nextMergedSourceSyncStatuses)
     } catch (err) {
       if (loadRequestIdRef.current !== requestId) return
       const message =
@@ -144,12 +190,7 @@ export function SessionsPage() {
     } finally {
       if (loadRequestIdRef.current === requestId) setLoading(false)
     }
-  }, [
-    isAdmin,
-    sessionOffset,
-    sessionPageIndex,
-    sessionPageSize,
-  ])
+  }, [isAdmin, sessionOffset, sessionPageIndex, sessionPageSize])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -165,9 +206,10 @@ export function SessionsPage() {
     return map
   }, [coordinators])
 
-  const openSession = (sessionId: string) => {
-    window.localStorage.setItem(LAST_SESSION_KEY, sessionId)
-    navigate(`/sessions/${encodeURIComponent(sessionId)}/step/1`)
+  const openSession = (session: SessionSummary) => {
+    const target = sessionOpenTarget(session)
+    window.localStorage.setItem(LAST_SESSION_KEY, target.sessionId)
+    navigate(target.path)
   }
 
   const removeSession = async (session: SessionSummary) => {
@@ -239,6 +281,44 @@ export function SessionsPage() {
     }
   }
 
+  const refreshMergedSession = async (mergedSessionId: string) => {
+    setMergeActionSessionId(mergedSessionId)
+    try {
+      const response = await refreshMergedFonds(mergedSessionId)
+      toast.success(
+        `Đã cập nhật phông gộp: kế thừa ${response.inherited_document_count} tài liệu, cần đánh số ${response.pending_document_count} tài liệu.`
+      )
+      await load()
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Không thể cập nhật phông gộp từ phông nguồn."
+      )
+    } finally {
+      setMergeActionSessionId(null)
+    }
+  }
+
+  const syncMergedSession = async (mergedSessionId: string) => {
+    setMergeActionSessionId(mergedSessionId)
+    try {
+      const response = await syncMergedFonds(mergedSessionId)
+      toast.success(
+        `Đã đồng bộ kết quả về ${response.synced_source_session_ids.length} phông nguồn.`
+      )
+      await load()
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Không thể đồng bộ kết quả về phông nguồn."
+      )
+    } finally {
+      setMergeActionSessionId(null)
+    }
+  }
+
   return (
     <div className="min-h-svh bg-[#EEF3F8] text-[#0F172A]">
       <header className="border-b border-[#D8E1EC] bg-white/80 backdrop-blur">
@@ -266,13 +346,13 @@ export function SessionsPage() {
                 <SummaryPill label="Trang phân công" value={assignedCount} />
               )}
             </div>
-            <UserMenu />
+            <UserMenu className="h-14" />
           </div>
         </div>
       </header>
 
       <main className="mx-auto flex max-w-[1560px] flex-col gap-6 px-4 py-5 sm:px-6 sm:py-8 lg:px-8">
-        <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <section className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-[11px] font-semibold tracking-[0.16em] text-[#64748B] uppercase">
               Danh sách session
@@ -281,11 +361,11 @@ export function SessionsPage() {
               Danh sách các phiên chỉnh lý
             </h2>
           </div>
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-end">
+          <div className="flex flex-wrap items-center gap-2 md:shrink-0 md:justify-end">
             <button
               onClick={() => void load()}
               disabled={loading}
-              className="flex items-center justify-center gap-2 rounded-xl border border-[#CBD5E1] bg-white px-4 py-2 text-sm font-semibold text-[#475569] shadow-sm transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF] disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex h-11 w-[7.25rem] items-center justify-center gap-2 rounded-xl border border-[#CBD5E1] bg-white px-4 text-sm font-semibold whitespace-nowrap text-[#475569] shadow-sm transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -295,8 +375,15 @@ export function SessionsPage() {
               Làm mới
             </button>
             <button
+              onClick={() => navigate("/sessions/merges/new")}
+              disabled={!isAdmin}
+              className="flex h-11 w-[7.25rem] items-center justify-center gap-2 rounded-xl border border-[#0052FF] bg-white px-4 text-sm font-semibold whitespace-nowrap text-[#0052FF] disabled:opacity-50"
+            >
+              <Merge className="size-4" /> Gộp phông
+            </button>
+            <button
               onClick={() => navigate("/sessions/new/step/1")}
-              className="flex items-center justify-center gap-2 rounded-xl bg-[#0052FF] px-4 py-2 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(0,82,255,0.22)] transition-all hover:-translate-y-0.5 hover:bg-[#0047D6] active:scale-[0.98]"
+              className="flex h-11 w-[7.25rem] items-center justify-center gap-2 rounded-xl bg-[#0052FF] px-4 text-sm font-semibold whitespace-nowrap text-white shadow-[0_8px_24px_rgba(0,82,255,0.22)] transition-all hover:-translate-y-0.5 hover:bg-[#0047D6] active:scale-[0.98]"
             >
               <Plus className="size-4" /> Tạo mới
             </button>
@@ -325,7 +412,7 @@ export function SessionsPage() {
                 key={session.session_id}
                 session={session}
                 index={index}
-                onOpen={() => openSession(session.session_id)}
+                onOpen={() => openSession(session)}
                 onDelete={() => void removeSession(session)}
                 deleting={deletingSessionId === session.session_id}
                 isAdmin={isAdmin}
@@ -340,6 +427,53 @@ export function SessionsPage() {
                 assigning={assigningSessionId === session.session_id}
                 onAssignCoordinator={(coordinatorUserId) =>
                   void assignCoordinator(session, coordinatorUserId)
+                }
+                mergeAction={
+                  isAdmin &&
+                  session.session_type === "merged" &&
+                  sessionMergeCardAction(
+                    session,
+                    mergedSourceSyncStatusesBySessionId[session.session_id]
+                  ) === "refresh"
+                    ? {
+                        label: "Cập nhật từ nguồn",
+                        pending: mergeActionSessionId === session.session_id,
+                        kind: "refresh",
+                        onClick: () =>
+                          void refreshMergedSession(session.session_id),
+                      }
+                    : isAdmin &&
+                        session.session_type !== "merged" &&
+                        session.active_merged_session_id &&
+                        sessionMergeCardAction(session) === "refresh"
+                      ? {
+                          label: "Cập nhật phông gộp",
+                          pending:
+                            mergeActionSessionId ===
+                            session.active_merged_session_id,
+                          kind: "refresh",
+                          onClick: () =>
+                            void refreshMergedSession(
+                              session.active_merged_session_id as string
+                            ),
+                        }
+                      : isAdmin &&
+                          session.session_type === "merged" &&
+                          sessionMergeCardAction(
+                            session,
+                            mergedSourceSyncStatusesBySessionId[
+                              session.session_id
+                            ]
+                          ) === "sync"
+                        ? {
+                            label: "Đồng bộ về nguồn",
+                            pending:
+                              mergeActionSessionId === session.session_id,
+                            kind: "sync",
+                            onClick: () =>
+                              void syncMergedSession(session.session_id),
+                          }
+                        : undefined
                 }
               />
             ))}

@@ -33,6 +33,7 @@ export function UploadPageView(props: Record<string, any>) {
     routeSessionId,
     sessionId,
     sessionMetadata,
+    isMergedSession,
     syncSessionMetadataDraft,
     saveSessionMetadata,
     ensureSession,
@@ -232,6 +233,7 @@ export function UploadPageView(props: Record<string, any>) {
         highestVisitedStep={highestVisitedStep}
         STEP_LABELS={STEP_LABELS}
         goTo={handlePlanStepNavigation}
+        minimumNavigableStep={isMergedSession ? 4 : 1}
         isWorkerUser={isWorkerUser}
         navigate={navigate}
         onNavigateSessions={handleNavigateToSessions}
@@ -254,7 +256,9 @@ export function UploadPageView(props: Record<string, any>) {
           >
             <Home className="size-4" /> Danh sách session
           </motion.button>
-          {currentStep > 1 && !isWorkerUser && (
+          {currentStep > 1 &&
+            !isWorkerUser &&
+            (!isMergedSession || currentStep > 4) && (
             <motion.button
               initial={{ opacity: 0, x: -8 }}
               animate={{ opacity: 1, x: 0 }}
@@ -274,7 +278,7 @@ export function UploadPageView(props: Record<string, any>) {
             sessionId={resolvedSessionId}
             metadata={sessionMetadata}
             onSave={saveSessionMetadata}
-            readOnly={isWorkerUser}
+            readOnly={isWorkerUser || isMergedSession}
             className="mb-5"
           />
         )}
@@ -896,6 +900,7 @@ export function UploadPageView(props: Record<string, any>) {
                   activePlanVersionId={activePlanVersionId}
                   classificationTree={activeFolderTree}
                   metadataItems={ocrMetadataItems}
+                  readOnly={isMergedSession}
                   onFinish={() => {
                     if (!resolvedSessionId) {
                       toast.error("Chưa có session để đánh số trang.")

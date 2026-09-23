@@ -582,6 +582,7 @@ export function createUploadPageWorkflowActions(context: Record<string, any>) {
       }
       const queuedJob = await planJob
       syncPlanAnalysisJobId(queuedJob.job_id, isWorkflowActive())
+      await dataUploadsTask
       if (!isWorkflowActive()) return
       setPlanProgressMessage("Đang chờ backend phân tích phương án chỉnh lý.")
       toast.success("Đã tạo session và gửi task phân tích phương án chỉnh lý.")

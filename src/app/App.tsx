@@ -1,10 +1,17 @@
 import type { ReactNode } from "react"
-import { Routes, Route, Navigate, useLocation } from "react-router-dom"
+import {
+  Routes,
+  Route,
+  Navigate,
+  useLocation,
+  useParams,
+} from "react-router-dom"
 import { AdminAccessPage } from "@/pages/AdminAccessPage"
 import { PredefinedDocumentsPage } from "@/pages/PredefinedDocumentsPage"
 import { FinalizeArtifactsPage } from "@/pages/FinalizeArtifactsPage"
 import { LoginPage } from "@/pages/LoginPage"
 import { SessionsPage } from "@/pages/SessionsPage"
+import { MergeFondsPage } from "@/pages/MergeFondsPage"
 import { UploadPage } from "@/pages/UploadPage"
 import { useAuth } from "@/features/auth/lib/AuthContext"
 
@@ -26,6 +33,31 @@ export function App() {
         element={
           <RequireAuth>
             <PredefinedDocumentsPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/sessions/merges/new"
+        element={
+          <RequireAuth>
+            <MergeFondsPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/sessions/:sessionId/merge"
+        element={
+          <RequireAuth>
+            <MergedSessionWorkspaceRedirect />
+          </RequireAuth>
+        }
+      />
+      <Route path="/fonds-merges/new" element={<Navigate to="/sessions/merges/new" replace />} />
+      <Route
+        path="/fonds-merges/:sessionId"
+        element={
+          <RequireAuth>
+            <MergedSessionWorkspaceRedirect />
           </RequireAuth>
         }
       />
@@ -67,6 +99,17 @@ export function App() {
       />
       <Route path="*" element={<Navigate to="/sessions" replace />} />
     </Routes>
+  )
+}
+
+function MergedSessionWorkspaceRedirect() {
+  const { sessionId } = useParams<{ sessionId: string }>()
+  if (!sessionId) return <Navigate to="/sessions" replace />
+  return (
+    <Navigate
+      to={`/sessions/${encodeURIComponent(sessionId)}/step/4`}
+      replace
+    />
   )
 }
 

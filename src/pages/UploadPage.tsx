@@ -360,6 +360,7 @@ export function UploadPage() {
   const [sessionMetadata, setSessionMetadata] = useState<SessionMetadataValues>(
     cache.sessionMetadata
   )
+  const [isMergedSession, setIsMergedSession] = useState(false)
   const syncSessionMetadataDraft = useCallback(
     (metadata: SessionMetadataValues) => {
       cache.sessionMetadata = metadata
@@ -438,6 +439,7 @@ export function UploadPage() {
     setClusterGroups,
     setSessionId,
     setSessionMetadata,
+    setIsMergedSession,
     setZipFolderPath,
     setZipMaxFiles,
     setZipUploadProgress,
@@ -1647,6 +1649,16 @@ export function UploadPage() {
   }
 
   const handlePlanStepNavigation = (targetStep: AppStep) => {
+    if (isMergedSession && targetStep < 4) {
+      toast.info(
+        "Phông gộp bắt đầu từ bước xem kết quả lập hồ sơ và không cho phép sửa các bước trước."
+      )
+      return
+    }
+    if (targetStep > 1 && folderUploadInProgress) {
+      toast.info("Vui lòng chờ upload folder hoàn tất trước khi chuyển bước.")
+      return
+    }
     const currentSessionId = sessionId ?? routeSessionId ?? cache.sessionId
     if (targetStep === 3 && currentSessionId) {
       navigate(
@@ -1779,6 +1791,7 @@ export function UploadPage() {
         routeSessionId={routeSessionId}
         sessionId={sessionId}
         sessionMetadata={sessionMetadata}
+        isMergedSession={isMergedSession}
         syncSessionMetadataDraft={syncSessionMetadataDraft}
         saveSessionMetadata={saveSessionMetadata}
         ensureSession={ensureSession}

@@ -108,6 +108,17 @@ describe("final result action state", () => {
     expect(state.canFinish).toBe(true)
   })
 
+  it("keeps numbering available but blocks dossier mutations in merged read-only mode", () => {
+    const state = resolveFinalResultActionState({
+      ...stable,
+      readOnly: true,
+    })
+
+    expect(state.clusterMutationBlockedReason).toContain("Phông gộp")
+    expect(state.canUpdateDossiers).toBe(false)
+    expect(state.canFinish).toBe(true)
+  })
+
   it("offers update and blocks finish while unclassified dossiers remain", () => {
     const state = resolveFinalResultActionState({
       ...stable,

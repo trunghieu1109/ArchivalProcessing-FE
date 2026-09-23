@@ -36,6 +36,7 @@ import {
 
 export function FinalResultView(props: Record<string, any>) {
   const {
+    readOnly,
     activeClusterVersionId,
     canDeleteDocuments,
     canTransferDocuments,
@@ -223,8 +224,9 @@ export function FinalResultView(props: Record<string, any>) {
             Kết quả
           </h2>
           <p className="mt-1 text-sm text-[#475569]">
-            Tài liệu đã được gắn vào phông lưu trữ. Các hồ sơ có thể được điều
-            chỉnh bằng kéo thả.
+            {readOnly
+              ? "Xem cây phân loại, hồ sơ và tài liệu được tham chiếu từ các phông nguồn."
+              : "Tài liệu đã được gắn vào phông lưu trữ. Các hồ sơ có thể được điều chỉnh bằng kéo thả."}
           </p>
           <p className="mt-2 flex items-center gap-2 text-sm text-[#475569]">
             {loading || checkingClusters ? (
@@ -243,6 +245,15 @@ export function FinalResultView(props: Record<string, any>) {
           </div>
         </div>
       </div>
+
+      {readOnly ? (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          <p className="font-semibold">Kết quả lập hồ sơ của phông gộp chỉ dùng để xem</p>
+          <p className="mt-1 text-xs">
+            Việc cập nhật cây và hồ sơ được thực hiện từ card phông gộp. Tại đây bạn có thể rà soát kết quả và chuyển sang bước Đánh số trang.
+          </p>
+        </div>
+      ) : null}
 
       {sortedClusterVersions.length > 0 && displayedClusterVersion && (
         <div className="flex flex-col gap-3 rounded-2xl border border-[#D8E1EC] bg-white px-4 py-3 shadow-sm lg:flex-row lg:items-center lg:justify-between">
@@ -313,6 +324,7 @@ export function FinalResultView(props: Record<string, any>) {
                 size="sm"
                 onClick={() => void handleActivateDisplayedClusterVersion()}
                 disabled={
+                  readOnly ||
                   clusterVersionNavigationBusy ||
                   Boolean(pendingClusterVersion) ||
                   Boolean(displayedClusterVersion.is_stale)
@@ -476,7 +488,7 @@ export function FinalResultView(props: Record<string, any>) {
           </div>
           <Button
             onClick={handleApplyPendingClusterVersion}
-            disabled={Boolean(pendingClusterApprovalBlockedReason)}
+            disabled={readOnly || Boolean(pendingClusterApprovalBlockedReason)}
             title={pendingClusterApprovalBlockedReason ?? undefined}
           >
             <RefreshCw data-icon="inline-start" />
@@ -562,6 +574,7 @@ export function FinalResultView(props: Record<string, any>) {
             <div className="flex w-full max-w-full min-w-0 flex-col gap-1 overflow-hidden pr-2 pb-2">
               {tree.map((node: any) => (
                 <ResultNode
+                  readOnly={readOnly}
                   key={node.id}
                   node={node}
                   sessionId={sessionId}
@@ -699,6 +712,7 @@ export function FinalResultView(props: Record<string, any>) {
               />
             ) : selectedMetadataGroup ? (
               <DossierMetadataSidePanel
+                readOnly={readOnly}
                 sessionId={sessionId}
                 clusterVersionId={displayedClusterVersionId}
                 group={selectedMetadataGroup}
@@ -723,7 +737,9 @@ export function FinalResultView(props: Record<string, any>) {
                 onSelectDossier={handleSelectGroupInfoDossier}
                 onSelectDocument={handleSelectGroupInfoDocument}
                 onSelectRetentionCandidate={handleSelectRetentionCandidate}
-                retentionSelectionDisabled={viewingHistoricalClusterVersion}
+                retentionSelectionDisabled={
+                  readOnly || viewingHistoricalClusterVersion
+                }
               />
             ) : null}
           </div>
@@ -754,6 +770,7 @@ export function FinalResultView(props: Record<string, any>) {
           />
         )}
       <FinalResultFeedbackPanel
+        readOnly={readOnly}
         canDeleteDocuments={canDeleteDocuments}
         canTransferDocuments={canTransferDocuments}
         canRestoreFileRegisterVersion={canRestoreFileRegisterVersion}

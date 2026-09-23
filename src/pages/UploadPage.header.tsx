@@ -10,6 +10,7 @@ export function UploadPageHeader(props: Record<string, any>) {
     highestVisitedStep,
     STEP_LABELS,
     goTo,
+    minimumNavigableStep = 1,
     isWorkerUser,
     navigate,
     onNavigateSessions,
@@ -90,7 +91,8 @@ export function UploadPageHeader(props: Record<string, any>) {
                 const s = (i + 1) as AppStep
                 const isActive = currentStep === s
                 const isDone = !isActive && s <= highestVisitedStep
-                const canNav = !isWorkerUser && isDone
+                const canNav =
+                  !isWorkerUser && isDone && s >= minimumNavigableStep
                 return (
                   <div key={i} className="flex items-center">
                     <div className="flex flex-col items-center gap-1.5">

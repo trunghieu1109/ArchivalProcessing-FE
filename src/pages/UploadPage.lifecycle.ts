@@ -120,6 +120,7 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     setClusterGroups,
     setSessionId,
     setSessionMetadata,
+    setIsMergedSession,
     setZipFolderPath,
     setZipMaxFiles,
     setZipUploadProgress,
@@ -293,6 +294,7 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     let cancelled = false
     const loadExistingSession = async () => {
       setSessionLoading(true)
+      setIsMergedSession(false)
       try {
         let activePlanLoadError: unknown = null
         const [sessionDetail, initialWorkingPlan, fetchedActivePlan] =
@@ -306,6 +308,7 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
           ])
         let workingPlan = initialWorkingPlan
         if (cancelled) return
+        setIsMergedSession(sessionDetail.session_type === "merged")
         const sessionActivePlanVersionId = String(
           sessionDetail.active_plan_version_id ?? ""
         ).trim()

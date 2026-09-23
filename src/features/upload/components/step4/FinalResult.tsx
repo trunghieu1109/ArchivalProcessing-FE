@@ -117,6 +117,7 @@ export function FinalResult({
   activePlanVersionId = null,
   classificationTree = [],
   metadataItems: providedMetadataItems,
+  readOnly = false,
   onFinish,
 }: FinalResultProps) {
   const { user } = useAuth()
@@ -397,8 +398,10 @@ export function FinalResult({
   const canDeleteDocuments =
     SHOW_DOCUMENT_DELETION &&
     SHOW_DOCUMENT_DELETION_IN_DOSSIER_STEP &&
-    canManageDocuments
-  const canTransferDocuments = SHOW_DOCUMENT_TRANSFER && canManageDocuments
+    canManageDocuments &&
+    !readOnly
+  const canTransferDocuments =
+    SHOW_DOCUMENT_TRANSFER && canManageDocuments && !readOnly
   const selectedPreviewEntry = useMemo(
     () =>
       previewDocuments.find(
@@ -1022,6 +1025,7 @@ export function FinalResult({
       clusteringPending?.blocked_reasons.includes("cluster_build_in_progress")
     ),
     viewingHistoricalClusterVersion,
+    readOnly,
     hasSession: Boolean(sessionId),
     totalFiles,
     totalDossiers,
@@ -1123,7 +1127,7 @@ export function FinalResult({
     selectableSessionDocumentIdSet,
     selectedSessionDocumentIds,
     sessionId,
-    viewingHistoricalClusterVersion,
+    viewingHistoricalClusterVersion: viewingHistoricalClusterVersion || readOnly,
     setDraggedDocument,
     setDisplayedClusterVersion,
     setDropTargetId,
@@ -1966,6 +1970,7 @@ export function FinalResult({
   const clusterVersionNavigationBusy =
     Boolean(loadingClusterVersionId) || restoringClusterVersion
   const temporaryFolderUpdateDisabled =
+    readOnly ||
     !sessionId ||
     loading ||
     checkingClusters ||
@@ -2124,6 +2129,7 @@ export function FinalResult({
   return (
     <>
       <FinalResultView
+        readOnly={readOnly}
         activeClusterVersionId={activeClusterVersionId}
         canDeleteDocuments={canDeleteDocuments}
         canTransferDocuments={canTransferDocuments}

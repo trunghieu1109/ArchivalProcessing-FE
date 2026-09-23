@@ -17,6 +17,69 @@ export interface SessionAnalysisStatuses {
   retention: SourceAnalysisStatus
 }
 
+export interface SessionOpenTarget {
+  sessionId: string
+  path: string
+}
+
+export type SessionMergeCardAction = "refresh" | "sync" | null
+
+export function sessionMergeCardAction(
+  session: Pick<
+    SessionSummary,
+    | "session_type"
+    | "status"
+    | "active_merged_session_id"
+    | "active_merged_session_status"
+  >,
+  mergedSourceSyncStatuses?: readonly string[]
+): SessionMergeCardAction {
+  if (session.session_type === "merged") {
+    if (
+      session.status === "source_changed" ||
+      mergedSourceSyncStatuses?.includes("source_changed")
+    ) {
+      return "refresh"
+    }
+    return mergedSourceSyncStatuses?.length &&
+      mergedSourceSyncStatuses.every((status) => status === "pending")
+      ? "sync"
+      : null
+  }
+
+  return session.active_merged_session_id &&
+    session.active_merged_session_status === "source_changed"
+    ? "refresh"
+    : null
+}
+
+export function sessionOpenTarget(
+  session: Pick<
+    SessionSummary,
+    | "session_id"
+    | "session_type"
+    | "active_merged_session_id"
+    | "active_merged_session_status"
+  >
+): SessionOpenTarget {
+  const opensMergedSession = Boolean(
+    session.session_type === "merged" ||
+      (session.active_merged_session_id &&
+        session.active_merged_session_status !== "source_changed")
+  )
+  const sessionId =
+    opensMergedSession && session.active_merged_session_id
+      ? session.active_merged_session_id
+      : session.session_id
+
+  return {
+    sessionId,
+    path: opensMergedSession
+      ? `/sessions/${encodeURIComponent(sessionId)}/step/4`
+      : `/sessions/${encodeURIComponent(sessionId)}/step/1`,
+  }
+}
+
 export function chinhlyUserId(user: ChinhlyUser): string {
   return String(user.id ?? user.user_id ?? "").trim()
 }

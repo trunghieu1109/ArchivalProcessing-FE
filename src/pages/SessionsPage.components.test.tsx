@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import type { ComponentProps } from "react"
 import { describe, expect, it, vi } from "vitest"
 
@@ -18,6 +18,24 @@ describe("SessionCard backup visibility", () => {
     expect(
       screen.queryByRole("button", { name: "Backup JSON" })
     ).not.toBeInTheDocument()
+  })
+
+  it("runs the merged-fonds action from the session card", () => {
+    const onClick = vi.fn()
+    renderCard({
+      isAdmin: true,
+      mergeAction: {
+        label: "Cập nhật từ nguồn",
+        pending: false,
+        kind: "refresh",
+        onClick,
+      },
+    })
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Cập nhật từ nguồn" })
+    )
+    expect(onClick).toHaveBeenCalledTimes(1)
   })
 })
 

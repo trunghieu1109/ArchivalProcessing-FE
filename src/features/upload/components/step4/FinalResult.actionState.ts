@@ -10,6 +10,7 @@ export interface FinalResultActionStateInput {
   clusterVersionStale: boolean
   busy: boolean
   viewingHistoricalClusterVersion: boolean
+  readOnly?: boolean
   hasSession: boolean
   totalFiles: number
   totalDossiers: number
@@ -35,6 +36,8 @@ export function resolveFinalResultActionState(
     input.pendingClusterVersionStatus === "draft"
   const clusterMutationBlockedReason = !input.hasSession
     ? "Chưa có session để cập nhật hồ sơ."
+    : input.readOnly
+      ? "Phông gộp chỉ cho phép xem kết quả lập hồ sơ."
     : input.totalFiles <= 0 && (input.unclassifiedDossierCount ?? 0) <= 0
       ? "Chưa có tài liệu để cập nhật hồ sơ."
       : input.viewingHistoricalClusterVersion
@@ -44,6 +47,8 @@ export function resolveFinalResultActionState(
           : null
   const approvalBlockedReason = !hasDraft
     ? null
+    : input.readOnly
+      ? "Phông gộp không cho phép duyệt hoặc thay đổi kết quả lập hồ sơ tại đây."
     : input.busy
       ? "Hồ sơ đang được cập nhật. Vui lòng chờ thao tác hoàn tất."
       : input.viewingHistoricalClusterVersion

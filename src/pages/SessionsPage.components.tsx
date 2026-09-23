@@ -8,6 +8,7 @@ import {
   FileText,
   Layers3,
   Loader2,
+  RefreshCw,
   ShieldCheck,
   Trash2,
   UserCog,
@@ -30,6 +31,7 @@ export function SessionCard({
   analysisStatuses,
   assigning,
   onAssignCoordinator,
+  mergeAction,
 }: {
   session: SessionSummary
   index: number
@@ -42,6 +44,12 @@ export function SessionCard({
   analysisStatuses: SessionAnalysisStatuses
   assigning: boolean
   onAssignCoordinator: (coordinatorUserId: string | null) => void
+  mergeAction?: {
+    label: string
+    pending: boolean
+    kind: "refresh" | "sync"
+    onClick: () => void
+  }
 }) {
   const [assignmentOpen, setAssignmentOpen] = useState(false)
   const [draftCoordinatorId, setDraftCoordinatorId] = useState<string | null>(
@@ -57,7 +65,18 @@ export function SessionCard({
   const correctCount =
     session.metadata_correct_document_count ??
     Math.max(documentCount - incorrectCount, 0)
-  const statusText = hasClusters
+  const mergedSourceIsStale = session.active_merged_session_status === "source_changed"
+  const mergedSessionIsStale =
+    session.session_type === "merged" && session.status === "source_changed"
+  const statusText = session.active_merged_session_id && !mergedSourceIsStale
+    ? "Đang xử lý ở phông gộp"
+    : mergedSourceIsStale
+      ? "Cần cập nhật phông gộp"
+    : mergedSessionIsStale
+      ? "Cần cập nhật từ phông nguồn"
+    : session.session_type === "merged"
+      ? "Phông gộp"
+    : hasClusters
     ? "Đã lập hồ sơ"
     : hasPlan
       ? "Có phương án"
@@ -100,6 +119,16 @@ export function SessionCard({
       className="group flex min-h-56 cursor-pointer flex-col justify-between rounded-2xl border border-[#D8E1EC] bg-white p-5 text-left shadow-sm outline-none transition-all hover:-translate-y-1 hover:border-[#0052FF]/35 hover:shadow-[0_18px_42px_rgba(15,23,42,0.12)] focus-visible:border-[#0052FF] focus-visible:ring-2 focus-visible:ring-[#0052FF]/20"
     >
       <div>
+        {session.active_merged_session_id && !mergedSourceIsStale && (
+          <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+            Phông nguồn tạm khóa; kết quả sẽ đồng bộ sau khi phông gộp hoàn tất.
+          </p>
+        )}
+        {mergedSourceIsStale && (
+          <p className="mb-3 rounded-lg bg-orange-50 px-3 py-2 text-xs font-medium text-orange-800">
+            Phông nguồn đã mở khóa; phông gộp cần cập nhật do có tài liệu thay đổi.
+          </p>
+        )}
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p
@@ -241,6 +270,23 @@ export function SessionCard({
           <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
         </button>
         <div className="flex flex-wrap items-center justify-end gap-2">
+          {isAdmin && mergeAction && (
+            <button
+              type="button"
+              onClick={mergeAction.onClick}
+              disabled={mergeAction.pending}
+              className="flex items-center justify-center gap-1.5 rounded-lg border border-[#BFD3FF] px-2.5 py-1 text-xs font-semibold text-[#0052FF] transition-colors hover:border-[#0052FF]/50 hover:bg-[#F3F7FF] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {mergeAction.pending ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : mergeAction.kind === "refresh" ? (
+                <RefreshCw className="size-3.5" />
+              ) : (
+                <ArrowRight className="size-3.5" />
+              )}
+              {mergeAction.pending ? "Đang xử lý" : mergeAction.label}
+            </button>
+          )}
           {isAdmin && (
             <button
               type="button"
@@ -256,7 +302,7 @@ export function SessionCard({
               Phân công
             </button>
           )}
-          <button
+          {!session.active_merged_session_id && session.session_type !== "merged" && <button
             type="button"
             onClick={onDelete}
             disabled={deleting}
@@ -268,7 +314,7 @@ export function SessionCard({
               <Trash2 className="size-3.5" />
             )}
             {deleting ? "Đang xóa" : "Xóa"}
-          </button>
+          </button>}
         </div>
       </div>
     </motion.div>
@@ -283,8 +329,8 @@ export function SummaryPill({
   value: number
 }) {
   return (
-    <div className="rounded-2xl border border-[#D8E1EC] bg-white px-4 py-2 text-right shadow-sm">
-      <p className="text-[11px] font-semibold tracking-[0.12em] text-[#94A3B8] uppercase">
+    <div className="flex h-14 w-40 shrink-0 flex-col justify-center rounded-2xl border border-[#D8E1EC] bg-white px-4 text-right shadow-sm">
+      <p className="whitespace-nowrap text-[11px] font-semibold tracking-[0.12em] text-[#94A3B8] uppercase">
         {label}
       </p>
       <p className="text-lg font-bold text-[#0F172A]">{value}</p>
