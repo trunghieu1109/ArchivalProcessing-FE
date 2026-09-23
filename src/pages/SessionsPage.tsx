@@ -19,6 +19,7 @@ import {
   syncMergedFonds,
 } from "@/features/upload/api/mergeApi"
 import { SessionCard, SummaryPill } from "./SessionsPage.components"
+import { FONDS_MERGE_ENABLED } from "@/shared/config/featureFlags"
 import {
   analysisStatusesFromSessionDetail,
   chinhlyUserId,
@@ -154,10 +155,19 @@ export function SessionsPage() {
           : Promise.resolve([]),
       ])
       if (loadRequestIdRef.current !== requestId) return
-      const total = response.pagination?.total ?? response.sessions.length
+      const visibleSessions = FONDS_MERGE_ENABLED
+        ? response.sessions
+        : response.sessions
+            .filter((session) => session.session_type !== "merged")
+            .map((session) => ({
+              ...session,
+              active_merged_session_id: null,
+              active_merged_session_status: null,
+            }))
+      const total = response.pagination?.total ?? visibleSessions.length
       const pageCount = Math.max(1, Math.ceil(total / sessionPageSize))
       if (
-        response.sessions.length === 0 &&
+        visibleSessions.length === 0 &&
         total > 0 &&
         sessionPageIndex >= pageCount
       ) {
@@ -170,13 +180,13 @@ export function SessionsPage() {
       }
       const [nextAnalysisStatuses, nextMergedSourceSyncStatuses] =
         await Promise.all([
-          loadAnalysisStatuses(response.sessions),
-          isAdmin
-            ? loadMergedSourceSyncStatuses(response.sessions)
+          loadAnalysisStatuses(visibleSessions),
+          FONDS_MERGE_ENABLED && isAdmin
+            ? loadMergedSourceSyncStatuses(visibleSessions)
             : Promise.resolve({}),
         ])
       if (loadRequestIdRef.current !== requestId) return
-      setSessions(response.sessions)
+      setSessions(visibleSessions)
       setSessionTotal(total)
       setCoordinators(coordinatorUsers)
       setAnalysisStatusesBySessionId(nextAnalysisStatuses)
@@ -374,13 +384,15 @@ export function SessionsPage() {
               )}
               Làm mới
             </button>
-            <button
-              onClick={() => navigate("/sessions/merges/new")}
-              disabled={!isAdmin}
-              className="flex h-11 w-[7.25rem] items-center justify-center gap-2 rounded-xl border border-[#0052FF] bg-white px-4 text-sm font-semibold whitespace-nowrap text-[#0052FF] disabled:opacity-50"
-            >
-              <Merge className="size-4" /> Gộp phông
-            </button>
+            {FONDS_MERGE_ENABLED && (
+              <button
+                onClick={() => navigate("/sessions/merges/new")}
+                disabled={!isAdmin}
+                className="flex h-11 w-[7.25rem] items-center justify-center gap-2 rounded-xl border border-[#0052FF] bg-white px-4 text-sm font-semibold whitespace-nowrap text-[#0052FF] disabled:opacity-50"
+              >
+                <Merge className="size-4" /> Gộp phông
+              </button>
+            )}
             <button
               onClick={() => navigate("/sessions/new/step/1")}
               className="flex h-11 w-[7.25rem] items-center justify-center gap-2 rounded-xl bg-[#0052FF] px-4 text-sm font-semibold whitespace-nowrap text-white shadow-[0_8px_24px_rgba(0,82,255,0.22)] transition-all hover:-translate-y-0.5 hover:bg-[#0047D6] active:scale-[0.98]"
@@ -429,6 +441,7 @@ export function SessionsPage() {
                   void assignCoordinator(session, coordinatorUserId)
                 }
                 mergeAction={
+                  FONDS_MERGE_ENABLED &&
                   isAdmin &&
                   session.session_type === "merged" &&
                   sessionMergeCardAction(
@@ -442,7 +455,8 @@ export function SessionsPage() {
                         onClick: () =>
                           void refreshMergedSession(session.session_id),
                       }
-                    : isAdmin &&
+                    : FONDS_MERGE_ENABLED &&
+                        isAdmin &&
                         session.session_type !== "merged" &&
                         session.active_merged_session_id &&
                         sessionMergeCardAction(session) === "refresh"
@@ -457,7 +471,8 @@ export function SessionsPage() {
                               session.active_merged_session_id as string
                             ),
                         }
-                      : isAdmin &&
+                      : FONDS_MERGE_ENABLED &&
+                          isAdmin &&
                           session.session_type === "merged" &&
                           sessionMergeCardAction(
                             session,

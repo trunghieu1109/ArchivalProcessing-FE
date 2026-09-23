@@ -14,6 +14,7 @@ import { SessionsPage } from "@/pages/SessionsPage"
 import { MergeFondsPage } from "@/pages/MergeFondsPage"
 import { UploadPage } from "@/pages/UploadPage"
 import { useAuth } from "@/features/auth/lib/AuthContext"
+import { FONDS_MERGE_ENABLED } from "@/shared/config/featureFlags"
 
 export function App() {
   return (
@@ -36,31 +37,42 @@ export function App() {
           </RequireAuth>
         }
       />
-      <Route
-        path="/sessions/merges/new"
-        element={
-          <RequireAuth>
-            <MergeFondsPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/sessions/:sessionId/merge"
-        element={
-          <RequireAuth>
-            <MergedSessionWorkspaceRedirect />
-          </RequireAuth>
-        }
-      />
-      <Route path="/fonds-merges/new" element={<Navigate to="/sessions/merges/new" replace />} />
-      <Route
-        path="/fonds-merges/:sessionId"
-        element={
-          <RequireAuth>
-            <MergedSessionWorkspaceRedirect />
-          </RequireAuth>
-        }
-      />
+      {FONDS_MERGE_ENABLED && (
+        <Route
+          path="/sessions/merges/new"
+          element={
+            <RequireAuth>
+              <MergeFondsPage />
+            </RequireAuth>
+          }
+        />
+      )}
+      {FONDS_MERGE_ENABLED && (
+        <Route
+          path="/sessions/:sessionId/merge"
+          element={
+            <RequireAuth>
+              <MergedSessionWorkspaceRedirect />
+            </RequireAuth>
+          }
+        />
+      )}
+      {FONDS_MERGE_ENABLED && (
+        <Route
+          path="/fonds-merges/new"
+          element={<Navigate to="/sessions/merges/new" replace />}
+        />
+      )}
+      {FONDS_MERGE_ENABLED && (
+        <Route
+          path="/fonds-merges/:sessionId"
+          element={
+            <RequireAuth>
+              <MergedSessionWorkspaceRedirect />
+            </RequireAuth>
+          }
+        />
+      )}
       <Route
         path="/sessions"
         element={
