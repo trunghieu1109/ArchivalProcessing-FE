@@ -1,4 +1,5 @@
 import { requestJson } from "./sessionApi.http"
+import { createClientId } from "@/shared/lib/clientId"
 
 export type SupplementalIntakeMode =
   | "existing_dossier"
@@ -246,7 +247,7 @@ export function sortDossierDocuments(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        client_request_id: crypto.randomUUID(),
+        client_request_id: createClientId(),
         dossier_kind: dossierKind,
         ...(baseClusterVersionId
           ? { base_cluster_version_id: baseClusterVersionId }
@@ -270,7 +271,7 @@ export function sortLeafDossiers(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        client_request_id: crypto.randomUUID(),
+        client_request_id: createClientId(),
         plan_version_id: planVersionId,
         base_cluster_version_id: baseClusterVersionId,
         strategy: "business_default",

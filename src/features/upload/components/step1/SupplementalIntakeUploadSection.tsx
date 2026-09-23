@@ -23,6 +23,7 @@ import {
   type ClusterGroup,
 } from "@/features/upload/lib/clusterGroups"
 import { cn } from "@/shared/lib/utils"
+import { createClientId } from "@/shared/lib/clientId"
 import { BUSINESS_DATE_PLACEHOLDER } from "@/features/upload/lib/businessDate"
 import {
   cleanSupplementalDossierMetadata,
@@ -213,7 +214,7 @@ export const SupplementalIntakeUploadSection = forwardRef<
     setSubmitError("")
     try {
       const common = {
-        client_request_id: crypto.randomUUID(),
+        client_request_id: createClientId(),
         ...(workingClusterVersionId
           ? { base_cluster_version_id: workingClusterVersionId }
           : {}),
