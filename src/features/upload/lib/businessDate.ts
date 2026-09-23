@@ -1,4 +1,4 @@
-export const BUSINESS_DATE_PLACEHOLDER = "MM/DD/YYYY, MM/YYYY hoặc YYYY"
+export const BUSINESS_DATE_PLACEHOLDER = "DD/MM/YYYY, MM/YYYY hoặc YYYY"
 
 export interface BusinessDateParts {
   year: number
@@ -20,7 +20,7 @@ export function parseBusinessDate(
 
   match = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
   if (match) {
-    return validParts(Number(match[3]), Number(match[1]), Number(match[2]))
+    return validParts(Number(match[3]), Number(match[2]), Number(match[1]))
   }
 
   // Transitional support for values produced before the canonical format change.
@@ -46,7 +46,7 @@ export function normalizeBusinessDate(value: unknown): string {
   if (!parsed.day) {
     return `${pad2(parsed.month)}/${String(parsed.year).padStart(4, "0")}`
   }
-  return `${pad2(parsed.month)}/${pad2(parsed.day)}/${String(parsed.year).padStart(4, "0")}`
+  return `${pad2(parsed.day)}/${pad2(parsed.month)}/${String(parsed.year).padStart(4, "0")}`
 }
 
 export function isValidBusinessDate(value: unknown): boolean {

@@ -483,7 +483,7 @@ export function FinalResult({
   )
   const pendingClusterVersionId = pendingClusterVersion?.id ?? null
   const supplementalPendingUpdateDocumentCount = useMemo(() => {
-    const pendingDocuments = clusteringPending?.documents ?? []
+    const pendingDocuments = clusteringPending?.items ?? []
     if (!pendingClusterVersion) return pendingDocuments.length
     const workingDocumentIds = new Set(
       pendingClusterGroups.flatMap((group) =>
@@ -495,7 +495,7 @@ export function FinalResult({
         !workingDocumentIds.has(String(document.session_document_id))
     ).length
   }, [
-    clusteringPending?.documents,
+    clusteringPending?.items,
     pendingClusterGroups,
     pendingClusterVersion,
   ])
@@ -1009,7 +1009,8 @@ export function FinalResult({
     pendingClusterVersionNeedsRefresh,
     pendingFeedbackCount,
     supplementalVerificationPendingCount,
-    supplementalPendingDocumentCount: clusteringPending?.count ?? 0,
+    supplementalPendingDocumentCount:
+      clusteringPending?.summary.pending_document_count ?? 0,
     supplementalPendingUpdateDocumentCount,
     unclassifiedDossierCount,
     clusterVersionStale,
@@ -1022,7 +1023,9 @@ export function FinalResult({
       promotingSelectedDocuments ||
       movingSelectedDocumentsTargetId ||
       rebuildBaselineVersionId ||
-      clusteringPending?.blocked_reasons.includes("cluster_build_in_progress")
+      (clusteringPending?.summary.blocked_reasons ?? []).includes(
+        "cluster_build_in_progress"
+      )
     ),
     viewingHistoricalClusterVersion,
     readOnly,
@@ -1055,7 +1058,8 @@ export function FinalResult({
     pendingClusterVersion,
     pendingClusterVersionNeedsRefresh,
     pendingFeedbackCount,
-    supplementalPendingDocumentCount: clusteringPending?.count ?? 0,
+    supplementalPendingDocumentCount:
+      clusteringPending?.summary.pending_document_count ?? 0,
     supplementalPendingUpdateDocumentCount,
     supplementalVerificationPendingCount,
     previewLayoutRef,
@@ -2218,7 +2222,9 @@ export function FinalResult({
         pendingClusterVersionNeedsRefresh={pendingClusterVersionNeedsRefresh}
         pendingDossierCount={pendingDossierCount}
         pendingFeedbackCount={pendingFeedbackCount}
-        supplementalPendingDocumentCount={clusteringPending?.count ?? 0}
+        supplementalPendingDocumentCount={
+          clusteringPending?.summary.pending_document_count ?? 0
+        }
         supplementalPendingUpdateDocumentCount={
           supplementalPendingUpdateDocumentCount
         }

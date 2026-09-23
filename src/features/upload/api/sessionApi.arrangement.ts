@@ -135,14 +135,47 @@ export interface ArrangementSortResponse {
   excluded_draft_dossier_count?: number
 }
 
+export interface ClusteringPendingDocument {
+  session_document_id: number
+  document_id: string
+  file_name: string
+  dossier_id: string
+  supplemental_intake_id: string
+  arrangement_status: string
+  review_status: string
+  metadata_ready: boolean
+  metadata_verified_at: string | null
+  pending_reason: string
+}
+
 export interface ClusteringPendingDocumentsResponse {
   session_id: string
   active_cluster_version_id: string | null
-  has_pending_documents: boolean
-  can_update_dossiers: boolean
-  blocked_reasons: string[]
-  count: number
-  documents: SupplementalIntakeDocument[]
+  summary: {
+    pending_document_count: number
+    has_pending_documents: boolean
+    can_update_dossiers: boolean
+    blocked_reasons: string[]
+  }
+  items: ClusteringPendingDocument[]
+  page: {
+    limit: number
+    next_after_id: number | null
+    has_more: boolean
+  }
+}
+
+type ClusteringPendingDocumentsWireResponse = Omit<
+  Partial<ClusteringPendingDocumentsResponse>,
+  "summary" | "page"
+> & {
+  summary?: Partial<ClusteringPendingDocumentsResponse["summary"]>
+  page?: Partial<ClusteringPendingDocumentsResponse["page"]>
+  has_pending_documents?: boolean
+  can_update_dossiers?: boolean
+  blocked_reasons?: string[]
+  count?: number
+  documents?: ClusteringPendingDocument[]
 }
 
 const sessionPath = (sessionId: string) =>
@@ -247,10 +280,74 @@ export function sortLeafDossiers(
   )
 }
 
-export function getClusteringPendingDocuments(
+export async function getClusteringPendingDocuments(
   sessionId: string
 ): Promise<ClusteringPendingDocumentsResponse> {
-  return requestJson(`${sessionPath(sessionId)}/documents/clustering-pending`, {
-    cache: "no-store",
-  })
+  const response = await requestJson<ClusteringPendingDocumentsWireResponse>(
+    `${sessionPath(sessionId)}/documents/clustering-pending`,
+    { cache: "no-store" }
+  )
+  return normalizeClusteringPendingDocumentsResponse(response, sessionId)
+}
+
+function normalizeClusteringPendingDocumentsResponse(
+  response: ClusteringPendingDocumentsWireResponse,
+  fallbackSessionId: string
+): ClusteringPendingDocumentsResponse {
+  const items = Array.isArray(response.items)
+    ? response.items
+    : Array.isArray(response.documents)
+      ? response.documents
+      : []
+  const pendingDocumentCount = numberOrNull(
+    response.summary?.pending_document_count
+  ) ?? numberOrNull(response.count) ?? items.length
+  const blockedReasons = Array.isArray(response.summary?.blocked_reasons)
+    ? response.summary.blocked_reasons.filter(
+        (reason): reason is string => typeof reason === "string"
+      )
+    : Array.isArray(response.blocked_reasons)
+      ? response.blocked_reasons.filter(
+          (reason): reason is string => typeof reason === "string"
+        )
+      : []
+  const hasPendingDocuments =
+    booleanOrNull(response.summary?.has_pending_documents) ??
+    booleanOrNull(response.has_pending_documents) ??
+    pendingDocumentCount > 0
+  const canUpdateDossiers =
+    booleanOrNull(response.summary?.can_update_dossiers) ??
+    booleanOrNull(response.can_update_dossiers) ??
+    (hasPendingDocuments && blockedReasons.length === 0)
+
+  return {
+    session_id:
+      typeof response.session_id === "string"
+        ? response.session_id
+        : fallbackSessionId,
+    active_cluster_version_id:
+      typeof response.active_cluster_version_id === "string"
+        ? response.active_cluster_version_id
+        : null,
+    summary: {
+      pending_document_count: pendingDocumentCount,
+      has_pending_documents: hasPendingDocuments,
+      can_update_dossiers: canUpdateDossiers,
+      blocked_reasons: blockedReasons,
+    },
+    items,
+    page: {
+      limit: numberOrNull(response.page?.limit) ?? 200,
+      next_after_id: numberOrNull(response.page?.next_after_id),
+      has_more: booleanOrNull(response.page?.has_more) ?? false,
+    },
+  }
+}
+
+function numberOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null
+}
+
+function booleanOrNull(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null
 }

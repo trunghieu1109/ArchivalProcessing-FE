@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import {
+  getClusteringPendingDocuments,
   listSupplementalIntakes,
   prepareSupplementalIntake,
   sortDossierDocuments,
@@ -112,5 +113,91 @@ describe("supplemental intake API", () => {
       strategy: "chronological",
       created_by: "ui",
     })
+  })
+
+  it("reads the current clustering-pending response contract", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          session_id: "session-1",
+          active_cluster_version_id: "version-1",
+          summary: {
+            pending_document_count: 1,
+            has_pending_documents: true,
+            can_update_dossiers: false,
+            blocked_reasons: ["cluster_build_in_progress"],
+          },
+          items: [
+            {
+              session_document_id: 501,
+              document_id: "doc-501",
+              file_name: "document.pdf",
+              dossier_id: "dossier-1",
+              supplemental_intake_id: "intake-1",
+              arrangement_status: "active",
+              review_status: "verified",
+              metadata_ready: true,
+              metadata_verified_at: "2026-09-24T10:00:00+00:00",
+              pending_reason: "not_in_active_cluster_version",
+            },
+          ],
+          page: { limit: 200, next_after_id: null, has_more: false },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    const response = await getClusteringPendingDocuments("session-1")
+
+    expect(response.summary.blocked_reasons).toEqual([
+      "cluster_build_in_progress",
+    ])
+    expect(response.items[0]?.session_document_id).toBe(501)
+    expect(response.page).toEqual({
+      limit: 200,
+      next_after_id: null,
+      has_more: false,
+    })
+  })
+
+  it("normalizes the legacy flat clustering-pending response", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          session_id: "session-1",
+          active_cluster_version_id: null,
+          has_pending_documents: true,
+          can_update_dossiers: true,
+          count: 1,
+          documents: [
+            {
+              session_document_id: 502,
+              document_id: "doc-502",
+              file_name: "legacy.pdf",
+              dossier_id: "dossier-2",
+              supplemental_intake_id: "intake-2",
+              arrangement_status: "active",
+              review_status: "verified",
+              metadata_ready: true,
+              metadata_verified_at: null,
+              pending_reason: "not_in_active_cluster_version",
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    const response = await getClusteringPendingDocuments("session-1")
+
+    expect(response.summary).toEqual({
+      pending_document_count: 1,
+      has_pending_documents: true,
+      can_update_dossiers: true,
+      blocked_reasons: [],
+    })
+    expect(response.items[0]?.session_document_id).toBe(502)
   })
 })
