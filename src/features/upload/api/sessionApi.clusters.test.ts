@@ -1,11 +1,45 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import {
+  getActiveClusters,
   getClusterVersionChanges,
+  getWorkingClusters,
   listSessionDossierRetentionCandidates,
   listUnclassifiedSessionDossiers,
   classifyUnclassifiedSessionDossiers,
 } from "./sessionApi.clusters"
+
+describe("cluster version selectors", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it("uses distinct working and active endpoints", async () => {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ id: "version-1" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    await getWorkingClusters("session one", { includeClusters: false })
+    await getActiveClusters("session one", { summaryOnly: true })
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/sessions/session%20one/clusters?include_clusters=false",
+      { cache: "no-store" }
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/sessions/session%20one/clusters/active?summary_only=true",
+      { cache: "no-store" }
+    )
+  })
+})
 
 describe("listUnclassifiedSessionDossiers", () => {
   afterEach(() => {
@@ -154,14 +188,12 @@ describe("getClusterVersionChanges", () => {
   })
 
   it("sends an explicit comparison version", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(
-        new Response("{}", {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        })
-      )
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response("{}", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    )
     vi.stubGlobal("fetch", fetchMock)
 
     await getClusterVersionChanges("session", "v2", "version one")

@@ -39,6 +39,24 @@ export async function getActiveClusters(
   }
   const query = searchParams.toString()
   return requestJsonOrNull<ClusterVersionResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/clusters/active${query ? `?${query}` : ""}`,
+    { cache: "no-store" }
+  )
+}
+
+export async function getWorkingClusters(
+  sessionId: string,
+  options: { includeClusters?: boolean; summaryOnly?: boolean } = {}
+): Promise<ClusterVersionResponse | null> {
+  const searchParams = new URLSearchParams()
+  if (options.includeClusters !== undefined) {
+    searchParams.set("include_clusters", String(options.includeClusters))
+  }
+  if (options.summaryOnly !== undefined) {
+    searchParams.set("summary_only", String(options.summaryOnly))
+  }
+  const query = searchParams.toString()
+  return requestJsonOrNull<ClusterVersionResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/clusters${query ? `?${query}` : ""}`,
     { cache: "no-store" }
   )
