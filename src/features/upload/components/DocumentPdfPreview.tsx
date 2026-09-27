@@ -10,13 +10,18 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
-  getDocumentPreviewUrl,
   removeDocumentBlankPages,
   type DocumentPreviewUrlResponse,
   type SessionDocumentResponse,
 } from "@/features/upload/api/sessionApi"
 import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import { cn } from "@/shared/lib/utils"
+import {
+  getCachedDocumentPreview,
+  invalidateDocumentPreview,
+  loadDocumentPreview,
+  setCachedDocumentPreview,
+} from "@/features/upload/lib/documentPreviewCache"
 import { toast } from "sonner"
 import {
   BlankPageReviewPanel,
@@ -46,6 +51,7 @@ interface DocumentPdfPreviewProps {
   sessionId: string | null
   document: DocumentPreviewTarget | null
   className?: string
+  fitHeight?: boolean
   onClose?: () => void
   presentation?: string
   enableBlankPageReview?: boolean
@@ -71,6 +77,7 @@ export function DocumentPdfPreview({
   sessionId,
   document,
   className,
+  fitHeight = false,
   onClose,
   presentation,
   enableBlankPageReview = false,
@@ -79,9 +86,6 @@ export function DocumentPdfPreview({
   const isDossierReviewPresentation = presentation === "dossier_review"
   const [refreshKey, setRefreshKey] = useState(0)
   const manualRefreshRef = useRef(false)
-  const previewResponseCacheRef = useRef<
-    Map<string, DocumentPreviewUrlResponse>
-  >(new Map())
   const previewRetryAttemptsRef = useRef<Map<string, number>>(new Map())
   const lastPreviewDocumentKeyRef = useRef("")
   const [state, setState] = useState<PreviewState>({
@@ -112,9 +116,12 @@ export function DocumentPdfPreview({
         PREVIEW_RETRY_DELAYS_MS[
           Math.min(attempts, PREVIEW_RETRY_DELAYS_MS.length - 1)
         ]
-      retryTimeout = setTimeout(() => {
-        if (!cancelled) setRefreshKey((key) => key + 1)
-      }, visibleAwareDelay(retryDelay, PREVIEW_HIDDEN_RETRY_INTERVAL_MS))
+      retryTimeout = setTimeout(
+        () => {
+          if (!cancelled) setRefreshKey((key) => key + 1)
+        },
+        visibleAwareDelay(retryDelay, PREVIEW_HIDDEN_RETRY_INTERVAL_MS)
+      )
     }
 
     if (!document) {
@@ -160,9 +167,16 @@ export function DocumentPdfPreview({
       if (documentChanged) {
         previewRetryAttemptsRef.current.delete(documentKey)
       }
-      const cachedResponse = previewResponseCacheRef.current.get(documentKey)
+      const cachedResponse = getCachedDocumentPreview(
+        sessionId,
+        documentId,
+        presentation
+      )
       if (cachedResponse) {
         const cachedVariants = normalizePreviewVariants(cachedResponse)
+        const cachedNeedsRefresh = cachedVariants.some(
+          previewVariantNeedsRefresh
+        )
         setState({
           status: "ready",
           variants: cachedVariants,
@@ -172,6 +186,10 @@ export function DocumentPdfPreview({
           ),
           error: "",
         })
+        if (cachedNeedsRefresh) {
+          invalidateDocumentPreview(sessionId, documentId, presentation)
+          scheduleRetry()
+        }
         return
       }
 
@@ -183,9 +201,11 @@ export function DocumentPdfPreview({
       }))
 
       try {
-        const response = await getDocumentPreviewUrl(sessionId, documentId, {
-          presentation,
-        })
+        const response = await loadDocumentPreview(
+          sessionId,
+          documentId,
+          presentation
+        )
         const variants = normalizePreviewVariants(response)
         const activeVariantKey = activeVariantKeyFromResponse(
           response,
@@ -195,10 +215,15 @@ export function DocumentPdfPreview({
         const preserveReadyUrls = !manualRefreshRef.current
         manualRefreshRef.current = false
         if (!needsRefresh && variants.some((variant) => Boolean(variant.url))) {
-          previewResponseCacheRef.current.set(documentKey, response)
+          setCachedDocumentPreview(
+            sessionId,
+            documentId,
+            presentation,
+            response
+          )
           previewRetryAttemptsRef.current.delete(documentKey)
         } else {
-          previewResponseCacheRef.current.delete(documentKey)
+          invalidateDocumentPreview(sessionId, documentId, presentation)
         }
         if (!cancelled) {
           setState((current) => ({
@@ -259,7 +284,9 @@ export function DocumentPdfPreview({
     () =>
       state.variants.find(
         (variant) =>
-          variant.key === "original" && variant.status === "ready" && variant.url
+          variant.key === "original" &&
+          variant.status === "ready" &&
+          variant.url
       ) ?? null,
     [state.variants]
   )
@@ -283,7 +310,9 @@ export function DocumentPdfPreview({
   ])
 
   const refreshPreview = () => {
-    if (documentKey) previewResponseCacheRef.current.delete(documentKey)
+    if (documentKey && sessionId && documentId !== null) {
+      invalidateDocumentPreview(sessionId, documentId, presentation)
+    }
     if (documentKey) previewRetryAttemptsRef.current.delete(documentKey)
     manualRefreshRef.current = true
     setRefreshKey((key) => key + 1)
@@ -301,12 +330,20 @@ export function DocumentPdfPreview({
       if (response.document) onDocumentUpdated?.(response.document)
       if (response.preview) {
         const variants = normalizePreviewVariants(response.preview)
-        previewResponseCacheRef.current.set(documentKey, response.preview)
+        setCachedDocumentPreview(
+          sessionId,
+          documentId,
+          presentation,
+          response.preview
+        )
         previewRetryAttemptsRef.current.delete(documentKey)
         setState({
           status: "ready",
           variants,
-          activeVariantKey: activeVariantKeyFromResponse(response.preview, variants),
+          activeVariantKey: activeVariantKeyFromResponse(
+            response.preview,
+            variants
+          ),
           error: "",
         })
         setSelectedVariantKey("processed")
@@ -330,7 +367,8 @@ export function DocumentPdfPreview({
   return (
     <div
       className={cn(
-        "flex min-h-[360px] min-w-0 flex-col overflow-hidden rounded-2xl border border-[#D8E1EC] bg-white shadow-sm sm:min-h-[520px]",
+        "flex min-w-0 flex-col overflow-hidden rounded-2xl border border-[#D8E1EC] bg-white shadow-sm",
+        fitHeight ? "h-full min-h-0" : "min-h-[360px] sm:min-h-[520px]",
         className
       )}
     >
@@ -409,9 +447,11 @@ export function DocumentPdfPreview({
       <div className="relative min-h-0 flex-1 bg-[#F8FAFC]">
         {selectedVariant ? (
           <PreviewPane
+            key={`${selectedVariant.key}:${selectedVariant.url}:${selectedVariant.versionId ?? ""}`}
             variant={selectedVariant}
             reviewSourceVariant={originalVariant}
             hideStatus={isDossierReviewPresentation}
+            fitHeight={fitHeight}
             blankPageReview={
               enableBlankPageReview &&
               selectedVariant.key === "processed" &&
@@ -426,7 +466,11 @@ export function DocumentPdfPreview({
             }
           />
         ) : (
-          <PreviewEmptyState state={state} hasDocument={Boolean(document)} />
+          <PreviewEmptyState
+            state={state}
+            hasDocument={Boolean(document)}
+            fitHeight={fitHeight}
+          />
         )}
       </div>
     </div>
@@ -507,8 +551,7 @@ function PreviewVariantSwitch({
         const disabled = !variant.url && variant.status === "failed"
         const variantWarningPages = blankPageWarningPages(variant)
         const hasVariantBlankPageWarnings =
-          variant.blankPageWarnings.length > 0 ||
-          variantWarningPages.length > 0
+          variant.blankPageWarnings.length > 0 || variantWarningPages.length > 0
         const hasVariantRemovedBlankPages =
           !hasVariantBlankPageWarnings &&
           blankPageRemovedPages(variant).length > 0
@@ -547,11 +590,13 @@ function PreviewPane({
   variant,
   reviewSourceVariant,
   hideStatus = false,
+  fitHeight = false,
   blankPageReview,
 }: {
   variant: PreviewVariantState
   reviewSourceVariant?: PreviewVariantState | null
   hideStatus?: boolean
+  fitHeight?: boolean
   blankPageReview?: {
     submitting: boolean
     error: string
@@ -568,10 +613,6 @@ function PreviewPane({
   const removedBlankPages = blankPageRemovedPages(variant)
   const hasRemovedBlankPages =
     !hasBlankPageWarnings && removedBlankPages.length > 0
-
-  useEffect(() => {
-    setBlankPageReviewMode("preview")
-  }, [variant.key, variant.url, variant.versionId])
 
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white">
@@ -680,10 +721,13 @@ function PreviewPane({
           <iframe
             src={iframeUrl}
             title={`PDF preview ${variant.label}`}
-            className="h-full min-h-[320px] w-full border-0 bg-white sm:min-h-[480px]"
+            className={cn(
+              "h-full w-full border-0 bg-white",
+              fitHeight ? "min-h-0" : "min-h-[320px] sm:min-h-[480px]"
+            )}
           />
         ) : (
-          <PreviewVariantEmptyState variant={variant} />
+          <PreviewVariantEmptyState variant={variant} fitHeight={fitHeight} />
         )}
       </div>
     </section>
@@ -706,8 +750,9 @@ function blankPageRemovedPages(variant: PreviewVariantState): number[] {
       : variant.key === "processed"
         ? variant.blankPages
         : []
-  return [...new Set(source.filter((page) => Number.isInteger(page) && page > 0))]
-    .sort((left, right) => left - right)
+  return [
+    ...new Set(source.filter((page) => Number.isInteger(page) && page > 0)),
+  ].sort((left, right) => left - right)
 }
 
 function blankPageWarningLabel(
@@ -726,12 +771,20 @@ function blankPageWarningLabel(
 
 function PreviewVariantEmptyState({
   variant,
+  fitHeight = false,
 }: {
   variant: PreviewVariantState
+  fitHeight?: boolean
 }) {
+  const heightClassName = fitHeight ? "min-h-0" : "min-h-[260px]"
   if (previewVariantNeedsRefresh(variant)) {
     return (
-      <div className="flex h-full min-h-[260px] items-center justify-center px-6 text-center">
+      <div
+        className={cn(
+          "flex h-full items-center justify-center px-6 text-center",
+          heightClassName
+        )}
+      >
         <div className="max-w-sm text-sm text-[#64748B]">
           <Loader2 className="mx-auto mb-3 size-8 animate-spin text-[#0052FF]" />
           <p className="font-medium text-[#0F172A]">
@@ -747,7 +800,12 @@ function PreviewVariantEmptyState({
 
   if (variant.status === "failed") {
     return (
-      <div className="flex h-full min-h-[260px] items-center justify-center px-6 text-center">
+      <div
+        className={cn(
+          "flex h-full items-center justify-center px-6 text-center",
+          heightClassName
+        )}
+      >
         <div className="max-w-sm text-sm text-[#64748B]">
           <TriangleAlert className="mx-auto mb-3 size-8 text-amber-500" />
           <p className="font-medium text-[#0F172A]">
@@ -762,7 +820,12 @@ function PreviewVariantEmptyState({
   }
 
   return (
-    <div className="flex h-full min-h-[260px] items-center justify-center px-6 text-center">
+    <div
+      className={cn(
+        "flex h-full items-center justify-center px-6 text-center",
+        heightClassName
+      )}
+    >
       <div className="max-w-sm text-sm text-[#64748B]">
         <FileSearch className="mx-auto mb-3 size-8 text-[#94A3B8]" />
         <p className="font-medium text-[#0F172A]">
@@ -779,13 +842,23 @@ function PreviewVariantEmptyState({
 function PreviewEmptyState({
   state,
   hasDocument,
+  fitHeight = false,
 }: {
   state: PreviewState
   hasDocument: boolean
+  fitHeight?: boolean
 }) {
+  const heightClassName = fitHeight
+    ? "min-h-0"
+    : "min-h-[320px] sm:min-h-[480px]"
   if (state.status === "loading") {
     return (
-      <div className="flex h-full min-h-[320px] items-center justify-center text-sm text-[#64748B] sm:min-h-[480px]">
+      <div
+        className={cn(
+          "flex h-full items-center justify-center text-sm text-[#64748B]",
+          heightClassName
+        )}
+      >
         <Loader2 className="mr-2 size-4 animate-spin text-[#0052FF]" />
         Đang tải preview PDF...
       </div>
@@ -794,7 +867,12 @@ function PreviewEmptyState({
 
   if (state.status === "error") {
     return (
-      <div className="flex h-full min-h-[320px] items-center justify-center px-6 text-center sm:min-h-[480px]">
+      <div
+        className={cn(
+          "flex h-full items-center justify-center px-6 text-center",
+          heightClassName
+        )}
+      >
         <div className="max-w-sm text-sm text-[#64748B]">
           <TriangleAlert className="mx-auto mb-3 size-8 text-amber-500" />
           <p className="font-medium text-[#0F172A]">
@@ -807,7 +885,12 @@ function PreviewEmptyState({
   }
 
   return (
-    <div className="flex h-full min-h-[320px] items-center justify-center px-6 text-center sm:min-h-[480px]">
+    <div
+      className={cn(
+        "flex h-full items-center justify-center px-6 text-center",
+        heightClassName
+      )}
+    >
       <div className="max-w-sm text-sm text-[#64748B]">
         <FileSearch className="mx-auto mb-3 size-8 text-[#94A3B8]" />
         <p className="font-medium text-[#0F172A]">

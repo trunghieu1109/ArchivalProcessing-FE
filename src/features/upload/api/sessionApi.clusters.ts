@@ -11,6 +11,10 @@ import type {
   DossierMembershipExplanationResponse,
   DossierBuildStrategy,
   EnsureClusterBuildResponse,
+  HomogeneousClusterNeighborsResponse,
+  ProvisionalDossier,
+  ProvisionalDossierListResponse,
+  ProvisionalDossierPromotionResponse,
   SelectedDocumentsMoveResponse,
   SelectedDocumentsPromoteResponse,
   SessionDossierDraft,
@@ -25,6 +29,180 @@ import type {
   TemporaryFolderPromoteResponse,
   UnclassifiedSessionDossierListResponse,
 } from "./sessionApi.types"
+
+export async function startHomogeneousClustering(
+  sessionId: string,
+  options: { forceRebuild?: boolean } = {}
+): Promise<Record<string, unknown>> {
+  return requestJson<Record<string, unknown>>(
+    `/sessions/${encodeURIComponent(sessionId)}/homogeneous-clustering/build`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source: "homogeneous_cluster_review",
+        ...(options.forceRebuild ? { force_rebuild: true } : {}),
+      }),
+    }
+  )
+}
+
+export async function getHomogeneousClusters(
+  sessionId: string,
+  options: { includeDocuments?: boolean } = {}
+): Promise<ClusterVersionResponse | null> {
+  const searchParams = new URLSearchParams({
+    include_documents: String(options.includeDocuments ?? false),
+  })
+  return requestJsonOrNull<ClusterVersionResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/homogeneous-clusters?${searchParams.toString()}`,
+    { cache: "no-store" }
+  )
+}
+
+export async function getHomogeneousCluster(
+  sessionId: string,
+  clusterId: string
+): Promise<import("./sessionApi.types").SessionClusterSummary> {
+  return requestJson<import("./sessionApi.types").SessionClusterSummary>(
+    `/sessions/${encodeURIComponent(sessionId)}/homogeneous-clusters/${encodeURIComponent(clusterId)}`,
+    { cache: "no-store" }
+  )
+}
+
+export async function getHomogeneousClusterNeighbors(
+  sessionId: string,
+  clusterId: string,
+  limit = 10
+): Promise<HomogeneousClusterNeighborsResponse> {
+  const searchParams = new URLSearchParams({ limit: String(limit) })
+  return requestJson<HomogeneousClusterNeighborsResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/homogeneous-clusters/${encodeURIComponent(clusterId)}/neighbors?${searchParams.toString()}`,
+    { cache: "no-store" }
+  )
+}
+
+export async function listProvisionalDossiers(
+  sessionId: string,
+  includePromoted = true
+): Promise<ProvisionalDossierListResponse> {
+  return requestJson<ProvisionalDossierListResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/provisional-dossiers?include_promoted=${String(includePromoted)}`,
+    { cache: "no-store" }
+  )
+}
+
+export async function createProvisionalDossier(
+  sessionId: string,
+  clusterIds: string[],
+  title?: string
+): Promise<ProvisionalDossier> {
+  return requestJson<ProvisionalDossier>(
+    `/sessions/${encodeURIComponent(sessionId)}/provisional-dossiers`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cluster_ids: clusterIds,
+        title,
+        created_by: "ui",
+      }),
+    }
+  )
+}
+
+export async function patchProvisionalDossier(
+  sessionId: string,
+  dossierId: number,
+  payload: { title: string | null; expected_revision?: number }
+): Promise<ProvisionalDossier> {
+  return requestJson<ProvisionalDossier>(
+    `/sessions/${encodeURIComponent(sessionId)}/provisional-dossiers/${dossierId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
+}
+
+export async function addClusterToProvisionalDossier(
+  sessionId: string,
+  dossierId: number,
+  clusterId: string
+): Promise<ProvisionalDossier> {
+  return addClustersToProvisionalDossier(sessionId, dossierId, [clusterId])
+}
+
+export async function addClustersToProvisionalDossier(
+  sessionId: string,
+  dossierId: number,
+  clusterIds: string[]
+): Promise<ProvisionalDossier> {
+  return requestJson<ProvisionalDossier>(
+    `/sessions/${encodeURIComponent(sessionId)}/provisional-dossiers/${dossierId}/clusters`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cluster_ids: clusterIds }),
+    }
+  )
+}
+
+export async function removeClusterFromProvisionalDossier(
+  sessionId: string,
+  dossierId: number,
+  clusterId: string
+): Promise<ProvisionalDossier> {
+  return requestJson<ProvisionalDossier>(
+    `/sessions/${encodeURIComponent(sessionId)}/provisional-dossiers/${dossierId}/clusters/${encodeURIComponent(clusterId)}`,
+    { method: "DELETE" }
+  )
+}
+
+export async function promoteProvisionalDossier(
+  sessionId: string,
+  dossierId: number
+): Promise<ProvisionalDossierPromotionResponse> {
+  return requestJson<ProvisionalDossierPromotionResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/provisional-dossiers/${dossierId}/promote`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ created_by: "ui" }),
+    }
+  )
+}
+
+export async function promoteAllProvisionalDossiers(
+  sessionId: string
+): Promise<ProvisionalDossierPromotionResponse> {
+  return requestJson<ProvisionalDossierPromotionResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/provisional-dossiers/promote-all`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ created_by: "ui" }),
+    }
+  )
+}
+
+export async function promoteSelectedProvisionalDossiers(
+  sessionId: string,
+  provisionalDossierIds: number[]
+): Promise<ProvisionalDossierPromotionResponse> {
+  return requestJson<ProvisionalDossierPromotionResponse>(
+    `/sessions/${encodeURIComponent(sessionId)}/provisional-dossiers/promote-selected`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provisional_dossier_ids: provisionalDossierIds,
+        created_by: "ui",
+      }),
+    }
+  )
+}
 
 export async function getActiveClusters(
   sessionId: string,

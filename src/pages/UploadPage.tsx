@@ -15,19 +15,19 @@ import {
 import { useZipUploadJobs, useZipUploadManager } from "@/features/zip-upload"
 import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import type { SessionMetadataValues } from "@/features/upload/components/SessionMetadataBar"
-import { SHOW_QUICK_DOSSIER_BUILD } from "@/features/upload/components/step4/temporaryFeatureVisibility"
 import type {
   PendingDataUploadSummary,
   UnifiedDataUploadHandle,
 } from "@/features/upload/components/step1/PendingDataUpload"
 import {
   deleteDossierTitleCatalog,
-  ensureClusterBuild,
-  getActivePlan,
+  getHomogeneousClusters,
   getSession,
   getWorkingPlan,
+  listProvisionalDossiers,
   listSessionEvents,
   removeRetentionSourceFromDraft,
+  startHomogeneousClustering,
   uploadDossierTitleCatalog,
   type DossierBuildStrategy,
   type DocumentNumberingMode,
@@ -37,6 +37,7 @@ import {
   type UploadMode,
   type UploadProgressSnapshot,
 } from "@/features/upload/api/sessionApi"
+import { ApiRequestError } from "@/features/upload/api/sessionApi.http"
 import { isOcrWaitSupersededError } from "@/features/upload/hooks/useOcrFolder"
 import type { NumberingStyleOverrides } from "./UploadPage.planDefaults"
 import type {
@@ -55,7 +56,6 @@ import { createUploadPageWorkflowActions } from "./UploadPage.workflow"
 import {
   canNavigateDirectlyToMetadata,
   resolvePlanInputsReuploaded,
-  shouldEnsureDossierBuildBeforeResults,
 } from "./UploadPage.workflowPolicy"
 import { createUploadPageActions } from "./UploadPage.actions"
 import { isMetadataDiscoveryPending } from "./UploadPage.metadataDiscovery"
@@ -96,6 +96,11 @@ import {
   selectedUploadLabels,
 } from "./UploadPage.requirements"
 import { workflowStepFromLocation } from "./UploadPage.routing"
+import {
+  homogeneousContinuationStep,
+  homogeneousWorkflowRoute,
+  markHomogeneousWorkflow,
+} from "./homogeneousWorkflow"
 
 export function UploadPage() {
   const location = useLocation()
@@ -151,63 +156,94 @@ export function UploadPage() {
       toast.error("Chưa có session để lập hồ sơ.")
       return
     }
-    if (!shouldEnsureDossierBuildBeforeResults(cache.activeClusterVersionId)) {
-      goTo(4, currentSessionId)
-      return
-    }
-    const hasActivePlanForBuild = Boolean(activePlanVersionId)
-    const missingInputs = missingDossierBuildInputs({
-      hasArrangementPlan: doc1Has,
-      hasRetentionSchedule: doc2Has,
-      hasVerifiedDocuments,
-      hasActivePlan: hasActivePlanForBuild,
-    })
-    if (missingInputs.length > 0) {
-      toast.error(dossierBuildMissingMessage(missingInputs))
+    if (!hasVerifiedDocuments) {
+      toast.error(dossierBuildMissingMessage(["verified_documents"]))
       return
     }
 
+    const continueHomogeneousWorkflow = (targetStep: 4 | 5) => {
+      markHomogeneousWorkflow(currentSessionId)
+      navigate(homogeneousWorkflowRoute(currentSessionId, targetStep))
+    }
+
     try {
-      let buildStrategy = activePlanSettings.dossierBuildStrategy
-      if (hasActivePlanForBuild && activeParsedPlan.groups.length === 0) {
+      const clusterVersion = await getHomogeneousClusters(currentSessionId)
+      const versionIsStale =
+        clusterVersion?.is_stale === true || clusterVersion?.status === "stale"
+      if (clusterVersion && !versionIsStale) {
+        let provisionalDossierStatuses: string[] = []
         try {
-          const hydratedActivePlan = await getActivePlan(currentSessionId)
-          if (hydratedActivePlan) {
-            applyActivePlanResponse(hydratedActivePlan)
-            buildStrategy = activePlanBuildStrategy(hydratedActivePlan)
-          }
+          const dossierList = await listProvisionalDossiers(currentSessionId)
+          provisionalDossierStatuses = dossierList.dossiers.map(
+            (dossier) => dossier.status
+          )
         } catch {
-          // UI hydration is best-effort. The backend remains authoritative for
-          // active-plan validation when ensureClusterBuild is called below.
+          // The cluster result is already known to be reusable. A temporary
+          // failure to load its dossier badges must never trigger a rebuild.
         }
-      }
-      if (!SHOW_QUICK_DOSSIER_BUILD && buildStrategy === "predefined") {
-        toast.error(
-          "Lập hồ sơ nhanh đang tạm ẩn để hoàn thiện xử lý. Vui lòng chọn cách lập hồ sơ khác."
+        const continuationStep = homogeneousContinuationStep({
+          hasCurrentVersion: true,
+          versionIsStale: false,
+          provisionalDossierStatuses,
+        })
+        toast.info(
+          continuationStep === 5
+            ? "Đang mở lại các hồ sơ tạm đang làm dở."
+            : "Đang mở kết quả phân cụm hiện có."
         )
+        continueHomogeneousWorkflow(continuationStep ?? 4)
         return
-      }
-      const response = await ensureClusterBuild(currentSessionId, {
-        source: "user_view_results",
-        dossier_build_strategy: buildStrategy,
-      })
-      if (response.status === "queued") {
-        toast.success("Đã gửi task lập hồ sơ từ tài liệu đã xác nhận.")
-      } else if (response.status === "already_queued_or_running") {
-        toast.info("Task lập hồ sơ đang được xử lý.")
-      } else {
-        toast.info("Hồ sơ đã được lập với dữ liệu mới nhất.")
       }
     } catch (err) {
       toast.error(
         err instanceof Error
-          ? `Không gửi được task lập hồ sơ: ${err.message}`
-          : "Không gửi được task lập hồ sơ."
+          ? `Không kiểm tra được kết quả phân cụm hiện có: ${err.message}`
+          : "Không kiểm tra được kết quả phân cụm hiện có."
       )
       return
     }
 
-    goTo(4, currentSessionId)
+    try {
+      const response = await startHomogeneousClustering(currentSessionId)
+      if (response.status === "queued") {
+        toast.success("Đã bắt đầu phân cụm tài liệu theo độ thuần nhất cao.")
+      } else if (response.status === "already_queued_or_running") {
+        toast.info("Task phân cụm đang được xử lý.")
+      } else {
+        toast.info("Đang mở kết quả phân cụm mới nhất.")
+      }
+    } catch (err) {
+      if (err instanceof ApiRequestError && err.status === 409) {
+        let continuationStep: 4 | 5 = 4
+        try {
+          const dossierList = await listProvisionalDossiers(currentSessionId)
+          if (
+            dossierList.dossiers.some(
+              (dossier) => dossier.status.trim().toLowerCase() === "draft"
+            )
+          ) {
+            continuationStep = 5
+          }
+        } catch {
+          // A concurrent cluster build is still safe to follow on review page.
+        }
+        toast.info(
+          continuationStep === 5
+            ? "Session đã có hồ sơ tạm. Đang tiếp tục phần lập hồ sơ."
+            : "Task phân cụm đã tồn tại. Đang mở trạng thái xử lý."
+        )
+        continueHomogeneousWorkflow(continuationStep)
+        return
+      }
+      toast.error(
+        err instanceof Error
+          ? `Không gửi được task phân cụm: ${err.message}`
+          : "Không gửi được task phân cụm."
+      )
+      return
+    }
+
+    continueHomogeneousWorkflow(4)
   }
 
   const handleViewUnclassifiedDossiers = () => {

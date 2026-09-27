@@ -56,12 +56,15 @@ export interface ClusterPlacement {
   id: number
   session_document_id: number
   document_id: string
+  file_name?: string | null
+  data_path?: string | null
   dossier_id?: string | null
   position_index: number
   placement_status: string
   requires_review: boolean
   page_count: number | null
   sheet_count: number | null
+  membership_similarity?: number | null
   source_page_count?: number | null
   output_page_count?: number | null
   document_numbering_mode?: DocumentNumberingMode | null
@@ -475,6 +478,22 @@ export interface SessionClusterSummary {
   is_temporary?: boolean
   created_from_temporary_folder?: boolean
   title: string
+  content_summary?: string
+  summary_status?: string
+  statistics?: {
+    document_count?: number
+    document_type_counts?: Record<string, number>
+    start_date?: string | null
+    end_date?: string | null
+    page_count?: number | null
+    sheet_count?: number | null
+    [key: string]: unknown
+  }
+  cohesion_mean?: number | null
+  cohesion_p10?: number | null
+  inlier_ratio?: number | null
+  metric_mode?: string | null
+  metric_sample_size?: number
   dossier: SessionDossierSummary | null
   dossiers?: SessionDossierSummary[]
   status: string
@@ -535,6 +554,7 @@ export interface ClusterVersionResponse extends ApiRevisionMetadata {
   session_id: string
   version_number: number
   source: string
+  workflow_kind?: "classic" | "homogeneous" | string
   status: "draft" | "active" | "superseded" | "stale" | string
   approval_mode?: "automatic" | "manual"
   requires_approval?: boolean
@@ -552,6 +572,113 @@ export interface ClusterVersionResponse extends ApiRevisionMetadata {
   current_document_set_revision?: number
   clusters?: SessionClusterSummary[]
   pending_transfer_documents?: ClusterPlacement[]
+}
+
+export interface ProvisionalDossierCluster {
+  cluster_id: string
+  title: string
+  content_summary: string
+  document_count: number
+  cohesion_mean: number | null
+  position_index: number
+}
+
+export interface ProvisionalDossier {
+  id: number
+  session_id: string
+  source_cluster_version_id: string
+  generated_title: string
+  title_override: string | null
+  title: string
+  content_summary: string
+  status: "draft" | "promoted" | string
+  revision: number
+  statistics: {
+    cluster_count?: number
+    document_count?: number
+    document_type_counts?: Record<string, number>
+    start_date?: string | null
+    end_date?: string | null
+    cohesion_mean?: number | null
+    [key: string]: unknown
+  }
+  created_by?: string | null
+  promoted_at?: string | null
+  created_at: string
+  updated_at: string
+  clusters: ProvisionalDossierCluster[]
+}
+
+export interface ProvisionalDossierListResponse {
+  session_id: string
+  dossiers: ProvisionalDossier[]
+  composition?: {
+    eligible_cluster_count: number
+    assigned_cluster_count: number
+    unassigned_cluster_count: number
+  }
+}
+
+export interface HomogeneousClusterNeighbor {
+  cluster_id: string
+  content_summary: string
+  document_count: number
+  cohesion_mean: number | null
+  start_date: string | null
+  end_date: string | null
+  similarity: number | null
+  best_pair_similarity: number | null
+  scored_pair_count: number
+  possible_pair_count: number
+  similarity_source: "saved_cluster_pair_scores" | "saved_document_pair_scores"
+  provisional_dossier: {
+    id: number
+    title: string
+    status: string
+  } | null
+}
+
+export interface ProvisionalDossierRecommendation {
+  id: number
+  title: string
+  content_summary: string
+  status: "draft" | string
+  cluster_count: number
+  document_count: number
+  average_similarity: number | null
+  best_cluster_similarity: number | null
+  scored_cluster_count: number
+  scored_pair_count: number
+  possible_pair_count: number
+  cluster_similarities: Array<{
+    cluster_id: string
+    similarity: number | null
+    similarity_source:
+      | "saved_cluster_pair_scores"
+      | "saved_document_pair_scores"
+  }>
+}
+
+export interface HomogeneousClusterNeighborsResponse {
+  session_id: string
+  cluster_version_id: string
+  cluster_id: string
+  neighbors: HomogeneousClusterNeighbor[]
+  provisional_dossiers: ProvisionalDossierRecommendation[]
+}
+
+export interface ProvisionalDossierPromotionResponse {
+  provisional_dossier?: ProvisionalDossier
+  promoted_count?: number
+  promoted_provisional_dossier_ids?: number[]
+  remaining_draft_count?: number
+  unassigned_cluster_count?: number
+  build_job?: {
+    job_id: number
+    job_type: string
+    status: string
+    created: boolean
+  } | null
 }
 
 export type ClusterGroupChangeType = "created" | "removed" | "updated" | "moved"

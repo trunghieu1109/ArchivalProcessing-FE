@@ -25,6 +25,12 @@ import {
   hasArrangementPlanResult,
   hasRetentionAnalysisResult,
 } from "./UploadPage.workflowPolicy"
+import {
+  HOMOGENEOUS_WORKFLOW_LABELS,
+  homogeneousHeaderStepForAppStep,
+  homogeneousWorkflowRoute,
+  isHomogeneousWorkflow,
+} from "./homogeneousWorkflow"
 
 export function UploadPageView(props: Record<string, any>) {
   const {
@@ -157,15 +163,30 @@ export function UploadPageView(props: Record<string, any>) {
     navigate,
   } = props
   const resolvedSessionId = routeSessionId ?? sessionId ?? null
+  const homogeneousFlow = isHomogeneousWorkflow(resolvedSessionId)
+  const headerStepLabels = homogeneousFlow
+    ? HOMOGENEOUS_WORKFLOW_LABELS
+    : STEP_LABELS
+  const headerCurrentStep = homogeneousFlow
+    ? homogeneousHeaderStepForAppStep(currentStep)
+    : currentStep
+  const headerHighestVisitedStep = homogeneousFlow
+    ? homogeneousHeaderStepForAppStep(highestVisitedStep)
+    : highestVisitedStep
+  const handleHeaderStepNavigation = (step: number) => {
+    if (homogeneousFlow && resolvedSessionId) {
+      navigate(homogeneousWorkflowRoute(resolvedSessionId, step))
+      return
+    }
+    handlePlanStepNavigation(step as AppStep)
+  }
   const hasActivePlanData =
     Boolean(hasActivePlan) &&
     Boolean(activePlanVersionId) &&
     activeParsedPlan.groups.length > 0
   const hasDraftPlanData = parsedPlan.groups.length > 0
   const showActivePlanTab = planViewTab === "active"
-  const visibleRetentionPlan = showActivePlanTab
-    ? activeParsedPlan
-    : parsedPlan
+  const visibleRetentionPlan = showActivePlanTab ? activeParsedPlan : parsedPlan
   const visiblePlanVersionId = showActivePlanTab
     ? activePlanVersionId
     : workingPlanVersionId
@@ -225,14 +246,21 @@ export function UploadPageView(props: Record<string, any>) {
     }
     goTo(3)
   }
+  const handleBackNavigation = () => {
+    if (homogeneousFlow && currentStep === 4 && resolvedSessionId) {
+      navigate(homogeneousWorkflowRoute(resolvedSessionId, 5))
+      return
+    }
+    handlePlanStepNavigation((currentStep - 1) as AppStep)
+  }
 
   return (
     <div className="min-h-svh bg-[#F0F4F8]">
       <UploadPageHeader
-        currentStep={currentStep}
-        highestVisitedStep={highestVisitedStep}
-        STEP_LABELS={STEP_LABELS}
-        goTo={handlePlanStepNavigation}
+        currentStep={headerCurrentStep}
+        highestVisitedStep={headerHighestVisitedStep}
+        STEP_LABELS={headerStepLabels}
+        goTo={handleHeaderStepNavigation}
         isWorkerUser={isWorkerUser}
         navigate={navigate}
         onNavigateSessions={handleNavigateToSessions}
@@ -260,9 +288,7 @@ export function UploadPageView(props: Record<string, any>) {
               initial={{ opacity: 0, x: -8 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.3 }}
-              onClick={() =>
-                handlePlanStepNavigation((currentStep - 1) as AppStep)
-              }
+              onClick={handleBackNavigation}
               className="flex items-center gap-2 rounded-xl border border-[#CBD5E1] bg-white px-4 py-2 text-sm font-medium text-[#475569] shadow-sm transition-all hover:border-[#0052FF]/30 hover:text-[#0052FF]"
             >
               <ArrowLeft className="size-4" /> Quay lại
@@ -379,9 +405,7 @@ export function UploadPageView(props: Record<string, any>) {
                 searchParams.get("focus") ?? searchParams.get("folderUpload")
               }
               parsedPlan={parsedPlan}
-              dossierTitleCatalogDraftFile={
-                props.dossierTitleCatalogDraftFile
-              }
+              dossierTitleCatalogDraftFile={props.dossierTitleCatalogDraftFile}
               dossierTitleCatalogUpload={props.dossierTitleCatalogUpload}
               handleDossierTitleCatalogSelect={
                 props.handleDossierTitleCatalogSelect
@@ -412,11 +436,7 @@ export function UploadPageView(props: Record<string, any>) {
                   />
                 </div>
               )}
-              {planFailure && (
-                <div className="mb-4">
-                  {planFailurePanel}
-                </div>
-              )}
+              {planFailure && <div className="mb-4">{planFailurePanel}</div>}
               {hasArrangementPlan ? (
                 <div className="flex flex-col gap-4">
                   <div className="rounded-2xl border border-[#D8E1EC] bg-white p-3 shadow-sm sm:flex sm:items-center sm:justify-between sm:gap-5">

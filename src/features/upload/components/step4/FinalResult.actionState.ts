@@ -92,7 +92,7 @@ export function resolveFinalResultActionState(
     approvalBlockedReason,
     canApprovePendingVersion: hasDraft && approvalBlockedReason === null,
     updateNeeded,
-    showUpdateAction: true,
+    showUpdateAction: updateNeeded,
     updateBlockedReason,
     canUpdateDossiers: updateBlockedReason === null,
     finishBlockedReason,

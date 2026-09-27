@@ -35,6 +35,7 @@ import { useAuth } from "@/features/auth/lib/AuthContext"
 import { toast } from "sonner"
 import {
   ensureTemporaryFolderGroup,
+  withoutTemporaryFolderGroups,
   versionToGroups,
   type ClusterDocument,
   type ClusterGroup,
@@ -95,6 +96,7 @@ import {
 } from "./FinalResult.transferState"
 import { applySupplementalIntakeOverlay } from "./FinalResult.supplementalOverlay"
 import { resolveFinalResultActionState } from "./FinalResult.actionState"
+import { isHomogeneousWorkflow } from "@/pages/homogeneousWorkflow"
 
 const DOSSIER_SUGGESTION_TOP_K = 5
 const SUPPLEMENTAL_VERIFICATION_PENDING_STATUSES = new Set([
@@ -273,15 +275,19 @@ export function FinalResult({
     () => buildClusterChangeHighlights(visibleClusterVersionChanges),
     [visibleClusterVersionChanges]
   )
-  const displayGroups = useMemo(
-    () =>
-      applySupplementalIntakeOverlay(
-        groups,
-        supplementalIntakes,
-        metadataItems
-      ),
-    [groups, metadataItems, supplementalIntakes]
-  )
+  const homogeneousOfficialResults =
+    isHomogeneousWorkflow(sessionId) ||
+    displayedClusterVersion?.source === "provisional_dossier_promotion"
+  const displayGroups = useMemo(() => {
+    const overlaidGroups = applySupplementalIntakeOverlay(
+      groups,
+      supplementalIntakes,
+      metadataItems
+    )
+    return homogeneousOfficialResults
+      ? withoutTemporaryFolderGroups(overlaidGroups)
+      : overlaidGroups
+  }, [groups, homogeneousOfficialResults, metadataItems, supplementalIntakes])
   const supplementalVerificationPendingCount = useMemo(
     () =>
       supplementalIntakes.filter((intake) =>
@@ -1693,6 +1699,10 @@ export function FinalResult({
   const activeClusterProgressLabel = clusterProgressPhase
     ? clusterProgressLabel(clusterProgressPhase)
     : ""
+  const officialResultStatusText =
+    totalDossiers > 0
+      ? `Đã lập ${totalDossiers} hồ sơ chính thức với ${totalFiles} tài liệu.`
+      : "Chưa có hồ sơ chính thức để hiển thị."
   const resultStatusText =
     loading || checkingClusters
       ? activeClusterProgressLabel
@@ -1706,7 +1716,9 @@ export function FinalResult({
               : clusterJobMode === "update"
                 ? `Đang cập nhật hồ sơ. ${status}`
                 : `Đang lập hồ sơ mới. ${status}`
-      : status
+      : homogeneousOfficialResults && status.includes("Thư mục tạm")
+        ? officialResultStatusText
+        : status
   const handleDeleteSelectedDocuments = useCallback(() => {
     const selectedEntries = previewDocuments.filter((entry) =>
       selectedSessionDocumentIds.has(entry.sessionDocumentId)

@@ -287,6 +287,27 @@ export interface EnqueuePlanAnalysisResponse {
   payload: Record<string, unknown>
 }
 
+export interface ClusterBuildProgressMetrics {
+  stage?: string
+  document_count?: number
+  considered_document_count?: number
+  processed_document_count?: number
+  clustered_document_count?: number
+  pair_score_count?: number
+  possible_pair_count?: number
+  stage_progress_percentage?: number
+  cluster_count?: number
+  unclustered_count?: number
+  batch_number?: number
+  completed_batch_count?: number
+  batch_document_count?: number
+  batch_processed_document_count?: number
+  batch_status?: "waiting" | "processing" | "completed" | string
+  total_batches?: number
+  dossier_count?: number
+  summarized_cluster_count?: number
+}
+
 export interface ClusterBuildStatusResponse extends ApiRevisionMetadata {
   session_id: string
   job_type: "build_clusters"
@@ -298,6 +319,7 @@ export interface ClusterBuildStatusResponse extends ApiRevisionMetadata {
     phase: string
     message?: string | null
     created_at?: string | null
+    metrics?: ClusterBuildProgressMetrics | null
   } | null
 }
 

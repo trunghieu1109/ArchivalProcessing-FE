@@ -2,9 +2,36 @@ import { describe, expect, it } from "vitest"
 
 import type { ClusterVersionResponse } from "@/features/upload/api/sessionApi"
 import {
+  TEMPORARY_CLUSTER_ID,
   TRANSFER_PENDING_CLUSTER_ID,
+  withoutTemporaryFolderGroups,
   versionToGroups,
 } from "./clusterGroups"
+
+describe("withoutTemporaryFolderGroups", () => {
+  it("keeps only established dossier groups on official results", () => {
+    const groups = [
+      {
+        id: TEMPORARY_CLUSTER_ID,
+        clusterId: TEMPORARY_CLUSTER_ID,
+        label: "Thư mục tạm",
+        files: ["waiting.pdf"],
+        documents: [],
+        isTemporary: true,
+      },
+      {
+        id: "dossier-1",
+        clusterId: "cluster-1",
+        dossierId: "dossier-1",
+        label: "Hồ sơ đã lập",
+        files: ["official.pdf"],
+        documents: [],
+      },
+    ]
+
+    expect(withoutTemporaryFolderGroups(groups)).toEqual([groups[1]])
+  })
+})
 
 describe("versionToGroups transfer pending projection", () => {
   it("moves locked documents into one synthetic top-level group", () => {
@@ -78,8 +105,8 @@ describe("versionToGroups transfer pending projection", () => {
     expect(groups[0].documents.map((document) => document.documentId)).toEqual([
       "doc-1",
     ])
-    expect(
-      groups.find((group) => group.id === "dossier-1")?.documents
-    ).toEqual([])
+    expect(groups.find((group) => group.id === "dossier-1")?.documents).toEqual(
+      []
+    )
   })
 })

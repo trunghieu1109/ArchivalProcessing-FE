@@ -1,20 +1,28 @@
 import { motion } from "framer-motion"
+import type { NavigateFunction } from "react-router-dom"
 import { UserMenu } from "@/features/auth/components/UserMenu"
 import { cn } from "@/shared/lib/utils"
-import type { AppStep } from "@/features/upload/types"
 import { easeOut } from "./UploadPage.planUtils"
 
-export function UploadPageHeader(props: Record<string, any>) {
-  const {
-    currentStep,
-    highestVisitedStep,
-    STEP_LABELS,
-    goTo,
-    isWorkerUser,
-    navigate,
-    onNavigateSessions,
-  } = props
+interface UploadPageHeaderProps {
+  currentStep: number
+  highestVisitedStep: number
+  STEP_LABELS: readonly string[]
+  goTo: (step: number) => void
+  isWorkerUser: boolean
+  navigate: NavigateFunction
+  onNavigateSessions?: () => void
+}
 
+export function UploadPageHeader({
+  currentStep,
+  highestVisitedStep,
+  STEP_LABELS,
+  goTo,
+  isWorkerUser,
+  navigate,
+  onNavigateSessions,
+}: UploadPageHeaderProps) {
   return (
     <div className="relative overflow-hidden bg-gradient-to-br from-[#EEF2FF] via-[#F0F4FF] to-[#E8EEFF] px-3 py-4 shadow-sm sm:px-4 sm:py-5">
       <div
@@ -34,9 +42,7 @@ export function UploadPageHeader(props: Record<string, any>) {
           >
             <button
               type="button"
-              onClick={() =>
-                onNavigateSessions?.() ?? navigate("/sessions")
-              }
+              onClick={() => onNavigateSessions?.() ?? navigate("/sessions")}
               className="block rounded-xl focus-visible:ring-2 focus-visible:ring-[#0052FF] focus-visible:ring-offset-2 focus-visible:outline-none"
               aria-label="Quay lại danh sách session"
               title="Quay lại danh sách session"
@@ -87,7 +93,7 @@ export function UploadPageHeader(props: Record<string, any>) {
           >
             <div className="flex min-w-max items-center">
               {STEP_LABELS.map((label: string, i: number) => {
-                const s = (i + 1) as AppStep
+                const s = i + 1
                 const isActive = currentStep === s
                 const isDone = !isActive && s <= highestVisitedStep
                 const canNav = !isWorkerUser && isDone

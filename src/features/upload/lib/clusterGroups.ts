@@ -291,9 +291,7 @@ export function versionToGroups(
     dossiers: [],
     status: "transfer_pending",
     notes: [],
-    document_ids: pendingPlacements.map(
-      (placement) => placement.document_id
-    ),
+    document_ids: pendingPlacements.map((placement) => placement.document_id),
     page_count: null,
     sheet_count: null,
     start_date: null,
@@ -386,6 +384,17 @@ export function ensureTemporaryFolderGroup(
         },
     ...regularGroups,
   ]
+}
+
+export function withoutTemporaryFolderGroups(
+  groups: ClusterGroup[]
+): ClusterGroup[] {
+  return groups.filter(
+    (group) =>
+      !group.isTemporary &&
+      group.id !== TEMPORARY_CLUSTER_ID &&
+      group.clusterId !== TEMPORARY_CLUSTER_ID
+  )
 }
 
 function clusterToGroups(

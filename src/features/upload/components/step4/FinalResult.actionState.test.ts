@@ -83,7 +83,7 @@ describe("final result action state", () => {
     })
 
     expect(state.canApprovePendingVersion).toBe(true)
-    expect(state.showUpdateAction).toBe(true)
+    expect(state.showUpdateAction).toBe(false)
     expect(state.canUpdateDossiers).toBe(false)
     expect(state.canFinish).toBe(false)
   })
@@ -103,7 +103,7 @@ describe("final result action state", () => {
   it("allows finishing only for a stable active version", () => {
     const state = resolveFinalResultActionState(stable)
 
-    expect(state.showUpdateAction).toBe(true)
+    expect(state.showUpdateAction).toBe(false)
     expect(state.canUpdateDossiers).toBe(false)
     expect(state.canFinish).toBe(true)
   })
