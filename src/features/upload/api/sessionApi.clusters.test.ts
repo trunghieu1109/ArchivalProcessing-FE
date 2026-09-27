@@ -62,8 +62,12 @@ describe("homogeneous dossier workflow", () => {
     )
   })
 
-  it("promotes every provisional dossier before the official build", async () => {
-    const payload = { promoted_count: 2, build_job: { job_id: 7 } }
+  it("records every provisional dossier as pending an explicit update", async () => {
+    const payload = {
+      promoted_count: 2,
+      pending_update: true,
+      update_required: true,
+    }
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify(payload), {
         status: 202,
@@ -85,11 +89,12 @@ describe("homogeneous dossier workflow", () => {
     )
   })
 
-  it("promotes selected provisional dossiers in one request", async () => {
+  it("records selected provisional dossiers in one request", async () => {
     const payload = {
       promoted_count: 2,
       promoted_provisional_dossier_ids: [7, 9],
-      build_job: { job_id: 8 },
+      pending_update: true,
+      update_required: true,
     }
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify(payload), {

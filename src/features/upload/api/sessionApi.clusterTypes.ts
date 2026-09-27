@@ -673,12 +673,8 @@ export interface ProvisionalDossierPromotionResponse {
   promoted_provisional_dossier_ids?: number[]
   remaining_draft_count?: number
   unassigned_cluster_count?: number
-  build_job?: {
-    job_id: number
-    job_type: string
-    status: string
-    created: boolean
-  } | null
+  pending_update?: boolean
+  update_required?: boolean
 }
 
 export type ClusterGroupChangeType = "created" | "removed" | "updated" | "moved"

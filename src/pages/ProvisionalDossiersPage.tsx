@@ -202,13 +202,11 @@ export function ProvisionalDossiersPage() {
     setBusy(`promote-${dossierId}`)
     try {
       await promoteProvisionalDossier(sessionId, dossierId)
-      toast.success(
-        "Đã chuyển hồ sơ tạm và bắt đầu cập nhật kết quả chính thức."
-      )
+      toast.success("Đã ghi nhận hồ sơ. Hồ sơ đang chờ bạn cập nhật kết quả.")
       navigate(homogeneousWorkflowRoute(sessionId, 6))
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Không thể chuyển hồ sơ."
+        error instanceof Error ? error.message : "Không thể ghi nhận hồ sơ."
       )
     } finally {
       setBusy(null)
@@ -221,14 +219,14 @@ export function ProvisionalDossiersPage() {
     try {
       await promoteAllProvisionalDossiers(sessionId)
       toast.success(
-        "Đã chuyển toàn bộ hồ sơ tạm và bắt đầu xử lý hồ sơ chính thức."
+        "Đã ghi nhận toàn bộ hồ sơ. Hãy cập nhật hồ sơ tại màn hình kết quả."
       )
       navigate(homogeneousWorkflowRoute(sessionId, 6))
     } catch (error) {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Không thể chuyển toàn bộ hồ sơ."
+          : "Không thể ghi nhận toàn bộ hồ sơ."
       )
     } finally {
       setBusy(null)
@@ -244,21 +242,21 @@ export function ProvisionalDossiersPage() {
       )
       .map((dossier) => dossier.id)
     if (dossierIds.length === 0) {
-      toast.error("Chọn ít nhất một hồ sơ tạm để chuyển.")
+      toast.error("Chọn ít nhất một hồ sơ tạm để ghi nhận.")
       return
     }
     setBusy("promote-selected")
     try {
       await promoteSelectedProvisionalDossiers(sessionId, dossierIds)
       toast.success(
-        `Đã chuyển ${dossierIds.length} hồ sơ tạm và bắt đầu cập nhật kết quả chính thức.`
+        `Đã ghi nhận ${dossierIds.length} hồ sơ. Hãy cập nhật hồ sơ tại màn hình kết quả.`
       )
       navigate(homogeneousWorkflowRoute(sessionId, 6))
     } catch (error) {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Không thể chuyển các hồ sơ đã chọn."
+          : "Không thể ghi nhận các hồ sơ đã chọn."
       )
     } finally {
       setBusy(null)
@@ -359,13 +357,13 @@ export function ProvisionalDossiersPage() {
           <div className="max-w-4xl min-w-0">
             <h1 className="font-sans text-2xl font-semibold tracking-normal text-[#0F172A]">
               {compositionCompleted
-                ? "Hồ sơ đã chuyển thành kết quả chính thức"
+                ? "Hồ sơ đã ghi nhận, chờ cập nhật"
                 : "Hồ sơ tạm từ các cụm"}
             </h1>
             <p className="mt-1 text-sm leading-6 text-[#475569]">
               {compositionCompleted
-                ? "Danh sách cấu trúc cụm nguồn được giữ lại để đối chiếu với kết quả chính thức."
-                : "Kiểm tra nội dung các hồ sơ tạm và chuyển sang kết quả khi toàn bộ cụm đã được xếp."}
+                ? "Các hồ sơ đã được ghi nhận. Sang màn hình kết quả và chọn Cập nhật hồ sơ để tiếp tục xử lý."
+                : "Kiểm tra nội dung, chọn các hồ sơ cần ghi nhận rồi cập nhật một lượt tại màn hình kết quả."}
             </p>
           </div>
           <div className="ml-auto flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:items-end">
@@ -402,7 +400,7 @@ export function ProvisionalDossiersPage() {
                   ) : (
                     <CheckCircle2 />
                   )}
-                  Chuyển tất cả
+                  Ghi nhận tất cả
                 </Button>
               )}
             </div>
@@ -412,7 +410,7 @@ export function ProvisionalDossiersPage() {
         {!loading && dossiers.length > 0 && (
           <section
             className="overflow-hidden rounded-xl border border-[#C7D7FE] bg-white shadow-[0_2px_10px_rgba(0,82,255,0.04)]"
-            aria-label="Tiến độ chuyển hồ sơ tạm thành hồ sơ chính thức"
+            aria-label="Tiến độ ghi nhận hồ sơ tạm"
           >
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#DCE6FF] bg-gradient-to-r from-[#EEF2FF] to-[#F8FAFF] px-4 py-2.5 sm:px-5">
               <div className="flex items-center gap-2.5">
@@ -421,11 +419,11 @@ export function ProvisionalDossiersPage() {
                 </span>
                 <div>
                   <p className="font-semibold text-[#0F172A]">
-                    Tiến độ chuyển hồ sơ chính thức
+                    Tiến độ ghi nhận hồ sơ
                   </p>
                   <p className="mt-0.5 hidden text-sm text-[#64748B]">
-                    {promoted.length}/{dossiers.length} hồ sơ tạm đã được chuyển
-                    thành hồ sơ chính thức.
+                    {promoted.length}/{dossiers.length} hồ sơ tạm đã được ghi
+                    nhận và đang chờ cập nhật.
                   </p>
                 </div>
               </div>
@@ -437,7 +435,7 @@ export function ProvisionalDossiersPage() {
               <div
                 className="h-1.5 overflow-hidden rounded-full bg-[#E2E8F0]"
                 role="progressbar"
-                aria-label="Tiến độ chuyển hồ sơ tạm thành hồ sơ chính thức"
+                aria-label="Tiến độ ghi nhận hồ sơ tạm"
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={promotionProgressPercentage}
@@ -452,8 +450,8 @@ export function ProvisionalDossiersPage() {
                   {unassignedClusterCount > 0
                     ? `Còn ${unassignedClusterCount} cụm cần được xếp trước khi chuyển tiếp.`
                     : promotionProgressPercentage === 100
-                      ? "Đã chuyển toàn bộ hồ sơ tạm."
-                      : "Các hồ sơ tạm đã sẵn sàng để chuyển."}
+                      ? "Đã ghi nhận toàn bộ hồ sơ tạm."
+                      : "Các hồ sơ tạm đã sẵn sàng để ghi nhận."}
                 </span>
                 {unassignedClusterCount > 0 && (
                   <Button
@@ -501,7 +499,7 @@ export function ProvisionalDossiersPage() {
               <div>
                 <h2 className="font-semibold text-[#0F172A]">
                   {compositionCompleted
-                    ? "Cấu trúc hồ sơ đã chuyển"
+                    ? "Cấu trúc hồ sơ đã ghi nhận"
                     : "Danh sách hồ sơ tạm"}
                 </h2>
                 <p className="mt-1 text-xs text-[#64748B]">
@@ -551,12 +549,12 @@ export function ProvisionalDossiersPage() {
                       ) : (
                         <CheckCircle2 />
                       )}
-                      Chuyển {selectedDraftCount} hồ sơ
+                      Ghi nhận {selectedDraftCount} hồ sơ
                     </Button>
                   </>
                 ) : (
                   <span className="text-sm text-[#64748B]">
-                    Chọn hồ sơ để thực hiện chuyển hàng loạt
+                    Chọn hồ sơ để ghi nhận một lượt
                   </span>
                 )}
               </div>
@@ -610,7 +608,7 @@ export function ProvisionalDossiersPage() {
                             {displayIndex}
                           </span>
                           <h2 className="font-semibold text-[#0F172A]">
-                            {isDraft ? "Hồ sơ tạm" : "Hồ sơ đã chuyển"} #
+                            {isDraft ? "Hồ sơ tạm" : "Hồ sơ đã ghi nhận"} #
                             {dossier.id}
                           </h2>
                           <Badge
@@ -621,9 +619,7 @@ export function ProvisionalDossiersPage() {
                                 : "border-emerald-300 bg-white text-emerald-800"
                             }
                           >
-                            {isDraft
-                              ? "Đang biên soạn"
-                              : "Đã chuyển thành hồ sơ chính thức"}
+                            {isDraft ? "Đang biên soạn" : "Chờ cập nhật hồ sơ"}
                           </Badge>
                         </div>
                         <p className="mt-3 line-clamp-2 max-w-5xl text-sm leading-6 text-[#334155]">
@@ -693,7 +689,7 @@ export function ProvisionalDossiersPage() {
                             ) : (
                               <CheckCircle2 />
                             )}
-                            Chuyển hồ sơ này
+                            Ghi nhận hồ sơ này
                           </Button>
                         )}
                       </div>

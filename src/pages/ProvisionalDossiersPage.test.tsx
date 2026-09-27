@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ProvisionalDossiersPage } from "./ProvisionalDossiersPage"
@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   loadClusterDetail: vi.fn(),
   navigate: vi.fn(),
   prefetchClusterDetails: vi.fn(),
+  promoteSelectedProvisionalDossiers: vi.fn(),
 }))
 
 vi.mock("react-router-dom", () => ({
@@ -24,7 +25,7 @@ vi.mock("@/features/upload/api/sessionApi", () => ({
   listProvisionalDossiers: mocks.listProvisionalDossiers,
   promoteAllProvisionalDossiers: vi.fn(),
   promoteProvisionalDossier: vi.fn(),
-  promoteSelectedProvisionalDossiers: vi.fn(),
+  promoteSelectedProvisionalDossiers: mocks.promoteSelectedProvisionalDossiers,
   removeClusterFromProvisionalDossier: vi.fn(),
 }))
 
@@ -94,6 +95,12 @@ describe("ProvisionalDossiersPage", () => {
     }
     mocks.getCached.mockReturnValue(cluster)
     mocks.loadClusterDetail.mockResolvedValue(cluster)
+    mocks.promoteSelectedProvisionalDossiers.mockResolvedValue({
+      promoted_count: 1,
+      promoted_provisional_dossier_ids: [34],
+      pending_update: true,
+      update_required: true,
+    })
     mocks.listProvisionalDossiers.mockResolvedValue({
       session_id: "session-1",
       composition: {
@@ -144,5 +151,20 @@ describe("ProvisionalDossiersPage", () => {
     expect(screen.getByRole("dialog")).toHaveTextContent(
       "Hồ sơ 34 · Cụm cluster-27"
     )
+  })
+
+  it("records selected dossiers without starting an automatic update", async () => {
+    render(<ProvisionalDossiersPage />)
+
+    fireEvent.click(await screen.findByRole("checkbox", { name: /34/ }))
+    fireEvent.click(screen.getByRole("button", { name: /Ghi nhận 1 hồ sơ/i }))
+
+    await waitFor(() =>
+      expect(mocks.promoteSelectedProvisionalDossiers).toHaveBeenCalledWith(
+        "session-1",
+        [34]
+      )
+    )
+    expect(mocks.navigate).toHaveBeenCalledWith("/workflow")
   })
 })
