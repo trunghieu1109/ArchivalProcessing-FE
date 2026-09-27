@@ -75,6 +75,8 @@ import {
   statusBadge,
   textOrNull,
 } from "./NumberingStep.utils"
+import { NumberingBoxNumberModal } from "./NumberingBoxNumberModal"
+
 const NUMBERING_POLL_INTERVAL_MS = 5_000
 const NUMBERING_DOCUMENT_REFRESH_EVERY = 3
 const NUMBERING_PAGE_SIZE = 10
@@ -224,6 +226,7 @@ export function NumberingStep({
   const [metadataImporting, setMetadataImporting] = useState(false)
   const [metadataImportReview, setMetadataImportReview] =
     useState<MetadataImportReview | null>(null)
+  const [boxNumberModalOpen, setBoxNumberModalOpen] = useState(false)
   const metadataImportInputRef = useRef<HTMLInputElement | null>(null)
   const numberingPageCacheSessionRef = useRef<string | null>(null)
   const numberingPageCacheRef = useRef<Map<number, NumberingStatusResponse>>(
@@ -1194,6 +1197,12 @@ export function NumberingStep({
               : `Đã cập nhật metadata cho ${result.updated_dossiers} hồ sơ.`
           )
         }
+        if ((result.pending_box_number_updates ?? 0) > 0) {
+          toast.warning(
+            `Có ${result.pending_box_number_updates} thay đổi số hộp đang chờ coordinator hoặc admin xác minh.`
+          )
+          setBoxNumberModalOpen(true)
+        }
         const issueCount =
           result.unmatched_rows +
           (result.row_conflict_count ??
@@ -1929,8 +1938,17 @@ export function NumberingStep({
           metadataImportReview={metadataImportReview?.response ?? null}
           onExportMetadata={exportMetadata}
           onImportMetadataBoxNumbers={importMetadataBoxNumbers}
+          onOpenBoxNumberModal={() => setBoxNumberModalOpen(true)}
         />
       ) : null}
+      <NumberingBoxNumberModal
+        open={boxNumberModalOpen}
+        sessionId={sessionId}
+        dossiers={displayedNumberingDossiers}
+        canVerify={canManageNumbering}
+        onClose={() => setBoxNumberModalOpen(false)}
+        onChanged={() => refreshStatus({ silent: true, force: true })}
+      />
       {(status?.active || progressMessage || starting) && (
         <ProgressTimeline
           phases={NUMBERING_PROGRESS_PHASES}

@@ -658,6 +658,15 @@ export interface MetadataBoxNumberImportResponse {
   count_conflict_count?: number
   pending_count_updates?: number
   requires_confirmation?: boolean
+  updated_by?: {
+    user_id: string | null
+    name: string | null
+    email: string | null
+  }
+  box_number_conflict_count?: number
+  pending_box_number_updates?: number
+  requires_box_number_verification?: boolean
+  box_number_conflicts?: Array<Record<string, unknown>>
   updated?: Array<Record<string, unknown>>
   unchanged?: Array<Record<string, unknown>>
   conflicts?: Array<Record<string, unknown>>

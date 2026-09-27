@@ -7,7 +7,42 @@ import {
   listSessionDossierRetentionCandidates,
   listUnclassifiedSessionDossiers,
   classifyUnclassifiedSessionDossiers,
+  updateSessionDossierBoxNumbers,
 } from "./sessionApi.clusters"
+
+describe("updateSessionDossierBoxNumbers", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it("sends one shared box number for the selected dossier ids", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ results: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    await updateSessionDossierBoxNumbers(
+      "session one",
+      ["dossier-1", "dossier-2"],
+      "H-01"
+    )
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/sessions/session%20one/dossiers/box-numbers",
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dossier_ids: ["dossier-1", "dossier-2"],
+          box_number: "H-01",
+        }),
+      }
+    )
+  })
+})
 
 describe("cluster version selectors", () => {
   afterEach(() => {

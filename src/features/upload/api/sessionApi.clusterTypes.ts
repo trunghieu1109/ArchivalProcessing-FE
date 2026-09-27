@@ -333,6 +333,71 @@ export interface SessionDossierPatchPayload {
   created_by?: string
 }
 
+export interface BoxNumberActor {
+  user_id: string | null
+  name: string | null
+  email: string | null
+}
+
+export interface DossierBoxNumberConflict {
+  conflict_id: string
+  status: "pending"
+  current_box_number: string
+  current_updated_by: BoxNumberActor | null
+  proposed_box_number: string
+  proposed_by: BoxNumberActor
+  proposed_at: string
+  source: string
+}
+
+export interface DossierBoxNumberState {
+  session_dossier_id: number
+  dossier_id: string
+  cluster_id?: string | null
+  dossier_number?: string | null
+  dossier_title: string
+  box_number: string | null
+  box_number_updated_by: BoxNumberActor | null
+  box_number_updated_at: string | null
+  pending_box_number_conflict: DossierBoxNumberConflict | null
+  metadata_revision: number
+}
+
+export interface SessionDossierBoxNumberUpdateResponse {
+  session_id: string
+  cluster_version_id: string
+  cluster_version_number: number
+  source: string
+  updated_by: BoxNumberActor
+  submitted_dossiers: number
+  updated_dossiers: number
+  pending_verification_dossiers: number
+  unchanged_dossiers: number
+  results: Array<
+    DossierBoxNumberState & {
+      result: "applied" | "pending_verification" | "unchanged"
+      previous_box_number?: string | null
+    }
+  >
+}
+
+export interface SessionDossierBoxNumberConflictListResponse {
+  session_id: string
+  cluster_version_id: string
+  conflict_count: number
+  conflicts: DossierBoxNumberState[]
+}
+
+export interface SessionDossierBoxNumberVerificationResponse extends DossierBoxNumberState {
+  session_id: string
+  cluster_version_id: string
+  action: "accept" | "reject"
+  conflict: DossierBoxNumberConflict
+  previous_box_number: string | null
+  verified_by: BoxNumberActor
+  verified_at: string
+}
+
 export interface SessionDossierDraft {
   id: number
   session_id: string

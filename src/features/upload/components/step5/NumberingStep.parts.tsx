@@ -600,6 +600,7 @@ export function NumberingMetadataPanel({
   metadataImportReview,
   onExportMetadata,
   onImportMetadataBoxNumbers,
+  onOpenBoxNumberModal,
 }: {
   metadataImportInputRef: RefObject<HTMLInputElement | null>
   sessionId: string | null
@@ -610,6 +611,7 @@ export function NumberingMetadataPanel({
   metadataImportReview: MetadataBoxNumberImportResponse | null
   onExportMetadata: () => void | Promise<unknown>
   onImportMetadataBoxNumbers: (file: File | null) => void | Promise<unknown>
+  onOpenBoxNumberModal?: () => void
 }) {
   const countConflicts = SHOW_METADATA_COUNT_CONFLICT_WARNING
     ? (metadataImportReview?.count_conflicts ?? [])
@@ -686,6 +688,17 @@ export function NumberingMetadataPanel({
             Nhập metadata
           </Button>
         </div>
+      </div>
+      <div className="mt-3 flex justify-end">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onOpenBoxNumberModal}
+          disabled={!sessionId || active || metadataBusy}
+        >
+          <Plus data-icon="inline-start" />
+          Nhập số hộp thủ công
+        </Button>
       </div>
       {metadataImportReview && countConflicts.length > 0 ? (
         <div
