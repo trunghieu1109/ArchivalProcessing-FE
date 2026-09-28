@@ -17,6 +17,7 @@ import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import { PaginationControls } from "@/features/upload/components/PaginationControls"
 import {
   DEFAULT_METADATA_EXPORT_MODE,
+  SHOW_MANUAL_BOX_NUMBER_ENTRY,
   SHOW_METADATA_COUNT_CONFLICT_WARNING,
   SHOW_NUMBERING_STATE_HISTORY,
   SHOW_NUMBERING_STATE_SAVE,
@@ -1201,7 +1202,9 @@ export function NumberingStep({
           toast.warning(
             `Có ${result.pending_box_number_updates} thay đổi số hộp đang chờ coordinator hoặc admin xác minh.`
           )
-          setBoxNumberModalOpen(true)
+          if (SHOW_MANUAL_BOX_NUMBER_ENTRY) {
+            setBoxNumberModalOpen(true)
+          }
         }
         const issueCount =
           result.unmatched_rows +
@@ -1938,17 +1941,23 @@ export function NumberingStep({
           metadataImportReview={metadataImportReview?.response ?? null}
           onExportMetadata={exportMetadata}
           onImportMetadataBoxNumbers={importMetadataBoxNumbers}
-          onOpenBoxNumberModal={() => setBoxNumberModalOpen(true)}
+          onOpenBoxNumberModal={
+            SHOW_MANUAL_BOX_NUMBER_ENTRY
+              ? () => setBoxNumberModalOpen(true)
+              : undefined
+          }
         />
       ) : null}
-      <NumberingBoxNumberModal
-        open={boxNumberModalOpen}
-        sessionId={sessionId}
-        dossiers={displayedNumberingDossiers}
-        canVerify={canManageNumbering}
-        onClose={() => setBoxNumberModalOpen(false)}
-        onChanged={() => refreshStatus({ silent: true, force: true })}
-      />
+      {SHOW_MANUAL_BOX_NUMBER_ENTRY ? (
+        <NumberingBoxNumberModal
+          open={boxNumberModalOpen}
+          sessionId={sessionId}
+          dossiers={displayedNumberingDossiers}
+          canVerify={canManageNumbering}
+          onClose={() => setBoxNumberModalOpen(false)}
+          onChanged={() => refreshStatus({ silent: true, force: true })}
+        />
+      ) : null}
       {(status?.active || progressMessage || starting) && (
         <ProgressTimeline
           phases={NUMBERING_PROGRESS_PHASES}

@@ -64,6 +64,9 @@ describe("metadata import review UI", () => {
     expect(
       screen.queryByRole("radiogroup", { name: /Chế độ xuất metadata/i })
     ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole("button", { name: "Nhập số hộp thủ công" })
+    ).not.toBeInTheDocument()
   })
 
   it("summarizes imported rows and counts unique dossiers requiring confirmation", () => {

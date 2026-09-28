@@ -689,17 +689,19 @@ export function NumberingMetadataPanel({
           </Button>
         </div>
       </div>
-      <div className="mt-3 flex justify-end">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onOpenBoxNumberModal}
-          disabled={!sessionId || active || metadataBusy}
-        >
-          <Plus data-icon="inline-start" />
-          Nhập số hộp thủ công
-        </Button>
-      </div>
+      {onOpenBoxNumberModal ? (
+        <div className="mt-3 flex justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onOpenBoxNumberModal}
+            disabled={!sessionId || active || metadataBusy}
+          >
+            <Plus data-icon="inline-start" />
+            Nhập số hộp thủ công
+          </Button>
+        </div>
+      ) : null}
       {metadataImportReview && countConflicts.length > 0 ? (
         <div
           role="alert"

@@ -21,6 +21,10 @@ export const SHOW_DOSSIER_CODE = true
 // Metadata imports warn before replacing the system-calculated sheet/page count.
 export const SHOW_METADATA_COUNT_CONFLICT_WARNING = true
 
+// TEMPORARY_HIDE_TAG: MANUAL_BOX_NUMBER_ENTRY
+// Keep metadata-file box-number import available while hiding manual assignment.
+export const SHOW_MANUAL_BOX_NUMBER_ENTRY = false
+
 // TEMPORARY_HIDE_TAG: NUMBERING_STATE_HISTORY
 // Keep checkpoint/history APIs available while hiding this optional UI.
 export const SHOW_NUMBERING_STATE_HISTORY = false
