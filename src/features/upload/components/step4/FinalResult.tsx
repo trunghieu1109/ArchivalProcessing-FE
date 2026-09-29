@@ -14,6 +14,7 @@ import {
   getClusterGroupInformationTable,
   getClusterVersionChanges,
   getClusteringPendingDocuments,
+  getHomogeneousClusters,
   listSupplementalIntakes,
   listClusterFeedback,
   patchSessionDossier,
@@ -87,6 +88,7 @@ import {
   applyPendingDossierDrafts,
   applyPendingFeedbackOverlay,
   clearPendingFeedbackMarkers,
+  projectPendingHomogeneousDossiers,
 } from "./FinalResult.pendingFeedback"
 import { buildClusterChangeHighlights } from "./FinalResult.changes"
 import {
@@ -680,6 +682,38 @@ export function FinalResult({
       displayedClusterVersionId === workingClusterVersionId
     )
     if (rebuildSubmitting || rebuildBaselineVersionId || loading) {
+      return () => {
+        cancelled = true
+      }
+    }
+    if (sessionId && !workingClusterVersionId && !displayedClusterVersionId) {
+      Promise.all([
+        getHomogeneousClusters(sessionId, { includeDocuments: true }),
+        listClusterFeedback(sessionId, { pendingOnly: true }),
+      ])
+        .then(([homogeneousVersion, response]) => {
+          if (
+            cancelled ||
+            hydrationRevision !== feedbackHydrationRevisionRef.current ||
+            !homogeneousVersion
+          ) {
+            return
+          }
+          const pending = projectPendingHomogeneousDossiers(
+            versionToGroups(homogeneousVersion, metadataItemsRef.current),
+            homogeneousVersion,
+            response
+          )
+          setGroups(pending.groups)
+          setPendingFeedbackCount(pending.pendingFeedbackCount)
+          if (pending.groups.length > 0) {
+            setStatus("Hồ sơ đã ghi nhận và đang chờ cập nhật.")
+          }
+        })
+        .catch(() => {
+          // A classic session may have no homogeneous version while its first
+          // cluster version is still loading.
+        })
       return () => {
         cancelled = true
       }

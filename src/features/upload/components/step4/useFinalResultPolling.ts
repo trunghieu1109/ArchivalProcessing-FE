@@ -272,7 +272,8 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
       }
       if (
         Date.now() - startedAt > CLUSTER_POLL_TIMEOUT_MS &&
-        (!state.displayedClusterVersionId || state.rebuildBaselineVersionId)
+        ((!state.displayedClusterVersionId && !state.hasClusterData) ||
+          state.rebuildBaselineVersionId)
       ) {
         setLoading(false)
         setCheckingClusters(false)
@@ -579,6 +580,16 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
         }
 
         setPendingClusterVersion(version?.status === "draft" ? version : null)
+        if (
+          !version &&
+          displayedGroupsForStatus.some(
+            (group) => group.isPendingDossier && group.documents.length > 0
+          )
+        ) {
+          setStatus("Hồ sơ đã ghi nhận và đang chờ cập nhật.")
+          schedule(CLUSTER_IDLE_POLL_INTERVAL_MS)
+          return
+        }
         if (latestState.rebuildBaselineVersionId) {
           setRebuildBaselineVersionId(null)
           toast.success("Đã có phiên bản hồ sơ mới từ feedback đã lưu.")

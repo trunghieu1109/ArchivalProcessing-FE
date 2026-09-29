@@ -1,5 +1,6 @@
 import type {
   ClusterFeedbackResponse,
+  ClusterFeedbackListResponse,
   ClusterVersionResponse,
   SessionDossierDraft,
 } from "@/features/upload/api/sessionApi"
@@ -19,6 +20,29 @@ const PENDING_FEEDBACK_TYPES = new Set([
 export interface PendingFeedbackOverlayResult {
   groups: ClusterGroup[]
   pendingFeedbackCount: number
+}
+
+export function projectPendingHomogeneousDossiers(
+  sourceGroups: ClusterGroup[],
+  homogeneousVersion: ClusterVersionResponse,
+  response: ClusterFeedbackListResponse
+): PendingFeedbackOverlayResult {
+  const overlay = applyPendingFeedbackOverlay(
+    sourceGroups,
+    response.pending_feedback ?? response.feedback ?? [],
+    homogeneousVersion,
+    Array.isArray(response.pending_feedback)
+  )
+  return {
+    groups: applyPendingDossierDrafts(
+      overlay.groups.filter(
+        (group) => group.isPendingDossier && group.documents.length > 0
+      ),
+      response.dossier_drafts ?? []
+    ),
+    pendingFeedbackCount:
+      response.pending_feedback_count ?? overlay.pendingFeedbackCount,
+  }
 }
 
 export function applyPendingFeedbackOverlay(

@@ -35,9 +35,7 @@ export function rewritePreviewUrl(
       (options.backendBaseUrl ?? CONFIGURED_BACKEND_BASE_URL) || "/api",
       browserUrl
     )
-    if (!isHttpUrl(backendUrl) || previewUrl.origin === backendUrl.origin) {
-      return url
-    }
+    if (!isHttpUrl(backendUrl)) return url
 
     const backendBasePath = backendUrl.pathname.replace(/\/+$/, "")
     const sourcePath = previewUrl.pathname.startsWith("/")
@@ -45,15 +43,27 @@ export function rewritePreviewUrl(
       : `/${previewUrl.pathname}`
 
     const backendProxyPath = `${backendBasePath}${PREVIEW_PROXY_PATH}`
-    if (
+    const usesBackendProxyPath =
       sourcePath === backendProxyPath ||
       sourcePath.startsWith(`${backendProxyPath}/`)
-    ) {
-      backendUrl.pathname = sourcePath
-    } else if (
+    const usesUnprefixedProxyPath =
       sourcePath === PREVIEW_PROXY_PATH ||
       sourcePath.startsWith(`${PREVIEW_PROXY_PATH}/`)
+
+    // A backend reached through this frontend can return the frontend origin
+    // with an unprefixed /preview-proxy path. It still needs the configured
+    // API base path; otherwise the SPA fallback serves index.html.
+    if (
+      previewUrl.origin === backendUrl.origin &&
+      !usesBackendProxyPath &&
+      !usesUnprefixedProxyPath
     ) {
+      return url
+    }
+
+    if (usesBackendProxyPath) {
+      backendUrl.pathname = sourcePath
+    } else if (usesUnprefixedProxyPath) {
       backendUrl.pathname = `${backendBasePath}${sourcePath}`
     } else {
       backendUrl.pathname = `${backendProxyPath}${sourcePath}`

@@ -71,6 +71,15 @@ describe("rewritePreviewUrl", () => {
     )
   })
 
+  it("adds the API prefix to a same-origin preview-proxy URL", () => {
+    const url =
+      "http://42.1.75.16:8080/preview-proxy/api/v1/storage/document.pdf?X-Amz-Signature=abc"
+
+    expect(rewritePreviewUrl(url, localRewriteOptions)).toBe(
+      "http://42.1.75.16:8080/api/preview-proxy/api/v1/storage/document.pdf?X-Amz-Signature=abc"
+    )
+  })
+
   it("keeps a URL already using the backend host unchanged", () => {
     const url = "http://42.1.75.16:8080/api/preview-proxy/api/file.pdf"
 

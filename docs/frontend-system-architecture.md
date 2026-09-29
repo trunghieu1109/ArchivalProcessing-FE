@@ -23,7 +23,7 @@ Runtime quan trọng:
 
 - `VITE_ARCHIVAL_API_BASE_URL`: base URL API frontend gọi, mặc định là `/api`.
 - `VITE_ARCHIVAL_DEV_API_PROXY_TARGET`: target proxy dev server, mặc định `http://127.0.0.1:8000`.
-- `VITE_ARCHIVAL_DIRECT_PRESIGNED_UPLOAD`: bật upload trực tiếp lên presigned URL cho ZIP lớn. Nếu tắt hoặc lỗi network, FE dùng proxy upload qua backend.
+- `VITE_ARCHIVAL_DIRECT_PRESIGNED_UPLOAD`: bật upload trực tiếp lên presigned URL cho ZIP, phương án và thời hạn bảo quản. Nếu tắt hoặc lỗi network, FE dùng multipart/proxy qua backend.
 - `VITE_ARCHIVAL_CHUNKED_UPLOAD_CHUNK_SIZE_MB`: kích thước chunk ZIP khi upload chunked.
 
 ## 2. Cấu Trúc Thư Mục
@@ -213,7 +213,7 @@ Luồng mới:
 
 1. User chọn file, FE stage file trong `uploadPageCache` nếu chưa có session.
 2. `handleStartAll` gọi `ensureSession()` để tạo session nếu cần.
-3. Plan/retention upload qua multipart `/sessions/{id}/inputs/upload`.
+3. Plan/retention ưu tiên `presign -> PUT upload_url -> complete`; khi tắt direct upload thì dùng multipart `/sessions/{id}/inputs/upload`, còn lỗi network/CORS thì fallback proxy.
 4. ZIP upload theo remote upload flow:
    - ZIP nhỏ: presign rồi direct PUT hoặc proxy.
    - ZIP lớn hơn `RAW_ZIP_CHUNKED_UPLOAD_THRESHOLD_BYTES`: chunked create, presign parts, upload part song song, complete.
