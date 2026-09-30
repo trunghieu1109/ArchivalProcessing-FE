@@ -26,6 +26,7 @@ import {
   sessionDocumentToJobSummary,
   type PendingStartContext,
 } from "./useOcrFolderUtils"
+import { hasPendingLatestBatchDiscovery } from "./useOcrFolderPolling"
 
 export type OcrFolderState =
   | "idle"
@@ -36,6 +37,7 @@ export type OcrFolderState =
   | "error"
 
 const OCR_POLL_INTERVAL_MS = 5_000
+const OCR_DISCOVERY_POLL_INTERVAL_MS = 2_000
 const OCR_POLL_RETRY_INTERVAL_MS = 5_000
 const OCR_DOCUMENT_DEFAULT_PAGE_SIZE = 50
 const OCR_DOCUMENT_MIN_PAGE_SIZE = 1
@@ -67,6 +69,14 @@ function ocrWaitInterruptedError(
 
 export function isOcrWaitSupersededError(error: unknown): boolean {
   return error instanceof Error && error.name === OCR_WAIT_SUPERSEDED_ERROR_NAME
+}
+
+function statusPollIntervalMs(
+  result: Awaited<ReturnType<typeof getDigitizationStatus>>
+): number {
+  return hasPendingLatestBatchDiscovery(result)
+    ? OCR_DISCOVERY_POLL_INTERVAL_MS
+    : OCR_POLL_INTERVAL_MS
 }
 
 export interface OcrRefreshOptions {
@@ -560,7 +570,7 @@ export function useOcrFolder(
           if (metadataDocumentScopeStateKeyRef.current !== requestScopeKey) {
             timeoutRef.current = setTimeout(
               poll,
-              visibleAwareDelay(OCR_POLL_INTERVAL_MS)
+              visibleAwareDelay(statusPollIntervalMs(result))
             )
             return
           }
@@ -580,7 +590,7 @@ export function useOcrFolder(
           )
           timeoutRef.current = setTimeout(
             poll,
-            visibleAwareDelay(OCR_POLL_INTERVAL_MS)
+            visibleAwareDelay(statusPollIntervalMs(result))
           )
         } catch (err) {
           if (tokenRef.current !== token) return
@@ -994,7 +1004,7 @@ export function useOcrFolder(
         if (metadataDocumentScopeStateKeyRef.current !== requestScopeKey) {
           existingStatusTimeoutRef.current = setTimeout(
             pollExistingStatus,
-            visibleAwareDelay(OCR_POLL_INTERVAL_MS)
+            visibleAwareDelay(statusPollIntervalMs(result))
           )
           return
         }
@@ -1036,7 +1046,7 @@ export function useOcrFolder(
         )
         existingStatusTimeoutRef.current = setTimeout(
           pollExistingStatus,
-          visibleAwareDelay(OCR_POLL_INTERVAL_MS)
+          visibleAwareDelay(statusPollIntervalMs(result))
         )
       } catch (err) {
         if (tokenRef.current !== token) return
@@ -1253,7 +1263,7 @@ export function useOcrFolder(
               ) {
                 timeoutRef.current = setTimeout(
                   poll,
-                  visibleAwareDelay(OCR_POLL_INTERVAL_MS)
+                  visibleAwareDelay(statusPollIntervalMs(result))
                 )
                 return
               }
@@ -1266,7 +1276,7 @@ export function useOcrFolder(
                 setState("polling")
                 timeoutRef.current = setTimeout(
                   poll,
-                  visibleAwareDelay(OCR_POLL_INTERVAL_MS)
+                  visibleAwareDelay(OCR_DISCOVERY_POLL_INTERVAL_MS)
                 )
                 return
               }
@@ -1318,7 +1328,7 @@ export function useOcrFolder(
               }
               timeoutRef.current = setTimeout(
                 poll,
-                visibleAwareDelay(OCR_POLL_INTERVAL_MS)
+                visibleAwareDelay(statusPollIntervalMs(result))
               )
             } catch (err) {
               if (tokenRef.current !== token) return
