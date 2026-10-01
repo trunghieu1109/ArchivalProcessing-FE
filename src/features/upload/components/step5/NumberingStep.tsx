@@ -17,7 +17,6 @@ import { ProgressTimeline } from "@/features/upload/components/ProgressTimeline"
 import { PaginationControls } from "@/features/upload/components/PaginationControls"
 import {
   DEFAULT_METADATA_EXPORT_MODE,
-  SHOW_MANUAL_BOX_NUMBER_ENTRY,
   SHOW_METADATA_COUNT_CONFLICT_WARNING,
   SHOW_NUMBERING_STATE_HISTORY,
   SHOW_NUMBERING_STATE_SAVE,
@@ -76,7 +75,6 @@ import {
   statusBadge,
   textOrNull,
 } from "./NumberingStep.utils"
-import { NumberingBoxNumberModal } from "./NumberingBoxNumberModal"
 
 const NUMBERING_POLL_INTERVAL_MS = 5_000
 const NUMBERING_DOCUMENT_REFRESH_EVERY = 3
@@ -227,7 +225,6 @@ export function NumberingStep({
   const [metadataImporting, setMetadataImporting] = useState(false)
   const [metadataImportReview, setMetadataImportReview] =
     useState<MetadataImportReview | null>(null)
-  const [boxNumberModalOpen, setBoxNumberModalOpen] = useState(false)
   const metadataImportInputRef = useRef<HTMLInputElement | null>(null)
   const numberingPageCacheSessionRef = useRef<string | null>(null)
   const numberingPageCacheRef = useRef<Map<number, NumberingStatusResponse>>(
@@ -1198,14 +1195,6 @@ export function NumberingStep({
               : `Đã cập nhật metadata cho ${result.updated_dossiers} hồ sơ.`
           )
         }
-        if ((result.pending_box_number_updates ?? 0) > 0) {
-          toast.warning(
-            `Có ${result.pending_box_number_updates} thay đổi số hộp đang chờ coordinator hoặc admin xác minh.`
-          )
-          if (SHOW_MANUAL_BOX_NUMBER_ENTRY) {
-            setBoxNumberModalOpen(true)
-          }
-        }
         const issueCount =
           result.unmatched_rows +
           (result.row_conflict_count ??
@@ -1941,21 +1930,6 @@ export function NumberingStep({
           metadataImportReview={metadataImportReview?.response ?? null}
           onExportMetadata={exportMetadata}
           onImportMetadataBoxNumbers={importMetadataBoxNumbers}
-          onOpenBoxNumberModal={
-            SHOW_MANUAL_BOX_NUMBER_ENTRY
-              ? () => setBoxNumberModalOpen(true)
-              : undefined
-          }
-        />
-      ) : null}
-      {SHOW_MANUAL_BOX_NUMBER_ENTRY ? (
-        <NumberingBoxNumberModal
-          open={boxNumberModalOpen}
-          sessionId={sessionId}
-          dossiers={displayedNumberingDossiers}
-          canVerify={canManageNumbering}
-          onClose={() => setBoxNumberModalOpen(false)}
-          onChanged={() => refreshStatus({ silent: true, force: true })}
         />
       ) : null}
       {(status?.active || progressMessage || starting) && (

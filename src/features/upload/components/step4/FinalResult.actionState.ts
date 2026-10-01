@@ -6,7 +6,6 @@ export interface FinalResultActionStateInput {
   supplementalVerificationPendingCount: number
   supplementalPendingDocumentCount: number
   supplementalPendingUpdateDocumentCount: number
-  unclassifiedDossierCount?: number
   clusterVersionStale: boolean
   busy: boolean
   viewingHistoricalClusterVersion: boolean
@@ -38,7 +37,7 @@ export function resolveFinalResultActionState(
     ? "Chưa có session để cập nhật hồ sơ."
     : input.readOnly
       ? "Phông gộp chỉ cho phép xem kết quả lập hồ sơ."
-    : input.totalFiles <= 0 && (input.unclassifiedDossierCount ?? 0) <= 0
+    : input.totalFiles <= 0
       ? "Chưa có tài liệu để cập nhật hồ sơ."
       : input.viewingHistoricalClusterVersion
         ? "Bạn đang xem phiên bản cũ. Hãy quay về phiên bản đang làm việc trước khi cập nhật hồ sơ."
@@ -59,16 +58,13 @@ export function resolveFinalResultActionState(
             ? `Còn ${input.supplementalPendingUpdateDocumentCount} tài liệu bổ sung chưa có trong phiên bản này.`
             : input.pendingFeedbackCount > 0
               ? `Còn ${input.pendingFeedbackCount} feedback mới chưa được cập nhật vào phiên bản này.`
-              : (input.unclassifiedDossierCount ?? 0) > 0
-                ? `Còn ${input.unclassifiedDossierCount} hồ sơ chưa được phân loại.`
-                : input.pendingClusterVersionNeedsRefresh
+              : input.pendingClusterVersionNeedsRefresh
                   ? "Phiên bản chờ duyệt chưa chứa các thay đổi mới nhất."
                   : null
 
   const updateNeeded = Boolean(
     input.clusterVersionStale ||
     input.pendingFeedbackCount > 0 ||
-    (input.unclassifiedDossierCount ?? 0) > 0 ||
     input.supplementalPendingUpdateDocumentCount > 0 ||
     (hasDraft && input.pendingClusterVersionNeedsRefresh)
   )
@@ -82,9 +78,7 @@ export function resolveFinalResultActionState(
       ? `Còn ${input.supplementalVerificationPendingCount} đợt tài liệu bổ sung chưa verify đủ.`
       : input.pendingFeedbackCount > 0
         ? `Còn ${input.pendingFeedbackCount} feedback chưa được cập nhật vào hồ sơ.`
-        : (input.unclassifiedDossierCount ?? 0) > 0
-          ? `Còn ${input.unclassifiedDossierCount} hồ sơ chưa phân loại. Hãy cập nhật hồ sơ trước khi đánh số trang.`
-          : hasDraft
+        : hasDraft
             ? approvalBlockedReason
               ? `Phiên bản draft chưa thể duyệt: ${approvalBlockedReason}`
               : "Có phiên bản hồ sơ draft đang chờ duyệt và kích hoạt."

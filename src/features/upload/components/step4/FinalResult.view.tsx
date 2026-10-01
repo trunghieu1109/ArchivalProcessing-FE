@@ -39,7 +39,6 @@ export function FinalResultView(props: Record<string, any>) {
     readOnly,
     activeClusterVersionId,
     canDeleteDocuments,
-    canTransferDocuments,
     activeResultTreeSearchNodeId,
     canRestoreFileRegisterVersion,
     cancelingPendingFeedback,
@@ -55,7 +54,6 @@ export function FinalResultView(props: Record<string, any>) {
     clusterVersionChangesLoading,
     clusterVersionStale,
     deleteSelectedDocumentsDisabled,
-    transferSelectedDocumentsDisabled,
     displayedClusterVersion,
     displayedClusterVersionId,
     documentChangeTypesById,
@@ -68,10 +66,7 @@ export function FinalResultView(props: Record<string, any>) {
     handleCreateDossierFromSuggestions,
     handleDropOnDossier,
     handleDeleteSelectedDocuments,
-    handleTransferSelectedDocuments,
     handleFinish,
-    hasUsableActiveClusterVersion,
-    sourceHasActiveClusterVersion,
     handleMoveSelectionToDossier,
     handlePreviewResizePointerDown,
     handleManualClassificationResizePointerDown,
@@ -189,9 +184,6 @@ export function FinalResultView(props: Record<string, any>) {
     : selectedGroupInfoNode
       ? "minmax(340px,0.34fr) minmax(760px,0.66fr)"
       : `minmax(0, ${100 - previewWidthPercent}fr) minmax(460px, ${previewWidthPercent}fr)`
-  const staleReason = String(displayedClusterVersion?.stale_reason ?? "")
-  const documentsTransferredOut = staleReason === "documents_transferred_out"
-  const documentsTransferredIn = staleReason === "documents_transferred_in"
   const pendingClusterApprovalBlockedReason =
     clusterActionState.approvalBlockedReason
 
@@ -248,9 +240,12 @@ export function FinalResultView(props: Record<string, any>) {
 
       {readOnly ? (
         <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-          <p className="font-semibold">Kết quả lập hồ sơ của phông gộp chỉ dùng để xem</p>
+          <p className="font-semibold">
+            Kết quả lập hồ sơ của phông gộp chỉ dùng để xem
+          </p>
           <p className="mt-1 text-xs">
-            Việc cập nhật cây và hồ sơ được thực hiện từ card phông gộp. Tại đây bạn có thể rà soát kết quả và chuyển sang bước Đánh số trang.
+            Việc cập nhật cây và hồ sơ được thực hiện từ card phông gộp. Tại đây
+            bạn có thể rà soát kết quả và chuyển sang bước Đánh số trang.
           </p>
         </div>
       ) : null}
@@ -390,19 +385,10 @@ export function FinalResultView(props: Record<string, any>) {
 
       {clusterVersionStale ? (
         <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          <p className="font-semibold">
-            {documentsTransferredOut
-              ? "Có tài liệu đã được chuyển sang phông khác"
-              : documentsTransferredIn
-                ? "Có tài liệu mới được chuyển tới phông này"
-                : "Cần lập hồ sơ lại"}
-          </p>
+          <p className="font-semibold">Cần lập hồ sơ lại</p>
           <p className="mt-1 text-xs">
-            {documentsTransferredOut
-              ? "Các tài liệu đã chuyển vẫn được hiển thị trong phiên bản lịch sử với trạng thái Đã chuyển. Hãy cập nhật lại kết quả lập hồ sơ trước khi đánh số, tạo mục lục hoặc xuất bản."
-              : documentsTransferredIn
-                ? "Tài liệu mới chưa được tự động phân loại. Hãy chủ động cập nhật lại kết quả lập hồ sơ trước khi đánh số, tạo mục lục hoặc xuất bản."
-                : "Tập tài liệu của session đã thay đổi. Phiên bản hồ sơ này chỉ còn giá trị lịch sử; đánh số, tạo mục lục và xuất bản đang bị khóa."}
+            Tập tài liệu của session đã thay đổi. Phiên bản hồ sơ này chỉ còn
+            giá trị lịch sử; đánh số, tạo mục lục và xuất bản đang bị khóa.
           </p>
         </div>
       ) : null}
@@ -772,24 +758,19 @@ export function FinalResultView(props: Record<string, any>) {
       <FinalResultFeedbackPanel
         readOnly={readOnly}
         canDeleteDocuments={canDeleteDocuments}
-        canTransferDocuments={canTransferDocuments}
         canRestoreFileRegisterVersion={canRestoreFileRegisterVersion}
         cancelingPendingFeedback={cancelingPendingFeedback}
         clusterJobMode={clusterJobMode}
         clusterActionState={clusterActionState}
         clusterVersionStale={clusterVersionStale}
         deleteSelectedDocumentsDisabled={deleteSelectedDocumentsDisabled}
-        transferSelectedDocumentsDisabled={transferSelectedDocumentsDisabled}
         handleCancelPendingFeedback={handleCancelPendingFeedback}
         handleCreateDossierFromSelection={handleCreateDossierFromSelection}
         handleDeleteSelectedDocuments={handleDeleteSelectedDocuments}
-        handleTransferSelectedDocuments={handleTransferSelectedDocuments}
         handleSelectDossierSuggestionsFromSelection={
           handleSelectDossierSuggestionsFromSelection
         }
         handleFinish={handleFinish}
-        hasUsableActiveClusterVersion={hasUsableActiveClusterVersion}
-        sourceHasActiveClusterVersion={sourceHasActiveClusterVersion}
         handleRebuildClusters={handleRebuildClusters}
         handleRestorePreviousClusterVersion={
           handleRestorePreviousClusterVersion

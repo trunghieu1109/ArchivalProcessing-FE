@@ -50,8 +50,4 @@ export interface FolderTreeProps {
   planDraftDirty?: boolean
   draftDiffersActive?: boolean
   planStatus?: PlanVersionStatus | ""
-  onRemoveRetentionSource?: (
-    sessionFileId: number,
-    fileName?: string | null
-  ) => void | Promise<void>
 }

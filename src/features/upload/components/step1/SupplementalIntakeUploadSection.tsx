@@ -145,7 +145,6 @@ export const SupplementalIntakeUploadSection = forwardRef<
         (group) =>
           !group.isTemporary &&
           !group.isPendingDossier &&
-          !group.isTransferPending &&
           Boolean(group.dossierId ?? group.id)
       ),
     [dossierGroups]

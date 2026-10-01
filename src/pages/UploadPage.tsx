@@ -27,8 +27,6 @@ import {
   getSession,
   getWorkingPlan,
   listSessionEvents,
-  listUnclassifiedSessionDossiers,
-  removeRetentionSourceFromDraft,
   uploadDossierTitleCatalog,
   type DossierBuildStrategy,
   type DocumentNumberingMode,
@@ -55,8 +53,8 @@ import { createConfirmPlanHandler } from "./UploadPage.confirmPlan"
 import { createUploadPageWorkflowActions } from "./UploadPage.workflow"
 import {
   canNavigateDirectlyToMetadata,
-  resolveDossierResultsTransition,
   resolvePlanInputsReuploaded,
+  shouldEnsureDossierBuildBeforeResults,
 } from "./UploadPage.workflowPolicy"
 import { createUploadPageActions } from "./UploadPage.actions"
 import { isMetadataDiscoveryPending } from "./UploadPage.metadataDiscovery"
@@ -152,23 +150,8 @@ export function UploadPage() {
       toast.error("Chưa có session để lập hồ sơ.")
       return
     }
-    try {
-      const unclassified =
-        await listUnclassifiedSessionDossiers(currentSessionId)
-      const transition = resolveDossierResultsTransition({
-        activeClusterVersionId: cache.activeClusterVersionId,
-        unclassifiedDossierCount: unclassified.dossiers.length,
-      })
-      if (transition === "show_results") {
-        goTo(4, currentSessionId)
-        return
-      }
-    } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? `Không kiểm tra được hồ sơ chưa phân loại: ${err.message}`
-          : "Không kiểm tra được hồ sơ chưa phân loại."
-      )
+    if (!shouldEnsureDossierBuildBeforeResults(cache.activeClusterVersionId)) {
+      goTo(4, currentSessionId)
       return
     }
     const hasActivePlanForBuild = Boolean(activePlanVersionId)
@@ -223,15 +206,6 @@ export function UploadPage() {
       return
     }
 
-    goTo(4, currentSessionId)
-  }
-
-  const handleViewUnclassifiedDossiers = () => {
-    const currentSessionId = sessionId ?? routeSessionId ?? cache.sessionId
-    if (!currentSessionId) {
-      toast.error("Chưa có session để xem hồ sơ chờ phân loại.")
-      return
-    }
     goTo(4, currentSessionId)
   }
 
@@ -1614,40 +1588,6 @@ export function UploadPage() {
     }
   }
 
-  const handleRemoveRetentionSource = async (
-    sessionFileId: number,
-    fileName?: string | null
-  ) => {
-    const currentSessionId = sessionId ?? routeSessionId ?? cache.sessionId
-    if (!currentSessionId) {
-      toast.error("Chưa có session để loại nguồn thời hạn bảo quản.")
-      return
-    }
-    try {
-      const response = await removeRetentionSourceFromDraft(
-        currentSessionId,
-        sessionFileId,
-        {
-          created_by: String(user?.id ?? user?.email ?? "ui"),
-          base_plan_version_id: cache.workingPlanVersionId || undefined,
-        }
-      )
-      applyWorkingPlanResponse(response.plan)
-      setPlanViewTab("draft")
-      toast.success(
-        "Đã loại " +
-          (fileName || "nguồn thời hạn bảo quản") +
-          " khỏi bản nháp. File chỉ bị xóa khi bạn duyệt phương án."
-      )
-    } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : "Không thể loại nguồn thời hạn bảo quản khỏi bản nháp."
-      )
-    }
-  }
-
   const handlePlanStepNavigation = (targetStep: AppStep) => {
     if (isMergedSession && targetStep < 4) {
       toast.info(
@@ -1914,7 +1854,6 @@ export function UploadPage() {
         handleSaveDraft={handleSaveDraft}
         handleConfirmPlan={handleConfirmPlan}
         handleContinueToExtractMetadata={handleContinueToExtractMetadata}
-        handleRemoveRetentionSource={handleRemoveRetentionSource}
         handlePlanStepNavigation={handlePlanStepNavigation}
         handleNavigateToSessions={handleNavigateToSessions}
         savingPlanDraft={savingPlanDraft}
@@ -1928,7 +1867,6 @@ export function UploadPage() {
         ocrMessage={ocrMessage}
         ocrSignatureStatus={ocrSignatureStatus}
         handleContinueToResults={handleContinueToResults}
-        handleViewUnclassifiedDossiers={handleViewUnclassifiedDossiers}
         missingDossierInputs={missingDossierInputs}
         missingDossierInputLabels={missingDossierInputLabels}
         dossierBuildBlockedMessage={dossierBuildMissingMessage(

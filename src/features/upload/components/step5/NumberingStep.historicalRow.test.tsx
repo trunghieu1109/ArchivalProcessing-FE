@@ -49,7 +49,9 @@ describe("NumberingDocumentRow historical lifecycle", () => {
     expect(screen.getByText("083.pdf")).toBeInTheDocument()
     expect(screen.getByText("Đã xóa")).toBeInTheDocument()
     expect(
-      screen.getByText("Chưa có phiên bản đánh số trước khi xóa/chuyển")
+      screen.getByText(
+        "Chưa có phiên bản đánh số trước khi tài liệu ngừng hoạt động"
+      )
     ).toBeInTheDocument()
     expect(screen.getByText("Chỉ đọc")).toBeInTheDocument()
     expect(screen.queryByRole("button")).not.toBeInTheDocument()

@@ -10,7 +10,6 @@ import {
 } from "./FinalResult.metadataUtils"
 import type { DraggedDocument, ResultTreeNode } from "./FinalResult.types"
 import type { ClusterChangeHighlights } from "./FinalResult.changes"
-import type { UnclassifiedSessionDossierSummary } from "@/features/upload/api/sessionApi"
 import { SHOW_DOSSIER_CODE } from "./temporaryFeatureVisibility"
 import { parseBusinessDate } from "@/features/upload/lib/businessDate"
 
@@ -29,8 +28,7 @@ const UNCLASSIFIED_LABEL = "Chưa phân loại"
 export function buildResultTree(
   groups: ClusterGroup[],
   fondsName?: string | null,
-  changeHighlights?: ClusterChangeHighlights,
-  unclassifiedDossiers: UnclassifiedSessionDossierSummary[] = []
+  changeHighlights?: ClusterChangeHighlights
 ): ResultTreeNode[] {
   const roots: ResultTreeNode[] = []
   const fondsByLabel = new Map<string, ResultTreeNode>()
@@ -57,20 +55,6 @@ export function buildResultTree(
   }
 
   groups
-    .filter((group) => group.isTransferPending)
-    .forEach((group) => {
-      roots.push({
-        id: `transfer-pending:${group.id}`,
-        label: group.label,
-        type: "pending_dossier",
-        children: [],
-        group,
-        documentCount: group.documents.length,
-        pageCount: dossierPageCount(group),
-      })
-    })
-
-  groups
     .filter((group) => group.isTemporary)
     .forEach((group) => {
       roots.push({
@@ -85,12 +69,7 @@ export function buildResultTree(
     })
 
   groups
-    .filter(
-      (group) =>
-        group.isPendingDossier &&
-        !group.isTransferPending &&
-        !group.supplementalIntakeId
-    )
+    .filter((group) => group.isPendingDossier && !group.supplementalIntakeId)
     .forEach((group) => {
       roots.push({
         id: `pending-dossier:${group.id}`,
@@ -107,8 +86,7 @@ export function buildResultTree(
     .filter(
       (group) =>
         !group.isTemporary &&
-        (!group.isPendingDossier || Boolean(group.supplementalIntakeId)) &&
-        !group.isTransferPending
+        (!group.isPendingDossier || Boolean(group.supplementalIntakeId))
     )
     .forEach((group) => {
       const fondsLabel =
@@ -169,30 +147,6 @@ export function buildResultTree(
       })
     })
 
-  if (unclassifiedDossiers.length > 0) {
-    const waiting = createTreeNode(
-      "unclassified-folder",
-      "Hồ sơ chưa phân loại",
-      "unclassified_folder"
-    )
-    waiting.children = unclassifiedDossiers.map((dossier) => ({
-      id: `unclassified-dossier:${dossier.dossier_id}`,
-      label:
-        dossier.title_override?.trim() ||
-        dossier.title?.trim() ||
-        dossier.generated_title?.trim() ||
-        dossier.dossier_id,
-      type: "unclassified_dossier",
-      children: [],
-      unclassifiedDossier: dossier,
-      documentCount: dossier.documents.length,
-      pageCount: dossier.documents.reduce(
-        (sum, document) => sum + (document.page_count ?? 0),
-        0
-      ),
-    }))
-    roots.push(waiting)
-  }
   roots.forEach(updateTreeCounts)
   return sortResultTreeNodes(roots)
 }
@@ -296,8 +250,7 @@ function isSearchableResultTreeNode(node: ResultTreeNode): boolean {
   return (
     node.type === "dossier" ||
     node.type === "pending_dossier" ||
-    node.type === "temporary" ||
-    node.type === "unclassified_dossier"
+    node.type === "temporary"
   )
 }
 
@@ -314,10 +267,6 @@ function resultTreeNodeMatchesSearch(
       group?.dossierNumber,
       ...(SHOW_DOSSIER_CODE ? [group?.dossierCode] : []),
       group?.boxNumber,
-      node.unclassifiedDossier?.dossier_id,
-      ...((node.unclassifiedDossier?.documents ?? []).map(
-        (document) => `${document.title} ${document.file_name}`
-      )),
     ].join(" ")
   ).includes(normalizedQuery)
 }
@@ -338,7 +287,7 @@ export function createTreeNode(
 }
 
 export function updateTreeCounts(node: ResultTreeNode): ResultTreeNode {
-  if (node.group || node.unclassifiedDossier) return node
+  if (node.group) return node
   node.children.forEach(updateTreeCounts)
   node.documentCount = node.children.reduce(
     (sum, child) => sum + child.documentCount,
@@ -362,8 +311,6 @@ export function compareResultTreeNodes(
   a: ResultTreeNode,
   b: ResultTreeNode
 ): number {
-  if (a.type === "unclassified_folder" && b.type !== "unclassified_folder") return -1
-  if (b.type === "unclassified_folder" && a.type !== "unclassified_folder") return 1
   if (a.type === "temporary" && b.type !== "temporary") return -1
   if (b.type === "temporary" && a.type !== "temporary") return 1
   if (a.type === "pending_dossier" && b.type !== "pending_dossier") return -1
@@ -529,12 +476,7 @@ export function findResultTreeNode(
 
 export function dossierGroupsFromNode(node: ResultTreeNode): ClusterGroup[] {
   const groups: ClusterGroup[] = []
-  if (
-    node.group &&
-    !node.group.isTemporary &&
-    !node.group.isPendingDossier &&
-    !node.group.isTransferPending
-  ) {
+  if (node.group && !node.group.isTemporary && !node.group.isPendingDossier) {
     groups.push(node.group)
   }
   node.children.forEach((child) => {

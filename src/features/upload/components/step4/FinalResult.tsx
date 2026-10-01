@@ -16,7 +16,6 @@ import {
   getClusteringPendingDocuments,
   listSupplementalIntakes,
   listClusterFeedback,
-  listUnclassifiedSessionDossiers,
   patchSessionDossier,
   suggestSelectedDocumentDossiers,
   sortDossierDocuments,
@@ -27,11 +26,9 @@ import {
   type ClusterVersionResponse,
   type DossierMembershipExplanationResponse,
   type DocumentDeletionOperationResponse,
-  type DocumentTransferRequestResponse,
   type SessionDossierSuggestion,
   type SupplementalIntakeResponse,
   type ClusteringPendingDocumentsResponse,
-  type UnclassifiedSessionDossierSummary,
 } from "@/features/upload/api/sessionApi"
 import { useAuth } from "@/features/auth/lib/AuthContext"
 import { toast } from "sonner"
@@ -49,12 +46,7 @@ import {
 import {
   SHOW_DOCUMENT_DELETION,
   SHOW_DOCUMENT_DELETION_IN_DOSSIER_STEP,
-  SHOW_DOCUMENT_TRANSFER,
 } from "./temporaryFeatureVisibility"
-import {
-  DocumentTransferDialog,
-  type DocumentTransferTarget,
-} from "../DocumentTransferDialog"
 import { useFinalResultPolling } from "./useFinalResultPolling"
 import { useFinalResultVersionActions } from "./useFinalResultVersionActions"
 import { useFinalResultTreeActions } from "./useFinalResultTreeActions"
@@ -90,11 +82,6 @@ import {
   clearPendingFeedbackMarkers,
 } from "./FinalResult.pendingFeedback"
 import { buildClusterChangeHighlights } from "./FinalResult.changes"
-import {
-  isDocumentTransferLocked,
-  isSupplementalPlacementPending,
-  transferSelectionError,
-} from "./FinalResult.transferState"
 import { applySupplementalIntakeOverlay } from "./FinalResult.supplementalOverlay"
 import { resolveFinalResultActionState } from "./FinalResult.actionState"
 
@@ -185,30 +172,7 @@ export function FinalResult({
     string | null
   >(null)
   const [pendingFeedbackCount, setPendingFeedbackCount] = useState(0)
-  const [unclassifiedDossiers, setUnclassifiedDossiers] = useState<
-    UnclassifiedSessionDossierSummary[]
-  >([])
-  const unclassifiedDossierCount = unclassifiedDossiers.length
   const [pendingFeedbackRefreshKey, setPendingFeedbackRefreshKey] = useState(0)
-
-  useEffect(() => {
-    if (!sessionId) return
-    let cancelled = false
-    const refresh = () => listUnclassifiedSessionDossiers(sessionId)
-      .then((response) => {
-        if (!cancelled) setUnclassifiedDossiers(response.dossiers)
-      })
-      .catch(() => {
-        // Keep the last known state on a transient polling error. Clearing it
-        // would incorrectly enable approval while the worker is still running.
-      })
-    void refresh()
-    const intervalId = window.setInterval(() => void refresh(), 2500)
-    return () => {
-      cancelled = true
-      window.clearInterval(intervalId)
-    }
-  }, [displayedClusterVersionId, pendingClusterVersion?.id, pendingFeedbackRefreshKey, rebuildPollKey, sessionId])
   const [cancelingPendingFeedback, setCancelingPendingFeedback] =
     useState(false)
   const [selectedSessionDocumentIds, setSelectedSessionDocumentIds] = useState<
@@ -216,9 +180,6 @@ export function FinalResult({
   >(() => new Set())
   const [deletionTargets, setDeletionTargets] = useState<
     DocumentDeletionTarget[]
-  >([])
-  const [transferTargets, setTransferTargets] = useState<
-    DocumentTransferTarget[]
   >([])
   const [selectedPreviewDocumentId, setSelectedPreviewDocumentId] = useState<
     number | null
@@ -316,14 +277,8 @@ export function FinalResult({
     [supplementalIntakes]
   )
   const tree = useMemo(
-    () =>
-      buildResultTree(
-        displayGroups,
-        fondsName,
-        changeHighlights,
-        unclassifiedDossiers
-      ),
-    [changeHighlights, displayGroups, fondsName, unclassifiedDossiers]
+    () => buildResultTree(displayGroups, fondsName, changeHighlights),
+    [changeHighlights, displayGroups, fondsName]
   )
   const [resultTreeSearch, setResultTreeSearch] = useState("")
   const [resultTreeSearchIndex, setResultTreeSearchIndex] = useState(0)
@@ -373,7 +328,6 @@ export function FinalResult({
             (entry) =>
               (!entry.document.lifecycleStatus ||
                 entry.document.lifecycleStatus === "active") &&
-              !isDocumentTransferLocked(entry.document) &&
               entry.document.editLock?.locked !== true
           )
           .map((entry) => entry.sessionDocumentId)
@@ -386,11 +340,6 @@ export function FinalResult({
       selectedSessionDocumentIds.has(entry.sessionDocumentId) &&
       entry.document.editLock?.locked === true
   )
-  const selectedHasTransferExcludedDraft = previewDocuments.some(
-    (entry) =>
-      selectedSessionDocumentIds.has(entry.sessionDocumentId) &&
-      (entry.inDraftDossier || isSupplementalPlacementPending(entry.document))
-  )
   const userRole = String(user?.role ?? "")
     .trim()
     .toLowerCase()
@@ -400,8 +349,6 @@ export function FinalResult({
     SHOW_DOCUMENT_DELETION_IN_DOSSIER_STEP &&
     canManageDocuments &&
     !readOnly
-  const canTransferDocuments =
-    SHOW_DOCUMENT_TRANSFER && canManageDocuments && !readOnly
   const selectedPreviewEntry = useMemo(
     () =>
       previewDocuments.find(
@@ -494,11 +441,7 @@ export function FinalResult({
       (document) =>
         !workingDocumentIds.has(String(document.session_document_id))
     ).length
-  }, [
-    clusteringPending?.items,
-    pendingClusterGroups,
-    pendingClusterVersion,
-  ])
+  }, [clusteringPending?.items, pendingClusterGroups, pendingClusterVersion])
   const pendingClusterVersionNeedsRefresh = Boolean(
     pendingClusterVersion?.status === "draft" &&
     (pendingClusterVersion.is_stale ||
@@ -533,11 +476,6 @@ export function FinalResult({
       activeClusterVersion.current_document_set_revision == null ||
       activeClusterVersion.source_document_set_revision ===
         activeClusterVersion.current_document_set_revision)
-  )
-  const sourceHasActiveClusterVersion = Boolean(
-    activeClusterVersion?.status === "active" &&
-    Number(activeClusterVersion.source_document_set_revision ?? 0) ===
-      Number(activeClusterVersion.current_document_set_revision ?? 0)
   )
   const displayedClusterVersionIndex = displayedClusterVersionId
     ? sortedClusterVersions.findIndex(
@@ -1012,7 +950,6 @@ export function FinalResult({
     supplementalPendingDocumentCount:
       clusteringPending?.summary.pending_document_count ?? 0,
     supplementalPendingUpdateDocumentCount,
-    unclassifiedDossierCount,
     clusterVersionStale,
     busy: Boolean(
       loading ||
@@ -1131,7 +1068,8 @@ export function FinalResult({
     selectableSessionDocumentIdSet,
     selectedSessionDocumentIds,
     sessionId,
-    viewingHistoricalClusterVersion: viewingHistoricalClusterVersion || readOnly,
+    viewingHistoricalClusterVersion:
+      viewingHistoricalClusterVersion || readOnly,
     setDraggedDocument,
     setDisplayedClusterVersion,
     setDropTargetId,
@@ -1773,51 +1711,6 @@ export function FinalResult({
     setDeletionTargets(targets)
   }, [previewDocuments, selectedSessionDocumentIds])
 
-  const handleTransferSelectedDocuments = useCallback(() => {
-    if (!workingClusterVersionId) {
-      toast.error("Chưa có cluster version đang làm việc để chuyển phông.")
-      return
-    }
-    if (sourceHasActiveClusterVersion) {
-      toast.error(
-        "Phông nguồn đã có kết quả phân loại được duyệt nên không thể chuyển tài liệu đi."
-      )
-      return
-    }
-    const selectedEntries = previewDocuments.filter((entry) =>
-      selectedSessionDocumentIds.has(entry.sessionDocumentId)
-    )
-    if (selectedEntries.some((entry) => entry.inDraftDossier)) {
-      toast.error("Không thể chuyển phông tài liệu đang thuộc hồ sơ nháp.")
-      return
-    }
-    if (selectedEntries.some((entry) => entry.document.editLock?.locked)) {
-      toast.error("Không thể chuyển phông khi có tài liệu đang được chỉnh sửa.")
-      return
-    }
-    const selectionError = transferSelectionError(
-      selectedEntries.map((entry) => entry.document)
-    )
-    if (selectionError) {
-      toast.error(selectionError)
-      return
-    }
-    const targets = selectedEntries.map((entry) => ({
-      id: entry.sessionDocumentId,
-      name: entry.document.fileName,
-    }))
-    if (targets.length === 0) {
-      toast.error("Chưa chọn tài liệu active để chuyển phông.")
-      return
-    }
-    setTransferTargets(targets)
-  }, [
-    previewDocuments,
-    selectedSessionDocumentIds,
-    sourceHasActiveClusterVersion,
-    workingClusterVersionId,
-  ])
-
   const handleDocumentDeletionCompleted = useCallback(
     (
       result: DocumentDeletionOperationResponse,
@@ -1884,83 +1777,6 @@ export function FinalResult({
     [activeClusterVersionId]
   )
 
-  const handleDocumentTransferRequestCreated = useCallback(
-    async (
-      request: DocumentTransferRequestResponse,
-      targetedDocumentIds: number[]
-    ) => {
-      const targetedIds = new Set(targetedDocumentIds)
-      setSelectedSessionDocumentIds((previous) => {
-        const next = new Set(previous)
-        targetedIds.forEach((id) => next.delete(id))
-        return next
-      })
-      if (request.status === "completed") {
-        setGroups((previous) =>
-          previous.map((group) => ({
-            ...group,
-            documents: group.documents.map((document) =>
-              document.sessionDocumentId !== null &&
-              targetedIds.has(document.sessionDocumentId)
-                ? {
-                    ...document,
-                    lifecycleStatus: "transferred_out",
-                    transferredToSessionId: request.target_session_id,
-                    previewAvailable: false,
-                  }
-                : document
-            ),
-          }))
-        )
-        setSelectedPreviewDocumentId((previous) =>
-          previous !== null && targetedIds.has(previous) ? null : previous
-        )
-        setStatus(
-          `Đã chuyển ${request.document_count} tài liệu sang ${request.target_session_id}.`
-        )
-        return
-      }
-      setGroups((previous) =>
-        previous.map((group) => ({
-          ...group,
-          documents: group.documents.map((document) =>
-            document.sessionDocumentId !== null &&
-            targetedIds.has(document.sessionDocumentId)
-              ? {
-                  ...document,
-                  activeTransferRequestId: request.request_id,
-                  activeTransferRequestStatus: request.status,
-                }
-              : document
-          ),
-        }))
-      )
-      setDisplayedClusterVersion((previous) =>
-        previous
-          ? {
-              ...previous,
-              clusters: previous.clusters?.map((cluster) => ({
-                ...cluster,
-                placements: cluster.placements.map((placement) =>
-                  targetedIds.has(placement.session_document_id)
-                    ? {
-                        ...placement,
-                        active_transfer_request_id: request.request_id,
-                        active_transfer_request_status: request.status,
-                      }
-                    : placement
-                ),
-              })),
-            }
-          : previous
-      )
-      setStatus(
-        `Đã gửi yêu cầu chuyển ${request.document_count} tài liệu tới ${request.target_session_id}. Tài liệu được khóa cho tới khi Phông đích xử lý.`
-      )
-    },
-    []
-  )
-
   const showClusterProgress =
     loading ||
     checkingClusters ||
@@ -1994,14 +1810,6 @@ export function FinalResult({
     temporaryFolderUpdateDisabled ||
     selectedDocumentCount === 0 ||
     selectedHasActiveEditLock
-  const transferSelectedDocumentsDisabled =
-    !canTransferDocuments ||
-    sourceHasActiveClusterVersion ||
-    !workingClusterVersionId ||
-    temporaryFolderUpdateDisabled ||
-    selectedDocumentCount === 0 ||
-    selectedHasActiveEditLock ||
-    selectedHasTransferExcludedDraft
   const handleResultTreeSearchNavigate = useCallback(
     (direction: number) => {
       setResultTreeSearchIndex((current) => {
@@ -2136,7 +1944,6 @@ export function FinalResult({
         readOnly={readOnly}
         activeClusterVersionId={activeClusterVersionId}
         canDeleteDocuments={canDeleteDocuments}
-        canTransferDocuments={canTransferDocuments}
         canRestoreFileRegisterVersion={canRestoreFileRegisterVersion}
         cancelingPendingFeedback={cancelingPendingFeedback}
         checkingClusters={checkingClusters}
@@ -2151,7 +1958,6 @@ export function FinalResult({
         clusterVersionStale={clusterVersionStale}
         clusterActionState={clusterActionState}
         deleteSelectedDocumentsDisabled={deleteSelectedDocumentsDisabled}
-        transferSelectedDocumentsDisabled={transferSelectedDocumentsDisabled}
         displayedClusterVersion={displayedClusterVersion}
         displayedClusterVersionId={displayedClusterVersionId}
         draggedDocument={draggedDocument}
@@ -2166,10 +1972,7 @@ export function FinalResult({
         handleCreateDossierFromSuggestions={handleCreateDossierFromSuggestions}
         handleDropOnDossier={handleDropOnDossier}
         handleDeleteSelectedDocuments={handleDeleteSelectedDocuments}
-        handleTransferSelectedDocuments={handleTransferSelectedDocuments}
         handleFinish={handleFinish}
-        hasUsableActiveClusterVersion={hasUsableActiveClusterVersion}
-        sourceHasActiveClusterVersion={sourceHasActiveClusterVersion}
         handleMoveSelectionToDossier={handleMoveSelectionToDossier}
         handlePreviewResizePointerDown={handlePreviewResizePointerDown}
         handleManualClassificationResizePointerDown={
@@ -2316,17 +2119,6 @@ export function FinalResult({
         }}
         onMutationCompleted={handleDocumentDeletionCompleted}
       />
-      {SHOW_DOCUMENT_TRANSFER && (
-        <DocumentTransferDialog
-          open={transferTargets.length > 0}
-          sourceSessionId={sessionId}
-          targets={transferTargets}
-          onOpenChange={(open) => {
-            if (!open) setTransferTargets([])
-          }}
-          onRequestCreated={handleDocumentTransferRequestCreated}
-        />
-      )}
     </>
   )
 }

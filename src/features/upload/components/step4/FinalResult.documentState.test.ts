@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import type { ClusterDocument } from "@/features/upload/lib/clusterGroups"
-import { usesDraftDocumentActions } from "./FinalResult.transferState"
+import { usesDraftDocumentActions } from "./FinalResult.documentState"
 
 function document(metadata: Record<string, unknown> = {}): ClusterDocument {
   return {

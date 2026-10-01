@@ -7,7 +7,6 @@ import type {
   DocumentNumberingMode,
   DocumentNumberingStylePreset,
   EnqueuePlanAnalysisResponse,
-  RemoveRetentionSourceResponse,
   RetentionIndexStatusResponse,
   SessionDetailResponse,
   SessionListResponse,
@@ -180,29 +179,6 @@ export async function patchDraftPlan(
     `/sessions/${encodeURIComponent(sessionId)}/plan`,
     {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    }
-  )
-}
-
-export async function removeRetentionSourceFromDraft(
-  sessionId: string,
-  sessionFileId: number,
-  payload: {
-    reason?: string
-    created_by?: string
-    base_plan_version_id?: string
-  } = {}
-): Promise<RemoveRetentionSourceResponse> {
-  return requestJson<RemoveRetentionSourceResponse>(
-    "/sessions/" +
-      encodeURIComponent(sessionId) +
-      "/plan/retention-sources/" +
-      encodeURIComponent(String(sessionFileId)) +
-      "/remove",
-    {
-      method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }

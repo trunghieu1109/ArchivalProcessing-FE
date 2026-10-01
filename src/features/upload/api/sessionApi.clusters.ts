@@ -20,13 +20,9 @@ import type {
   SessionDossierRetentionSuggestionResponse,
   SessionDossierSuggestionPayload,
   SessionDossierSummary,
-  SessionDossierBoxNumberConflictListResponse,
-  SessionDossierBoxNumberUpdateResponse,
-  SessionDossierBoxNumberVerificationResponse,
   SelectedDocumentDossierSuggestionsResponse,
   SessionDossierTitleSuggestionResponse,
   TemporaryFolderPromoteResponse,
-  UnclassifiedSessionDossierListResponse,
 } from "./sessionApi.types"
 
 export async function getActiveClusters(
@@ -193,48 +189,6 @@ export async function patchSessionDossier(
   )
 }
 
-export async function updateSessionDossierBoxNumbers(
-  sessionId: string,
-  dossierIds: string[],
-  boxNumber: string
-): Promise<SessionDossierBoxNumberUpdateResponse> {
-  return requestJson<SessionDossierBoxNumberUpdateResponse>(
-    `/sessions/${encodeURIComponent(sessionId)}/dossiers/box-numbers`,
-    {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        dossier_ids: dossierIds,
-        box_number: boxNumber,
-      }),
-    }
-  )
-}
-
-export async function listSessionDossierBoxNumberConflicts(
-  sessionId: string
-): Promise<SessionDossierBoxNumberConflictListResponse> {
-  return requestJson<SessionDossierBoxNumberConflictListResponse>(
-    `/sessions/${encodeURIComponent(sessionId)}/dossiers/box-number-conflicts`,
-    { cache: "no-store" }
-  )
-}
-
-export async function verifySessionDossierBoxNumberConflict(
-  sessionId: string,
-  dossierId: string,
-  payload: { action: "accept" | "reject"; conflict_id?: string | null }
-): Promise<SessionDossierBoxNumberVerificationResponse> {
-  return requestJson<SessionDossierBoxNumberVerificationResponse>(
-    `/sessions/${encodeURIComponent(sessionId)}/dossiers/${encodeURIComponent(dossierId)}/box-number-conflict/verify`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    }
-  )
-}
-
 export async function refreshSessionDossierClassification(
   sessionId: string,
   dossierId: string
@@ -313,38 +267,6 @@ export async function listSessionDossiers(sessionId: string): Promise<{
   }>(`/sessions/${encodeURIComponent(sessionId)}/dossiers`, {
     cache: "no-store",
   })
-}
-
-export async function listUnclassifiedSessionDossiers(
-  sessionId: string
-): Promise<UnclassifiedSessionDossierListResponse> {
-  const searchParams = new URLSearchParams({ scope: "unclassified" })
-  return requestJson<UnclassifiedSessionDossierListResponse>(
-    `/sessions/${encodeURIComponent(sessionId)}/dossiers?${searchParams.toString()}`,
-    { cache: "no-store" }
-  )
-}
-
-export async function classifyUnclassifiedSessionDossiers(
-  sessionId: string,
-  dossierIds?: string[]
-): Promise<{
-  session_id: string
-  job_id: number
-  status: string
-  selected_dossier_count: number
-  dossier_ids: string[]
-}> {
-  return requestJson(
-    `/sessions/${encodeURIComponent(sessionId)}/unclassified-dossiers/classify`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(
-        dossierIds === undefined ? {} : { dossier_ids: dossierIds }
-      ),
-    }
-  )
 }
 
 export async function listSessionDossierDrafts(

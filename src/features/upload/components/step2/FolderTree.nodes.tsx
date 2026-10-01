@@ -196,12 +196,7 @@ interface RetentionAppendicesPanelProps {
   sessionId?: string | null
   planVersionId?: string | null
   hasRetentionSchedule?: boolean
-  readOnly?: boolean
   isActivePlan?: boolean
-  onRemoveSource?: (
-    sessionFileId: number,
-    fileName?: string | null
-  ) => void | Promise<void>
 }
 
 export function RetentionAppendicesPanel({
@@ -210,9 +205,7 @@ export function RetentionAppendicesPanel({
   sessionId,
   planVersionId,
   hasRetentionSchedule = true,
-  readOnly = true,
   isActivePlan = false,
-  onRemoveSource,
 }: RetentionAppendicesPanelProps) {
   const [indexStatus, setIndexStatus] =
     useState<RetentionIndexStatusResponse | null>(null)
@@ -283,13 +276,7 @@ export function RetentionAppendicesPanel({
       cancelled = true
       if (timeoutId !== undefined) window.clearTimeout(timeoutId)
     }
-  }, [
-    appendices.length,
-    isActivePlan,
-    planVersionId,
-    pollJobId,
-    sessionId,
-  ])
+  }, [appendices.length, isActivePlan, planVersionId, pollJobId, sessionId])
 
   const handleCheckAndRebuildIndex = async () => {
     if (!sessionId || !planVersionId || checkingIndex) return
@@ -425,13 +412,7 @@ export function RetentionAppendicesPanel({
             </div>
           </div>
         )}
-        {hasSources && (
-          <RetentionSourcesList
-            sources={sources}
-            readOnly={readOnly}
-            onRemoveSource={onRemoveSource}
-          />
-        )}
+        {hasSources && <RetentionSourcesList sources={sources} />}
         {appendices.length > 0 ? (
           <div className="flex flex-col gap-2">
             {appendices.map((appendix, index) => (
@@ -468,18 +449,9 @@ function retentionIndexStatusLabel(
 
 interface RetentionSourcesListProps {
   sources: RetentionSourceStatus[]
-  readOnly: boolean
-  onRemoveSource?: (
-    sessionFileId: number,
-    fileName?: string | null
-  ) => void | Promise<void>
 }
 
-function RetentionSourcesList({
-  sources,
-  readOnly,
-  onRemoveSource,
-}: RetentionSourcesListProps) {
+function RetentionSourcesList({ sources }: RetentionSourcesListProps) {
   return (
     <div className="mb-3 grid gap-2">
       {sources.map((source, index) => {
@@ -506,38 +478,9 @@ function RetentionSourcesList({
                 )}
                 {isError ? "Lỗi" : "Đã đọc"}
               </span>
-              <span className="min-w-0 text-sm font-semibold text-[#0F172A] [overflow-wrap:anywhere]">
+              <span className="min-w-0 text-sm font-semibold [overflow-wrap:anywhere] text-[#0F172A]">
                 {source.file_name || source.source_title || "Thông tư"}
               </span>
-              {!readOnly &&
-                source.session_file_id != null &&
-                source.status === "success" &&
-                onRemoveSource && (
-                  <button
-                    type="button"
-                    className="ml-auto inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-2 py-1 text-[11px] font-semibold text-red-700 transition hover:bg-red-50"
-                    title="Loại nguồn này khỏi bản nháp"
-                    onClick={() => {
-                      const label =
-                        source.file_name || source.source_title || "nguồn này"
-                      if (
-                        window.confirm(
-                          "Loại " +
-                            label +
-                            " khỏi phương án nháp? File chỉ bị xóa khi bạn duyệt phương án."
-                        )
-                      ) {
-                        void onRemoveSource(
-                          Number(source.session_file_id),
-                          source.file_name
-                        )
-                      }
-                    }}
-                  >
-                    <Trash2 className="size-3" />
-                    Loại khỏi nháp
-                  </button>
-                )}
             </div>
             <div className="mt-1 flex flex-wrap gap-2 text-xs text-[#64748B]">
               {!isError && (

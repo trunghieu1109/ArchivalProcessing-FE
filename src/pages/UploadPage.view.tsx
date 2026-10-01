@@ -12,8 +12,6 @@ import { NumberingStep } from "@/features/upload/components/step5/NumberingStep"
 import { PublicationStep } from "@/features/upload/components/step7/PublicationStep"
 import { FinalizeArtifactsStep } from "@/pages/FinalizeArtifactsPage"
 import { SessionMetadataBar } from "@/features/upload/components/SessionMetadataBar"
-import { DocumentTransferRequestsPanel } from "@/features/upload/components/DocumentTransferRequestsPanel"
-import { SHOW_DOCUMENT_TRANSFER } from "@/features/upload/components/step4/temporaryFeatureVisibility"
 import { cn } from "@/shared/lib/utils"
 import type { AppStep } from "@/features/upload/types"
 import { easeOut } from "./UploadPage.planUtils"
@@ -134,7 +132,6 @@ export function UploadPageView(props: Record<string, any>) {
     handleSaveDraft,
     handleConfirmPlan,
     handleContinueToExtractMetadata,
-    handleRemoveRetentionSource,
     handlePlanStepNavigation,
     handleNavigateToSessions,
     savingPlanDraft,
@@ -148,7 +145,6 @@ export function UploadPageView(props: Record<string, any>) {
     ocrMessage,
     ocrSignatureStatus,
     handleContinueToResults,
-    handleViewUnclassifiedDossiers,
     dossierBuildBlockedMessage,
     clusterGroups,
     handleFinalizeAutoStartHandled,
@@ -163,9 +159,7 @@ export function UploadPageView(props: Record<string, any>) {
     activeParsedPlan.groups.length > 0
   const hasDraftPlanData = parsedPlan.groups.length > 0
   const showActivePlanTab = planViewTab === "active"
-  const visibleRetentionPlan = showActivePlanTab
-    ? activeParsedPlan
-    : parsedPlan
+  const visibleRetentionPlan = showActivePlanTab ? activeParsedPlan : parsedPlan
   const visiblePlanVersionId = showActivePlanTab
     ? activePlanVersionId
     : workingPlanVersionId
@@ -259,18 +253,18 @@ export function UploadPageView(props: Record<string, any>) {
           {currentStep > 1 &&
             !isWorkerUser &&
             (!isMergedSession || currentStep > 4) && (
-            <motion.button
-              initial={{ opacity: 0, x: -8 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.3 }}
-              onClick={() =>
-                handlePlanStepNavigation((currentStep - 1) as AppStep)
-              }
-              className="flex items-center gap-2 rounded-xl border border-[#CBD5E1] bg-white px-4 py-2 text-sm font-medium text-[#475569] shadow-sm transition-all hover:border-[#0052FF]/30 hover:text-[#0052FF]"
-            >
-              <ArrowLeft className="size-4" /> Quay lại
-            </motion.button>
-          )}
+              <motion.button
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.3 }}
+                onClick={() =>
+                  handlePlanStepNavigation((currentStep - 1) as AppStep)
+                }
+                className="flex items-center gap-2 rounded-xl border border-[#CBD5E1] bg-white px-4 py-2 text-sm font-medium text-[#475569] shadow-sm transition-all hover:border-[#0052FF]/30 hover:text-[#0052FF]"
+              >
+                <ArrowLeft className="size-4" /> Quay lại
+              </motion.button>
+            )}
         </div>
 
         {resolvedSessionId && currentStep !== 1 && (
@@ -382,9 +376,7 @@ export function UploadPageView(props: Record<string, any>) {
                 searchParams.get("focus") ?? searchParams.get("folderUpload")
               }
               parsedPlan={parsedPlan}
-              dossierTitleCatalogDraftFile={
-                props.dossierTitleCatalogDraftFile
-              }
+              dossierTitleCatalogDraftFile={props.dossierTitleCatalogDraftFile}
               dossierTitleCatalogUpload={props.dossierTitleCatalogUpload}
               handleDossierTitleCatalogSelect={
                 props.handleDossierTitleCatalogSelect
@@ -415,11 +407,7 @@ export function UploadPageView(props: Record<string, any>) {
                   />
                 </div>
               )}
-              {planFailure && (
-                <div className="mb-4">
-                  {planFailurePanel}
-                </div>
-              )}
+              {planFailure && <div className="mb-4">{planFailurePanel}</div>}
               {hasArrangementPlan ? (
                 <div className="flex flex-col gap-4">
                   <div className="rounded-2xl border border-[#D8E1EC] bg-white p-3 shadow-sm sm:flex sm:items-center sm:justify-between sm:gap-5">
@@ -542,7 +530,6 @@ export function UploadPageView(props: Record<string, any>) {
                         onConfirm={handleConfirmPlan}
                         onContinueToMetadata={handleContinueToExtractMetadata}
                         confirming={confirmingPlan}
-                        onRemoveRetentionSource={undefined}
                       />
                     ) : (
                       <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-white px-6 py-8 text-center shadow-sm">
@@ -641,7 +628,6 @@ export function UploadPageView(props: Record<string, any>) {
                         confirming={confirmingPlan}
                         planDraftDirty={planDraftDirty}
                         draftDiffersActive={hasPersistedDraft}
-                        onRemoveRetentionSource={handleRemoveRetentionSource}
                       />
                     </>
                   ) : (
@@ -733,13 +719,7 @@ export function UploadPageView(props: Record<string, any>) {
                     sessionId={resolvedSessionId}
                     planVersionId={visiblePlanVersionId}
                     hasRetentionSchedule={doc2Has}
-                    readOnly={showActivePlanTab}
                     isActivePlan={showActivePlanTab}
-                    onRemoveSource={
-                      showActivePlanTab
-                        ? undefined
-                        : handleRemoveRetentionSource
-                    }
                   />
                 ) : (
                   !retentionProcessing &&
@@ -875,11 +855,6 @@ export function UploadPageView(props: Record<string, any>) {
                 onDocumentsVerified={ocr.mergeVerifiedDocuments}
                 onRetryMetadata={ocr.restartMetadata}
                 onContinue={handleContinueToResults}
-                onViewUnclassifiedDossiers={
-                  resolvedSessionId && !isWorkerUser
-                    ? handleViewUnclassifiedDossiers
-                    : undefined
-                }
               />
             </motion.div>
           )}
@@ -894,23 +869,23 @@ export function UploadPageView(props: Record<string, any>) {
               transition={{ duration: 0.4, ease: easeOut }}
             >
               <FinalResult
-                  sessionId={resolvedSessionId}
-                  groups={clusterGroups}
-                  fondsName={sessionMetadata?.fonds_name}
-                  activePlanVersionId={activePlanVersionId}
-                  classificationTree={activeFolderTree}
-                  metadataItems={ocrMetadataItems}
-                  readOnly={isMergedSession}
-                  onFinish={() => {
-                    if (!resolvedSessionId) {
-                      toast.error("Chưa có session để đánh số trang.")
-                      return
-                    }
-                    navigate(
-                      `/sessions/${encodeURIComponent(resolvedSessionId)}/step/5`
-                    )
-                  }}
-                />
+                sessionId={resolvedSessionId}
+                groups={clusterGroups}
+                fondsName={sessionMetadata?.fonds_name}
+                activePlanVersionId={activePlanVersionId}
+                classificationTree={activeFolderTree}
+                metadataItems={ocrMetadataItems}
+                readOnly={isMergedSession}
+                onFinish={() => {
+                  if (!resolvedSessionId) {
+                    toast.error("Chưa có session để đánh số trang.")
+                    return
+                  }
+                  navigate(
+                    `/sessions/${encodeURIComponent(resolvedSessionId)}/step/5`
+                  )
+                }}
+              />
             </motion.div>
           )}
 
@@ -998,12 +973,6 @@ export function UploadPageView(props: Record<string, any>) {
           )}
         </AnimatePresence>
       </div>
-      {SHOW_DOCUMENT_TRANSFER && resolvedSessionId && !isWorkerUser && (
-        <DocumentTransferRequestsPanel
-          sessionId={resolvedSessionId}
-          canManageTarget={!isWorkerUser}
-        />
-      )}
     </div>
   )
 }

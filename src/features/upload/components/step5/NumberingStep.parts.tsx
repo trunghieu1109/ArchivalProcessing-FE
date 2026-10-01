@@ -600,7 +600,6 @@ export function NumberingMetadataPanel({
   metadataImportReview,
   onExportMetadata,
   onImportMetadataBoxNumbers,
-  onOpenBoxNumberModal,
 }: {
   metadataImportInputRef: RefObject<HTMLInputElement | null>
   sessionId: string | null
@@ -611,7 +610,6 @@ export function NumberingMetadataPanel({
   metadataImportReview: MetadataBoxNumberImportResponse | null
   onExportMetadata: () => void | Promise<unknown>
   onImportMetadataBoxNumbers: (file: File | null) => void | Promise<unknown>
-  onOpenBoxNumberModal?: () => void
 }) {
   const countConflicts = SHOW_METADATA_COUNT_CONFLICT_WARNING
     ? (metadataImportReview?.count_conflicts ?? [])
@@ -689,19 +687,6 @@ export function NumberingMetadataPanel({
           </Button>
         </div>
       </div>
-      {onOpenBoxNumberModal ? (
-        <div className="mt-3 flex justify-end">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onOpenBoxNumberModal}
-            disabled={!sessionId || active || metadataBusy}
-          >
-            <Plus data-icon="inline-start" />
-            Nhập số hộp thủ công
-          </Button>
-        </div>
-      ) : null}
       {metadataImportReview && countConflicts.length > 0 ? (
         <div
           role="alert"
@@ -1448,17 +1433,9 @@ export function NumberingDocumentRow({
             {historicalOnly
               ? hasHistoricalNumbering
                 ? `${historicalVersion ? `Phiên bản V${historicalVersion.version_number} · ` : ""}Số ${span}`
-                : "Chưa có phiên bản đánh số trước khi xóa/chuyển"
+                : "Chưa có phiên bản đánh số trước khi tài liệu ngừng hoạt động"
               : `Số ${span}`}
           </p>
-          {historicalOnly && document.transferred_to_session_id ? (
-            <p className="mt-1 text-xs text-[#64748B]">
-              Đã chuyển tới session {document.transferred_to_session_id}
-              {document.transferred_to_session_document_id
-                ? ` · tài liệu ${document.transferred_to_session_document_id}`
-                : ""}
-            </p>
-          ) : null}
           {document.error ? (
             <p className="mt-1 text-xs text-rose-700">{document.error}</p>
           ) : null}
@@ -1809,10 +1786,6 @@ function historicalLifecycleBadge(status: string | null | undefined): {
       return { label: "Đang xóa", className: "bg-amber-50 text-amber-700" }
     case "deleted":
       return { label: "Đã xóa", className: "bg-slate-100 text-slate-600" }
-    case "transfer_pending":
-      return { label: "Đang chuyển", className: "bg-blue-50 text-blue-700" }
-    case "transferred_out":
-      return { label: "Đã chuyển", className: "bg-indigo-50 text-indigo-700" }
     default:
       return { label: "Lịch sử", className: "bg-slate-100 text-slate-600" }
   }

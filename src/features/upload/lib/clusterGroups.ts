@@ -21,8 +21,6 @@ import {
 
 export const TEMPORARY_CLUSTER_ID = "temporary-folder"
 export const TEMPORARY_FOLDER_NAME = "Thư mục tạm"
-export const TRANSFER_PENDING_CLUSTER_ID = "transfer-pending"
-export const TRANSFER_PENDING_FOLDER_NAME = "Tài liệu đang chờ chuyển Phông"
 
 export interface ClusterGroup {
   id: string
@@ -35,7 +33,6 @@ export interface ClusterGroup {
   supplementalIntakeId?: string | null
   supplementalTargetState?: "existing" | "pending" | "materialized" | string
   readinessStatus?: string | null
-  isTransferPending?: boolean
   draftId?: number | null
   manualMetadataFields?: string[]
   metadataRevision?: number
@@ -93,14 +90,8 @@ export interface ClusterDocument {
   pendingFeedback?: PendingClusterFeedbackMarker | null
   editLock?: DocumentEditLock | null
   lifecycleStatus?: "active" | "delete_pending" | "deleted" | string
-  activeTransferRequestId?: string | null
-  activeTransferRequestStatus?: string | null
   deletedAt?: string | null
   deletedByName?: string | null
-  transferredAt?: string | null
-  transferredByName?: string | null
-  transferredToSessionId?: string | null
-  transferredToSessionDocumentId?: number | null
   previewAvailable?: boolean
 }
 
@@ -264,91 +255,11 @@ export function versionToGroups(
   const itemsByDocumentId = new Map(
     items.map((item) => [item.document_id, item])
   )
-  const groups = ensureTemporaryFolderGroup(
+  return ensureTemporaryFolderGroup(
     version.clusters.flatMap((cluster) =>
       clusterToGroups(cluster, itemsByDocumentId)
     )
   )
-  const pendingPlacements = version.pending_transfer_documents ?? []
-  const pendingDocumentIds = new Set(
-    pendingPlacements.map((placement) => placement.document_id)
-  )
-  groups.forEach((group) => {
-    group.documents.forEach((document) => {
-      if (document.activeTransferRequestId) {
-        pendingDocumentIds.add(document.documentId)
-      }
-    })
-  })
-  if (pendingDocumentIds.size === 0) return groups
-
-  const pendingCluster: SessionClusterSummary = {
-    id: -1,
-    cluster_id: TRANSFER_PENDING_CLUSTER_ID,
-    dossier_id: TRANSFER_PENDING_CLUSTER_ID,
-    title: TRANSFER_PENDING_FOLDER_NAME,
-    dossier: null,
-    dossiers: [],
-    status: "transfer_pending",
-    notes: [],
-    document_ids: pendingPlacements.map(
-      (placement) => placement.document_id
-    ),
-    page_count: null,
-    sheet_count: null,
-    start_date: null,
-    end_date: null,
-    placements: pendingPlacements,
-  }
-  const projectedPendingGroup = clusterToGroups(
-    pendingCluster,
-    itemsByDocumentId
-  )[0]
-  const documentsById = new Map(
-    projectedPendingGroup.documents.map((document) => [
-      document.documentId,
-      document,
-    ])
-  )
-  groups.forEach((group) => {
-    group.documents.forEach((document) => {
-      if (
-        pendingDocumentIds.has(document.documentId) &&
-        !documentsById.has(document.documentId)
-      ) {
-        documentsById.set(document.documentId, document)
-      }
-    })
-  })
-  const pendingDocuments = [...documentsById.values()].map(
-    (document, positionIndex) => ({ ...document, positionIndex })
-  )
-  const visibleGroups = groups.map((group) => {
-    const documents = group.documents.filter(
-      (document) => !pendingDocumentIds.has(document.documentId)
-    )
-    return {
-      ...group,
-      documents,
-      files: documents.map((document) => document.filePath),
-    }
-  })
-  return [
-    {
-      ...projectedPendingGroup,
-      id: TRANSFER_PENDING_CLUSTER_ID,
-      clusterId: TRANSFER_PENDING_CLUSTER_ID,
-      label: TRANSFER_PENDING_FOLDER_NAME,
-      files: pendingDocuments.map((document) => document.filePath),
-      documents: pendingDocuments,
-      dossierId: null,
-      isPendingDossier: true,
-      isTransferPending: true,
-      classificationPath: [],
-      requiresReview: true,
-    },
-    ...visibleGroups,
-  ]
 }
 
 export function ensureTemporaryFolderGroup(
@@ -518,17 +429,9 @@ function clusterToGroup(
         editLock: item?.edit_lock ?? null,
         lifecycleStatus:
           placement.lifecycle_status ?? item?.lifecycle_status ?? "active",
-        activeTransferRequestId: placement.active_transfer_request_id ?? null,
-        activeTransferRequestStatus:
-          placement.active_transfer_request_status ?? null,
         deletedAt: placement.deleted_at ?? item?.deleted_at ?? null,
         deletedByName:
           placement.deleted_by_name ?? item?.deleted_by_name ?? null,
-        transferredAt: placement.transferred_at ?? null,
-        transferredByName: placement.transferred_by_name ?? null,
-        transferredToSessionId: placement.transferred_to_session_id ?? null,
-        transferredToSessionDocumentId:
-          placement.transferred_to_session_document_id ?? null,
         previewAvailable:
           placement.preview_available ?? item?.preview_available ?? true,
       }

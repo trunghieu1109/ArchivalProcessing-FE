@@ -69,14 +69,8 @@ export interface ClusterPlacement {
   dossier_suggestions?: SessionDossierSuggestion[] | null
   metadata: Record<string, unknown>
   lifecycle_status?: "active" | "delete_pending" | "deleted" | string
-  active_transfer_request_id?: string | null
-  active_transfer_request_status?: string | null
   deleted_at?: string | null
   deleted_by_name?: string | null
-  transferred_at?: string | null
-  transferred_by_name?: string | null
-  transferred_to_session_id?: string | null
-  transferred_to_session_document_id?: number | null
   preview_available?: boolean
 }
 
@@ -270,41 +264,6 @@ export interface SessionDossierSummary {
   updated_at?: string
 }
 
-export interface UnclassifiedSessionDossierDocument {
-  id: number
-  document_id: string
-  file_name: string
-  title: string
-  document_number: string
-  issued_date: string
-  page_count: number | null
-  document_type?: string
-  issuing_agency?: string
-  document_summary?: string
-  normalized_metadata?: Record<string, unknown>
-  review_status: string
-  is_reviewed: boolean
-}
-
-export interface UnclassifiedSessionDossierSummary extends Omit<
-  SessionDossierSummary,
-  "cluster_id"
-> {
-  cluster_id: null
-  cluster_version_id: null
-  session_cluster_id: null
-  origin_transfer_request_id?: string | null
-  documents: UnclassifiedSessionDossierDocument[]
-}
-
-export interface UnclassifiedSessionDossierListResponse {
-  session_id: string
-  scope: "unclassified"
-  cluster_version_id: null
-  version_number: null
-  dossiers: UnclassifiedSessionDossierSummary[]
-}
-
 export interface SessionDossierPatchPayload {
   title?: string | null
   dossier_number?: string | null
@@ -331,71 +290,6 @@ export interface SessionDossierPatchPayload {
   note?: string | null
   retention_recommendation?: Record<string, unknown> | null
   created_by?: string
-}
-
-export interface BoxNumberActor {
-  user_id: string | null
-  name: string | null
-  email: string | null
-}
-
-export interface DossierBoxNumberConflict {
-  conflict_id: string
-  status: "pending"
-  current_box_number: string
-  current_updated_by: BoxNumberActor | null
-  proposed_box_number: string
-  proposed_by: BoxNumberActor
-  proposed_at: string
-  source: string
-}
-
-export interface DossierBoxNumberState {
-  session_dossier_id: number
-  dossier_id: string
-  cluster_id?: string | null
-  dossier_number?: string | null
-  dossier_title: string
-  box_number: string | null
-  box_number_updated_by: BoxNumberActor | null
-  box_number_updated_at: string | null
-  pending_box_number_conflict: DossierBoxNumberConflict | null
-  metadata_revision: number
-}
-
-export interface SessionDossierBoxNumberUpdateResponse {
-  session_id: string
-  cluster_version_id: string
-  cluster_version_number: number
-  source: string
-  updated_by: BoxNumberActor
-  submitted_dossiers: number
-  updated_dossiers: number
-  pending_verification_dossiers: number
-  unchanged_dossiers: number
-  results: Array<
-    DossierBoxNumberState & {
-      result: "applied" | "pending_verification" | "unchanged"
-      previous_box_number?: string | null
-    }
-  >
-}
-
-export interface SessionDossierBoxNumberConflictListResponse {
-  session_id: string
-  cluster_version_id: string
-  conflict_count: number
-  conflicts: DossierBoxNumberState[]
-}
-
-export interface SessionDossierBoxNumberVerificationResponse extends DossierBoxNumberState {
-  session_id: string
-  cluster_version_id: string
-  action: "accept" | "reject"
-  conflict: DossierBoxNumberConflict
-  previous_box_number: string | null
-  verified_by: BoxNumberActor
-  verified_at: string
 }
 
 export interface SessionDossierDraft {
@@ -621,7 +515,6 @@ export interface ClusterVersionResponse extends ApiRevisionMetadata {
   source_document_set_revision?: number
   current_document_set_revision?: number
   clusters?: SessionClusterSummary[]
-  pending_transfer_documents?: ClusterPlacement[]
 }
 
 export type ClusterGroupChangeType = "created" | "removed" | "updated" | "moved"

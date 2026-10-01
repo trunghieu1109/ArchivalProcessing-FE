@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, FolderClock, Loader2 } from "lucide-react"
+import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react"
 import { motion } from "framer-motion"
 import { cn } from "@/shared/lib/utils"
 import {
@@ -166,7 +166,6 @@ interface ProcessStepFooterProps {
   canContinue: boolean
   buildBlockedMessage?: string | null
   onContinue: (selectedItems: never[]) => void
-  onViewUnclassifiedDossiers?: () => void
 }
 
 export function ProcessStepFooter({
@@ -180,7 +179,6 @@ export function ProcessStepFooter({
   canContinue,
   buildBlockedMessage,
   onContinue,
-  onViewUnclassifiedDossiers,
 }: ProcessStepFooterProps) {
   const pendingCount = pendingReadyCount ?? pendingReadyPageItems.length
   const readyForDossierCount = dossierReadyCount ?? dossierReadyPageItems.length
@@ -231,16 +229,6 @@ export function ProcessStepFooter({
           description={statusDescription}
         />
         <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row">
-          {onViewUnclassifiedDossiers ? (
-            <button
-              type="button"
-              onClick={onViewUnclassifiedDossiers}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#CBD5E1] bg-white px-5 py-3 text-sm font-semibold text-[#334155] transition-colors hover:border-[#94A3B8] hover:bg-[#F8FAFC] sm:w-auto"
-            >
-              <FolderClock className="size-4" />
-              Xem hồ sơ chờ phân loại
-            </button>
-          ) : null}
           <button
             disabled={!canContinue}
             onClick={() => {

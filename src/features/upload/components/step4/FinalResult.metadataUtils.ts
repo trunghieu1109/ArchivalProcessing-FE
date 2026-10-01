@@ -190,8 +190,7 @@ export function regularDossierCount(groups: ClusterGroup[]): number {
   return groups.filter(
     (group) =>
       !group.isTemporary &&
-      !group.isPendingDossier &&
-      !group.isTransferPending
+      !group.isPendingDossier
   ).length
 }
 

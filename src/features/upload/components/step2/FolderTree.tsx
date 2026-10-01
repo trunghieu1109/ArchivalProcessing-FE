@@ -103,7 +103,6 @@ export function FolderTree({
   onSaveDraft,
   onConfirm,
   onContinueToMetadata,
-  onRemoveRetentionSource,
   savingDraft = false,
   confirming = false,
   planDraftDirty = false,
@@ -590,8 +589,6 @@ export function FolderTree({
           appendices={parsedPlan.retention_appendices}
           sources={parsedPlan.retention_sources}
           hasRetentionSchedule={hasRetentionSchedule}
-          readOnly={readOnly}
-          onRemoveSource={onRemoveRetentionSource}
         />
       )}
 

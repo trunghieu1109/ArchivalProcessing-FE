@@ -1,6 +1,5 @@
 import {
   Archive,
-  ArrowRightLeft,
   CheckCircle2,
   CircleX,
   FolderPlus,
@@ -22,20 +21,16 @@ import { SHOW_DOSSIER_SUGGESTIONS } from "./temporaryFeatureVisibility"
 interface FinalResultFeedbackPanelProps {
   readOnly?: boolean
   canDeleteDocuments: boolean
-  canTransferDocuments: boolean
   canRestoreFileRegisterVersion: boolean
   cancelingPendingFeedback: boolean
   clusterJobMode: string
   clusterActionState?: FinalResultActionState
   clusterVersionStale: boolean
   deleteSelectedDocumentsDisabled: boolean
-  transferSelectedDocumentsDisabled: boolean
   handleCancelPendingFeedback: () => Promise<unknown> | void
   handleCreateDossierFromSelection: () => Promise<boolean>
   handleDeleteSelectedDocuments: () => void
-  handleTransferSelectedDocuments: () => void
   handleFinish: () => void
-  hasUsableActiveClusterVersion: boolean
   handleRebuildClusters: (strategy?: string) => Promise<unknown> | void
   handleRestorePreviousClusterVersion: () => Promise<unknown> | void
   handleSelectDossierSuggestionsFromSelection: () => void
@@ -54,7 +49,6 @@ interface FinalResultFeedbackPanelProps {
   restoringClusterVersion: boolean
   selectedDocumentCount: number
   selectedDocumentsActionDisabled: boolean
-  sourceHasActiveClusterVersion: boolean
   sessionId: string | null
   totalDossiers: number
   totalFiles: number
@@ -65,18 +59,15 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
   const {
     readOnly = false,
     canDeleteDocuments,
-    canTransferDocuments,
     canRestoreFileRegisterVersion,
     cancelingPendingFeedback,
     clusterJobMode,
     clusterActionState,
     clusterVersionStale,
     deleteSelectedDocumentsDisabled,
-    transferSelectedDocumentsDisabled,
     handleCancelPendingFeedback,
     handleCreateDossierFromSelection,
     handleDeleteSelectedDocuments,
-    handleTransferSelectedDocuments,
     handleSelectDossierSuggestionsFromSelection,
     handleFinish,
     handleRebuildClusters,
@@ -96,7 +87,6 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
     restoringClusterVersion,
     selectedDocumentCount,
     selectedDocumentsActionDisabled,
-    sourceHasActiveClusterVersion,
     sessionId,
     totalDossiers,
     totalFiles,
@@ -234,24 +224,6 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
           >
             <Trash2 data-icon="inline-start" />
             Xóa khỏi session
-          </Button>
-        ) : null}
-        {canTransferDocuments ? (
-          <Button
-            variant="outline"
-            onClick={handleTransferSelectedDocuments}
-            className="w-full border-[#BFD3FF] text-[#0052FF] hover:bg-[#F3F7FF] xl:w-auto"
-            disabled={transferSelectedDocumentsDisabled}
-            title={
-              sourceHasActiveClusterVersion
-                ? "Phông nguồn đã có kết quả phân loại được duyệt nên không thể chuyển tài liệu đi"
-                : selectedDocumentCount === 0
-                  ? "Hãy chọn ít nhất một tài liệu để chuyển phông"
-                  : "Chuyển các tài liệu đã chọn sang một phông khác"
-            }
-          >
-            <ArrowRightLeft data-icon="inline-start" />
-            Chuyển phông
           </Button>
         ) : null}
         {effectiveActionState.showUpdateAction ? (

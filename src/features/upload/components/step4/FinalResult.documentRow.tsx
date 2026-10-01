@@ -48,14 +48,11 @@ import { pendingFeedbackActionLabel } from "./FinalResult.pendingFeedback"
 import { changeTagPresentation } from "./FinalResult.changes"
 import { SHOW_DOSSIER_SUGGESTIONS } from "./temporaryFeatureVisibility"
 import {
-  documentTransferLockDetails,
-  documentTransferLockLabel,
-  isDocumentTransferLocked,
   isSupplementalPlacementPending,
   supplementalPlacementDetails,
   supplementalPlacementLabel,
   usesDraftDocumentActions,
-} from "./FinalResult.transferState"
+} from "./FinalResult.documentState"
 
 export function DocumentRow({
   readOnly,
@@ -128,51 +125,36 @@ export function DocumentRow({
   const documentChangeTag = changeTagPresentation("document", changeTypes)
   const documentDeleted = document.lifecycleStatus === "deleted"
   const documentDeletePending = document.lifecycleStatus === "delete_pending"
-  const documentTransferred = document.lifecycleStatus === "transferred_out"
-  const documentTransferLocked = isDocumentTransferLocked(document)
+  const documentUnavailable = Boolean(
+    document.lifecycleStatus && document.lifecycleStatus !== "active"
+  )
   const supplementalPlacementPending = isSupplementalPlacementPending(document)
   const draftActionsOnly = usesDraftDocumentActions(document, inDraftDossier)
   const documentInactive =
     documentDeleted ||
     documentDeletePending ||
-    documentTransferred ||
-    documentTransferLocked ||
+    documentUnavailable ||
     supplementalPlacementPending
   const previewDisabled =
     documentDeleted ||
     documentDeletePending ||
-    documentTransferred ||
-    documentTransferLocked ||
+    documentUnavailable ||
     document.previewAvailable === false
   const inactiveDetails = supplementalPlacementPending
     ? supplementalPlacementDetails(document)
-    : documentTransferLocked
-      ? documentTransferLockDetails(document)
-      : documentTransferred
-        ? [
-            document.transferredToSessionId
-              ? `Đã chuyển sang session ${document.transferredToSessionId}`
-              : "Đã chuyển sang phông khác",
-            document.transferredByName
-              ? `bởi ${document.transferredByName}`
-              : "",
-            document.transferredAt
-              ? `lúc ${formatDeletedAt(document.transferredAt)}`
-              : "",
-          ]
-            .filter(Boolean)
-            .join(" ")
-        : documentDeleted
-          ? [
-              "Đã xóa khỏi session",
-              document.deletedByName ? `bởi ${document.deletedByName}` : "",
-              document.deletedAt
-                ? `lúc ${formatDeletedAt(document.deletedAt)}`
-                : "",
-            ]
-              .filter(Boolean)
-              .join(" ")
-          : "Đang chờ xác nhận xóa từ Chỉnh Lý"
+    : documentDeleted
+      ? [
+          "Đã xóa khỏi session",
+          document.deletedByName ? `bởi ${document.deletedByName}` : "",
+          document.deletedAt
+            ? `lúc ${formatDeletedAt(document.deletedAt)}`
+            : "",
+        ]
+          .filter(Boolean)
+          .join(" ")
+      : documentDeletePending
+        ? "Đang chờ xác nhận xóa từ Chỉnh Lý"
+        : "Tài liệu không còn ở trạng thái hoạt động"
   const summary = metadataText(document.metadata, [
     "document_summary",
     "trich_yeu_van_ban",
@@ -309,11 +291,7 @@ export function DocumentRow({
               checked={selectionChecked}
               disabled={selectionDisabled || documentInactive}
               ariaLabel={`Chọn tài liệu ${document.fileName}`}
-              title={
-                documentTransferLocked
-                  ? documentTransferLockDetails(document)
-                  : "Chọn tài liệu để tạo hồ sơ mới"
-              }
+              title="Chọn tài liệu để tạo hồ sơ mới"
               onChange={(checked) => {
                 if (document.sessionDocumentId !== null) {
                   onToggleSelection(document.sessionDocumentId, checked)
@@ -347,26 +325,18 @@ export function DocumentRow({
                 title={inactiveDetails}
                 className={cn(
                   "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold",
-                  documentTransferLocked
+                  supplementalPlacementPending
                     ? "border-amber-200 bg-amber-50 text-amber-800"
-                    : documentTransferred
-                      ? "border-blue-200 bg-blue-50 text-blue-700"
-                      : supplementalPlacementPending
-                        ? "border-amber-200 bg-amber-50 text-amber-800"
-                        : "border-red-200 bg-red-50 text-red-700"
+                    : "border-red-200 bg-red-50 text-red-700"
                 )}
               >
                 {supplementalPlacementPending
                   ? supplementalPlacementLabel(document)
-                  : documentTransferLocked
-                    ? documentTransferLockLabel(document)
-                    : documentTransferred
-                      ? document.transferredToSessionId
-                        ? `Đã chuyển sang session ${document.transferredToSessionId}`
-                        : "Đã chuyển phông"
-                      : documentDeleted
-                        ? "Đã xóa khỏi session"
-                        : "Đang xóa"}
+                  : documentDeleted
+                    ? "Đã xóa khỏi session"
+                    : documentDeletePending
+                      ? "Đang xóa"
+                      : "Không hoạt động"}
               </span>
             ) : null}
             {document.editLock?.locked || documentLock.held ? (

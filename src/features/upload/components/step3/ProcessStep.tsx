@@ -45,7 +45,6 @@ interface ProcessStepProps {
   onDocumentsVerified?: (documents: SessionDocumentResponse[]) => void
   onRetryMetadata?: (documentId: number) => Promise<SessionDocumentResponse>
   onContinue: (groups: ClusterGroup[]) => void
-  onViewUnclassifiedDossiers?: () => void
 }
 
 export function ProcessStep({
@@ -77,7 +76,6 @@ export function ProcessStep({
   onDocumentsVerified,
   onRetryMetadata,
   onContinue,
-  onViewUnclassifiedDossiers,
 }: ProcessStepProps) {
   const model = useProcessStepModel({
     sessionId,
@@ -139,7 +137,6 @@ export function ProcessStep({
       signatureStatus={signatureStatus}
       sessionId={sessionId}
       onContinue={onContinue}
-      onViewUnclassifiedDossiers={onViewUnclassifiedDossiers}
     />
   )
 }

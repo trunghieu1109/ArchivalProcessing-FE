@@ -1,10 +1,4 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-  type Dispatch,
-  type SetStateAction,
-} from "react"
+import { useEffect, useRef, type Dispatch, type SetStateAction } from "react"
 import { toast } from "sonner"
 import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import {
@@ -41,12 +35,6 @@ import {
   temporaryDocumentCount,
 } from "./FinalResult.metadataUtils"
 import {
-  DOCUMENT_TRANSFER_UI_REFRESH_EVENT,
-  documentTransferRefreshAffectsSession,
-  isDocumentTransferRefreshEventType,
-  type DocumentTransferUiRefreshDetail,
-} from "../documentTransferUiSync"
-import {
   selectApplicableDraftClusterVersion,
   shouldDisplayWorkingClusterVersion,
 } from "./FinalResult.versionSelection"
@@ -57,23 +45,6 @@ const CLUSTER_POLL_TIMEOUT_MS = 10 * 60 * 1_000
 const SESSION_EVENT_POLL_INTERVAL_MS = 2_000
 const CLUSTER_EVENT_PAGE_SIZE = 100
 const NO_CLUSTER_VERSION = "__none__"
-
-function transferProjectionSignature(groups: ClusterGroup[]): string {
-  return groups
-    .flatMap((group) =>
-      group.documents
-        .filter(
-          (document) =>
-            group.isTransferPending || Boolean(document.activeTransferRequestId)
-        )
-        .map(
-          (document) =>
-            `${document.sessionDocumentId}:${document.activeTransferRequestId ?? ""}:${document.activeTransferRequestStatus ?? ""}`
-        )
-    )
-    .sort()
-    .join("|")
-}
 
 interface FinalResultPollingContext {
   activeClusterVersionId: string | null
@@ -149,7 +120,6 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
   const clusterEventCursorRef = useRef(0)
   const clusterRevisionRef = useRef<string | null>(null)
   const clusterSummarySeedAttemptedRef = useRef(false)
-  const [transferRefreshKey, setTransferRefreshKey] = useState(0)
   const pollStateRef = useRef({
     checkingClusters,
     clusterJobMode,
@@ -182,30 +152,6 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
     activeBuildProgressCompletedRef.current = false
     clusterEventCursorRef.current = 0
     clusterSummarySeedAttemptedRef.current = false
-  }, [sessionId])
-
-  useEffect(() => {
-    if (!sessionId) return
-    const refresh = (event?: Event) => {
-      const detail =
-        event?.type === DOCUMENT_TRANSFER_UI_REFRESH_EVENT
-          ? (event as CustomEvent<DocumentTransferUiRefreshDetail>).detail
-          : undefined
-      if (documentTransferRefreshAffectsSession(detail, sessionId)) {
-        setTransferRefreshKey((key) => key + 1)
-      }
-    }
-    const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") refresh()
-    }
-    window.addEventListener(DOCUMENT_TRANSFER_UI_REFRESH_EVENT, refresh)
-    window.addEventListener("focus", refresh)
-    document.addEventListener("visibilitychange", refreshWhenVisible)
-    return () => {
-      window.removeEventListener(DOCUMENT_TRANSFER_UI_REFRESH_EVENT, refresh)
-      window.removeEventListener("focus", refresh)
-      document.removeEventListener("visibilitychange", refreshWhenVisible)
-    }
   }, [sessionId])
 
   useEffect(() => {
@@ -538,16 +484,7 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
         }
         const nextGroups = versionToGroups(version, latestState.metadataItems)
         let displayedGroupsForStatus = latestState.groups
-        const transferProjectionChanged =
-          effectiveDisplayedVersionId === nextVersionId &&
-          transferProjectionSignature(nextGroups) !==
-            transferProjectionSignature(latestState.groups)
-
-        if (
-          (shouldDisplayInitialVersion || transferProjectionChanged) &&
-          nextVersionId &&
-          version
-        ) {
+        if (shouldDisplayInitialVersion && nextVersionId && version) {
           setGroups(nextGroups)
           setDisplayedClusterVersionId(nextVersionId)
           setDisplayedClusterVersion(version)
@@ -696,7 +633,6 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
     setPendingFeedbackRefreshKey,
     setRebuildBaselineVersionId,
     setStatus,
-    transferRefreshKey,
   ])
 
   useEffect(() => {
@@ -707,7 +643,6 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
 
     const pollEvents = async () => {
       try {
-        let transferChanged = false
         let hasMoreEvents = true
         while (hasMoreEvents && !cancelled) {
           const response = await listSessionEvents(sessionId, {
@@ -721,9 +656,6 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
               clusterEventCursorRef.current,
               event.id
             )
-            if (isDocumentTransferRefreshEventType(event.event_type)) {
-              transferChanged = true
-            }
             if (Number(event.payload?.job_id) !== activeJobId) continue
             if (event.event_type === "clustering.progress") {
               const phase = String(event.payload?.phase ?? "")
@@ -761,9 +693,6 @@ export function useFinalResultPolling(context: FinalResultPollingContext) {
             }
           }
           hasMoreEvents = response.events.length === CLUSTER_EVENT_PAGE_SIZE
-        }
-        if (transferChanged && !cancelled) {
-          setTransferRefreshKey((key) => key + 1)
         }
       } catch {
         // The cluster polling loop owns user-facing errors.

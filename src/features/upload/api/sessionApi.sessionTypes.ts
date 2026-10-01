@@ -380,22 +380,6 @@ export interface RetentionSourceStatus {
   error?: string | null
 }
 
-export interface RemoveRetentionSourceResponse {
-  session_id: string
-  session_file_id: number
-  status: "pending_removal"
-  pending_removal?: {
-    action: "remove"
-    source_session_file_id: number
-    source_file_name?: string | null
-    reason?: string | null
-    requested_by?: string | null
-    requested_at?: string | null
-    base_active_plan_version_id?: string | null
-  }
-  plan: ActivePlanResponse
-}
-
 export interface RetentionIndexStatusResponse {
   session_id: string
   plan_version_id: string
