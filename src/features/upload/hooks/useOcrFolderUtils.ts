@@ -27,6 +27,7 @@ export function sessionDocumentToJobSummary(
     metadata_retry_available: document.metadata_retry_available,
     metadata_retry_disabled_reason: document.metadata_retry_disabled_reason,
     document_id: document.document_id,
+    document_id_uuid: document.document_id_uuid,
     data_path: document.data_path,
     original_path: document.original_path,
     import_action: document.import_action,

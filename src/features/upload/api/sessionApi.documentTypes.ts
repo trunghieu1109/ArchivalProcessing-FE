@@ -55,6 +55,7 @@ export interface DigitizationDocument {
   transferred_to_session_id?: string | null
   transferred_to_session_document_id?: number | null
   document_id: string
+  document_id_uuid?: string | null
   data_path: string
   original_path?: string | null
   metadata_batch_id?: string | null
@@ -709,6 +710,7 @@ export interface SessionDocumentResponse {
   transferred_to_session_id?: string | null
   transferred_to_session_document_id?: number | null
   document_id: string
+  document_id_uuid?: string | null
   data_path: string
   original_path?: string | null
   file_name: string

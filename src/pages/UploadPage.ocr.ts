@@ -25,6 +25,7 @@ export function useUploadPageOcr(
           metadata_retry_available: job.metadata_retry_available,
           metadata_retry_disabled_reason: job.metadata_retry_disabled_reason,
           document_id: job.document_id,
+          document_id_uuid: job.document_id_uuid,
           data_path: job.data_path,
           import_action: job.import_action,
           metadata_batch_id: job.metadata_batch_id,

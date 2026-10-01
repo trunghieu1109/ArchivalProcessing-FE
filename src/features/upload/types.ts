@@ -130,6 +130,7 @@ export interface PdfMetadata {
   metadata_retry_available?: boolean
   metadata_retry_disabled_reason?: string | null
   document_id: string
+  document_id_uuid?: string | null
   data_path: string
   original_path?: string | null
   import_action?: string | null
