@@ -7,8 +7,34 @@
 @import "@fontsource/roboto/700.css";
 @import "@fontsource/jetbrains-mono/400.css";
 @import "@fontsource/jetbrains-mono/500.css";
+@import "@fontsource-variable/geist";
 
 @custom-variant dark (&:is(.dark *));
+
+.backend-audit-page,
+.backend-audit-page h1,
+.backend-audit-page h2 {
+  font-family: "Geist Variable", "Roboto", system-ui, sans-serif;
+}
+
+@keyframes audit-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.audit-marquee {
+  animation: audit-marquee 28s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .audit-marquee {
+    animation: none;
+  }
+}
 @source "../**/*.{ts,tsx}";
 
 @theme inline {

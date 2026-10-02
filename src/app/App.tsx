@@ -13,6 +13,7 @@ import { LoginPage } from "@/pages/LoginPage"
 import { SessionsPage } from "@/pages/SessionsPage"
 import { MergeFondsPage } from "@/pages/MergeFondsPage"
 import { UploadPage } from "@/pages/UploadPage"
+import { BackendAuditPage } from "@/pages/BackendAuditPage"
 import { useAuth } from "@/features/auth/lib/AuthContext"
 import { FONDS_MERGE_ENABLED } from "@/shared/config/featureFlags"
 
@@ -34,6 +35,14 @@ export function App() {
         element={
           <RequireAuth>
             <PredefinedDocumentsPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/admin/backend-audit"
+        element={
+          <RequireAuth>
+            <BackendAuditPage />
           </RequireAuth>
         }
       />

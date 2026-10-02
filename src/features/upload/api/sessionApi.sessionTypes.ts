@@ -81,6 +81,26 @@ export interface SessionListResponse {
 export interface DeleteSessionResponse {
   session_id: string
   deleted: boolean
+  remote_document_cleanup: {
+    status: "completed" | "not_required"
+    requested_document_count: number
+    deleted_document_count: number
+    already_deleted_document_count: number
+    not_found_document_count: number
+    skipped_documents: Array<{
+      session_document_id: number
+      lifecycle_status: string
+      reason: string
+    }>
+    remote_batches: Array<{
+      batch_id: string
+      document_ids: string[]
+      status: "completed"
+      deleted_document_ids: string[]
+      already_deleted_document_ids: string[]
+      not_found_document_ids: string[]
+    }>
+  }
   deleted_storage_paths: string[]
   storage_cleanup_errors: Array<{
     path: string

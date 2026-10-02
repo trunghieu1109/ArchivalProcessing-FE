@@ -1,5 +1,12 @@
 import { useState } from "react"
-import { LogOut, ShieldCheck, UserCog, UserPlus, UserRound } from "lucide-react"
+import {
+  Activity,
+  LogOut,
+  ShieldCheck,
+  UserCog,
+  UserPlus,
+  UserRound,
+} from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 
@@ -83,6 +90,17 @@ export function UserMenu({ className = "" }: { className?: string }) {
             <UserCog className="size-4" />
           </Button>
         )}
+        <Button
+          type="button"
+          variant="outline"
+          size="icon-sm"
+          onClick={() => navigate("/admin/backend-audit")}
+          title="Audit backend"
+          aria-label="Audit backend"
+          className="ml-1 rounded-lg"
+        >
+          <Activity className="size-4" />
+        </Button>
         <Button
           type="button"
           variant="outline"
