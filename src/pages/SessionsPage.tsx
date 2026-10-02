@@ -237,13 +237,11 @@ export function SessionsPage() {
       ) {
         window.localStorage.removeItem(LAST_SESSION_KEY)
       }
-      if (response.storage_cleanup_errors.length > 0) {
-        toast.warning(
-          "Đã xóa session nhưng không thể dọn hết một số tệp lưu trữ."
-        )
-      } else {
-        toast.success("Đã xóa session.")
-      }
+      toast.success(
+        response.deleted
+          ? "Đã xóa session."
+          : "Đã tiếp nhận yêu cầu xóa session. Dữ liệu sẽ được dọn theo từng đợt."
+      )
       if (sessions.length === 1 && sessionPageIndex > 0) {
         setSessionPageIndex((current) => Math.max(0, current - 1))
       } else {
