@@ -23,8 +23,11 @@ import { EndpointCatalog } from "@/features/backend-audit/components/EndpointCat
 import { FondsBrowser } from "@/features/backend-audit/components/FondsBrowser"
 import { FondsDetailPanel } from "@/features/backend-audit/components/FondsDetailPanel"
 import { JsonInspector } from "@/features/backend-audit/components/JsonInspector"
+import { ServerInventoryPanel } from "@/features/backend-audit/components/ServerInventoryPanel"
+import { SessionAuditWorkspace } from "@/features/backend-audit/components/SessionAuditWorkspace"
 import {
   AUDIT_ENDPOINTS,
+  SESSION_AUDIT_ENDPOINT_IDS,
   auditEndpointPath,
   extractAuditSessions,
   normalizeAuditBaseUrl,
@@ -43,6 +46,7 @@ const CONFIG_STORAGE_KEY = "archival-processing:backend-audit-config"
 export function BackendAuditPage() {
   const pageRef = useRef<HTMLDivElement>(null)
   const controllersRef = useRef(new Map<string, AbortController>())
+  const sessionScanRef = useRef(0)
   const [config, setConfig] = useState<AuditConnectionConfig>(readStoredConfig)
   const [results, setResults] = useState<Record<string, AuditRequestResult>>({})
   const [history, setHistory] = useState<AuditRequestResult[]>([])
@@ -133,6 +137,9 @@ export function BackendAuditPage() {
         path,
         controller.signal
       )
+      if (controllersRef.current.get(endpoint.id) !== controller) {
+        return result
+      }
       setResults((current) => ({ ...current, [endpoint.id]: result }))
       setHistory((current) => [result, ...current].slice(0, 100))
       setSelectedEndpointId(endpoint.id)
@@ -171,32 +178,40 @@ export function BackendAuditPage() {
         toast.error("Hãy chọn hoặc nhập session ID.")
         return
       }
+      const scanId = sessionScanRef.current + 1
+      sessionScanRef.current = scanId
       setSessionId(normalizedSessionId)
-      const detailEndpointIds = [
-        "session-detail",
-        "digitization",
-        "cluster-build",
-        "active-plan",
-        "active-clusters",
-        "dossiers",
-      ]
+      const detailEndpointIds = [...SESSION_AUDIT_ENDPOINT_IDS]
+      const sessionEndpointIds = new Set(
+        AUDIT_ENDPOINTS.filter((endpoint) => endpoint.requiresSession).map(
+          (endpoint) => endpoint.id
+        )
+      )
+      controllersRef.current.forEach((controller, endpointId) => {
+        if (sessionEndpointIds.has(endpointId)) controller.abort()
+      })
       setResults((current) =>
         Object.fromEntries(
           Object.entries(current).filter(
-            ([endpointId]) => !detailEndpointIds.includes(endpointId)
+            ([endpointId]) => !sessionEndpointIds.has(endpointId)
           )
         )
       )
-      await Promise.all(
-        detailEndpointIds.map((endpointId) => {
-          const endpoint = endpointById(endpointId)
-          return performRequest(
-            endpoint,
-            auditEndpointPath(endpoint, normalizedSessionId),
-            requestConfig
-          )
-        })
-      )
+      for (let index = 0; index < detailEndpointIds.length; index += 4) {
+        if (sessionScanRef.current !== scanId) return
+        const batch = detailEndpointIds.slice(index, index + 4)
+        await Promise.all(
+          batch.map((endpointId) => {
+            const endpoint = endpointById(endpointId)
+            return performRequest(
+              endpoint,
+              auditEndpointPath(endpoint, normalizedSessionId),
+              requestConfig
+            )
+          })
+        )
+      }
+      if (sessionScanRef.current !== scanId) return
       setSelectedEndpointId("session-detail")
     },
     [config, performRequest]
@@ -217,6 +232,7 @@ export function BackendAuditPage() {
     setConnecting(true)
     const healthEndpoint = endpointById("health")
     const sessionsEndpoint = endpointById("sessions")
+    const dashboardEndpoint = endpointById("admin-dashboard")
     const [health, sessionsResult] = await Promise.all([
       performRequest(
         healthEndpoint,
@@ -228,11 +244,17 @@ export function BackendAuditPage() {
         auditEndpointPath(sessionsEndpoint, ""),
         nextConfig
       ),
+      performRequest(
+        dashboardEndpoint,
+        auditEndpointPath(dashboardEndpoint, ""),
+        nextConfig
+      ),
     ])
     setConnecting(false)
     const sessions = extractAuditSessions(sessionsResult.data)
-    if (!sessionId && sessions[0]) {
-      await openSession(sessions[0].session_id, nextConfig)
+    const sessionToOpen = sessionId.trim() || sessions[0]?.session_id
+    if (sessionToOpen) {
+      await openSession(sessionToOpen, nextConfig)
     }
     if (health.ok || sessionsResult.ok) {
       toast.success(
@@ -264,8 +286,10 @@ export function BackendAuditPage() {
   }
 
   const cancelAll = () => {
+    sessionScanRef.current += 1
     controllersRef.current.forEach((controller) => controller.abort())
     controllersRef.current.clear()
+    setRunningEndpointIds(new Set())
   }
 
   const runCustom = async (rawPath: string) => {
@@ -333,14 +357,10 @@ export function BackendAuditPage() {
     ? (results[selectedEndpointId] ?? null)
     : null
   const connectionProbe = results.health ?? results.sessions ?? null
-  const fondsDetailsLoading = [
-    "session-detail",
-    "digitization",
-    "cluster-build",
-    "active-plan",
-    "active-clusters",
-    "dossiers",
-  ].some((endpointId) => runningEndpointIds.has(endpointId))
+  const fondsDetailsLoading = [...SESSION_AUDIT_ENDPOINT_IDS].some(
+    (endpointId) => runningEndpointIds.has(endpointId)
+  )
+  const sessionTotal = resultTotal(results.sessions, sessions.length)
 
   return (
     <div
@@ -451,10 +471,16 @@ export function BackendAuditPage() {
         <section className="mx-auto max-w-[1560px] space-y-20 px-4 py-24 sm:px-6 sm:py-32 lg:px-8">
           <FondsBrowser
             sessions={sessions}
+            total={sessionTotal}
             sessionId={sessionId}
             onSessionIdChange={setSessionId}
             onOpenSession={(nextSessionId) => void openSession(nextSessionId)}
             opening={fondsDetailsLoading}
+          />
+
+          <ServerInventoryPanel
+            result={results["admin-dashboard"]}
+            onOpenRaw={() => setSelectedEndpointId("admin-dashboard")}
           />
 
           <FondsDetailPanel
@@ -462,6 +488,13 @@ export function BackendAuditPage() {
             results={results}
             loading={fondsDetailsLoading}
             onRefresh={() => void openSession(sessionId)}
+            onOpenRaw={setSelectedEndpointId}
+          />
+
+          <SessionAuditWorkspace
+            sessionId={sessionId}
+            results={results}
+            runningEndpointIds={runningEndpointIds}
             onOpenRaw={setSelectedEndpointId}
           />
 
@@ -523,6 +556,29 @@ function endpointById(id: string): AuditEndpoint {
   const endpoint = AUDIT_ENDPOINTS.find((item) => item.id === id)
   if (!endpoint) throw new Error(`Thiếu cấu hình endpoint ${id}.`)
   return endpoint
+}
+
+function resultTotal(
+  result: AuditRequestResult | undefined,
+  fallback: number
+): number {
+  if (
+    !result?.data ||
+    typeof result.data !== "object" ||
+    Array.isArray(result.data)
+  ) {
+    return fallback
+  }
+  const pagination = (result.data as Record<string, unknown>).pagination
+  if (
+    !pagination ||
+    typeof pagination !== "object" ||
+    Array.isArray(pagination)
+  ) {
+    return fallback
+  }
+  const total = Number((pagination as Record<string, unknown>).total)
+  return Number.isFinite(total) ? total : fallback
 }
 
 function readStoredConfig(): AuditConnectionConfig {

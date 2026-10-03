@@ -6,6 +6,8 @@ export type AuditCategoryId =
   | "ocr"
   | "classification"
   | "dossiers"
+  | "numbering"
+  | "operations"
   | "evidence"
 
 export interface AuditConnectionConfig {
@@ -23,6 +25,30 @@ export interface AuditEndpoint {
   path: string | ((sessionId: string) => string)
   requiresSession?: boolean
 }
+
+export const SESSION_AUDIT_ENDPOINT_IDS = [
+  "session-detail",
+  "digitization",
+  "backup-manifest",
+  "backup-core",
+  "plan-versions",
+  "backup-plans",
+  "cluster-build",
+  "active-plan",
+  "active-clusters",
+  "cluster-versions",
+  "dossiers",
+  "unclassified-dossiers",
+  "dossier-drafts",
+  "clustering-pending",
+  "numbering-status",
+  "numbering-documents",
+  "events",
+  "artifacts",
+  "finalize-status",
+  "backup-source-files",
+  "backup-documents",
+] as const
 
 export interface AuditRequestResult {
   endpointId: string
@@ -83,6 +109,17 @@ export const AUDIT_CATEGORIES: Array<{
     description: "Danh sách hồ sơ, hồ sơ chưa phân loại và publication.",
   },
   {
+    id: "numbering",
+    label: "Đánh số trang",
+    description:
+      "Cấu hình đánh số, trạng thái tài liệu và các phiên bản PDF đã sinh.",
+  },
+  {
+    id: "operations",
+    label: "Job & sự kiện",
+    description: "Thống kê hàng đợi, job gắn với session và nhật ký nghiệp vụ.",
+  },
+  {
     id: "evidence",
     label: "Dấu vết audit",
     description: "Event, artifact và dữ liệu phục vụ truy vết.",
@@ -102,7 +139,7 @@ export const AUDIT_ENDPOINTS: AuditEndpoint[] = [
     category: "infrastructure",
     title: "Dashboard vận hành",
     description: "Tổng session, tài liệu, hồ sơ, job lỗi và job đang chờ.",
-    path: "/api/admin/dashboard?limit=120",
+    path: "/api/admin/dashboard?limit=500",
   },
   {
     id: "sessions",
@@ -120,13 +157,53 @@ export const AUDIT_ENDPOINTS: AuditEndpoint[] = [
     requiresSession: true,
   },
   {
+    id: "backup-manifest",
+    category: "fonds",
+    title: "Kiểm kê dữ liệu session",
+    description:
+      "Tổng số bản ghi theo nhóm dữ liệu để biết phạm vi audit và phần còn phân trang.",
+    path: (sessionId) =>
+      `/api/sessions/${encodeURIComponent(sessionId)}/backup/manifest`,
+    requiresSession: true,
+  },
+  {
+    id: "backup-source-files",
+    category: "fonds",
+    title: "File nguồn và liên kết tải",
+    description:
+      "File đầu vào kèm trạng thái lưu trữ và liên kết tải nếu backend hỗ trợ.",
+    path: (sessionId) =>
+      `/api/sessions/${encodeURIComponent(sessionId)}/backup/source-files`,
+    requiresSession: true,
+  },
+  {
     id: "digitization",
     category: "ocr",
     title: "Trạng thái OCR",
     description:
-      "Tổng quan OCR, ingestion run, batch và tối đa 100 tài liệu để inspect.",
+      "Tổng quan OCR, ingestion run, batch và tối đa 200 tài liệu để inspect.",
     path: (sessionId) =>
-      `/api/sessions/${encodeURIComponent(sessionId)}/digitization?include_documents=true&summary_only=false&limit=100&offset=0`,
+      `/api/sessions/${encodeURIComponent(sessionId)}/digitization?include_documents=true&summary_only=false&limit=200&offset=0`,
+    requiresSession: true,
+  },
+  {
+    id: "backup-documents",
+    category: "ocr",
+    title: "Tài liệu, metadata và PDF đánh số",
+    description:
+      "Tối đa 500 tài liệu cùng metadata chuẩn hóa, lịch sử metadata và phiên bản PDF đánh số hiện tại.",
+    path: (sessionId) =>
+      `/api/sessions/${encodeURIComponent(sessionId)}/backup/documents?after_id=0&limit=500&variants=numbered&include_metadata_versions=true`,
+    requiresSession: true,
+  },
+  {
+    id: "backup-core",
+    category: "ocr",
+    title: "Dữ liệu lõi phục vụ audit",
+    description:
+      "Draft hồ sơ, lịch sử đánh số, document operation, feedback và artifact của session.",
+    path: (sessionId) =>
+      `/api/sessions/${encodeURIComponent(sessionId)}/backup/data/core`,
     requiresSession: true,
   },
   {
@@ -148,6 +225,26 @@ export const AUDIT_ENDPOINTS: AuditEndpoint[] = [
     requiresSession: true,
   },
   {
+    id: "plan-versions",
+    category: "classification",
+    title: "Các phiên bản phương án",
+    description:
+      "Danh sách đầy đủ phiên bản phương án, trạng thái, nguồn và cấu hình đánh số.",
+    path: (sessionId) =>
+      `/api/sessions/${encodeURIComponent(sessionId)}/plan/versions`,
+    requiresSession: true,
+  },
+  {
+    id: "backup-plans",
+    category: "classification",
+    title: "Chi tiết 10 phương án đầu",
+    description:
+      "Nhóm phân loại, mục lục thời hạn bảo quản và đơn vị bảo quản cho tối đa 10 version mỗi trang.",
+    path: (sessionId) =>
+      `/api/sessions/${encodeURIComponent(sessionId)}/backup/data/plans?after_version_number=0&limit=10`,
+    requiresSession: true,
+  },
+  {
     id: "active-clusters",
     category: "classification",
     title: "Phiên bản phân cụm",
@@ -155,6 +252,16 @@ export const AUDIT_ENDPOINTS: AuditEndpoint[] = [
       "Thống kê phiên bản cluster đang hoạt động, không tải cây lớn.",
     path: (sessionId) =>
       `/api/sessions/${encodeURIComponent(sessionId)}/clusters/active?summary_only=true&include_clusters=false`,
+    requiresSession: true,
+  },
+  {
+    id: "cluster-versions",
+    category: "classification",
+    title: "Các phiên bản lập hồ sơ",
+    description:
+      "Danh sách phiên bản cluster để đối chiếu version đang hoạt động và lịch sử build.",
+    path: (sessionId) =>
+      `/api/sessions/${encodeURIComponent(sessionId)}/clusters/versions`,
     requiresSession: true,
   },
   {
@@ -176,21 +283,62 @@ export const AUDIT_ENDPOINTS: AuditEndpoint[] = [
     requiresSession: true,
   },
   {
+    id: "dossier-drafts",
+    category: "dossiers",
+    title: "Hồ sơ nháp",
+    description:
+      "Tối đa 200 hồ sơ nháp ở mọi trạng thái, gồm metadata và danh sách tài liệu dự kiến.",
+    path: (sessionId) =>
+      `/api/sessions/${encodeURIComponent(sessionId)}/dossier-drafts?status=&limit=200`,
+    requiresSession: true,
+  },
+  {
+    id: "clustering-pending",
+    category: "dossiers",
+    title: "Tài liệu chờ cập nhật hồ sơ",
+    description:
+      "Tài liệu đã ingest nhưng chưa nằm trong cluster version đang hoạt động.",
+    path: (sessionId) =>
+      `/api/sessions/${encodeURIComponent(sessionId)}/documents/clustering-pending?summary_only=false&limit=200`,
+    requiresSession: true,
+  },
+  {
     id: "publication",
     category: "dossiers",
-    title: "Cấu trúc công bố",
-    description: "Cây hộp, hồ sơ, tài liệu và tên chuẩn ở bước công bố.",
+    title: "Cấu trúc công bố (chạy thủ công)",
+    description:
+      "API GET hiện có thể tạo/reuse publication manifest artifact, nên không được gọi trong lần quét tự động.",
     path: (sessionId) =>
       `/api/sessions/${encodeURIComponent(sessionId)}/publication`,
     requiresSession: true,
   },
   {
     id: "events",
-    category: "evidence",
+    category: "operations",
     title: "Nhật ký sự kiện",
-    description: "200 event gần nhất phục vụ kiểm tra luồng xử lý.",
+    description: "Tối đa 500 event theo cursor phục vụ kiểm tra luồng xử lý.",
     path: (sessionId) =>
-      `/api/sessions/${encodeURIComponent(sessionId)}/events?limit=200`,
+      `/api/sessions/${encodeURIComponent(sessionId)}/events?limit=500`,
+    requiresSession: true,
+  },
+  {
+    id: "numbering-status",
+    category: "numbering",
+    title: "Cấu hình và tổng quan đánh số",
+    description:
+      "Mode, style, summary, timeline/configuration hiện tại và các job đánh số đang chạy.",
+    path: (sessionId) =>
+      `/api/sessions/${encodeURIComponent(sessionId)}/numbering/status?include_documents=false&summary_only=true`,
+    requiresSession: true,
+  },
+  {
+    id: "numbering-documents",
+    category: "numbering",
+    title: "Trạng thái đánh số theo tài liệu",
+    description:
+      "Tối đa 1.000 tài liệu kèm trạng thái, số trang/tờ và version PDF kết quả.",
+    path: (sessionId) =>
+      `/api/sessions/${encodeURIComponent(sessionId)}/numbering/documents/status?limit=1000&offset=0`,
     requiresSession: true,
   },
   {

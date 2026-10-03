@@ -8,6 +8,8 @@ import {
   Database,
   FileClock,
   FolderTree,
+  Hash,
+  ListChecks,
   Loader2,
   Play,
   Radar,
@@ -30,6 +32,8 @@ const CATEGORY_ICONS = {
   ocr: SearchCode,
   classification: FolderTree,
   dossiers: Archive,
+  numbering: Hash,
+  operations: ListChecks,
   evidence: FileClock,
 } satisfies Record<AuditCategoryId, typeof Activity>
 
@@ -106,6 +110,9 @@ export function EndpointCatalog({
           const successCount = endpoints.filter(
             (item) => results[item.id]?.ok
           ).length
+          const completedCount = endpoints.filter(
+            (item) => results[item.id] !== undefined
+          ).length
           return (
             <button
               type="button"
@@ -129,7 +136,7 @@ export function EndpointCatalog({
                   {category.label}
                 </span>
                 <span className="mt-1 block truncate text-[10px] text-slate-500">
-                  {successCount}/{endpoints.length} phản hồi tốt
+                  {successCount} tốt · {completedCount}/{endpoints.length} đã chạy
                 </span>
               </span>
             </button>

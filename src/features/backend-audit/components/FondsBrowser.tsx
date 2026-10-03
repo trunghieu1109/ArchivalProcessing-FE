@@ -14,12 +14,14 @@ import type { AuditSessionSummary } from "../backendAudit"
 
 export function FondsBrowser({
   sessions,
+  total,
   sessionId,
   onSessionIdChange,
   onOpenSession,
   opening,
 }: {
   sessions: AuditSessionSummary[]
+  total: number
   sessionId: string
   onSessionIdChange: (sessionId: string) => void
   onOpenSession: (sessionId: string) => void
@@ -60,7 +62,8 @@ export function FondsBrowser({
             </p>
           </div>
           <div className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-semibold text-white">
-            {sessions.length.toLocaleString("vi-VN")} phông đã tải
+            {sessions.length.toLocaleString("vi-VN")}/
+            {total.toLocaleString("vi-VN")} phông đã tải
           </div>
         </div>
 

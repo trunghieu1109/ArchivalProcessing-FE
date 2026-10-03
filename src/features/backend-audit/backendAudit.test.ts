@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import {
   AUDIT_ENDPOINTS,
+  SESSION_AUDIT_ENDPOINT_IDS,
   auditEndpointPath,
   buildAuditUrl,
   extractAuditSessions,
@@ -44,6 +45,24 @@ describe("backend audit URL handling", () => {
     )!
     expect(auditEndpointPath(endpoint, "fonds/2026")).toBe(
       "/api/sessions/fonds%2F2026"
+    )
+  })
+
+  it("defines the comprehensive read-only session audit set", () => {
+    expect(SESSION_AUDIT_ENDPOINT_IDS).toContain("backup-documents")
+    expect(SESSION_AUDIT_ENDPOINT_IDS).toContain("dossier-drafts")
+    expect(SESSION_AUDIT_ENDPOINT_IDS).toContain("numbering-documents")
+    expect(SESSION_AUDIT_ENDPOINT_IDS).toContain("events")
+
+    const endpoint = AUDIT_ENDPOINTS.find(
+      (item) => item.id === "backup-documents"
+    )!
+    expect(auditEndpointPath(endpoint, "fonds/2026")).toContain(
+      "/sessions/fonds%2F2026/backup/documents"
+    )
+    expect(auditEndpointPath(endpoint, "fonds/2026")).toContain("limit=500")
+    expect(auditEndpointPath(endpoint, "fonds/2026")).toContain(
+      "include_metadata_versions=true"
     )
   })
 })
