@@ -22,8 +22,8 @@ export const SHOW_DOSSIER_CODE = true
 export const SHOW_METADATA_COUNT_CONFLICT_WARNING = true
 
 // TEMPORARY_HIDE_TAG: MANUAL_BOX_NUMBER_ENTRY
-// Keep metadata-file box-number import available while hiding manual assignment.
-export const SHOW_MANUAL_BOX_NUMBER_ENTRY = false
+// Manual box-number assignment and conflict verification are available.
+export const SHOW_MANUAL_BOX_NUMBER_ENTRY = true
 
 // TEMPORARY_HIDE_TAG: NUMBERING_STATE_HISTORY
 // Keep checkpoint/history APIs available while hiding this optional UI.

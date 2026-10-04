@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import {
+  exportMetadataSnapshot,
   getFinalizeArtifactsStatus,
   getNumberingDocumentStatus,
   getNumberingDossierStatus,
@@ -38,6 +39,49 @@ describe("getFinalizeArtifactsStatus", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/sessions/session%20one/artifacts/finalize/status",
       {}
+    )
+  })
+})
+
+describe("exportMetadataSnapshot", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it("sends the selected dossier ids to the metadata snapshot API", async () => {
+    const payload = {
+      session_id: "session one",
+      run_id: "run-1",
+      artifact: {},
+      artifacts: [],
+      summary: {},
+    }
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    await expect(
+      exportMetadataSnapshot("session one", {
+        created_by: "ui",
+        dossier_ids: ["dossier-1", "dossier-2"],
+        metadata_export_mode: "combined",
+      })
+    ).resolves.toEqual(payload)
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/sessions/session%20one/artifacts/metadata-snapshot",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          created_by: "ui",
+          dossier_ids: ["dossier-1", "dossier-2"],
+          metadata_export_mode: "combined",
+        }),
+      }
     )
   })
 })

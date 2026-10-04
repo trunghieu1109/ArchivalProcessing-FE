@@ -77,6 +77,7 @@ import {
   textOrNull,
 } from "./NumberingStep.utils"
 import { NumberingBoxNumberModal } from "./NumberingBoxNumberModal"
+import { NumberingMetadataExportModal } from "./NumberingMetadataExportModal"
 
 const NUMBERING_POLL_INTERVAL_MS = 5_000
 const NUMBERING_DOCUMENT_REFRESH_EVERY = 3
@@ -227,6 +228,7 @@ export function NumberingStep({
   const [metadataImporting, setMetadataImporting] = useState(false)
   const [metadataImportReview, setMetadataImportReview] =
     useState<MetadataImportReview | null>(null)
+  const [metadataExportModalOpen, setMetadataExportModalOpen] = useState(false)
   const [boxNumberModalOpen, setBoxNumberModalOpen] = useState(false)
   const metadataImportInputRef = useRef<HTMLInputElement | null>(null)
   const numberingPageCacheSessionRef = useRef<string | null>(null)
@@ -297,6 +299,7 @@ export function NumberingStep({
     numberingDocumentsRevisionRef.current = null
     setNumberingPageIndex(0)
     setMetadataImportReview(null)
+    setMetadataExportModalOpen(false)
     setViewedNumberingState(null)
   }, [sessionId])
 
@@ -1113,43 +1116,53 @@ export function NumberingStep({
     [refreshStatus, sessionId, starting, status]
   )
 
-  const exportMetadata = useCallback(async () => {
-    if (!sessionId) {
-      toast.error("Chưa có session để xuất metadata.")
-      return
-    }
-    setMetadataExporting(true)
-    setError("")
-    try {
-      const result = await exportMetadataSnapshot(sessionId, {
-        created_by: "ui",
-        metadata_export_mode: DEFAULT_METADATA_EXPORT_MODE,
-      })
-      const artifacts =
-        result.artifacts?.length > 0
-          ? result.artifacts
-          : result.artifact
-            ? [result.artifact]
-            : []
-      if (artifacts.length === 0) {
-        throw new Error("Backend chưa trả về artifact metadata.")
+  const exportMetadata = useCallback(
+    async (dossierIds: string[]) => {
+      if (!sessionId) {
+        toast.error("Chưa có session để xuất metadata.")
+        return false
       }
-      toast.success("Đã tạo snapshot metadata. Đang tải file.")
-      for (const artifact of artifacts) {
-        const download = await downloadArtifact(sessionId, artifact.id)
-        saveBlob(download.blob, download.fileName || artifact.file_name)
+      if (dossierIds.length === 0) {
+        toast.error("Vui lòng chọn ít nhất một hồ sơ để xuất metadata.")
+        return false
       }
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : "Không thể xuất metadata tại thời điểm hiện tại."
-      setError(message)
-      toast.error(message)
-    } finally {
-      setMetadataExporting(false)
-    }
-  }, [sessionId])
+      setMetadataExporting(true)
+      setError("")
+      try {
+        const result = await exportMetadataSnapshot(sessionId, {
+          created_by: "ui",
+          dossier_ids: dossierIds,
+          metadata_export_mode: DEFAULT_METADATA_EXPORT_MODE,
+        })
+        const artifacts =
+          result.artifacts?.length > 0
+            ? result.artifacts
+            : result.artifact
+              ? [result.artifact]
+              : []
+        if (artifacts.length === 0) {
+          throw new Error("Backend chưa trả về artifact metadata.")
+        }
+        toast.success("Đã tạo snapshot metadata. Đang tải file.")
+        for (const artifact of artifacts) {
+          const download = await downloadArtifact(sessionId, artifact.id)
+          saveBlob(download.blob, download.fileName || artifact.file_name)
+        }
+        return true
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Không thể xuất metadata tại thời điểm hiện tại."
+        setError(message)
+        toast.error(message)
+        return false
+      } finally {
+        setMetadataExporting(false)
+      }
+    },
+    [sessionId]
+  )
 
   const importMetadataBoxNumbers = useCallback(
     async (
@@ -1939,7 +1952,7 @@ export function NumberingStep({
           metadataExporting={metadataExporting}
           metadataImporting={metadataImporting}
           metadataImportReview={metadataImportReview?.response ?? null}
-          onExportMetadata={exportMetadata}
+          onExportMetadata={() => setMetadataExportModalOpen(true)}
           onImportMetadataBoxNumbers={importMetadataBoxNumbers}
           onOpenBoxNumberModal={
             SHOW_MANUAL_BOX_NUMBER_ENTRY
@@ -1948,6 +1961,14 @@ export function NumberingStep({
           }
         />
       ) : null}
+      <NumberingMetadataExportModal
+        open={metadataExportModalOpen}
+        sessionId={sessionId}
+        dossiers={displayedNumberingDossiers}
+        exporting={metadataExporting}
+        onClose={() => setMetadataExportModalOpen(false)}
+        onExport={exportMetadata}
+      />
       {SHOW_MANUAL_BOX_NUMBER_ENTRY ? (
         <NumberingBoxNumberModal
           open={boxNumberModalOpen}

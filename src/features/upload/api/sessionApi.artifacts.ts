@@ -355,6 +355,7 @@ export async function exportMetadataSnapshot(
   payload: {
     created_by?: string
     groups?: MetadataSnapshotGroup[]
+    dossier_ids?: string[]
     metadata_export_mode?: MetadataExportMode
   } = {}
 ): Promise<MetadataSnapshotResponse> {
