@@ -54,7 +54,6 @@ interface FinalResultFeedbackPanelProps {
   restoringClusterVersion: boolean
   selectedDocumentCount: number
   selectedDocumentsActionDisabled: boolean
-  sourceHasActiveClusterVersion: boolean
   sessionId: string | null
   totalDossiers: number
   totalFiles: number
@@ -96,7 +95,6 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
     restoringClusterVersion,
     selectedDocumentCount,
     selectedDocumentsActionDisabled,
-    sourceHasActiveClusterVersion,
     sessionId,
     totalDossiers,
     totalFiles,
@@ -243,11 +241,9 @@ export function FinalResultFeedbackPanel(props: FinalResultFeedbackPanelProps) {
             className="w-full border-[#BFD3FF] text-[#0052FF] hover:bg-[#F3F7FF] xl:w-auto"
             disabled={transferSelectedDocumentsDisabled}
             title={
-              sourceHasActiveClusterVersion
-                ? "Phông nguồn đã có kết quả phân loại được duyệt nên không thể chuyển tài liệu đi"
-                : selectedDocumentCount === 0
-                  ? "Hãy chọn ít nhất một tài liệu để chuyển phông"
-                  : "Chuyển các tài liệu đã chọn sang một phông khác"
+              selectedDocumentCount === 0
+                ? "Hãy chọn ít nhất một tài liệu để chuyển phông"
+                : "Chuyển các tài liệu đã chọn sang một phông khác"
             }
           >
             <ArrowRightLeft data-icon="inline-start" />

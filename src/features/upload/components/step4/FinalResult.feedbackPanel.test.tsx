@@ -35,7 +35,6 @@ describe("FinalResultFeedbackPanel draft editing", () => {
         restoringClusterVersion={false}
         selectedDocumentCount={0}
         selectedDocumentsActionDisabled={true}
-        sourceHasActiveClusterVersion={false}
         sessionId="session-source"
         totalDossiers={2}
         totalFiles={3}
@@ -78,7 +77,6 @@ describe("FinalResultFeedbackPanel draft editing", () => {
         restoringClusterVersion={false}
         selectedDocumentCount={1}
         selectedDocumentsActionDisabled={false}
-        sourceHasActiveClusterVersion={false}
         sessionId="session-source"
         totalDossiers={2}
         totalFiles={3}
@@ -93,7 +91,7 @@ describe("FinalResultFeedbackPanel draft editing", () => {
     expect(screen.getByRole("button", { name: "Chuyển phông" })).toBeEnabled()
   })
 
-  it("blocks outbound transfer after the source cluster version is active", () => {
+  it("allows outbound transfer from an active source", () => {
     render(
       <FinalResultFeedbackPanel
         canDeleteDocuments={false}
@@ -103,7 +101,7 @@ describe("FinalResultFeedbackPanel draft editing", () => {
         clusterJobMode="update"
         clusterVersionStale={false}
         deleteSelectedDocumentsDisabled={true}
-        transferSelectedDocumentsDisabled={true}
+        transferSelectedDocumentsDisabled={false}
         handleCancelPendingFeedback={() => undefined}
         handleCreateDossierFromSelection={async () => true}
         handleDeleteSelectedDocuments={() => undefined}
@@ -124,7 +122,6 @@ describe("FinalResultFeedbackPanel draft editing", () => {
         restoringClusterVersion={false}
         selectedDocumentCount={1}
         selectedDocumentsActionDisabled={false}
-        sourceHasActiveClusterVersion={true}
         sessionId="session-source"
         totalDossiers={2}
         totalFiles={3}
@@ -133,10 +130,10 @@ describe("FinalResultFeedbackPanel draft editing", () => {
     )
 
     const transferButton = screen.getByRole("button", { name: "Chuyển phông" })
-    expect(transferButton).toBeDisabled()
+    expect(transferButton).toBeEnabled()
     expect(transferButton).toHaveAttribute(
       "title",
-      "Phông nguồn đã có kết quả phân loại được duyệt nên không thể chuyển tài liệu đi"
+      "Chuyển các tài liệu đã chọn sang một phông khác"
     )
   })
 })

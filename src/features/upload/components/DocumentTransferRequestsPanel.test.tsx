@@ -217,6 +217,37 @@ describe("DocumentTransferRequestsPanel", () => {
     )
   })
 
+  it("keeps the source projection reason when accept cannot create a draft", async () => {
+    vi.mocked(acceptSessionDocumentTransferRequest).mockRejectedValue(
+      new ApiRequestError("Cluster version nguồn chưa có đầy đủ kết quả hồ sơ.", 409, {
+        code: "SOURCE_CLUSTER_PROJECTION_UNAVAILABLE",
+      })
+    )
+
+    render(
+      <DocumentTransferRequestsPanel
+        sessionId="session-target"
+        canManageTarget={true}
+      />
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: /Yêu cầu chuyển/i }))
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Hồ sơ nhận mới/i })
+    )
+    const acceptButton = await screen.findByRole("button", {
+      name: "Chấp nhận",
+    })
+    await waitFor(() => expect(acceptButton).toBeEnabled())
+    fireEvent.click(acceptButton)
+
+    expect(
+      await screen.findByText(
+        /Cluster version nguồn chưa có đầy đủ kết quả hồ sơ.*Yêu cầu vẫn ở trạng thái chờ duyệt/
+      )
+    ).toBeInTheDocument()
+  })
+
   it("describes an accept validation error in plain Vietnamese", async () => {
     vi.mocked(acceptSessionDocumentTransferRequest).mockRejectedValue(
       new ApiRequestError("Technical backend message", 409, {

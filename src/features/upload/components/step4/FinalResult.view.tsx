@@ -71,7 +71,6 @@ export function FinalResultView(props: Record<string, any>) {
     handleTransferSelectedDocuments,
     handleFinish,
     hasUsableActiveClusterVersion,
-    sourceHasActiveClusterVersion,
     handleMoveSelectionToDossier,
     handlePreviewResizePointerDown,
     handleManualClassificationResizePointerDown,
@@ -789,7 +788,6 @@ export function FinalResultView(props: Record<string, any>) {
         }
         handleFinish={handleFinish}
         hasUsableActiveClusterVersion={hasUsableActiveClusterVersion}
-        sourceHasActiveClusterVersion={sourceHasActiveClusterVersion}
         handleRebuildClusters={handleRebuildClusters}
         handleRestorePreviousClusterVersion={
           handleRestorePreviousClusterVersion

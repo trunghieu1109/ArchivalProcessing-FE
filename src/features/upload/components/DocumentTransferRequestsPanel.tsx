@@ -900,7 +900,10 @@ const ACCEPT_ERROR_MESSAGES: Record<string, string> = {
 
 function acceptErrorMessage(caught: unknown): string {
   if (caught instanceof ApiRequestError && caught.code) {
-    const description = ACCEPT_ERROR_MESSAGES[caught.code]
+    const description =
+      caught.code === "SOURCE_CLUSTER_PROJECTION_UNAVAILABLE"
+        ? caught.message
+        : ACCEPT_ERROR_MESSAGES[caught.code]
     if (description) {
       return (
         description +

@@ -534,11 +534,6 @@ export function FinalResult({
       activeClusterVersion.source_document_set_revision ===
         activeClusterVersion.current_document_set_revision)
   )
-  const sourceHasActiveClusterVersion = Boolean(
-    activeClusterVersion?.status === "active" &&
-    Number(activeClusterVersion.source_document_set_revision ?? 0) ===
-      Number(activeClusterVersion.current_document_set_revision ?? 0)
-  )
   const displayedClusterVersionIndex = displayedClusterVersionId
     ? sortedClusterVersions.findIndex(
         (version) => version.id === displayedClusterVersionId
@@ -1778,12 +1773,6 @@ export function FinalResult({
       toast.error("Chưa có cluster version đang làm việc để chuyển phông.")
       return
     }
-    if (sourceHasActiveClusterVersion) {
-      toast.error(
-        "Phông nguồn đã có kết quả phân loại được duyệt nên không thể chuyển tài liệu đi."
-      )
-      return
-    }
     const selectedEntries = previewDocuments.filter((entry) =>
       selectedSessionDocumentIds.has(entry.sessionDocumentId)
     )
@@ -1814,7 +1803,6 @@ export function FinalResult({
   }, [
     previewDocuments,
     selectedSessionDocumentIds,
-    sourceHasActiveClusterVersion,
     workingClusterVersionId,
   ])
 
@@ -1996,7 +1984,6 @@ export function FinalResult({
     selectedHasActiveEditLock
   const transferSelectedDocumentsDisabled =
     !canTransferDocuments ||
-    sourceHasActiveClusterVersion ||
     !workingClusterVersionId ||
     temporaryFolderUpdateDisabled ||
     selectedDocumentCount === 0 ||
@@ -2169,7 +2156,6 @@ export function FinalResult({
         handleTransferSelectedDocuments={handleTransferSelectedDocuments}
         handleFinish={handleFinish}
         hasUsableActiveClusterVersion={hasUsableActiveClusterVersion}
-        sourceHasActiveClusterVersion={sourceHasActiveClusterVersion}
         handleMoveSelectionToDossier={handleMoveSelectionToDossier}
         handlePreviewResizePointerDown={handlePreviewResizePointerDown}
         handleManualClassificationResizePointerDown={
