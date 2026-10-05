@@ -48,7 +48,7 @@ describe("exportMetadataSnapshot", () => {
     vi.unstubAllGlobals()
   })
 
-  it("sends the selected dossier ids to the metadata snapshot API", async () => {
+  it("exports metadata for the entire session without a dossier filter", async () => {
     const payload = {
       session_id: "session one",
       run_id: "run-1",
@@ -67,7 +67,6 @@ describe("exportMetadataSnapshot", () => {
     await expect(
       exportMetadataSnapshot("session one", {
         created_by: "ui",
-        dossier_ids: ["dossier-1", "dossier-2"],
         metadata_export_mode: "combined",
       })
     ).resolves.toEqual(payload)
@@ -78,7 +77,6 @@ describe("exportMetadataSnapshot", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           created_by: "ui",
-          dossier_ids: ["dossier-1", "dossier-2"],
           metadata_export_mode: "combined",
         }),
       }

@@ -18,6 +18,7 @@ import { PaginationControls } from "@/features/upload/components/PaginationContr
 import {
   DEFAULT_METADATA_EXPORT_MODE,
   SHOW_MANUAL_BOX_NUMBER_ENTRY,
+  SHOW_SELECTED_DOSSIER_METADATA_EXPORT,
   SHOW_METADATA_COUNT_CONFLICT_WARNING,
   SHOW_NUMBERING_STATE_HISTORY,
   SHOW_NUMBERING_STATE_SAVE,
@@ -1117,12 +1118,12 @@ export function NumberingStep({
   )
 
   const exportMetadata = useCallback(
-    async (dossierIds: string[]) => {
+    async (dossierIds?: string[]) => {
       if (!sessionId) {
         toast.error("Chưa có session để xuất metadata.")
         return false
       }
-      if (dossierIds.length === 0) {
+      if (SHOW_SELECTED_DOSSIER_METADATA_EXPORT && !dossierIds?.length) {
         toast.error("Vui lòng chọn ít nhất một hồ sơ để xuất metadata.")
         return false
       }
@@ -1131,7 +1132,9 @@ export function NumberingStep({
       try {
         const result = await exportMetadataSnapshot(sessionId, {
           created_by: "ui",
-          dossier_ids: dossierIds,
+          ...(SHOW_SELECTED_DOSSIER_METADATA_EXPORT
+            ? { dossier_ids: dossierIds }
+            : {}),
           metadata_export_mode: DEFAULT_METADATA_EXPORT_MODE,
         })
         const artifacts =
@@ -1952,7 +1955,11 @@ export function NumberingStep({
           metadataExporting={metadataExporting}
           metadataImporting={metadataImporting}
           metadataImportReview={metadataImportReview?.response ?? null}
-          onExportMetadata={() => setMetadataExportModalOpen(true)}
+          onExportMetadata={
+            SHOW_SELECTED_DOSSIER_METADATA_EXPORT
+              ? () => setMetadataExportModalOpen(true)
+              : () => exportMetadata()
+          }
           onImportMetadataBoxNumbers={importMetadataBoxNumbers}
           onOpenBoxNumberModal={
             SHOW_MANUAL_BOX_NUMBER_ENTRY
@@ -1961,14 +1968,16 @@ export function NumberingStep({
           }
         />
       ) : null}
-      <NumberingMetadataExportModal
-        open={metadataExportModalOpen}
-        sessionId={sessionId}
-        dossiers={displayedNumberingDossiers}
-        exporting={metadataExporting}
-        onClose={() => setMetadataExportModalOpen(false)}
-        onExport={exportMetadata}
-      />
+      {SHOW_SELECTED_DOSSIER_METADATA_EXPORT ? (
+        <NumberingMetadataExportModal
+          open={metadataExportModalOpen}
+          sessionId={sessionId}
+          dossiers={displayedNumberingDossiers}
+          exporting={metadataExporting}
+          onClose={() => setMetadataExportModalOpen(false)}
+          onExport={exportMetadata}
+        />
+      ) : null}
       {SHOW_MANUAL_BOX_NUMBER_ENTRY ? (
         <NumberingBoxNumberModal
           open={boxNumberModalOpen}

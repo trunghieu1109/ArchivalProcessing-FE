@@ -43,10 +43,13 @@ const conflicts: MetadataCountConflict[] = [
 describe("metadata import review UI", () => {
   it("exports metadata directly without showing a mode selector", () => {
     const onExportMetadata = vi.fn()
+    const onOpenBoxNumberModal = vi.fn()
+    const onImportMetadataBoxNumbers = vi.fn()
+    const inputRef = createRef<HTMLInputElement>()
 
     render(
       <NumberingMetadataPanel
-        metadataImportInputRef={createRef<HTMLInputElement>()}
+        metadataImportInputRef={inputRef}
         sessionId="session-1"
         active={false}
         metadataBusy={false}
@@ -54,13 +57,18 @@ describe("metadata import review UI", () => {
         metadataImporting={false}
         metadataImportReview={null}
         onExportMetadata={onExportMetadata}
-        onImportMetadataBoxNumbers={() => undefined}
+        onImportMetadataBoxNumbers={onImportMetadataBoxNumbers}
+        onOpenBoxNumberModal={onOpenBoxNumberModal}
       />
     )
 
     fireEvent.click(screen.getByRole("button", { name: "Xuất metadata" }))
 
     expect(onExportMetadata).toHaveBeenCalledOnce()
+    expect(onOpenBoxNumberModal).not.toHaveBeenCalled()
+    const file = new File(["metadata"], "metadata.xlsx")
+    fireEvent.change(inputRef.current!, { target: { files: [file] } })
+    expect(onImportMetadataBoxNumbers).toHaveBeenCalledWith(file)
     expect(
       screen.queryByRole("radiogroup", { name: /Chế độ xuất metadata/i })
     ).not.toBeInTheDocument()

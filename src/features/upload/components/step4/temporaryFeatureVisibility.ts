@@ -22,8 +22,16 @@ export const SHOW_DOSSIER_CODE = true
 export const SHOW_METADATA_COUNT_CONFLICT_WARNING = true
 
 // TEMPORARY_HIDE_TAG: MANUAL_BOX_NUMBER_ENTRY
-// Manual box-number assignment and conflict verification are available.
-export const SHOW_MANUAL_BOX_NUMBER_ENTRY = true
+// Keep manual box-number assignment and conflict verification hidden for now.
+export const SHOW_MANUAL_BOX_NUMBER_ENTRY = false
+
+// TEMPORARY_HIDE_TAG: MANUAL_DOSSIER_NUMBER_ENTRY
+// Dossier numbers remain visible while their manual editor is hidden.
+export const SHOW_MANUAL_DOSSIER_NUMBER_ENTRY = false
+
+// TEMPORARY_HIDE_TAG: SELECTED_DOSSIER_METADATA_EXPORT
+// Export the entire session directly while the dossier picker is hidden.
+export const SHOW_SELECTED_DOSSIER_METADATA_EXPORT = false
 
 // TEMPORARY_HIDE_TAG: NUMBERING_STATE_HISTORY
 // Keep checkpoint/history APIs available while hiding this optional UI.

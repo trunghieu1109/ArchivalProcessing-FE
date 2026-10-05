@@ -12,7 +12,10 @@ import { clusterDocumentTotals } from "@/features/upload/lib/clusterGroups"
 import { normalizeBusinessDate } from "@/features/upload/lib/businessDate"
 import type { SignatureTagKind } from "@/features/upload/lib/signatureStatus"
 import type { PdfMetadata } from "@/features/upload/types"
-import { SHOW_DOSSIER_CODE } from "./temporaryFeatureVisibility"
+import {
+  SHOW_DOSSIER_CODE,
+  SHOW_MANUAL_DOSSIER_NUMBER_ENTRY,
+} from "./temporaryFeatureVisibility"
 
 export const UNKNOWN_YEAR_LABEL = "Không rõ năm"
 const EMPTY_FINAL_RESULT_METADATA_ITEMS: PdfMetadata[] = []
@@ -47,7 +50,9 @@ export const DOSSIER_METADATA_EDIT_FIELDS: Array<{
   rows: number
 }> = [
   { key: "title", label: "Tiêu đề hồ sơ", rows: 4 },
-  { key: "dossierNumber", label: "Số hồ sơ", rows: 1 },
+  ...(SHOW_MANUAL_DOSSIER_NUMBER_ENTRY
+    ? [{ key: "dossierNumber" as const, label: "Số hồ sơ", rows: 1 }]
+    : []),
   ...(SHOW_DOSSIER_CODE
     ? [{ key: "dossierCode" as const, label: "Ký hiệu hồ sơ", rows: 1 }]
     : []),
@@ -107,6 +112,7 @@ export function dossierPatchPayloadFromDraft(
   const payload: Record<string, string | number | null> = {}
   ;(Object.keys(payloadByField) as Array<keyof DossierMetadataDraft>).forEach(
     (field) => {
+      if (field === "dossierNumber" && !SHOW_MANUAL_DOSSIER_NUMBER_ENTRY) return
       if (dirtyFields && !dirtyFields.has(field)) return
       const [apiField, value] = payloadByField[field]
       payload[String(apiField)] = value

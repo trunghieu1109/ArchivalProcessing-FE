@@ -48,7 +48,10 @@ import {
   statusBadge,
   textOrNull,
 } from "./NumberingStep.utils"
-import { SHOW_METADATA_COUNT_CONFLICT_WARNING } from "../step4/temporaryFeatureVisibility"
+import {
+  SHOW_MANUAL_BOX_NUMBER_ENTRY,
+  SHOW_METADATA_COUNT_CONFLICT_WARNING,
+} from "../step4/temporaryFeatureVisibility"
 
 export type DossierUpdateMode = "auto" | "manual"
 export type NumberingUpdateMode = DossierUpdateMode | "cascade"
@@ -654,8 +657,8 @@ export function NumberingMetadataPanel({
             Metadata snapshot hồ sơ
           </p>
           <p className="mt-1 max-w-3xl text-sm text-[#64748B]">
-            Xuất hoặc nhập số hộp, số hồ sơ, ký hiệu hồ sơ, ghi chú hồ sơ, số tờ
-            và số trang trước khi tạo mục lục.
+            Xuất metadata toàn bộ hồ sơ và nhập lại file Excel để ghi nhận số
+            hộp trước khi tạo mục lục.
           </p>
         </div>
         <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:w-auto">
@@ -689,7 +692,7 @@ export function NumberingMetadataPanel({
           </Button>
         </div>
       </div>
-      {onOpenBoxNumberModal ? (
+      {SHOW_MANUAL_BOX_NUMBER_ENTRY && onOpenBoxNumberModal ? (
         <div className="mt-3 flex justify-end">
           <Button
             type="button"
