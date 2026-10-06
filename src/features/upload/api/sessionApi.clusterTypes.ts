@@ -3,6 +3,8 @@ import type {
   DocumentNumberingMode,
 } from "./sessionApi.sessionTypes"
 
+import type { DocumentScanProperties } from "./sessionApi.documentTypes"
+
 export type BlankPageWarning = Record<string, unknown> & {
   type?: string
   severity?: string
@@ -54,6 +56,7 @@ export interface DocumentArchiveDownload {
 }
 
 export interface ClusterPlacement {
+  scan_properties?: DocumentScanProperties | null
   id: number
   session_document_id: number
   document_id: string
@@ -81,6 +84,7 @@ export interface ClusterPlacement {
 }
 
 export interface SessionDossierSuggestionRepresentativeDocument {
+  scan_properties?: DocumentScanProperties | null
   session_document_id: number
   document_id: string
   file_name: string
@@ -123,6 +127,7 @@ export interface SelectedDocumentDossierSuggestionsResponse {
   documents: Array<{
     session_document_id: number
     document_id: string
+    scan_properties?: DocumentScanProperties | null
     current_cluster_id: string
     current_dossier_id: string
     source: "cache" | "computed" | string
@@ -131,6 +136,7 @@ export interface SelectedDocumentDossierSuggestionsResponse {
 }
 
 export interface DossierMembershipExplanationDocument {
+  scan_properties?: DocumentScanProperties | null
   session_document_id: number
   document_id: string
   file_name: string
@@ -271,6 +277,7 @@ export interface SessionDossierSummary {
 }
 
 export interface UnclassifiedSessionDossierDocument {
+  scan_properties?: DocumentScanProperties | null
   id: number
   document_id: string
   file_name: string

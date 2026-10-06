@@ -7,6 +7,14 @@ import type {
 } from "./sessionApi.sessionTypes"
 import type { BlankPageWarning } from "./sessionApi.clusterTypes"
 
+export interface DocumentScanProperties {
+  scope?: string | null
+  effective_dpi?: number | null
+  pixel_depth?: number | null
+  sampled_pages?: number[] | null
+  [key: string]: unknown
+}
+
 export interface PaginationMeta {
   total: number
   limit: number | null
@@ -36,6 +44,7 @@ export interface DocumentEditLockResponse extends DocumentEditLock {
 }
 
 export interface DigitizationDocument {
+  scan_properties?: DocumentScanProperties | null
   id: number
   lifecycle_status?: "active" | "delete_pending" | "deleted" | string
   generation?: number
@@ -217,6 +226,7 @@ export interface RemoteArtifactSignedUrlResponse {
 }
 
 export interface NumberingDocumentStatus {
+  scan_properties?: DocumentScanProperties | null
   session_document_id: number
   document_id: string
   file_name: string
@@ -690,6 +700,7 @@ export interface MetadataCountConflict {
 }
 
 export interface SessionDocumentResponse {
+  scan_properties?: DocumentScanProperties | null
   id: number
   session_id: string
   lifecycle_status?: "active" | "delete_pending" | "deleted" | string

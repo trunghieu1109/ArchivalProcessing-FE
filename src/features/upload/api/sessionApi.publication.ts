@@ -5,9 +5,10 @@ import {
   responseErrorMessage,
   withAuth,
 } from "./sessionApi.http"
-import type { DocumentArchiveDownload } from "./sessionApi.types"
+import type { DocumentArchiveDownload, DocumentScanProperties } from "./sessionApi.types"
 
 export interface PublicationDocument {
+  scan_properties?: DocumentScanProperties | null
   session_document_id: number
   document_id: string
   source_file_name: string
