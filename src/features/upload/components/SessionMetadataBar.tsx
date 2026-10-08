@@ -8,9 +8,12 @@ import {
   Loader2,
   Pencil,
 } from "lucide-react"
+import type { SessionProcessType } from "@/features/upload/api/sessionApi"
+import { SESSION_PROCESS_TYPE_LABELS } from "@/features/upload/lib/sessionProcessType"
 import { cn } from "@/shared/lib/utils"
 
 export interface SessionMetadataValues {
+  processType?: SessionProcessType
   archive_name?: string | null
   archive_code?: string | null
   fonds_name?: string | null
@@ -144,6 +147,9 @@ export function SessionMetadataBar({
         className
       )}
     >
+      <span className="col-span-full justify-self-start rounded-lg bg-[#EAF1FF] px-3 py-2 text-xs font-semibold text-[#0052FF]">
+        {SESSION_PROCESS_TYPE_LABELS[metadata.processType ?? "arrangement"]}
+      </span>
       {METADATA_FIELDS.map(({ field, label, icon }) => (
         <InlineMetadataField
           key={field}

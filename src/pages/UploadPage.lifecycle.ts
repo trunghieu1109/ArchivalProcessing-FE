@@ -240,6 +240,7 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
     cache.activePlanResponse = null
     cache.sessionId = nextSessionId
     cache.sessionMetadata = {
+      processType: "arrangement",
       archive_name: null,
       archive_code: null,
       fonds_name: null,
@@ -272,6 +273,7 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
 
   const syncSessionMetadata = (metadata: SessionMetadataValues) => {
     cache.sessionMetadata = {
+      processType: metadata.processType ?? "arrangement",
       archive_name: metadata.archive_name ?? null,
       archive_code: metadata.archive_code ?? null,
       fonds_name: metadata.fonds_name ?? null,

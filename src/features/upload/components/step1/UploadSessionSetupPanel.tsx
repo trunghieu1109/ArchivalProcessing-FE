@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { Archive } from "lucide-react"
+import { SESSION_PROCESS_TYPE_LABELS } from "@/features/upload/lib/sessionProcessType"
 import type { UploadMode } from "@/features/upload/api/sessionApi"
 import type { SessionMetadataValues } from "@/features/upload/components/SessionMetadataBar"
 import { UploadConfirmDialog } from "@/features/upload/components/UploadConfirmDialog"
@@ -8,6 +9,7 @@ import { cn } from "@/shared/lib/utils"
 export type ExistingSessionUploadPurpose = "session_data" | "dossier_intake"
 
 interface UploadSessionSetupPanelProps {
+  sessionId?: string | null
   existingSessionMode: boolean
   allProcessing: boolean
   sessionLoading: boolean
@@ -19,6 +21,7 @@ interface UploadSessionSetupPanelProps {
 }
 
 export function UploadSessionSetupPanel({
+  sessionId,
   existingSessionMode,
   allProcessing,
   sessionLoading,
@@ -52,6 +55,15 @@ export function UploadSessionSetupPanel({
             ? "Bạn có thể tải thêm ZIP hoặc nguyên folder PDF; hệ thống tự chọn đúng pipeline sau khi nhận diện dữ liệu."
             : "Chọn phương án chỉnh lý, thông tư thời hạn bảo quản và kéo thả ZIP hoặc nguyên folder PDF vào Upload Center."}
         </p>
+        {existingSessionMode && (
+          <p className="mt-2 text-sm font-semibold text-[#0052FF]">
+            {
+              SESSION_PROCESS_TYPE_LABELS[
+                sessionMetadata?.processType ?? "arrangement"
+              ]
+            }
+          </p>
+        )}
       </div>
 
       {!existingSessionMode && (
@@ -70,6 +82,62 @@ export function UploadSessionSetupPanel({
               </p>
             </div>
           </div>
+          <fieldset
+            className="mb-5"
+            disabled={controlsDisabled || Boolean(sessionId)}
+          >
+            <legend className="text-sm font-semibold text-[#0F172A]">
+              Loại xử lý
+            </legend>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              {(["arrangement", "arrangement_digitization"] as const).map(
+                (processType) => (
+                  <label
+                    key={processType}
+                    className={cn(
+                      "flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3",
+                      (sessionMetadata?.processType ?? "arrangement") ===
+                        processType
+                        ? "border-[#0052FF] bg-[#EAF1FF]"
+                        : "border-[#CBD5E1] bg-white"
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="sessionProcessType"
+                      aria-label={SESSION_PROCESS_TYPE_LABELS[processType]}
+                      aria-describedby={`process-type-${processType}-description`}
+                      value={processType}
+                      checked={
+                        (sessionMetadata?.processType ?? "arrangement") ===
+                        processType
+                      }
+                      onChange={() =>
+                        syncSessionMetadataDraft?.({
+                          ...sessionMetadata,
+                          processType,
+                        })
+                      }
+                      className="mt-1 accent-[#0052FF]"
+                    />
+                    <span>
+                      <span className="block text-sm font-bold text-[#0F172A]">
+                        {SESSION_PROCESS_TYPE_LABELS[processType]}
+                      </span>
+                      <span
+                        id={`process-type-${processType}-description`}
+                        className="mt-1 block text-xs leading-5 text-[#64748B]"
+                      >
+                        {processType === "arrangement"
+                          ? "Nhận dạng một số trang để trích xuất thông tin chỉnh lý."
+                          : "Nhận dạng toàn bộ các trang của tài liệu."}
+                      </span>
+                    </span>
+                  </label>
+                )
+              )}
+            </div>
+          </fieldset>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <SessionMetadataInput
               label="Tên đơn vị lưu trữ"
@@ -221,6 +289,7 @@ function updateSessionMetadataDraft(
 ) {
   if (!syncDraft) return
   syncDraft({
+    ...metadata,
     archive_name: metadata?.archive_name ?? null,
     archive_code: metadata?.archive_code ?? null,
     fonds_name: metadata?.fonds_name ?? null,

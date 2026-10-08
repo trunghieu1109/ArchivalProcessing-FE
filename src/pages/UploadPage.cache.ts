@@ -141,6 +141,7 @@ export const uploadPageCache: UploadPageCache = {
   activePlanResponse: null,
   sessionId: null,
   sessionMetadata: {
+    processType: "arrangement",
     archive_name: null,
     archive_code: null,
     fonds_name: null,

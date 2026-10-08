@@ -13,6 +13,7 @@ import type {
   SessionListResponse,
   SessionProgressEvent,
   SessionSummary,
+  SessionProcessType,
 } from "./sessionApi.types"
 
 export async function listSessions(
@@ -65,6 +66,7 @@ export async function createSession(
     archive_code?: string | null
     fonds_name?: string | null
     fonds_creator_code?: string | null
+    processType?: SessionProcessType
   } = {}
 ): Promise<CreateSessionResponse> {
   return requestJson<CreateSessionResponse>("/sessions", {
@@ -81,6 +83,7 @@ export async function patchSessionMetadata(
     archive_code?: string | null
     fonds_name?: string | null
     fonds_creator_code?: string | null
+    processType?: SessionProcessType
   }
 ): Promise<SessionSummary> {
   return requestJson<SessionSummary>(

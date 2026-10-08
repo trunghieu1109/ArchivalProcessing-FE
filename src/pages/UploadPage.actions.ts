@@ -791,6 +791,7 @@ export function createUploadPageActions(context: Record<string, any>) {
 
 function normalizeSessionMetadataPayload(metadata: SessionMetadataValues) {
   return {
+    processType: metadata.processType ?? "arrangement",
     archive_name: textOrNull(metadata.archive_name),
     archive_code: textOrNull(metadata.archive_code),
     fonds_name: textOrNull(metadata.fonds_name),

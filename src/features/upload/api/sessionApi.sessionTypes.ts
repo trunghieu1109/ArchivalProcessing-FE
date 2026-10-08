@@ -19,6 +19,10 @@ export type DocumentNumberingStylePreset =
   | "stamp_times_bold"
 export type PlanVersionStatus = "draft" | "active" | "superseded"
 export type UploadMode = "append" | "overwrite"
+export type SessionProcessType =
+  | "arrangement"
+  | "digitization"
+  | "arrangement_digitization"
 
 export interface ApiRevisionMetadata {
   revision?: number
@@ -30,6 +34,7 @@ export interface ApiRevisionMetadata {
 export interface CreateSessionResponse {
   session_id: string
   session_type?: "standard" | "merged"
+  processType?: SessionProcessType
   status: string
   archive_name?: string | null
   archive_code?: string | null
@@ -44,6 +49,7 @@ export interface CreateSessionResponse {
 export interface SessionSummary {
   session_id: string
   session_type?: "standard" | "merged"
+  processType?: SessionProcessType
   active_merged_session_id?: string | null
   active_merged_session_status?: string | null
   status: string

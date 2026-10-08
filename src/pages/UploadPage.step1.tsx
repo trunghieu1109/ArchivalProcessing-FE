@@ -168,6 +168,7 @@ export function UploadPageStepOne(props: UploadPageStepOneProps) {
       className="flex flex-col gap-4"
     >
       <UploadSessionSetupPanel
+        sessionId={sessionId}
         existingSessionMode={existingSessionMode}
         allProcessing={allProcessing}
         sessionLoading={sessionLoading}

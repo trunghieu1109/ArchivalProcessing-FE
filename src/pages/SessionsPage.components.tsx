@@ -1,3 +1,4 @@
+import { SESSION_PROCESS_TYPE_LABELS } from "@/features/upload/lib/sessionProcessType"
 import { useState, type KeyboardEvent } from "react"
 import type { ReactNode } from "react"
 import {
@@ -136,6 +137,9 @@ export function SessionCard({
               title={displayName}
             >
               {displayName}
+            </p>
+            <p className="mt-1 text-xs text-[#64748B]">
+              {SESSION_PROCESS_TYPE_LABELS[session.processType ?? "arrangement"]}
             </p>
             <p className="mt-1 text-xs text-[#64748B]">
               Mã session: {session.session_id}
