@@ -46,16 +46,22 @@ function CreationForm() {
 
 describe("session process type at creation", () => {
   it("offers two types and preserves the choice while editing fonds metadata", async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(
-        JSON.stringify({
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (input, init) => {
+        const url = String(input)
+        if (!url.endsWith("/sessions"))
+          throw new Error(`Unexpected request: ${url}`)
+        const body = {
           session_id: "created",
           processType: "arrangement_digitization",
           status: "created",
-        }),
-        { status: 201, headers: { "Content-Type": "application/json" } }
-      )
-    )
+        }
+        return new Response(JSON.stringify(body), {
+          status: init?.method === "POST" ? 201 : 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      })
     vi.stubGlobal("fetch", fetchMock)
     const originalLastSession = window.localStorage.getItem(LAST_SESSION_KEY)
     const originalSessionId = cache.sessionId
@@ -74,13 +80,25 @@ describe("session process type at creation", () => {
       expect(
         screen.getByRole("radio", { name: /^Chỉnh lý \+ số hóa/ })
       ).toBeChecked()
+      expect(
+        screen.queryByRole("combobox", { name: "Bộ metadata" })
+      ).not.toBeInTheDocument()
+      expect(screen.queryByText("Quản lý bộ metadata")).not.toBeInTheDocument()
       fireEvent.click(screen.getByRole("button", { name: "Create" }))
-      expect(fetchMock).toHaveBeenCalledTimes(1)
-      const payload = JSON.parse(fetchMock.mock.calls[0][1]?.body as string)
-      expect(payload).toMatchObject({
+      const creationCalls = fetchMock.mock.calls.filter(
+        (call) => call[1]?.method === "POST"
+      )
+      expect(creationCalls).toHaveLength(1)
+      const payload = JSON.parse(creationCalls[0][1]?.body as string)
+      expect(payload).toEqual({
+        created_by: "ui",
         processType: "arrangement_digitization",
+        archive_name: null,
+        archive_code: null,
         fonds_name: "Phông thử nghiệm",
+        fonds_creator_code: null,
       })
+      expect(fetchMock).toHaveBeenCalledTimes(1)
       await waitFor(() => expect(cache.sessionId).toBe("created"))
     } finally {
       if (originalLastSession === null)

@@ -1,4 +1,5 @@
 import { toast } from "sonner"
+import { DYNAMIC_METADATA_ENABLED } from "@/shared/config/featureFlags"
 import {
   createSession,
   patchDraftPlan,
@@ -86,6 +87,13 @@ export function createUploadPageActions(context: Record<string, any>) {
 
   const ensureSession = async () => {
     if (cache.sessionId) return cache.sessionId
+    if (
+      DYNAMIC_METADATA_ENABLED &&
+      (!cache.sessionMetadata.metadata_source ||
+        cache.sessionMetadata.metadata_source === "legacy")
+    ) {
+      throw new Error("Hãy chọn bộ metadata trước khi tạo session.")
+    }
     const created = await createSession(
       "ui",
       normalizeSessionMetadataPayload(cache.sessionMetadata)
@@ -792,6 +800,12 @@ export function createUploadPageActions(context: Record<string, any>) {
 function normalizeSessionMetadataPayload(metadata: SessionMetadataValues) {
   return {
     processType: metadata.processType ?? "arrangement",
+    ...(DYNAMIC_METADATA_ENABLED
+      ? {
+          metadata_source: metadata.metadata_source,
+          metadata_set_id: metadata.metadata_set_id ?? null,
+        }
+      : {}),
     archive_name: textOrNull(metadata.archive_name),
     archive_code: textOrNull(metadata.archive_code),
     fonds_name: textOrNull(metadata.fonds_name),

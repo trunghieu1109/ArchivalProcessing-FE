@@ -273,6 +273,7 @@ export function useUploadPageLifecycle(context: Record<string, any>) {
 
   const syncSessionMetadata = (metadata: SessionMetadataValues) => {
     cache.sessionMetadata = {
+      ...metadata,
       processType: metadata.processType ?? "arrangement",
       archive_name: metadata.archive_name ?? null,
       archive_code: metadata.archive_code ?? null,

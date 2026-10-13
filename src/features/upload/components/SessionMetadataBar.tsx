@@ -8,11 +8,12 @@ import {
   Loader2,
   Pencil,
 } from "lucide-react"
+import type { SessionMetadataSelection } from "@/features/admin/api/metadataApi"
 import type { SessionProcessType } from "@/features/upload/api/sessionApi"
 import { SESSION_PROCESS_TYPE_LABELS } from "@/features/upload/lib/sessionProcessType"
 import { cn } from "@/shared/lib/utils"
 
-export interface SessionMetadataValues {
+export interface SessionMetadataValues extends SessionMetadataSelection {
   processType?: SessionProcessType
   archive_name?: string | null
   archive_code?: string | null

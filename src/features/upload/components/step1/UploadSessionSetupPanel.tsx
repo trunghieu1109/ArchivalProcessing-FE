@@ -1,4 +1,6 @@
 import { useState } from "react"
+import { DYNAMIC_METADATA_ENABLED } from "@/shared/config/featureFlags"
+import { MetadataSetSelector } from "./MetadataSetSelector"
 import { Archive } from "lucide-react"
 import { SESSION_PROCESS_TYPE_LABELS } from "@/features/upload/lib/sessionProcessType"
 import type { UploadMode } from "@/features/upload/api/sessionApi"
@@ -66,6 +68,15 @@ export function UploadSessionSetupPanel({
         )}
       </div>
 
+      {DYNAMIC_METADATA_ENABLED && existingSessionMode && (
+        <MetadataSetSelector
+          sessionId={sessionId}
+          metadata={sessionMetadata}
+          disabled={controlsDisabled}
+          readOnly
+        />
+      )}
+
       {!existingSessionMode && (
         <div className="rounded-2xl border border-[#D8E1EC] bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-start gap-3">
@@ -82,6 +93,15 @@ export function UploadSessionSetupPanel({
               </p>
             </div>
           </div>
+          {DYNAMIC_METADATA_ENABLED && (
+            <MetadataSetSelector
+              sessionId={sessionId}
+              metadata={sessionMetadata}
+              disabled={controlsDisabled}
+              readOnly={false}
+              onChange={syncSessionMetadataDraft}
+            />
+          )}
           <fieldset
             className="mb-5"
             disabled={controlsDisabled || Boolean(sessionId)}

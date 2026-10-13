@@ -1,3 +1,4 @@
+import { DYNAMIC_METADATA_ENABLED } from "@/shared/config/featureFlags"
 import { delay, requestJson, requestJsonOrNull } from "./sessionApi.http"
 import type {
   ActivePlanResponse,
@@ -15,6 +16,23 @@ import type {
   SessionSummary,
   SessionProcessType,
 } from "./sessionApi.types"
+
+function visibleSessionMetadata<T extends object>(payload: T): T {
+  if (DYNAMIC_METADATA_ENABLED) return payload
+  const visible = { ...payload }
+  for (const key of [
+    "metadata_source",
+    "metadata_set_id",
+    "metadata_set_name",
+    "metadata_selection_config",
+    "metadata_config_snapshot",
+    "metadata_config_hash",
+    "metadata_selection_locked",
+    "metadata_binding_error",
+  ])
+    delete (visible as Record<string, unknown>)[key]
+  return visible
+}
 
 export async function listSessions(
   options:
@@ -67,12 +85,17 @@ export async function createSession(
     fonds_name?: string | null
     fonds_creator_code?: string | null
     processType?: SessionProcessType
+    metadata_source?: "default" | "set" | "legacy"
+    metadata_set_id?: number | null
   } = {}
 ): Promise<CreateSessionResponse> {
   return requestJson<CreateSessionResponse>("/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ created_by: createdBy, ...metadata }),
+    body: JSON.stringify({
+      created_by: createdBy,
+      ...visibleSessionMetadata(metadata),
+    }),
   })
 }
 
@@ -91,7 +114,7 @@ export async function patchSessionMetadata(
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(visibleSessionMetadata(payload)),
     }
   )
 }

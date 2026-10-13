@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { FileStack, Loader2, Merge, Plus, RefreshCw } from "lucide-react"
+import {
+  FileStack,
+  Loader2,
+  Merge,
+  Plus,
+  RefreshCw,
+  Search,
+  X,
+} from "lucide-react"
 import { toast } from "sonner"
 import { listChinhlyUsers, type ChinhlyUser } from "@/features/auth/api/authApi"
 import { UserMenu } from "@/features/auth/components/UserMenu"
@@ -96,6 +104,8 @@ export function SessionsPage() {
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [sessionTotal, setSessionTotal] = useState(0)
   const [sessionPageIndex, setSessionPageIndex] = useState(0)
+  const [sessionIdInput, setSessionIdInput] = useState("")
+  const [sessionIdFilter, setSessionIdFilter] = useState("")
   const sessionPageSize = SESSION_PAGE_SIZE
   const [coordinators, setCoordinators] = useState<ChinhlyUser[]>([])
   const [analysisStatusesBySessionId, setAnalysisStatusesBySessionId] =
@@ -149,6 +159,7 @@ export function SessionsPage() {
         listSessions({
           limit: sessionPageSize,
           offset: sessionOffset,
+          sessionId: sessionIdFilter || undefined,
         }),
         isAdmin
           ? listChinhlyUsers({ role: "coordinator", active: true, limit: 500 })
@@ -200,7 +211,13 @@ export function SessionsPage() {
     } finally {
       if (loadRequestIdRef.current === requestId) setLoading(false)
     }
-  }, [isAdmin, sessionOffset, sessionPageIndex, sessionPageSize])
+  }, [
+    isAdmin,
+    sessionIdFilter,
+    sessionOffset,
+    sessionPageIndex,
+    sessionPageSize,
+  ])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -220,6 +237,12 @@ export function SessionsPage() {
     const target = sessionOpenTarget(session)
     window.localStorage.setItem(LAST_SESSION_KEY, target.sessionId)
     navigate(target.path)
+  }
+
+  const clearSessionIdFilter = () => {
+    setSessionIdInput("")
+    setSessionIdFilter("")
+    setSessionPageIndex(0)
   }
 
   const removeSession = async (session: SessionSummary) => {
@@ -400,6 +423,50 @@ export function SessionsPage() {
           </div>
         </section>
 
+        <form
+          onSubmit={(event) => {
+            event.preventDefault()
+            setSessionIdFilter(sessionIdInput.trim())
+            setSessionPageIndex(0)
+          }}
+          className="flex flex-col gap-3 rounded-2xl border border-[#D8E1EC] bg-white p-4 shadow-sm sm:flex-row sm:items-end"
+        >
+          <div className="min-w-0 flex-1">
+            <label
+              htmlFor="session-id-filter"
+              className="text-sm font-semibold text-[#0F172A]"
+            >
+              Lọc theo session ID
+            </label>
+            <input
+              id="session-id-filter"
+              type="search"
+              value={sessionIdInput}
+              onChange={(event) => setSessionIdInput(event.target.value)}
+              placeholder="Nhập toàn bộ hoặc một phần session ID..."
+              autoComplete="off"
+              className="mt-2 h-11 w-full rounded-xl border border-[#CBD5E1] bg-white px-3 text-sm text-[#0F172A] outline-none placeholder:text-[#94A3B8] focus:border-[#0052FF] focus:ring-2 focus:ring-[#0052FF]/15"
+            />
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="submit"
+              className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[#0052FF] px-4 text-sm font-semibold whitespace-nowrap text-white transition-colors hover:bg-[#0047D6]"
+            >
+              <Search className="size-4" /> Lọc
+            </button>
+            {(sessionIdInput || sessionIdFilter) && (
+              <button
+                type="button"
+                onClick={clearSessionIdFilter}
+                className="flex h-11 items-center justify-center gap-2 rounded-xl border border-[#CBD5E1] bg-white px-4 text-sm font-semibold whitespace-nowrap text-[#475569] transition-colors hover:border-[#0052FF]/40 hover:text-[#0052FF]"
+              >
+                <X className="size-4" /> Xóa lọc
+              </button>
+            )}
+          </div>
+        </form>
+
         {error && (
           <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
             {error}
@@ -496,17 +563,24 @@ export function SessionsPage() {
             <div className="flex size-14 items-center justify-center rounded-2xl bg-[#EAF1FF] text-[#0052FF]">
               <FileStack className="size-7" />
             </div>
-            <h3 className="mt-4 text-lg font-semibold">Chưa có session nào</h3>
+            <h3 className="mt-4 text-lg font-semibold">
+              {sessionIdFilter
+                ? "Không tìm thấy session phù hợp"
+                : "Chưa có session nào"}
+            </h3>
             <p className="mt-2 max-w-md text-sm leading-6 text-[#64748B]">
-              Tạo phiên mới, tải phương án chỉnh lý và bắt đầu phân tích để
-              session chính thức được lưu trong hệ thống.
+              {sessionIdFilter
+                ? `Không có session nào khớp với ID “${sessionIdFilter}”.`
+                : "Tạo phiên mới, tải phương án chỉnh lý và bắt đầu phân tích để session chính thức được lưu trong hệ thống."}
             </p>
-            <button
-              onClick={() => navigate("/sessions/new/step/1")}
-              className="mt-5 flex items-center gap-2 rounded-xl bg-[#0052FF] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(0,82,255,0.22)] transition-all hover:-translate-y-0.5 hover:bg-[#0047D6] active:scale-[0.98]"
-            >
-              <Plus className="size-4" /> Tạo session đầu tiên
-            </button>
+            {!sessionIdFilter && (
+              <button
+                onClick={() => navigate("/sessions/new/step/1")}
+                className="mt-5 flex items-center gap-2 rounded-xl bg-[#0052FF] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(0,82,255,0.22)] transition-all hover:-translate-y-0.5 hover:bg-[#0047D6] active:scale-[0.98]"
+              >
+                <Plus className="size-4" /> Tạo session đầu tiên
+              </button>
+            )}
           </div>
         )}
         {sessionTotal > 0 && (

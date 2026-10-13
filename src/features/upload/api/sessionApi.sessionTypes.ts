@@ -1,3 +1,4 @@
+import type { SessionMetadataSelection } from "@/features/admin/api/metadataApi"
 import type { FileRegisterConfig } from "@/features/upload/types"
 import type { FolderUploadSummary } from "@/features/folder-upload/types"
 
@@ -31,7 +32,7 @@ export interface ApiRevisionMetadata {
   last_event_id?: number | null
 }
 
-export interface CreateSessionResponse {
+export interface CreateSessionResponse extends SessionMetadataSelection {
   session_id: string
   session_type?: "standard" | "merged"
   processType?: SessionProcessType
@@ -46,7 +47,7 @@ export interface CreateSessionResponse {
   created_at: string
 }
 
-export interface SessionSummary {
+export interface SessionSummary extends SessionMetadataSelection {
   session_id: string
   session_type?: "standard" | "merged"
   processType?: SessionProcessType

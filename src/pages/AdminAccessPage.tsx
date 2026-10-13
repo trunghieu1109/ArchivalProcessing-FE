@@ -6,6 +6,7 @@ import {
   useState,
 } from "react"
 import { Link } from "react-router-dom"
+import { DYNAMIC_METADATA_ENABLED } from "@/shared/config/featureFlags"
 import {
   Activity,
   ArrowLeft,
@@ -264,6 +265,14 @@ export function AdminAccessPage() {
             </p>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-end">
+            {DYNAMIC_METADATA_ENABLED && (
+              <Link
+                to="/admin/metadata"
+                className="flex items-center justify-center rounded-xl border border-[#BFD3FF] bg-[#EEF4FF] px-4 py-2 text-sm font-semibold text-[#0052FF]"
+              >
+                Metadata
+              </Link>
+            )}
             <Link
               to="/admin/predefined-documents"
               className="flex items-center justify-center gap-2 rounded-xl border border-[#BFD3FF] bg-[#EEF4FF] px-4 py-2 text-sm font-semibold text-[#0052FF] transition-colors hover:bg-[#E1EBFF]"

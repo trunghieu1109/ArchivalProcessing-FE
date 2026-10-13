@@ -7,6 +7,7 @@ import {
   useParams,
 } from "react-router-dom"
 import { AdminAccessPage } from "@/pages/AdminAccessPage"
+import { MetadataAdminPage } from "@/pages/MetadataAdminPage"
 import { PredefinedDocumentsPage } from "@/pages/PredefinedDocumentsPage"
 import { FinalizeArtifactsPage } from "@/pages/FinalizeArtifactsPage"
 import { LoginPage } from "@/pages/LoginPage"
@@ -15,7 +16,10 @@ import { MergeFondsPage } from "@/pages/MergeFondsPage"
 import { UploadPage } from "@/pages/UploadPage"
 import { BackendAuditPage } from "@/pages/BackendAuditPage"
 import { useAuth } from "@/features/auth/lib/AuthContext"
-import { FONDS_MERGE_ENABLED } from "@/shared/config/featureFlags"
+import {
+  DYNAMIC_METADATA_ENABLED,
+  FONDS_MERGE_ENABLED,
+} from "@/shared/config/featureFlags"
 
 export function App() {
   return (
@@ -30,6 +34,16 @@ export function App() {
           </RequireAuth>
         }
       />
+      {DYNAMIC_METADATA_ENABLED && (
+        <Route
+          path="/admin/metadata"
+          element={
+            <RequireAuth>
+              <MetadataAdminPage />
+            </RequireAuth>
+          }
+        />
+      )}
       <Route
         path="/admin/predefined-documents"
         element={
