@@ -7,6 +7,11 @@ import { createUploadPageActions } from "@/pages/UploadPage.actions"
 import { uploadPageCache as cache } from "@/pages/UploadPage.cache"
 import { LAST_SESSION_KEY } from "@/pages/UploadPage.progress"
 
+vi.mock("@/shared/config/featureFlags", () => ({
+  DYNAMIC_METADATA_ENABLED: false,
+  FONDS_MERGE_ENABLED: false,
+}))
+
 const baseProps = {
   existingSessionMode: false,
   allProcessing: false,

@@ -6,10 +6,10 @@ function enabled(value: unknown): boolean {
   )
 }
 
-// TEMPORARY_HIDE_TAG: DYNAMIC_METADATA
+// Dynamic metadata management and session selection.
 // Keep this aligned with the backend DYNAMIC_METADATA_ENABLED flag.
 export const DYNAMIC_METADATA_ENABLED = enabled(
-  import.meta.env.VITE_DYNAMIC_METADATA_ENABLED ?? "false"
+  import.meta.env.VITE_DYNAMIC_METADATA_ENABLED ?? "true"
 )
 
 // TEMPORARY_HIDE_TAG: FONDS_MERGE

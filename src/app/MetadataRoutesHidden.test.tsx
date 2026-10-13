@@ -1,7 +1,18 @@
 import { render, screen } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { App } from "./App"
+
+const feature = vi.hoisted(() => ({ enabled: false }))
+vi.mock("@/shared/config/featureFlags", () => ({
+  get DYNAMIC_METADATA_ENABLED() {
+    return feature.enabled
+  },
+  FONDS_MERGE_ENABLED: false,
+}))
+afterEach(() => {
+  feature.enabled = false
+})
 
 vi.mock("@/features/auth/lib/AuthContext", () => ({
   useAuth: () => ({ isAuthenticated: true, user: { role: "admin" } }),
@@ -26,7 +37,18 @@ vi.mock("@/pages/MergeFondsPage", () => ({ MergeFondsPage: () => null }))
 vi.mock("@/pages/UploadPage", () => ({ UploadPage: () => null }))
 vi.mock("@/pages/BackendAuditPage", () => ({ BackendAuditPage: () => null }))
 
-describe("routes with dynamic metadata disabled", () => {
+describe("metadata route visibility", () => {
+  it("opens the metadata management route when enabled", async () => {
+    feature.enabled = true
+    render(
+      <MemoryRouter initialEntries={["/admin/metadata"]}>
+        <App />
+      </MemoryRouter>
+    )
+    expect(await screen.findByText("Dynamic metadata")).toBeInTheDocument()
+    expect(screen.queryByText("Existing sessions")).not.toBeInTheDocument()
+  })
+
   it("redirects an old metadata bookmark to the existing session list", async () => {
     render(
       <MemoryRouter initialEntries={["/admin/metadata"]}>
