@@ -13,6 +13,7 @@ import { AnimatePresence, motion } from "framer-motion"
 import { cn } from "@/shared/lib/utils"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
+import { CustomMetadataSection } from "@/features/upload/components/CustomMetadataSection"
 import { METADATA_FIELDS, metadataFieldText } from "./MetadataCard"
 import type { PdfMetadata } from "@/features/upload/types"
 import type { ClusterGroup } from "@/features/upload/lib/clusterGroups"
@@ -85,6 +86,9 @@ function PdfPreviewModal({
                   </div>
                 )
               })}
+              <CustomMetadataSection
+                sources={[metadata.light_metadata, metadata.normalized_metadata, metadata.raw_metadata]}
+              />
             </div>
           ) : (
             <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">

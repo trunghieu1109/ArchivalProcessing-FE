@@ -15,6 +15,7 @@ import {
 import { useZipUploadJobs, useZipUploadManager } from "@/features/zip-upload"
 import { visibleAwareDelay } from "@/shared/lib/pageVisibility"
 import type { SessionMetadataValues } from "@/features/upload/components/SessionMetadataBar"
+import { CustomMetadataProvider } from "@/features/upload/components/CustomMetadataSection"
 import { SHOW_QUICK_DOSSIER_BUILD } from "@/features/upload/components/step4/temporaryFeatureVisibility"
 import type {
   PendingDataUploadSummary,
@@ -368,6 +369,35 @@ export function UploadPage() {
     },
     []
   )
+  useEffect(() => {
+    const currentSessionId = routeSessionId ?? sessionId
+    if (
+      !currentSessionId ||
+      currentStep < 3 ||
+      sessionMetadata.metadata_config_snapshot ||
+      !["set", "default"].includes(sessionMetadata.metadata_source ?? "")
+    ) return
+    let cancelled = false
+    void getSession(currentSessionId)
+      .then((detail) => {
+        if (cancelled || !detail.metadata_config_snapshot) return
+        syncSessionMetadataDraft({
+          ...cache.sessionMetadata,
+          metadata_config_snapshot: detail.metadata_config_snapshot,
+        })
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [
+    currentStep,
+    routeSessionId,
+    sessionId,
+    sessionMetadata.metadata_config_snapshot,
+    sessionMetadata.metadata_source,
+    syncSessionMetadataDraft,
+  ])
   const [zipFolderPath, setZipFolderPath] = useState(cache.zipFolderPath)
   const [zipMaxFiles, setZipMaxFiles] = useState(cache.zipMaxFiles)
   const [zipUploadProgress, setZipUploadProgress] =
@@ -1782,7 +1812,10 @@ export function UploadPage() {
   ])
 
   return (
-    <>
+    <CustomMetadataProvider
+      snapshot={sessionMetadata.metadata_config_snapshot}
+      documents={ocrMetadataItems}
+    >
       <UploadPageView
         key={`${routeSessionId ?? "new"}:${currentStep}`}
         currentStep={currentStep}
@@ -1940,7 +1973,7 @@ export function UploadPage() {
         isWorkerUser={isWorkerUser}
         navigate={navigate}
       />
-    </>
+    </CustomMetadataProvider>
   )
 }
 

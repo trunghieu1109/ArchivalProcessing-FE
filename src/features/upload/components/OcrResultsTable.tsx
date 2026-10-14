@@ -9,6 +9,7 @@ import {
 import { motion } from "framer-motion"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/shared/lib/utils"
+import { CustomMetadataSection } from "@/features/upload/components/CustomMetadataSection"
 import type {
   FolderStatusResponse,
   JobSummary,
@@ -178,6 +179,9 @@ function JobCard({ job, index }: { job: JobSummary; index: number }) {
           })}
         </div>
       )}
+      <CustomMetadataSection
+        sources={[meta, job.normalized_metadata, job.raw_metadata]}
+      />
     </motion.div>
   )
 }

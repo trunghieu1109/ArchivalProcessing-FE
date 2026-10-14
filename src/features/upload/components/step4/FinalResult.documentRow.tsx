@@ -20,6 +20,7 @@ import {
   X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { CustomMetadataSection } from "@/features/upload/components/CustomMetadataSection"
 import { cn } from "@/shared/lib/utils"
 import { useDocumentEditLock } from "@/features/upload/hooks/useDocumentEditLock"
 import { documentEditLockErrorMessage } from "@/features/upload/lib/documentEditLockErrors"
@@ -668,6 +669,9 @@ export function DocumentRow({
                 />
               ))}
             </div>
+            <CustomMetadataSection
+              sources={[document.metadata, document.normalizedMetadata, document.rawMetadata]}
+            />
           </div>
         </motion.div>
       )}

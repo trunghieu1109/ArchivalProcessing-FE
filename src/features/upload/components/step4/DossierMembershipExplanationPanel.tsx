@@ -9,6 +9,7 @@ import {
   X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { CustomMetadataSection } from "@/features/upload/components/CustomMetadataSection"
 import type {
   DossierMembershipExplanationDocument,
   DossierMembershipExplanationNeighbor,
@@ -20,6 +21,7 @@ import { metadataText } from "./FinalResult.metadataUtils"
 
 export function DossierMembershipExplanationPanel({
   document,
+  documents = [],
   result,
   loading,
   error,
@@ -28,6 +30,7 @@ export function DossierMembershipExplanationPanel({
   onRefresh,
 }: {
   document: ClusterDocument
+  documents?: ClusterDocument[]
   result: DossierMembershipExplanationResponse | null
   loading: boolean
   error: string
@@ -100,6 +103,10 @@ export function DossierMembershipExplanationPanel({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <CustomMetadataSection
+          sources={[document.metadata, document.normalizedMetadata, document.rawMetadata]}
+          className="mt-0 mb-4 border-t-0 pt-0"
+        />
         {loading ? (
           <div className="flex min-h-64 flex-col items-center justify-center gap-3 text-center">
             <Loader2 className="size-7 animate-spin text-[#0052FF]" />
@@ -185,6 +192,10 @@ export function DossierMembershipExplanationPanel({
                     <NeighborCard
                       key={neighbor.document_id}
                       neighbor={neighbor}
+                      metadataDocument={documents.find((candidate) =>
+                        candidate.sessionDocumentId === neighbor.session_document_id ||
+                        candidate.documentId === neighbor.document_id
+                      )}
                       result={result}
                       relationship={relationships.get(neighbor.document_id)}
                     />
@@ -206,10 +217,12 @@ export function DossierMembershipExplanationPanel({
 
 function NeighborCard({
   neighbor,
+  metadataDocument,
   result,
   relationship,
 }: {
   neighbor: DossierMembershipExplanationNeighbor
+  metadataDocument?: ClusterDocument
   result: DossierMembershipExplanationResponse
   relationship?: {
     reason: string
@@ -270,7 +283,14 @@ function NeighborCard({
             )}
           </button>
           {metadataExpanded ? (
-            <NeighborDocumentDetails document={neighbor} />
+            <>
+              <NeighborDocumentDetails document={neighbor} />
+              {metadataDocument && (
+                <CustomMetadataSection
+                  sources={[metadataDocument.metadata, metadataDocument.normalizedMetadata, metadataDocument.rawMetadata]}
+                />
+              )}
+            </>
           ) : null}
         </div>
       </div>

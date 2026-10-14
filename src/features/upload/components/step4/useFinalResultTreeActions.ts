@@ -1386,6 +1386,8 @@ function updatedClusterDocument(
   return {
     ...document,
     metadata,
+    normalizedMetadata: updatedDocument.normalized_metadata,
+    rawMetadata: updatedDocument.raw_metadata,
     remoteMetadataStatus,
     ocrStatus,
     signatureStatus: documentSignatureStatus({

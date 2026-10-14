@@ -20,6 +20,10 @@ import {
   type SessionAuditData,
 } from "../sessionAuditData"
 import { AuditStatusBadge } from "./AuditStatusBadge"
+import {
+  CustomMetadataProvider,
+  CustomMetadataSection,
+} from "@/features/upload/components/CustomMetadataSection"
 
 export function SessionDocumentsAuditPanel({
   data,
@@ -124,6 +128,7 @@ export function SessionDocumentsAuditPanel({
                 `${documentName(document)}-${index}`
               }
               document={document}
+              snapshot={asRecord(data.detail?.metadata_config_snapshot)}
             />
           ))}
         </div>
@@ -142,7 +147,13 @@ export function SessionDocumentsAuditPanel({
   )
 }
 
-function DocumentCard({ document }: { document: Record<string, unknown> }) {
+function DocumentCard({
+  document,
+  snapshot,
+}: {
+  document: Record<string, unknown>
+  snapshot: Record<string, unknown> | null
+}) {
   const record = documentRecord(document)
   const metadata = documentMetadata(document)
   const versions = documentMetadataVersions(document)
@@ -203,6 +214,11 @@ function DocumentCard({ document }: { document: Record<string, unknown> }) {
               Chưa có metadata chuẩn hóa.
             </p>
           )}
+          <CustomMetadataProvider snapshot={snapshot}>
+            <CustomMetadataSection
+              sources={[metadata, asRecord(asRecord(document.metadata)?.raw)]}
+            />
+          </CustomMetadataProvider>
         </section>
 
         <section>

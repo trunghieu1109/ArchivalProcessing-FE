@@ -19,6 +19,7 @@ import {
   Table2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { CustomMetadataSection } from "@/features/upload/components/CustomMetadataSection"
 import { cn } from "@/shared/lib/utils"
 import type {
   ArrangementDossierKind,
@@ -709,6 +710,10 @@ export function ResultNode({
                           </dl>
                         </details>
                       ) : null}
+                      <CustomMetadataSection
+                        documentId={document.document_id}
+                        sources={[document.normalized_metadata]}
+                      />
                     </div>
                   </div>
                 ))}

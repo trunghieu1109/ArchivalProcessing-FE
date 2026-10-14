@@ -88,6 +88,8 @@ export interface ClusterDocument {
   documentNumberingMode?: DocumentNumberingMode | null
   requiresReview: boolean
   metadata: Record<string, unknown>
+  normalizedMetadata?: Record<string, unknown>
+  rawMetadata?: Record<string, unknown>
   dossierSuggestions?: SessionDossierSuggestion[] | null
   clusterWarning: ClusterDocumentWarning | null
   pendingFeedback?: PendingClusterFeedbackMarker | null
@@ -514,6 +516,8 @@ function clusterToGroup(
         requiresReview:
           Boolean(placement.requires_review) || Boolean(clusterWarning),
         metadata,
+        normalizedMetadata: item?.normalized_metadata,
+        rawMetadata: item?.raw_metadata,
         clusterWarning,
         editLock: item?.edit_lock ?? null,
         lifecycleStatus:
@@ -585,6 +589,8 @@ function clusterToGroup(
         documentNumberingMode: dossierCounts.documentNumberingMode,
         requiresReview: Boolean(clusterWarning),
         metadata,
+        normalizedMetadata: item?.normalized_metadata,
+        rawMetadata: item?.raw_metadata,
         clusterWarning,
         editLock: item?.edit_lock ?? null,
         lifecycleStatus: item?.lifecycle_status ?? "active",
