@@ -174,6 +174,8 @@ function supplementalDocument(
     requiresReview:
       intakeDocument.arrangement_status !== "active" || Boolean(warning),
     metadata,
+    normalizedMetadata: item?.normalized_metadata,
+    rawMetadata: item?.raw_metadata,
     clusterWarning: warning,
     editLock: item?.edit_lock ?? null,
     lifecycleStatus:

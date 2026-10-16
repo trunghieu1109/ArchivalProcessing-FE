@@ -1,4 +1,5 @@
 import { requestJson } from "@/features/upload/api/sessionApi.http"
+import { requestMetadataJson } from "./chinhlyMetadata.http"
 
 export interface MetadataOption {
   value: string
@@ -46,20 +47,20 @@ export interface SessionMetadataSelection {
 }
 
 export const listMetadataFields = () =>
-  requestJson<MetadataField[]>("/admin/metadata-fields")
+  requestMetadataJson<MetadataField[]>("/metadata-fields")
 export const listMetadataSets = () =>
-  requestJson<MetadataSet[]>("/admin/metadata-sets")
+  requestMetadataJson<MetadataSet[]>("/metadata-sets")
 export const getMetadataSet = (id: number) =>
-  requestJson<MetadataSet>(`/admin/metadata-sets/${id}`)
+  requestMetadataJson<MetadataSet>(`/metadata-sets/${id}`)
 export const getDefaultMetadataConfig = () =>
-  requestJson<DefaultMetadataConfig>("/admin/metadata-sets/default-config")
+  requestMetadataJson<DefaultMetadataConfig>("/metadata-sets/default-config")
 
 export function mutateMetadata<T>(
   path: string,
   method: "POST" | "PATCH" | "DELETE",
   payload?: Record<string, unknown>
 ): Promise<T> {
-  return requestJson<T>(`/admin/${path}`, {
+  return requestMetadataJson<T>(`/${path}`, {
     method,
     ...(payload
       ? {

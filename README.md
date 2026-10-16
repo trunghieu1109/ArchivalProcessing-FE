@@ -50,6 +50,7 @@ npm run preview
 | Variable | Purpose |
 | --- | --- |
 | `VITE_ARCHIVAL_API_BASE_URL` | Browser API base; use `/api` behind Vite/Nginx |
+| `VITE_CHINHLY_METADATA_API_BASE_URL` | Direct metadata library API on the Chinhly Gateway, including `/api/v1`; empty uses the backend adapter |
 | `VITE_ARCHIVAL_DEV_API_PROXY_TARGET` | Backend target for the Vite proxy |
 | `ARCHIVAL_API_PROXY_PASS` | Backend Nginx upstream; use `http://nginx:80` on the shared Compose network |
 | `VITE_ARCHIVAL_DIRECT_PRESIGNED_UPLOAD` | Allow direct browser PUT to signed storage URLs |
@@ -59,6 +60,18 @@ npm run preview
 | `VITE_ARCHIVAL_BULK_ACTION_CONCURRENCY` | Metadata bulk-action concurrency |
 
 See [.env.sample](.env.sample) for deployment-oriented defaults.
+
+To call the metadata library directly from the browser, set
+`VITE_CHINHLY_METADATA_API_BASE_URL` to the Gateway's public base URL including
+`/api/v1`. Metadata fields, sets and default-config requests use that URL with
+the current user's Bearer token. The Gateway must allow the frontend origin and
+GET/POST/PATCH/DELETE with Authorization and Content-Type through CORS. Use HTTPS
+when the frontend is served over HTTPS. Restart Vite after changing `.env`, or
+rebuild the production bundle (the Docker build supports the same build arg).
+Session creation and metadata selection still use `VITE_ARCHIVAL_API_BASE_URL`
+so the backend can persist the session configuration. Leaving the metadata base
+empty retains the existing backend adapter; failed direct requests do not retry
+through the backend.
 
 ## Repository Structure
 

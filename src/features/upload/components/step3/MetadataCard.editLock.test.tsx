@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { PdfMetadata } from "@/features/upload/types"
@@ -13,6 +19,7 @@ const api = vi.hoisted(() => ({
 vi.mock("@/features/upload/api/sessionApi", () => api)
 
 import { MetadataCard } from "./MetadataCard"
+import { CustomMetadataProvider } from "@/features/upload/components/CustomMetadataSection"
 
 const baseItem: PdfMetadata = {
   id: 11,
@@ -78,6 +85,50 @@ describe("MetadataCard edit lock", () => {
       expect(api.releaseDocumentEditLock).toHaveBeenCalledWith(
         "session-1",
         11,
+        "token-1"
+      )
+    )
+  })
+
+  it("keeps custom metadata read-only and preserves the existing edit payload", async () => {
+    const onApply = vi.fn()
+    render(
+      <CustomMetadataProvider
+        snapshot={{
+          metadata_config: {
+            selected_fields: ["document_type", "priority"],
+            custom_fields: ["priority"],
+            field_labels: { priority: "Mức ưu tiên" },
+          },
+        }}
+      >
+        <MetadataCard
+          item={{
+            ...baseItem,
+            light_metadata: { document_type: "Công văn", priority: "Cao" },
+          }}
+          sessionId="session-1"
+          onApply={onApply}
+        />
+      </CustomMetadataProvider>
+    )
+    fireEvent.click(screen.getByRole("button", { name: /document-11\.pdf/i }))
+    const customSection = screen.getByRole("region", {
+      name: "Metadata tùy chỉnh",
+    })
+    expect(within(customSection).getByText("Cao")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Sửa" }))
+    await screen.findByRole("button", { name: "Lưu & xác nhận" })
+    expect(
+      within(
+        screen.getByRole("region", { name: "Metadata tùy chỉnh" })
+      ).queryByRole("textbox")
+    ).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Lưu & xác nhận" }))
+    await waitFor(() =>
+      expect(onApply).toHaveBeenCalledWith(
+        baseItem.data_path,
+        expect.objectContaining({ document_type: "Công văn", priority: "Cao" }),
         "token-1"
       )
     )

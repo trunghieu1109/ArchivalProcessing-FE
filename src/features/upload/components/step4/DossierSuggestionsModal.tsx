@@ -14,6 +14,7 @@ import {
 } from "lucide-react"
 import { Dialog } from "radix-ui"
 import { Button } from "@/components/ui/button"
+import { CustomMetadataSection } from "@/features/upload/components/CustomMetadataSection"
 import type {
   SessionDossierSuggestion,
   SessionDossierSuggestionRepresentativeDocument,
@@ -325,7 +326,13 @@ function DocumentMetadataPanel({ document }: { document: ClusterDocument }) {
     metadataFieldText(document.metadata, field.aliases),
   ])
 
-  return <MetadataPanel title="Metadata tài liệu" rows={metadataRows} />
+  return (
+    <MetadataPanel title="Metadata tài liệu" rows={metadataRows}>
+      <CustomMetadataSection
+        sources={[document.metadata, document.normalizedMetadata, document.rawMetadata]}
+      />
+    </MetadataPanel>
+  )
 }
 
 function SuggestionList({
@@ -621,7 +628,13 @@ function RepresentativeMetadataPanel({
         representative.document_id
       }
       rows={metadataRows}
-    />
+    >
+      {document && (
+        <CustomMetadataSection
+          sources={[document.metadata, document.normalizedMetadata, document.rawMetadata]}
+        />
+      )}
+    </MetadataPanel>
   )
 }
 
@@ -669,11 +682,13 @@ function MetadataPanel({
   subtitle,
   rows,
   inset = false,
+  children,
 }: {
   title: string
   subtitle?: string
   rows: string[][]
   inset?: boolean
+  children?: React.ReactNode
 }) {
   return (
     <div
@@ -704,6 +719,7 @@ function MetadataPanel({
           </div>
         ))}
       </dl>
+      {children}
     </div>
   )
 }

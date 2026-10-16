@@ -6,6 +6,11 @@ import { MetadataSetSelector } from "./MetadataSetSelector"
 import { createSession, patchSessionMetadata } from "../../api/sessionApi.core"
 import { DYNAMIC_METADATA_ENABLED } from "@/shared/config/featureFlags"
 
+vi.mock("@/shared/config/featureFlags", () => ({
+  DYNAMIC_METADATA_ENABLED: false,
+  FONDS_MERGE_ENABLED: false,
+}))
+
 const api = vi.hoisted(() => ({
   fields: vi.fn(),
   sets: vi.fn(),
@@ -30,7 +35,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe("dynamic metadata disabled by default", () => {
+describe("dynamic metadata explicitly disabled", () => {
   it("renders neither admin management nor the selector and never loads the library", async () => {
     expect(DYNAMIC_METADATA_ENABLED).toBe(false)
     const { container } = render(

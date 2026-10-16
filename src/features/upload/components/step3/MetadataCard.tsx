@@ -16,6 +16,7 @@ import { AnimatePresence, motion } from "framer-motion"
 import { toast } from "sonner"
 import { cn } from "@/shared/lib/utils"
 import { Button } from "@/components/ui/button"
+import { CustomMetadataSection } from "@/features/upload/components/CustomMetadataSection"
 import { useDocumentEditLock } from "@/features/upload/hooks/useDocumentEditLock"
 import { documentEditLockErrorMessage } from "@/features/upload/lib/documentEditLockErrors"
 import {
@@ -447,6 +448,9 @@ export function MetadataCard({
                       />
                     </div>
                   ))}
+                  <CustomMetadataSection
+                    sources={[item.light_metadata, item.normalized_metadata, item.raw_metadata]}
+                  />
                   {!readOnly && (
                     <div className="flex justify-end gap-2 pt-1">
                       <Button
@@ -562,6 +566,9 @@ export function MetadataCard({
                       </div>
                     )
                   })}
+                  <CustomMetadataSection
+                    sources={[item.light_metadata, item.normalized_metadata, item.raw_metadata]}
+                  />
                   {!readOnly && (
                     <div className="flex justify-end gap-2 pt-1">
                       <Button

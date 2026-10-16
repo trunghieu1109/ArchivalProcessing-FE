@@ -694,6 +694,7 @@ export function FinalResultView(props: Record<string, any>) {
             ) : membershipExplanationDocument ? (
               <DossierMembershipExplanationPanel
                 document={membershipExplanationDocument}
+                documents={dossierSuggestionRepresentativeDocuments}
                 result={membershipExplanation}
                 loading={membershipExplanationLoading}
                 error={membershipExplanationError}
